@@ -1,1 +1,15 @@
-// Action enum stub
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    None,
+    Quit,
+    Tick,
+    Render,
+    Resize(u16, u16),
+    SwitchToBrowse,
+    SwitchToER,
+    ToggleFocus,
+    Up,
+    Down,
+    Left,
+    Right,
+}
