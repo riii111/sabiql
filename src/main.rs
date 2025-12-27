@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 
     // Load metadata on startup if DSN is available
     if state.dsn.is_some() {
-        let _ = action_tx.try_send(Action::LoadMetadata);
+        let _ = action_tx.send(Action::LoadMetadata).await;
     }
 
     loop {
@@ -121,8 +121,14 @@ async fn handle_action(
             tui.terminal()
                 .resize(ratatui::layout::Rect::new(0, 0, w, h))?;
         }
-        Action::SwitchToBrowse => state.active_tab = 0,
-        Action::SwitchToER => state.active_tab = 1,
+        Action::NextTab => {
+            const TAB_COUNT: usize = 2;
+            state.active_tab = (state.active_tab + 1) % TAB_COUNT;
+        }
+        Action::PreviousTab => {
+            const TAB_COUNT: usize = 2;
+            state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
+        }
         Action::ToggleFocus => state.focus_mode = !state.focus_mode,
 
         Action::OpenTablePicker => {

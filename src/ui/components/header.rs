@@ -15,11 +15,15 @@ impl Header {
         let table = state.current_table.as_deref().unwrap_or("-");
         let cache_age = state.cache_age_display();
 
-        let (status_text, status_color) = match &state.metadata_state {
-            MetadataState::Loaded => ("connected", Color::Green),
-            MetadataState::Loading => ("loading...", Color::Yellow),
-            MetadataState::Error(_) => ("error", Color::Red),
-            MetadataState::NotLoaded => ("not loaded", Color::Gray),
+        let (status_text, status_color) = if state.dsn.is_none() {
+            ("no dsn", Color::Red)
+        } else {
+            match &state.metadata_state {
+                MetadataState::Loaded => ("connected", Color::Green),
+                MetadataState::Loading => ("loading...", Color::Yellow),
+                MetadataState::Error(_) => ("error", Color::Red),
+                MetadataState::NotLoaded => ("not loaded", Color::Gray),
+            }
         };
 
         let line = Line::from(vec![
