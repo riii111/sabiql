@@ -48,18 +48,18 @@ impl PostgresAdapter {
         let result = timeout(Duration::from_secs(self.timeout_secs), async {
             let (stdout_result, stderr_result) = tokio::join!(
                 async {
-                    let mut buf = String::new();
+                    let mut buf = Vec::new();
                     if let Some(ref mut out) = stdout_handle {
-                        out.read_to_string(&mut buf).await?;
+                        out.read_to_end(&mut buf).await?;
                     }
-                    Ok::<_, std::io::Error>(buf)
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 },
                 async {
-                    let mut buf = String::new();
+                    let mut buf = Vec::new();
                     if let Some(ref mut err) = stderr_handle {
-                        err.read_to_string(&mut buf).await?;
+                        err.read_to_end(&mut buf).await?;
                     }
-                    Ok::<_, std::io::Error>(buf)
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
 
