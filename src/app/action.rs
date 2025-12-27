@@ -13,4 +13,38 @@ pub enum Action {
     Down,
     Left,
     Right,
+
+    // Overlay toggles
+    OpenTablePicker,
+    CloseTablePicker,
+    OpenCommandPalette,
+    CloseCommandPalette,
+    OpenHelp,
+    CloseHelp,
+
+    // Command line actions
+    EnterCommandLine,
+    ExitCommandLine,
+    CommandLineInput(char),
+    CommandLineBackspace,
+    CommandLineSubmit,
+
+    // Filter actions (for Table Picker)
+    FilterInput(char),
+    FilterBackspace,
+    FilterClear,
+
+    // Navigation
+    SelectNext,
+    SelectPrevious,
+    SelectFirst,
+    SelectLast,
+    PageUp,
+    PageDown,
+
+    // Selection
+    ConfirmSelection,
+
+    // Escape (context-dependent close)
+    Escape,
 }
