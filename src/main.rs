@@ -139,13 +139,7 @@ async fn main() -> Result<()> {
                 Action::SelectNext => {
                     match state.input_mode {
                         InputMode::TablePicker => {
-                            let filter_lower = state.filter_input.to_lowercase();
-                            let max = state
-                                .tables
-                                .iter()
-                                .filter(|t| t.to_lowercase().contains(&filter_lower))
-                                .count()
-                                .saturating_sub(1);
+                            let max = state.filtered_tables().len().saturating_sub(1);
                             if state.picker_selected < max {
                                 state.picker_selected += 1;
                             }
@@ -157,7 +151,7 @@ async fn main() -> Result<()> {
                             }
                         }
                         InputMode::Normal => {
-                            let max = state.tables.len().saturating_sub(1);
+                            let max = state.tables().len().saturating_sub(1);
                             if state.explorer_selected < max {
                                 state.explorer_selected += 1;
                             }
@@ -190,20 +184,14 @@ async fn main() -> Result<()> {
                 Action::SelectLast => {
                     match state.input_mode {
                         InputMode::TablePicker => {
-                            let filter_lower = state.filter_input.to_lowercase();
-                            let max = state
-                                .tables
-                                .iter()
-                                .filter(|t| t.to_lowercase().contains(&filter_lower))
-                                .count()
-                                .saturating_sub(1);
+                            let max = state.filtered_tables().len().saturating_sub(1);
                             state.picker_selected = max;
                         }
                         InputMode::CommandPalette => {
                             state.picker_selected = palette_command_count() - 1;
                         }
                         InputMode::Normal => {
-                            state.explorer_selected = state.tables.len().saturating_sub(1);
+                            state.explorer_selected = state.tables().len().saturating_sub(1);
                         }
                         _ => {}
                     }
@@ -211,14 +199,9 @@ async fn main() -> Result<()> {
 
                 Action::ConfirmSelection => {
                     if state.input_mode == InputMode::TablePicker {
-                        let filter_lower = state.filter_input.to_lowercase();
-                        let filtered: Vec<&String> = state
-                            .tables
-                            .iter()
-                            .filter(|t| t.to_lowercase().contains(&filter_lower))
-                            .collect();
+                        let filtered = state.filtered_tables();
                         if let Some(table) = filtered.get(state.picker_selected) {
-                            state.current_table = Some((*table).clone());
+                            state.current_table = Some(table.qualified_name());
                             state.input_mode = InputMode::Normal;
                         }
                     } else if state.input_mode == InputMode::CommandPalette {

@@ -45,12 +45,7 @@ impl TablePicker {
         let filter_widget = Paragraph::new(filter_line).block(filter_block);
         frame.render_widget(filter_widget, filter_area);
 
-        let filter_lower = state.filter_input.to_lowercase();
-        let filtered: Vec<&String> = state
-            .tables
-            .iter()
-            .filter(|t| t.to_lowercase().contains(&filter_lower))
-            .collect();
+        let filtered = state.filtered_tables();
 
         let items: Vec<ListItem> = filtered
             .iter()
@@ -64,7 +59,7 @@ impl TablePicker {
                 } else {
                     Style::default()
                 };
-                ListItem::new(t.as_str()).style(style)
+                ListItem::new(t.qualified_name()).style(style)
             })
             .collect();
 
