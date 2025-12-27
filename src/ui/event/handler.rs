@@ -103,10 +103,6 @@ fn handle_help_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        KeyCode::PageUp => Action::PageUp,
-        KeyCode::PageDown => Action::PageDown,
         _ => Action::None,
     }
 }

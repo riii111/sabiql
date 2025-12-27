@@ -16,6 +16,7 @@ use infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
 };
+use ui::components::command_palette::CommandPalette;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
@@ -221,19 +222,18 @@ async fn main() -> Result<()> {
                             state.input_mode = InputMode::Normal;
                         }
                     } else if state.input_mode == InputMode::CommandPalette {
-                        match state.picker_selected {
-                            0 => state.should_quit = true,
-                            1 => state.input_mode = InputMode::Help,
-                            4 => {
+                        let cmd_action = CommandPalette::action_for_index(state.picker_selected);
+                        state.input_mode = InputMode::Normal;
+                        match cmd_action {
+                            Action::Quit => state.should_quit = true,
+                            Action::OpenHelp => state.input_mode = InputMode::Help,
+                            Action::OpenTablePicker => {
                                 state.input_mode = InputMode::TablePicker;
                                 state.filter_input.clear();
                                 state.picker_selected = 0;
                             }
-                            5 => {
-                                state.input_mode = InputMode::Normal;
-                                state.focus_mode = !state.focus_mode;
-                            }
-                            _ => state.input_mode = InputMode::Normal,
+                            Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+                            _ => {}
                         }
                     }
                 }
