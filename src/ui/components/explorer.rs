@@ -10,8 +10,14 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+        let has_cached_data = state.metadata.is_some() && !state.tables().is_empty();
+
         let title = match &state.metadata_state {
             MetadataState::Loading => " Explorer [Loading...] ".to_string(),
+            MetadataState::Error(_) if has_cached_data => {
+                // Show stale data count with error indicator
+                format!(" Explorer [{} tables - Stale] ", state.tables().len())
+            }
             MetadataState::Error(_) => " Explorer [Error] ".to_string(),
             MetadataState::Loaded => {
                 let count = state.tables().len();
@@ -22,8 +28,9 @@ impl Explorer {
 
         let block = Block::default().title(title).borders(Borders::ALL);
 
-        let items: Vec<ListItem> = match &state.metadata_state {
-            MetadataState::Loaded => state
+        let items: Vec<ListItem> = if has_cached_data {
+            // Show existing tables (even during loading or after error)
+            state
                 .tables()
                 .iter()
                 .map(|t| {
@@ -33,15 +40,21 @@ impl Explorer {
                     }
                     ListItem::new(text)
                 })
-                .collect(),
-            MetadataState::Loading => {
-                vec![ListItem::new("Loading metadata...")]
-            }
-            MetadataState::Error(e) => {
-                vec![ListItem::new(format!("Error: {}", e))]
-            }
-            MetadataState::NotLoaded => {
-                vec![ListItem::new("Press 'r' to load metadata")]
+                .collect()
+        } else {
+            match &state.metadata_state {
+                MetadataState::Loading => {
+                    vec![ListItem::new("Loading metadata...")]
+                }
+                MetadataState::Error(e) => {
+                    vec![ListItem::new(format!("Error: {}", e))]
+                }
+                MetadataState::Loaded => {
+                    vec![ListItem::new("No tables found")]
+                }
+                MetadataState::NotLoaded => {
+                    vec![ListItem::new("Press 'r' to load metadata")]
+                }
             }
         };
 
@@ -55,7 +68,7 @@ impl Explorer {
             .highlight_symbol("> ");
 
         let mut list_state = ListState::default();
-        if state.metadata_state == MetadataState::Loaded && !state.tables().is_empty() {
+        if has_cached_data {
             list_state.select(Some(state.explorer_selected));
         }
 

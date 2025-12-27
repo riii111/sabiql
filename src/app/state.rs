@@ -2,7 +2,7 @@ use super::action::Action;
 use super::input_mode::InputMode;
 use super::mode::Mode;
 use crate::domain::{DatabaseMetadata, MetadataState, Table, TableSummary};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 
 #[allow(dead_code)]
 pub struct AppState {
@@ -32,7 +32,7 @@ pub struct AppState {
     pub table_detail_state: MetadataState,
 
     // Action channel for async tasks
-    pub action_tx: Option<UnboundedSender<Action>>,
+    pub action_tx: Option<Sender<Action>>,
 }
 
 impl AppState {
@@ -71,13 +71,13 @@ impl AppState {
         let filter_lower = self.filter_input.to_lowercase();
         self.tables()
             .into_iter()
-            .filter(|t| t.qualified_name().to_lowercase().contains(&filter_lower))
+            .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
     }
 
     pub fn send_action(&self, action: Action) {
         if let Some(tx) = &self.action_tx {
-            let _ = tx.send(action);
+            let _ = tx.try_send(action);
         }
     }
 

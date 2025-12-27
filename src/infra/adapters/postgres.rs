@@ -2,6 +2,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -25,28 +26,51 @@ impl PostgresAdapter {
     }
 
     async fn execute_query(&self, dsn: &str, query: &str) -> Result<String, MetadataError> {
-        let result = timeout(
-            Duration::from_secs(self.timeout_secs),
-            Command::new("psql")
-                .arg(dsn)
-                .arg("-t") // tuples only
-                .arg("-A") // unaligned output
-                .arg("-c")
-                .arg(query)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output(),
-        )
+        let mut child = Command::new("psql")
+            .arg(dsn)
+            .arg("-X") // Ignore .psqlrc to avoid unexpected output
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1") // Exit with non-zero on SQL errors
+            .arg("-t") // Tuples only
+            .arg("-A") // Unaligned output
+            .arg("-c")
+            .arg(query)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true) // Ensure child process is killed on timeout/drop
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let status = child.wait().await?;
+            let mut stdout = String::new();
+            let mut stderr = String::new();
+
+            if let Some(mut out) = child.stdout.take() {
+                out.read_to_string(&mut stdout).await?;
+            }
+            if let Some(mut err) = child.stderr.take() {
+                err.read_to_string(&mut stderr).await?;
+            }
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
         .await
         .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
 
-        if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            return Err(MetadataError::QueryFailed(stderr.to_string()));
+        let (status, stdout, stderr) = result;
+
+        if !status.success() {
+            return Err(MetadataError::QueryFailed(stderr));
         }
 
-        Ok(String::from_utf8_lossy(&result.stdout).to_string())
+        Ok(stdout)
+    }
+
+    /// Escape string literal for safe SQL interpolation (PostgreSQL quote_literal equivalent)
+    fn quote_literal(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
     }
 
     fn tables_query() -> &'static str {
@@ -111,13 +135,14 @@ impl PostgresAdapter {
                 JOIN pg_namespace n ON n.oid = cl.relnamespace
                 JOIN pg_attribute a ON a.attrelid = cl.oid
                 LEFT JOIN pg_attrdef d ON d.adrelid = cl.oid AND d.adnum = a.attnum
-                WHERE n.nspname = '{}'
-                  AND cl.relname = '{}'
+                WHERE n.nspname = {}
+                  AND cl.relname = {}
                   AND a.attnum > 0
                   AND NOT a.attisdropped
             ) c
             "#,
-            schema, table
+            Self::quote_literal(schema),
+            Self::quote_literal(table)
         )
     }
 
@@ -139,13 +164,14 @@ impl PostgresAdapter {
                 JOIN pg_namespace n ON n.oid = tbl.relnamespace
                 JOIN pg_am am ON am.oid = idx.relam
                 JOIN pg_attribute a ON a.attrelid = tbl.oid AND a.attnum = ANY(ix.indkey)
-                WHERE n.nspname = '{}'
-                  AND tbl.relname = '{}'
+                WHERE n.nspname = {}
+                  AND tbl.relname = {}
                 GROUP BY idx.relname, ix.indisunique, ix.indisprimary, am.amname, idx.oid
                 ORDER BY idx.relname
             ) i
             "#,
-            schema, table
+            Self::quote_literal(schema),
+            Self::quote_literal(table)
         )
     }
 
@@ -172,12 +198,13 @@ impl PostgresAdapter {
                 JOIN pg_attribute a1 ON a1.attrelid = c1.oid AND a1.attnum = ANY(con.conkey)
                 JOIN pg_attribute a2 ON a2.attrelid = c2.oid AND a2.attnum = ANY(con.confkey)
                 WHERE con.contype = 'f'
-                  AND n1.nspname = '{}'
-                  AND c1.relname = '{}'
+                  AND n1.nspname = {}
+                  AND c1.relname = {}
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
             "#,
-            schema, table
+            Self::quote_literal(schema),
+            Self::quote_literal(table)
         )
     }
 
@@ -206,10 +233,11 @@ impl PostgresAdapter {
             )
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = '{}'
-              AND c.relname = '{}'
+            WHERE n.nspname = {}
+              AND c.relname = {}
             "#,
-            schema, table
+            Self::quote_literal(schema),
+            Self::quote_literal(table)
         )
     }
 
@@ -232,12 +260,7 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|t| TableSummary {
-                schema: t.schema,
-                name: t.name,
-                row_count_estimate: t.row_count_estimate,
-                has_rls: t.has_rls,
-            })
+            .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate, t.has_rls))
             .collect())
     }
 
@@ -436,7 +459,16 @@ impl PostgresAdapter {
     }
 
     fn extract_database_name(dsn: &str) -> String {
-        dsn.rsplit('/').next().unwrap_or("unknown").to_string()
+        // Support both URI format (postgres://host/dbname) and key=value format (dbname=mydb)
+        if let Some(db) = dsn.rsplit('/').next().filter(|s| !s.is_empty() && !s.contains('=')) {
+            return db.to_string();
+        }
+        if let Some(start) = dsn.find("dbname=") {
+            let rest = &dsn[start + 7..];
+            let end = rest.find(|c: char| c.is_whitespace() || c == ' ').unwrap_or(rest.len());
+            return rest[..end].to_string();
+        }
+        "unknown".to_string()
     }
 }
 
@@ -469,32 +501,29 @@ impl MetadataProvider for PostgresAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError> {
-        let columns_json = self
-            .execute_query(dsn, &Self::columns_query(schema, table))
-            .await?;
-        let indexes_json = self
-            .execute_query(dsn, &Self::indexes_query(schema, table))
-            .await?;
-        let fks_json = self
-            .execute_query(dsn, &Self::foreign_keys_query(schema, table))
-            .await?;
-        let rls_json = self
-            .execute_query(dsn, &Self::rls_query(schema, table))
-            .await?;
+        let columns_q = Self::columns_query(schema, table);
+        let indexes_q = Self::indexes_query(schema, table);
+        let fks_q = Self::foreign_keys_query(schema, table);
+        let rls_q = Self::rls_query(schema, table);
+
+        let (columns_json, indexes_json, fks_json, rls_json) = tokio::try_join!(
+            self.execute_query(dsn, &columns_q),
+            self.execute_query(dsn, &indexes_q),
+            self.execute_query(dsn, &fks_q),
+            self.execute_query(dsn, &rls_q),
+        )?;
 
         let columns = Self::parse_columns(&columns_json)?;
         let indexes = Self::parse_indexes(&indexes_json)?;
         let foreign_keys = Self::parse_foreign_keys(&fks_json)?;
         let rls = Self::parse_rls(&rls_json)?;
 
-        let primary_key: Option<Vec<String>> = columns
+        let pk_cols: Vec<String> = columns
             .iter()
             .filter(|c| c.is_primary_key)
             .map(|c| c.name.clone())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .next()
-            .map(|_| columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.clone()).collect());
+            .collect();
+        let primary_key = if pk_cols.is_empty() { None } else { Some(pk_cols) };
 
         Ok(Table {
             schema: schema.to_string(),

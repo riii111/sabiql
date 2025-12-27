@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
 
@@ -49,18 +49,7 @@ impl TablePicker {
 
         let items: Vec<ListItem> = filtered
             .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                let style = if i == state.picker_selected {
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(t.qualified_name()).style(style)
-            })
+            .map(|t| ListItem::new(t.qualified_name()))
             .collect();
 
         let list_block = Block::default()
@@ -68,7 +57,21 @@ impl TablePicker {
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
-        let list = List::new(items).block(list_block);
-        frame.render_widget(list, list_area);
+        let list = List::new(items)
+            .block(list_block)
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        let mut list_state = ListState::default();
+        if !filtered.is_empty() {
+            list_state.select(Some(state.picker_selected));
+        }
+
+        frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

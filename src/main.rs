@@ -53,8 +53,8 @@ async fn main() -> Result<()> {
     let dsn = config.as_ref().and_then(|c| c.resolve_dsn(&args.profile));
     let _cache_dir = get_cache_dir(&project_name)?;
 
-    // Action channel for async communication
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
+    // Action channel for async communication (bounded to prevent unbounded memory growth)
+    let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
     // Metadata provider and cache
     let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
@@ -70,15 +70,15 @@ async fn main() -> Result<()> {
 
     // Load metadata on startup if DSN is available
     if state.dsn.is_some() {
-        let _ = action_tx.send(Action::LoadMetadata);
+        let _ = action_tx.try_send(Action::LoadMetadata);
     }
 
     loop {
         tokio::select! {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
-                if action != Action::None {
-                    let _ = action_tx.send(action);
+                if !action.is_none() {
+                    let _ = action_tx.try_send(action);
                 }
             }
             Some(action) = action_rx.recv() => {
@@ -106,7 +106,7 @@ async fn handle_action(
     action: Action,
     state: &mut AppState,
     tui: &mut TuiRunner,
-    action_tx: &mpsc::UnboundedSender<Action>,
+    action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
 ) -> Result<()> {
@@ -169,9 +169,9 @@ async fn handle_action(
             let follow_up = command_to_action(cmd);
             state.input_mode = InputMode::Normal;
             state.command_line_input.clear();
-            if follow_up == Action::Quit {
+            if matches!(follow_up, Action::Quit) {
                 state.should_quit = true;
-            } else if follow_up == Action::OpenHelp {
+            } else if matches!(follow_up, Action::OpenHelp) {
                 state.input_mode = InputMode::Help;
             }
         }
@@ -298,10 +298,10 @@ async fn handle_action(
                         match provider.fetch_metadata(&dsn).await {
                             Ok(metadata) => {
                                 cache.set(dsn, metadata.clone()).await;
-                                let _ = tx.send(Action::MetadataLoaded(Box::new(metadata)));
+                                let _ = tx.try_send(Action::MetadataLoaded(Box::new(metadata)));
                             }
                             Err(e) => {
-                                let _ = tx.send(Action::MetadataFailed(e.to_string()));
+                                let _ = tx.try_send(Action::MetadataFailed(e.to_string()));
                             }
                         }
                     });
@@ -312,7 +312,7 @@ async fn handle_action(
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.dsn {
                 metadata_cache.invalidate(dsn).await;
-                let _ = action_tx.send(Action::LoadMetadata);
+                let _ = action_tx.try_send(Action::LoadMetadata);
             }
         }
 
