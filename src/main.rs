@@ -136,56 +136,75 @@ async fn main() -> Result<()> {
                 }
 
                 Action::SelectNext => {
-                    let max = match state.input_mode {
+                    match state.input_mode {
                         InputMode::TablePicker => {
                             let filter_lower = state.filter_input.to_lowercase();
-                            state
+                            let max = state
                                 .tables
                                 .iter()
                                 .filter(|t| t.to_lowercase().contains(&filter_lower))
                                 .count()
-                                .saturating_sub(1)
+                                .saturating_sub(1);
+                            if state.picker_selected < max {
+                                state.picker_selected += 1;
+                            }
                         }
-                        InputMode::CommandPalette => 6,
-                        _ => usize::MAX,
-                    };
-                    if max != usize::MAX && state.picker_selected < max {
-                        state.picker_selected += 1;
+                        InputMode::CommandPalette => {
+                            let max = ui::components::command_palette::CommandPalette::command_count() - 1;
+                            if state.picker_selected < max {
+                                state.picker_selected += 1;
+                            }
+                        }
+                        InputMode::Normal => {
+                            let max = state.tables.len().saturating_sub(1);
+                            if state.explorer_selected < max {
+                                state.explorer_selected += 1;
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 Action::SelectPrevious => {
-                    if matches!(
-                        state.input_mode,
-                        InputMode::TablePicker | InputMode::CommandPalette
-                    ) {
-                        state.picker_selected = state.picker_selected.saturating_sub(1);
+                    match state.input_mode {
+                        InputMode::TablePicker | InputMode::CommandPalette => {
+                            state.picker_selected = state.picker_selected.saturating_sub(1);
+                        }
+                        InputMode::Normal => {
+                            state.explorer_selected = state.explorer_selected.saturating_sub(1);
+                        }
+                        _ => {}
                     }
                 }
                 Action::SelectFirst => {
-                    if matches!(
-                        state.input_mode,
-                        InputMode::TablePicker | InputMode::CommandPalette
-                    ) {
-                        state.picker_selected = 0;
+                    match state.input_mode {
+                        InputMode::TablePicker | InputMode::CommandPalette => {
+                            state.picker_selected = 0;
+                        }
+                        InputMode::Normal => {
+                            state.explorer_selected = 0;
+                        }
+                        _ => {}
                     }
                 }
                 Action::SelectLast => {
-                    if let Some(max) = match state.input_mode {
+                    match state.input_mode {
                         InputMode::TablePicker => {
                             let filter_lower = state.filter_input.to_lowercase();
-                            Some(
-                                state
-                                    .tables
-                                    .iter()
-                                    .filter(|t| t.to_lowercase().contains(&filter_lower))
-                                    .count()
-                                    .saturating_sub(1),
-                            )
+                            let max = state
+                                .tables
+                                .iter()
+                                .filter(|t| t.to_lowercase().contains(&filter_lower))
+                                .count()
+                                .saturating_sub(1);
+                            state.picker_selected = max;
                         }
-                        InputMode::CommandPalette => Some(6),
-                        _ => None,
-                    } {
-                        state.picker_selected = max;
+                        InputMode::CommandPalette => {
+                            state.picker_selected = ui::components::command_palette::CommandPalette::command_count() - 1;
+                        }
+                        InputMode::Normal => {
+                            state.explorer_selected = state.tables.len().saturating_sub(1);
+                        }
+                        _ => {}
                     }
                 }
 
