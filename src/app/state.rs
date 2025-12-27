@@ -1,10 +1,30 @@
+use std::time::Instant;
+
 use ratatui::widgets::ListState;
+use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
 use super::input_mode::InputMode;
+use super::inspector_tab::InspectorTab;
 use super::mode::Mode;
-use crate::domain::{DatabaseMetadata, MetadataState, Table, TableSummary};
-use tokio::sync::mpsc::Sender;
+use super::result_history::ResultHistory;
+use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SqlModalState {
+    #[default]
+    Editing,
+    Running,
+    Success,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QueryState {
+    #[default]
+    Idle,
+    Running,
+}
 
 #[allow(dead_code)]
 pub struct AppState {
@@ -38,6 +58,29 @@ pub struct AppState {
 
     // Action channel for async tasks
     pub action_tx: Option<Sender<Action>>,
+
+    // Inspector sub-tabs
+    pub inspector_tab: InspectorTab,
+
+    // Result pane
+    pub current_result: Option<QueryResult>,
+    pub result_highlight_until: Option<Instant>,
+    pub result_scroll_offset: usize,
+
+    // Result history (for Adhoc queries)
+    pub result_history: ResultHistory,
+    pub history_index: Option<usize>,
+
+    // SQL Modal
+    pub sql_modal_content: String,
+    pub sql_modal_cursor: usize,
+    pub sql_modal_state: SqlModalState,
+
+    // Query execution state
+    pub query_state: QueryState,
+
+    // Last error for copy functionality
+    pub last_error: Option<String>,
 }
 
 impl AppState {
@@ -64,6 +107,23 @@ impl AppState {
             table_detail: None,
             table_detail_state: MetadataState::default(),
             action_tx: None,
+            // Inspector sub-tabs
+            inspector_tab: InspectorTab::default(),
+            // Result pane
+            current_result: None,
+            result_highlight_until: None,
+            result_scroll_offset: 0,
+            // Result history
+            result_history: ResultHistory::default(),
+            history_index: None,
+            // SQL Modal
+            sql_modal_content: String::new(),
+            sql_modal_cursor: 0,
+            sql_modal_state: SqlModalState::default(),
+            // Query state
+            query_state: QueryState::default(),
+            // Last error
+            last_error: None,
         }
     }
 

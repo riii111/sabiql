@@ -1,4 +1,15 @@
-use crate::domain::{DatabaseMetadata, Table};
+use crate::app::inspector_tab::InspectorTab;
+use crate::domain::{DatabaseMetadata, QueryResult, Table};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorMove {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+}
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -62,6 +73,42 @@ pub enum Action {
 
     // Cache operations
     InvalidateCache,
+
+    // Inspector sub-tabs
+    InspectorNextTab,
+    InspectorPrevTab,
+    InspectorSelectTab(InspectorTab),
+
+    // SQL Modal
+    OpenSqlModal,
+    CloseSqlModal,
+    SqlModalInput(char),
+    SqlModalBackspace,
+    SqlModalDelete,
+    SqlModalNewLine,
+    SqlModalMoveCursor(CursorMove),
+    SqlModalSubmit,
+
+    // Query execution
+    ExecutePreview { schema: String, table: String },
+    ExecuteAdhoc(String),
+    QueryCompleted(Box<QueryResult>),
+    QueryFailed(String),
+
+    // Result pane
+    ResultScrollUp,
+    ResultScrollDown,
+    ResultScrollTop,
+    ResultScrollBottom,
+    HistoryPrev,
+    HistoryNext,
+
+    // Clipboard
+    CopySelection,
+    CopyLastError,
+    CopyToClipboard(String),
+    ClipboardSuccess,
+    ClipboardFailed(String),
 }
 
 impl Action {
