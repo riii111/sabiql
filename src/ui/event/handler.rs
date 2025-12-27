@@ -18,26 +18,16 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 }
 
 fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
-    // Route based on input mode
     match state.input_mode {
-        InputMode::Normal => handle_normal_mode(key, state),
+        InputMode::Normal => handle_normal_mode(key),
         InputMode::CommandLine => handle_command_line_mode(key),
-        InputMode::Filter => handle_filter_mode(key),
+        InputMode::TablePicker => handle_table_picker_keys(key),
+        InputMode::CommandPalette => handle_command_palette_keys(key),
+        InputMode::Help => handle_help_keys(key),
     }
 }
 
-fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
-    // Check for active overlays first
-    if state.show_table_picker {
-        return handle_table_picker_keys(key);
-    }
-    if state.show_command_palette {
-        return handle_command_palette_keys(key);
-    }
-    if state.show_help {
-        return handle_help_keys(key);
-    }
-
+fn handle_normal_mode(key: KeyEvent) -> Action {
     // Global keys with modifiers
     match (key.code, key.modifiers) {
         // Ctrl+P: Open Table Picker
@@ -87,18 +77,6 @@ fn handle_command_line_mode(key: KeyEvent) -> Action {
     }
 }
 
-fn handle_filter_mode(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Esc => Action::Escape,
-        KeyCode::Backspace => Action::FilterBackspace,
-        KeyCode::Up => Action::SelectPrevious,
-        KeyCode::Down => Action::SelectNext,
-        KeyCode::Char(c) => Action::FilterInput(c),
-        _ => Action::None,
-    }
-}
-
 fn handle_table_picker_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Esc => Action::CloseTablePicker,
@@ -123,7 +101,8 @@ fn handle_command_palette_keys(key: KeyEvent) -> Action {
 
 fn handle_help_keys(key: KeyEvent) -> Action {
     match key.code {
-        KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Action::CloseHelp,
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
         KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
         KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
         KeyCode::PageUp => Action::PageUp,

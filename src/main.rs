@@ -69,27 +69,30 @@ async fn main() -> Result<()> {
                 Action::SwitchToER => state.active_tab = 1,
                 Action::ToggleFocus => state.focus_mode = !state.focus_mode,
 
-                // Overlay actions
                 Action::OpenTablePicker => {
-                    state.show_table_picker = true;
+                    state.input_mode = InputMode::TablePicker;
                     state.filter_input.clear();
                     state.picker_selected = 0;
                 }
                 Action::CloseTablePicker => {
-                    state.show_table_picker = false;
+                    state.input_mode = InputMode::Normal;
                 }
                 Action::OpenCommandPalette => {
-                    state.show_command_palette = true;
+                    state.input_mode = InputMode::CommandPalette;
                     state.picker_selected = 0;
                 }
                 Action::CloseCommandPalette => {
-                    state.show_command_palette = false;
+                    state.input_mode = InputMode::Normal;
                 }
                 Action::OpenHelp => {
-                    state.show_help = !state.show_help;
+                    state.input_mode = if state.input_mode == InputMode::Help {
+                        InputMode::Normal
+                    } else {
+                        InputMode::Help
+                    };
                 }
                 Action::CloseHelp => {
-                    state.show_help = false;
+                    state.input_mode = InputMode::Normal;
                 }
 
                 // Command line actions
@@ -111,11 +114,10 @@ async fn main() -> Result<()> {
                     let follow_up = command_to_action(cmd);
                     state.input_mode = InputMode::Normal;
                     state.command_line_input.clear();
-                    // Handle follow-up action
                     if follow_up == Action::Quit {
                         state.should_quit = true;
                     } else if follow_up == Action::OpenHelp {
-                        state.show_help = true;
+                        state.input_mode = InputMode::Help;
                     }
                 }
 
@@ -133,47 +135,62 @@ async fn main() -> Result<()> {
                     state.picker_selected = 0;
                 }
 
-                // Navigation
                 Action::SelectNext => {
-                    let max = if state.show_table_picker {
-                        let filter_lower = state.filter_input.to_lowercase();
-                        state
-                            .tables
-                            .iter()
-                            .filter(|t| t.to_lowercase().contains(&filter_lower))
-                            .count()
-                            .saturating_sub(1)
-                    } else {
-                        10 // Placeholder max
+                    let max = match state.input_mode {
+                        InputMode::TablePicker => {
+                            let filter_lower = state.filter_input.to_lowercase();
+                            state
+                                .tables
+                                .iter()
+                                .filter(|t| t.to_lowercase().contains(&filter_lower))
+                                .count()
+                                .saturating_sub(1)
+                        }
+                        InputMode::CommandPalette => 6,
+                        _ => usize::MAX,
                     };
-                    if state.picker_selected < max {
+                    if max != usize::MAX && state.picker_selected < max {
                         state.picker_selected += 1;
                     }
                 }
                 Action::SelectPrevious => {
-                    state.picker_selected = state.picker_selected.saturating_sub(1);
+                    if matches!(
+                        state.input_mode,
+                        InputMode::TablePicker | InputMode::CommandPalette
+                    ) {
+                        state.picker_selected = state.picker_selected.saturating_sub(1);
+                    }
                 }
                 Action::SelectFirst => {
-                    state.picker_selected = 0;
+                    if matches!(
+                        state.input_mode,
+                        InputMode::TablePicker | InputMode::CommandPalette
+                    ) {
+                        state.picker_selected = 0;
+                    }
                 }
                 Action::SelectLast => {
-                    let max = if state.show_table_picker {
-                        let filter_lower = state.filter_input.to_lowercase();
-                        state
-                            .tables
-                            .iter()
-                            .filter(|t| t.to_lowercase().contains(&filter_lower))
-                            .count()
-                            .saturating_sub(1)
-                    } else {
-                        10
-                    };
-                    state.picker_selected = max;
+                    if let Some(max) = match state.input_mode {
+                        InputMode::TablePicker => {
+                            let filter_lower = state.filter_input.to_lowercase();
+                            Some(
+                                state
+                                    .tables
+                                    .iter()
+                                    .filter(|t| t.to_lowercase().contains(&filter_lower))
+                                    .count()
+                                    .saturating_sub(1),
+                            )
+                        }
+                        InputMode::CommandPalette => Some(6),
+                        _ => None,
+                    } {
+                        state.picker_selected = max;
+                    }
                 }
 
-                // Selection
                 Action::ConfirmSelection => {
-                    if state.show_table_picker {
+                    if state.input_mode == InputMode::TablePicker {
                         let filter_lower = state.filter_input.to_lowercase();
                         let filtered: Vec<&String> = state
                             .tables
@@ -182,22 +199,28 @@ async fn main() -> Result<()> {
                             .collect();
                         if let Some(table) = filtered.get(state.picker_selected) {
                             state.current_table = Some((*table).clone());
+                            state.input_mode = InputMode::Normal;
                         }
-                        state.show_table_picker = false;
-                    } else if state.show_command_palette {
-                        state.show_command_palette = false;
+                    } else if state.input_mode == InputMode::CommandPalette {
+                        match state.picker_selected {
+                            0 => state.should_quit = true,
+                            1 => state.input_mode = InputMode::Help,
+                            4 => {
+                                state.input_mode = InputMode::TablePicker;
+                                state.filter_input.clear();
+                                state.picker_selected = 0;
+                            }
+                            5 => {
+                                state.input_mode = InputMode::Normal;
+                                state.focus_mode = !state.focus_mode;
+                            }
+                            _ => state.input_mode = InputMode::Normal,
+                        }
                     }
                 }
 
-                // Escape
                 Action::Escape => {
-                    if state.show_table_picker {
-                        state.show_table_picker = false;
-                    } else if state.show_command_palette {
-                        state.show_command_palette = false;
-                    } else if state.show_help {
-                        state.show_help = false;
-                    }
+                    state.input_mode = InputMode::Normal;
                 }
 
                 _ => {}

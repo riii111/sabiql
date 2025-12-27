@@ -11,6 +11,7 @@ use super::inspector::Inspector;
 use super::result::ResultPane;
 use super::table_picker::TablePicker;
 use super::tabs::Tabs;
+use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 
 pub struct MainLayout;
@@ -47,15 +48,11 @@ impl MainLayout {
         Footer::render(frame, footer_area, state);
         CommandLine::render(frame, cmdline_area, state);
 
-        // Render overlays (on top of everything else)
-        if state.show_table_picker {
-            TablePicker::render(frame, state);
-        }
-        if state.show_command_palette {
-            CommandPalette::render(frame, state);
-        }
-        if state.show_help {
-            HelpOverlay::render(frame, state);
+        match state.input_mode {
+            InputMode::TablePicker => TablePicker::render(frame, state),
+            InputMode::CommandPalette => CommandPalette::render(frame, state),
+            InputMode::Help => HelpOverlay::render(frame, state),
+            _ => {}
         }
     }
 }

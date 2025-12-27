@@ -18,39 +18,27 @@ impl Footer {
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         match state.input_mode {
-            InputMode::CommandLine => {
-                return vec![("Enter", "Execute"), ("Esc", "Cancel")];
-            }
-            InputMode::Filter => {
-                return vec![("Enter", "Select"), ("Esc", "Close"), ("↑↓", "Navigate")];
-            }
-            InputMode::Normal => {}
-        }
-
-        if state.show_table_picker {
-            return vec![
+            InputMode::Normal => vec![
+                ("q", "Quit"),
+                ("^P", "Tables"),
+                ("^K", "Cmds"),
+                (":", "Cmd"),
+                ("?", "Help"),
+                ("f", "Focus"),
+                ("1/2", "Tab"),
+            ],
+            InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
+            InputMode::TablePicker => vec![
                 ("Esc", "Close"),
                 ("Enter", "Select"),
                 ("↑↓", "Navigate"),
                 ("type", "Filter"),
-            ];
+            ],
+            InputMode::CommandPalette => {
+                vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
+            }
+            InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close"), ("↑↓", "Scroll")],
         }
-        if state.show_command_palette {
-            return vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")];
-        }
-        if state.show_help {
-            return vec![("?/Esc", "Close"), ("↑↓", "Scroll")];
-        }
-
-        vec![
-            ("q", "Quit"),
-            ("^P", "Tables"),
-            ("^K", "Cmds"),
-            (":", "Cmd"),
-            ("?", "Help"),
-            ("f", "Focus"),
-            ("1/2", "Tab"),
-        ]
     }
 
     fn build_hint_line(hints: &[(&str, &str)]) -> Line<'static> {
