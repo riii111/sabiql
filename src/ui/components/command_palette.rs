@@ -3,7 +3,7 @@ use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
-use crate::app::action::Action;
+use crate::app::palette::PALETTE_COMMANDS;
 use crate::app::state::AppState;
 
 use super::overlay::centered_rect;
@@ -11,33 +11,6 @@ use super::overlay::centered_rect;
 pub struct CommandPalette;
 
 impl CommandPalette {
-    const COMMANDS: &'static [(&'static str, &'static str)] = &[
-        ("q / :quit", "Quit application"),
-        ("? / :help", "Show help"),
-        (":sql", "Open SQL Modal (PR4)"),
-        (":open-console", "Open Console (PR5)"),
-        ("Ctrl+P", "Open Table Picker"),
-        ("f", "Toggle Focus mode"),
-        ("r", "Reload metadata (PR3)"),
-    ];
-
-    pub fn command_count() -> usize {
-        Self::COMMANDS.len()
-    }
-
-    pub fn action_for_index(index: usize) -> Action {
-        match index {
-            0 => Action::Quit,
-            1 => Action::OpenHelp,
-            2 => Action::None, // :sql (PR4)
-            3 => Action::None, // :open-console (PR5)
-            4 => Action::OpenTablePicker,
-            5 => Action::ToggleFocus,
-            6 => Action::None, // :reload (PR3)
-            _ => Action::None,
-        }
-    }
-
     pub fn render(frame: &mut Frame, state: &AppState) {
         let area = centered_rect(
             frame.area(),
@@ -50,15 +23,15 @@ impl CommandPalette {
         let block = Block::default()
             .title(" Command Palette (Ctrl+K) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let items: Vec<ListItem> = Self::COMMANDS
+        let items: Vec<ListItem> = PALETTE_COMMANDS
             .iter()
             .enumerate()
-            .map(|(i, (key, desc))| {
+            .map(|(i, cmd)| {
                 let style = if i == state.picker_selected {
                     Style::default()
                         .bg(Color::Blue)
@@ -67,7 +40,7 @@ impl CommandPalette {
                 } else {
                     Style::default()
                 };
-                let content = format!("{:<20} {}", key, desc);
+                let content = format!("{:<20} {}", cmd.key, cmd.description);
                 ListItem::new(content).style(style)
             })
             .collect();
@@ -75,7 +48,7 @@ impl CommandPalette {
         let list_block = Block::default()
             .title(" Commands ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let list = List::new(items).block(list_block);
         frame.render_widget(list, inner);

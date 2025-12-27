@@ -10,13 +10,13 @@ use color_eyre::eyre::Result;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::input_mode::InputMode;
+use app::palette::{palette_action_for_index, palette_command_count};
 use app::state::AppState;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
 };
-use ui::components::command_palette::CommandPalette;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
@@ -151,7 +151,7 @@ async fn main() -> Result<()> {
                             }
                         }
                         InputMode::CommandPalette => {
-                            let max = ui::components::command_palette::CommandPalette::command_count() - 1;
+                            let max = palette_command_count() - 1;
                             if state.picker_selected < max {
                                 state.picker_selected += 1;
                             }
@@ -200,7 +200,7 @@ async fn main() -> Result<()> {
                             state.picker_selected = max;
                         }
                         InputMode::CommandPalette => {
-                            state.picker_selected = ui::components::command_palette::CommandPalette::command_count() - 1;
+                            state.picker_selected = palette_command_count() - 1;
                         }
                         InputMode::Normal => {
                             state.explorer_selected = state.tables.len().saturating_sub(1);
@@ -222,7 +222,7 @@ async fn main() -> Result<()> {
                             state.input_mode = InputMode::Normal;
                         }
                     } else if state.input_mode == InputMode::CommandPalette {
-                        let cmd_action = CommandPalette::action_for_index(state.picker_selected);
+                        let cmd_action = palette_action_for_index(state.picker_selected);
                         state.input_mode = InputMode::Normal;
                         match cmd_action {
                             Action::Quit => state.should_quit = true,
