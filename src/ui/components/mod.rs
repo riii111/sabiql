@@ -1,7 +1,12 @@
+pub mod command_line;
+pub mod command_palette;
 pub mod explorer;
 pub mod footer;
 pub mod header;
+pub mod help_overlay;
 pub mod inspector;
 pub mod layout;
+pub mod overlay;
 pub mod result;
+pub mod table_picker;
 pub mod tabs;
