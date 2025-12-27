@@ -25,7 +25,7 @@ impl Footer {
                 (":", "Cmd"),
                 ("?", "Help"),
                 ("f", "Focus"),
-                ("1/2", "Tab"),
+                ("Tab", "Switch"),
             ],
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![

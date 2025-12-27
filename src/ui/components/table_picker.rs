@@ -23,7 +23,7 @@ impl TablePicker {
         let block = Block::default()
             .title(" Table Picker (Ctrl+P) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -34,7 +34,7 @@ impl TablePicker {
         let filter_block = Block::default()
             .title(" Filter ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let filter_line = Line::from(vec![
             Span::styled("> ", Style::default().fg(Color::Yellow)),
@@ -71,7 +71,7 @@ impl TablePicker {
         let list_block = Block::default()
             .title(format!(" Tables ({}) ", filtered.len()))
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let list = List::new(items).block(list_block);
         frame.render_widget(list, list_area);

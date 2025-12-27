@@ -28,7 +28,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
 }
 
 fn handle_normal_mode(key: KeyEvent) -> Action {
-    // Global keys with modifiers
+    // Keys with modifiers
     match (key.code, key.modifiers) {
         // Ctrl+P: Open Table Picker
         (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
@@ -38,28 +38,34 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
+        // Shift+Tab: Previous tab
+        (KeyCode::Tab, m) if m.contains(KeyModifiers::SHIFT) => {
+            return Action::SwitchToBrowse;
+        }
+        // BackTab (some terminals send this for Shift+Tab)
+        (KeyCode::BackTab, _) => {
+            return Action::SwitchToBrowse;
+        }
+        // Tab: Next tab
+        (KeyCode::Tab, _) => {
+            return Action::SwitchToER;
+        }
         _ => {}
     }
 
-    // Regular keys (no modifiers or shift only)
+    // Regular keys
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char('1') => Action::SwitchToBrowse,
-        KeyCode::Char('2') => Action::SwitchToER,
         KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Esc => Action::Escape,
 
         // Navigation
         KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
         KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        KeyCode::Left | KeyCode::Char('h') => Action::Left,
-        KeyCode::Right | KeyCode::Char('l') => Action::Right,
         KeyCode::Char('g') => Action::SelectFirst,
         KeyCode::Char('G') => Action::SelectLast,
-        KeyCode::PageUp => Action::PageUp,
-        KeyCode::PageDown => Action::PageDown,
         KeyCode::Home => Action::SelectFirst,
         KeyCode::End => Action::SelectLast,
 
