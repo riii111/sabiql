@@ -18,10 +18,8 @@ impl HelpOverlay {
             Constraint::Percentage(80),
         );
 
-        // Clear the background
         frame.render_widget(Clear, area);
 
-        // Outer block
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
             .borders(Borders::ALL)
@@ -30,7 +28,6 @@ impl HelpOverlay {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        // Help content
         let help_lines = vec![
             Line::from(vec![Span::styled(
                 "=== Global Keys ===",
