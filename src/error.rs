@@ -4,7 +4,7 @@ use std::panic;
 use color_eyre::eyre::Result;
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, LeaveAlternateScreen},
+    terminal::{LeaveAlternateScreen, disable_raw_mode},
 };
 
 pub fn install_hooks() -> Result<()> {

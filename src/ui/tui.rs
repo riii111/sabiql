@@ -1,4 +1,4 @@
-use std::io::{stdout, Stdout};
+use std::io::{Stdout, stdout};
 use std::time::Duration;
 
 use color_eyre::eyre::Result;
@@ -6,13 +6,13 @@ use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event as CrosstermEvent, EventStream, KeyEventKind,
 };
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-};
 use crossterm::execute;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
 use futures::{FutureExt, StreamExt};
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -60,7 +60,12 @@ impl TuiRunner {
 
     pub fn enter(&mut self) -> Result<()> {
         enable_raw_mode()?;
-        execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste)?;
+        execute!(
+            stdout(),
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
         self.start_event_loop();
         Ok(())
     }
@@ -68,7 +73,12 @@ impl TuiRunner {
     pub fn exit(&mut self) -> Result<()> {
         self.stop_event_loop();
         if crossterm::terminal::is_raw_mode_enabled()? {
-            execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, DisableBracketedPaste)?;
+            execute!(
+                stdout(),
+                LeaveAlternateScreen,
+                DisableMouseCapture,
+                DisableBracketedPaste
+            )?;
             disable_raw_mode()?;
         }
         Ok(())

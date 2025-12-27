@@ -1,5 +1,6 @@
 use super::mode::Mode;
 
+#[allow(dead_code)]
 pub struct AppState {
     pub mode: Mode,
     pub should_quit: bool,

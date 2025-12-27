@@ -51,7 +51,10 @@ impl DbxConfig {
         let database = profile.database.as_deref()?;
 
         let dsn = match &profile.password {
-            Some(password) => format!("postgres://{}:{}@{}:{}/{}", user, password, host, port, database),
+            Some(password) => format!(
+                "postgres://{}:{}@{}:{}/{}",
+                user, password, host, port, database
+            ),
             None => format!("postgres://{}@{}:{}/{}", user, host, port, database),
         };
 

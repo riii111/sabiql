@@ -1,5 +1,7 @@
 // Domain models will be implemented in PR3
 
+#![allow(dead_code)]
+
 #[derive(Debug, Clone)]
 pub struct Schema {
     pub name: String,
