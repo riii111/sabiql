@@ -23,7 +23,7 @@ impl HelpOverlay {
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -42,8 +42,8 @@ impl HelpOverlay {
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
             Self::key_line("f", "Toggle Focus mode"),
-            Self::key_line("1", "Switch to Browse tab"),
-            Self::key_line("2", "Switch to ER tab"),
+            Self::key_line("Tab", "Next tab"),
+            Self::key_line("Shift+Tab", "Previous tab"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== Navigation ===",
@@ -54,12 +54,8 @@ impl HelpOverlay {
             Line::from(""),
             Self::key_line("j / ↓", "Move down"),
             Self::key_line("k / ↑", "Move up"),
-            Self::key_line("h / ←", "Move left"),
-            Self::key_line("l / →", "Move right"),
             Self::key_line("g / Home", "Go to first item"),
             Self::key_line("G / End", "Go to last item"),
-            Self::key_line("PgUp", "Page up"),
-            Self::key_line("PgDn", "Page down"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== Overlays ===",
@@ -86,7 +82,7 @@ impl HelpOverlay {
 
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Color::DarkGray));
+            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         frame.render_widget(help, inner);
     }
