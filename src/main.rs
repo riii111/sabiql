@@ -158,6 +158,105 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
 
+        // SQL Modal actions
+        Action::OpenSqlModal => {
+            state.input_mode = InputMode::SqlModal;
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+        }
+        Action::CloseSqlModal => {
+            state.input_mode = InputMode::Normal;
+        }
+        Action::SqlModalInput(c) => {
+            let cursor = state.sql_modal_cursor;
+            state.sql_modal_content.insert(cursor, c);
+            state.sql_modal_cursor += 1;
+        }
+        Action::SqlModalBackspace => {
+            if state.sql_modal_cursor > 0 {
+                state.sql_modal_cursor -= 1;
+                state.sql_modal_content.remove(state.sql_modal_cursor);
+            }
+        }
+        Action::SqlModalDelete => {
+            if state.sql_modal_cursor < state.sql_modal_content.len() {
+                state.sql_modal_content.remove(state.sql_modal_cursor);
+            }
+        }
+        Action::SqlModalNewLine => {
+            let cursor = state.sql_modal_cursor;
+            state.sql_modal_content.insert(cursor, '\n');
+            state.sql_modal_cursor += 1;
+        }
+        Action::SqlModalMoveCursor(movement) => {
+            use app::action::CursorMove;
+            let content = &state.sql_modal_content;
+            let cursor = state.sql_modal_cursor;
+
+            state.sql_modal_cursor = match movement {
+                CursorMove::Left => cursor.saturating_sub(1),
+                CursorMove::Right => (cursor + 1).min(content.len()),
+                CursorMove::Home => {
+                    // Move to start of current line
+                    content[..cursor]
+                        .rfind('\n')
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0)
+                }
+                CursorMove::End => {
+                    // Move to end of current line
+                    content[cursor..]
+                        .find('\n')
+                        .map(|pos| cursor + pos)
+                        .unwrap_or(content.len())
+                }
+                CursorMove::Up => {
+                    // Move to same column on previous line
+                    let current_line_start = content[..cursor]
+                        .rfind('\n')
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0);
+                    let col = cursor - current_line_start;
+
+                    if current_line_start == 0 {
+                        cursor // Already on first line
+                    } else {
+                        let prev_line_start = content[..current_line_start - 1]
+                            .rfind('\n')
+                            .map(|pos| pos + 1)
+                            .unwrap_or(0);
+                        let prev_line_len = current_line_start - 1 - prev_line_start;
+                        prev_line_start + col.min(prev_line_len)
+                    }
+                }
+                CursorMove::Down => {
+                    // Move to same column on next line
+                    let current_line_start = content[..cursor]
+                        .rfind('\n')
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0);
+                    let col = cursor - current_line_start;
+
+                    if let Some(next_newline) = content[cursor..].find('\n') {
+                        let next_line_start = cursor + next_newline + 1;
+                        let next_line_end = content[next_line_start..]
+                            .find('\n')
+                            .map(|pos| next_line_start + pos)
+                            .unwrap_or(content.len());
+                        let next_line_len = next_line_end - next_line_start;
+                        next_line_start + col.min(next_line_len)
+                    } else {
+                        cursor // Already on last line
+                    }
+                }
+            };
+        }
+        Action::SqlModalSubmit => {
+            let query = state.sql_modal_content.trim().to_string();
+            if !query.is_empty() {
+                let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
+            }
+        }
+
         // Command line actions
         Action::EnterCommandLine => {
             state.input_mode = InputMode::CommandLine;

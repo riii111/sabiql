@@ -9,6 +9,7 @@ use super::header::Header;
 use super::help_overlay::HelpOverlay;
 use super::inspector::Inspector;
 use super::result::ResultPane;
+use super::sql_modal::SqlModal;
 use super::table_picker::TablePicker;
 use super::tabs::Tabs;
 use crate::app::input_mode::InputMode;
@@ -52,6 +53,7 @@ impl MainLayout {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
+            InputMode::SqlModal => SqlModal::render(frame, state),
             _ => {}
         }
     }
