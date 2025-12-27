@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 
+use super::command_line::CommandLine;
 use super::command_palette::CommandPalette;
 use super::explorer::Explorer;
 use super::footer::Footer;
@@ -18,7 +19,7 @@ impl MainLayout {
     pub fn render(frame: &mut Frame, state: &AppState) {
         let area = frame.area();
 
-        let [header_area, tabs_area, main_area, footer_area, _cmdline_area] = Layout::vertical([
+        let [header_area, tabs_area, main_area, footer_area, cmdline_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(10),
@@ -44,6 +45,7 @@ impl MainLayout {
         ResultPane::render(frame, result_area, state);
 
         Footer::render(frame, footer_area, state);
+        CommandLine::render(frame, cmdline_area, state);
 
         // Render overlays (on top of everything else)
         if state.show_table_picker {

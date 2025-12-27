@@ -1,3 +1,4 @@
+pub mod command_line;
 pub mod command_palette;
 pub mod explorer;
 pub mod footer;

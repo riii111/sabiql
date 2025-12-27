@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::widgets::Clear;
-use ratatui::Frame;
 
 /// Creates a centered rectangle within the given area.
 ///
