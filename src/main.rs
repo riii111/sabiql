@@ -191,66 +191,58 @@ async fn handle_action(
             state.picker_selected = 0;
         }
 
-        Action::SelectNext => {
-            match state.input_mode {
-                InputMode::TablePicker => {
-                    let max = state.filtered_tables().len().saturating_sub(1);
-                    if state.picker_selected < max {
-                        state.picker_selected += 1;
-                    }
+        Action::SelectNext => match state.input_mode {
+            InputMode::TablePicker => {
+                let max = state.filtered_tables().len().saturating_sub(1);
+                if state.picker_selected < max {
+                    state.picker_selected += 1;
                 }
-                InputMode::CommandPalette => {
-                    let max = palette_command_count() - 1;
-                    if state.picker_selected < max {
-                        state.picker_selected += 1;
-                    }
-                }
-                InputMode::Normal => {
-                    let max = state.tables().len().saturating_sub(1);
-                    if state.explorer_selected < max {
-                        state.explorer_selected += 1;
-                    }
-                }
-                _ => {}
             }
-        }
-        Action::SelectPrevious => {
-            match state.input_mode {
-                InputMode::TablePicker | InputMode::CommandPalette => {
-                    state.picker_selected = state.picker_selected.saturating_sub(1);
+            InputMode::CommandPalette => {
+                let max = palette_command_count() - 1;
+                if state.picker_selected < max {
+                    state.picker_selected += 1;
                 }
-                InputMode::Normal => {
-                    state.explorer_selected = state.explorer_selected.saturating_sub(1);
-                }
-                _ => {}
             }
-        }
-        Action::SelectFirst => {
-            match state.input_mode {
-                InputMode::TablePicker | InputMode::CommandPalette => {
-                    state.picker_selected = 0;
+            InputMode::Normal => {
+                let max = state.tables().len().saturating_sub(1);
+                if state.explorer_selected < max {
+                    state.explorer_selected += 1;
                 }
-                InputMode::Normal => {
-                    state.explorer_selected = 0;
-                }
-                _ => {}
             }
-        }
-        Action::SelectLast => {
-            match state.input_mode {
-                InputMode::TablePicker => {
-                    let max = state.filtered_tables().len().saturating_sub(1);
-                    state.picker_selected = max;
-                }
-                InputMode::CommandPalette => {
-                    state.picker_selected = palette_command_count() - 1;
-                }
-                InputMode::Normal => {
-                    state.explorer_selected = state.tables().len().saturating_sub(1);
-                }
-                _ => {}
+            _ => {}
+        },
+        Action::SelectPrevious => match state.input_mode {
+            InputMode::TablePicker | InputMode::CommandPalette => {
+                state.picker_selected = state.picker_selected.saturating_sub(1);
             }
-        }
+            InputMode::Normal => {
+                state.explorer_selected = state.explorer_selected.saturating_sub(1);
+            }
+            _ => {}
+        },
+        Action::SelectFirst => match state.input_mode {
+            InputMode::TablePicker | InputMode::CommandPalette => {
+                state.picker_selected = 0;
+            }
+            InputMode::Normal => {
+                state.explorer_selected = 0;
+            }
+            _ => {}
+        },
+        Action::SelectLast => match state.input_mode {
+            InputMode::TablePicker => {
+                let max = state.filtered_tables().len().saturating_sub(1);
+                state.picker_selected = max;
+            }
+            InputMode::CommandPalette => {
+                state.picker_selected = palette_command_count() - 1;
+            }
+            InputMode::Normal => {
+                state.explorer_selected = state.tables().len().saturating_sub(1);
+            }
+            _ => {}
+        },
 
         Action::ConfirmSelection => {
             if state.input_mode == InputMode::TablePicker {
@@ -341,9 +333,5 @@ async fn handle_action(
 
 fn extract_database_name(dsn: &str) -> Option<String> {
     let name = PostgresAdapter::extract_database_name(dsn);
-    if name == "unknown" {
-        None
-    } else {
-        Some(name)
-    }
+    if name == "unknown" { None } else { Some(name) }
 }

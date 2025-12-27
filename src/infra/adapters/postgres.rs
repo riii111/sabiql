@@ -475,14 +475,16 @@ impl PostgresAdapter {
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
-        if let Some(db) = dsn.rsplit('/').next().filter(|s| !s.is_empty() && !s.contains('=')) {
+        if let Some(db) = dsn
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty() && !s.contains('='))
+        {
             return db.to_string();
         }
         if let Some(start) = dsn.find("dbname=") {
             let rest = &dsn[start + 7..];
-            let end = rest
-                .find(|c: char| c.is_whitespace())
-                .unwrap_or(rest.len());
+            let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
             return rest[..end].to_string();
         }
         "unknown".to_string()
@@ -540,7 +542,11 @@ impl MetadataProvider for PostgresAdapter {
             .filter(|c| c.is_primary_key)
             .map(|c| c.name.clone())
             .collect();
-        let primary_key = if pk_cols.is_empty() { None } else { Some(pk_cols) };
+        let primary_key = if pk_cols.is_empty() {
+            None
+        } else {
+            Some(pk_cols)
+        };
 
         Ok(Table {
             schema: schema.to_string(),

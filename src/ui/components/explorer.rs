@@ -68,7 +68,9 @@ impl Explorer {
             .highlight_symbol("> ");
 
         if has_cached_data {
-            state.explorer_list_state.select(Some(state.explorer_selected));
+            state
+                .explorer_list_state
+                .select(Some(state.explorer_selected));
         } else {
             state.explorer_list_state.select(None);
         }

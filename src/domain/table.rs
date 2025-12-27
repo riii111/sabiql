@@ -41,7 +41,12 @@ pub struct TableSummary {
 }
 
 impl TableSummary {
-    pub fn new(schema: String, name: String, row_count_estimate: Option<i64>, has_rls: bool) -> Self {
+    pub fn new(
+        schema: String,
+        name: String,
+        row_count_estimate: Option<i64>,
+        has_rls: bool,
+    ) -> Self {
         let qualified_name_lower = format!("{}.{}", schema.to_lowercase(), name.to_lowercase());
         Self {
             schema,
