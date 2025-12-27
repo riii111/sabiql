@@ -24,11 +24,11 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
         InputMode::Help => handle_help_keys(key),
+        InputMode::SqlModal => handle_sql_modal_keys(key),
     }
 }
 
 fn handle_normal_mode(key: KeyEvent) -> Action {
-    // Keys with modifiers (more specific conditions first)
     match (key.code, key.modifiers) {
         // Ctrl+Shift+P: Open Command Palette
         (KeyCode::Char('p'), m)
@@ -118,6 +118,34 @@ fn handle_help_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
+        _ => Action::None,
+    }
+}
+
+fn handle_sql_modal_keys(key: KeyEvent) -> Action {
+    use crate::app::action::CursorMove;
+
+    match (key.code, key.modifiers) {
+        // Ctrl+Enter: Execute query
+        (KeyCode::Enter, m) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
+        // Esc: Close modal
+        (KeyCode::Esc, _) => Action::CloseSqlModal,
+        // Navigation
+        (KeyCode::Left, _) => Action::SqlModalMoveCursor(CursorMove::Left),
+        (KeyCode::Right, _) => Action::SqlModalMoveCursor(CursorMove::Right),
+        (KeyCode::Up, _) => Action::SqlModalMoveCursor(CursorMove::Up),
+        (KeyCode::Down, _) => Action::SqlModalMoveCursor(CursorMove::Down),
+        (KeyCode::Home, _) => Action::SqlModalMoveCursor(CursorMove::Home),
+        (KeyCode::End, _) => Action::SqlModalMoveCursor(CursorMove::End),
+        // Editing
+        (KeyCode::Backspace, _) => Action::SqlModalBackspace,
+        (KeyCode::Delete, _) => Action::SqlModalDelete,
+        (KeyCode::Enter, _) => Action::SqlModalNewLine,
+        (KeyCode::Tab, _) => {
+            // Insert 4 spaces for tab
+            Action::SqlModalInput(' ')
+        }
+        (KeyCode::Char(c), _) => Action::SqlModalInput(c),
         _ => Action::None,
     }
 }
