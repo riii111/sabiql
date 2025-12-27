@@ -1,0 +1,1 @@
+// Explorer component stub

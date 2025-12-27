@@ -1,0 +1,1 @@
+// Result component stub
