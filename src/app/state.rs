@@ -1,3 +1,5 @@
+use ratatui::widgets::ListState;
+
 use super::action::Action;
 use super::input_mode::InputMode;
 use super::mode::Mode;
@@ -19,6 +21,9 @@ pub struct AppState {
     pub filter_input: String,
     pub explorer_selected: usize,
     pub picker_selected: usize,
+
+    pub explorer_list_state: ListState,
+    pub picker_list_state: ListState,
 
     // Connection
     pub dsn: Option<String>,
@@ -51,6 +56,8 @@ impl AppState {
             filter_input: String::new(),
             explorer_selected: 0,
             picker_selected: 0,
+            explorer_list_state: ListState::default(),
+            picker_list_state: ListState::default(),
             dsn: None,
             metadata_state: MetadataState::default(),
             metadata: None,

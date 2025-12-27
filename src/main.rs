@@ -78,7 +78,8 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
                 if !action.is_none() {
-                    let _ = action_tx.try_send(action);
+                    // Use send().await for user input to ensure no key events are lost
+                    let _ = action_tx.send(action).await;
                 }
             }
             Some(action) = action_rx.recv() => {
@@ -298,10 +299,11 @@ async fn handle_action(
                         match provider.fetch_metadata(&dsn).await {
                             Ok(metadata) => {
                                 cache.set(dsn, metadata.clone()).await;
-                                let _ = tx.try_send(Action::MetadataLoaded(Box::new(metadata)));
+                                // Use send().await for critical events to ensure delivery
+                                let _ = tx.send(Action::MetadataLoaded(Box::new(metadata))).await;
                             }
                             Err(e) => {
-                                let _ = tx.try_send(Action::MetadataFailed(e.to_string()));
+                                let _ = tx.send(Action::MetadataFailed(e.to_string())).await;
                             }
                         }
                     });
@@ -338,5 +340,10 @@ async fn handle_action(
 }
 
 fn extract_database_name(dsn: &str) -> Option<String> {
-    dsn.rsplit('/').next().map(|s| s.to_string())
+    let name = PostgresAdapter::extract_database_name(dsn);
+    if name == "unknown" {
+        None
+    } else {
+        Some(name)
+    }
 }

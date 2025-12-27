@@ -1,7 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use ratatui::widgets::{Block, Borders, List, ListItem};
 
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -9,7 +9,7 @@ use crate::domain::MetadataState;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let has_cached_data = state.metadata.is_some() && !state.tables().is_empty();
 
         let title = match &state.metadata_state {
@@ -67,11 +67,12 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        let mut list_state = ListState::default();
         if has_cached_data {
-            list_state.select(Some(state.explorer_selected));
+            state.explorer_list_state.select(Some(state.explorer_selected));
+        } else {
+            state.explorer_list_state.select(None);
         }
 
-        frame.render_stateful_widget(list, area, &mut list_state);
+        frame.render_stateful_widget(list, area, &mut state.explorer_list_state);
     }
 }

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
 
@@ -11,7 +11,7 @@ use super::overlay::centered_rect;
 pub struct TablePicker;
 
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &mut AppState) {
         let area = centered_rect(
             frame.area(),
             Constraint::Percentage(60),
@@ -67,11 +67,12 @@ impl TablePicker {
             )
             .highlight_symbol("> ");
 
-        let mut list_state = ListState::default();
         if !filtered.is_empty() {
-            list_state.select(Some(state.picker_selected));
+            state.picker_list_state.select(Some(state.picker_selected));
+        } else {
+            state.picker_list_state.select(None);
         }
 
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        frame.render_stateful_widget(list, list_area, &mut state.picker_list_state);
     }
 }

@@ -41,17 +41,31 @@ impl PostgresAdapter {
             .spawn()
             .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
 
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
-            let status = child.wait().await?;
-            let mut stdout = String::new();
-            let mut stderr = String::new();
+        // Read stdout/stderr BEFORE wait() to prevent pipe buffer deadlock
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
 
-            if let Some(mut out) = child.stdout.take() {
-                out.read_to_string(&mut stdout).await?;
-            }
-            if let Some(mut err) = child.stderr.take() {
-                err.read_to_string(&mut stderr).await?;
-            }
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = String::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_string(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(buf)
+                },
+                async {
+                    let mut buf = String::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_string(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(buf)
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
 
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
@@ -68,8 +82,8 @@ impl PostgresAdapter {
         Ok(stdout)
     }
 
-    /// Escape string literal for safe SQL interpolation (PostgreSQL quote_literal equivalent)
-    fn quote_literal(value: &str) -> String {
+    /// Escape string literal for safe SQL interpolation (PostgreSQL quote_literal equivalent).
+    pub fn quote_literal(value: &str) -> String {
         format!("'{}'", value.replace('\'', "''"))
     }
 
@@ -458,14 +472,17 @@ impl PostgresAdapter {
         }))
     }
 
-    fn extract_database_name(dsn: &str) -> String {
-        // Support both URI format (postgres://host/dbname) and key=value format (dbname=mydb)
+    /// Extract database name from DSN string.
+    /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
+    pub fn extract_database_name(dsn: &str) -> String {
         if let Some(db) = dsn.rsplit('/').next().filter(|s| !s.is_empty() && !s.contains('=')) {
             return db.to_string();
         }
         if let Some(start) = dsn.find("dbname=") {
             let rest = &dsn[start + 7..];
-            let end = rest.find(|c: char| c.is_whitespace() || c == ' ').unwrap_or(rest.len());
+            let end = rest
+                .find(|c: char| c.is_whitespace())
+                .unwrap_or(rest.len());
             return rest[..end].to_string();
         }
         "unknown".to_string()
@@ -540,5 +557,80 @@ impl MetadataProvider for PostgresAdapter {
 
     fn db_type(&self) -> DatabaseType {
         DatabaseType::PostgreSQL
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_quote_literal_simple() {
+        assert_eq!(PostgresAdapter::quote_literal("hello"), "'hello'");
+    }
+
+    #[test]
+    fn test_quote_literal_with_single_quote() {
+        assert_eq!(PostgresAdapter::quote_literal("it's"), "'it''s'");
+    }
+
+    #[test]
+    fn test_quote_literal_multiple_quotes() {
+        assert_eq!(PostgresAdapter::quote_literal("a'b'c"), "'a''b''c'");
+    }
+
+    #[test]
+    fn test_quote_literal_empty() {
+        assert_eq!(PostgresAdapter::quote_literal(""), "''");
+    }
+
+    #[test]
+    fn test_extract_database_name_uri_format() {
+        assert_eq!(
+            PostgresAdapter::extract_database_name("postgres://user:pass@host:5432/mydb"),
+            "mydb"
+        );
+    }
+
+    #[test]
+    fn test_extract_database_name_simple_uri() {
+        assert_eq!(
+            PostgresAdapter::extract_database_name("postgres://localhost/testdb"),
+            "testdb"
+        );
+    }
+
+    #[test]
+    fn test_extract_database_name_key_value_format() {
+        assert_eq!(
+            PostgresAdapter::extract_database_name("host=localhost dbname=mydb user=postgres"),
+            "mydb"
+        );
+    }
+
+    #[test]
+    fn test_extract_database_name_key_value_at_end() {
+        assert_eq!(
+            PostgresAdapter::extract_database_name("host=localhost user=postgres dbname=testdb"),
+            "testdb"
+        );
+    }
+
+    #[test]
+    fn test_extract_database_name_empty_path() {
+        // URI with trailing slash but no db name
+        assert_eq!(
+            PostgresAdapter::extract_database_name("postgres://localhost/"),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn test_extract_database_name_key_value_only() {
+        // Key-value format without dbname
+        assert_eq!(
+            PostgresAdapter::extract_database_name("host=localhost user=postgres"),
+            "unknown"
+        );
     }
 }
