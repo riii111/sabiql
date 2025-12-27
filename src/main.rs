@@ -5,6 +5,7 @@ mod infra;
 mod ui;
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use color_eyre::eyre::Result;
@@ -15,7 +16,7 @@ use app::command::{command_to_action, parse_command};
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
-use app::state::AppState;
+use app::state::{AppState, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
@@ -254,8 +255,24 @@ async fn handle_action(
             if state.input_mode == InputMode::TablePicker {
                 let filtered = state.filtered_tables();
                 if let Some(table) = filtered.get(state.picker_selected) {
+                    let schema = table.schema.clone();
+                    let table_name = table.name.clone();
                     state.current_table = Some(table.qualified_name());
                     state.input_mode = InputMode::Normal;
+
+                    // Trigger table detail loading and preview
+                    let _ = action_tx
+                        .send(Action::LoadTableDetail {
+                            schema: schema.clone(),
+                            table: table_name.clone(),
+                        })
+                        .await;
+                    let _ = action_tx
+                        .send(Action::ExecutePreview {
+                            schema,
+                            table: table_name,
+                        })
+                        .await;
                 }
             } else if state.input_mode == InputMode::CommandPalette {
                 let cmd_action = palette_action_for_index(state.picker_selected);
@@ -329,6 +346,94 @@ async fn handle_action(
             if let Some(dsn) = &state.dsn {
                 metadata_cache.invalidate(dsn).await;
             }
+        }
+
+        // Table detail loading
+        Action::LoadTableDetail { schema, table } => {
+            if let Some(dsn) = &state.dsn {
+                let dsn = dsn.clone();
+                let provider = Arc::clone(metadata_provider);
+                let tx = action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx.send(Action::TableDetailLoaded(Box::new(detail))).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::TableDetailFailed(e.to_string())).await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::TableDetailLoaded(detail) => {
+            state.table_detail = Some(*detail);
+        }
+
+        Action::TableDetailFailed(error) => {
+            state.last_error = Some(error);
+        }
+
+        // Query execution
+        Action::ExecutePreview { schema, table } => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = QueryState::Running;
+                let dsn = dsn.clone();
+                let tx = action_tx.clone();
+
+                // Create a new PostgresAdapter for query execution
+                let adapter = PostgresAdapter::new();
+                tokio::spawn(async move {
+                    match adapter.execute_preview(&dsn, &schema, &table, 100).await {
+                        Ok(result) => {
+                            let _ = tx.send(Action::QueryCompleted(Box::new(result))).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::QueryFailed(e.to_string())).await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::ExecuteAdhoc(query) => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = QueryState::Running;
+                let dsn = dsn.clone();
+                let tx = action_tx.clone();
+
+                let adapter = PostgresAdapter::new();
+                tokio::spawn(async move {
+                    match adapter.execute_adhoc(&dsn, &query).await {
+                        Ok(result) => {
+                            let _ = tx.send(Action::QueryCompleted(Box::new(result))).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::QueryFailed(e.to_string())).await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::QueryCompleted(result) => {
+            state.query_state = QueryState::Idle;
+            state.result_scroll_offset = 0;
+            state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+
+            // Save adhoc results to history
+            if result.source == domain::QuerySource::Adhoc && !result.is_error() {
+                state.result_history.push((*result).clone());
+            }
+
+            state.current_result = Some(*result);
+        }
+
+        Action::QueryFailed(error) => {
+            state.query_state = QueryState::Idle;
+            state.last_error = Some(error);
         }
 
         _ => {}
