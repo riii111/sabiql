@@ -19,8 +19,8 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
     },
     PaletteCommand {
         key: ":sql",
-        description: "Open SQL Modal (PR4)",
-        action: Action::None,
+        description: "Open SQL Editor",
+        action: Action::OpenSqlModal,
     },
     PaletteCommand {
         key: ":open-console",
@@ -39,8 +39,8 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
     },
     PaletteCommand {
         key: "r",
-        description: "Reload metadata (PR3)",
-        action: Action::None,
+        description: "Reload metadata",
+        action: Action::ReloadMetadata,
     },
 ];
 

@@ -277,10 +277,14 @@ async fn handle_action(
             let follow_up = command_to_action(cmd);
             state.input_mode = InputMode::Normal;
             state.command_line_input.clear();
-            if matches!(follow_up, Action::Quit) {
-                state.should_quit = true;
-            } else if matches!(follow_up, Action::OpenHelp) {
-                state.input_mode = InputMode::Help;
+            match follow_up {
+                Action::Quit => state.should_quit = true,
+                Action::OpenHelp => state.input_mode = InputMode::Help,
+                Action::OpenSqlModal => {
+                    state.input_mode = InputMode::SqlModal;
+                    state.sql_modal_state = app::state::SqlModalState::Editing;
+                }
+                _ => {}
             }
         }
 
@@ -386,6 +390,16 @@ async fn handle_action(
                         state.picker_selected = 0;
                     }
                     Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+                    Action::OpenSqlModal => {
+                        state.input_mode = InputMode::SqlModal;
+                        state.sql_modal_state = app::state::SqlModalState::Editing;
+                    }
+                    Action::ReloadMetadata => {
+                        if let Some(dsn) = &state.dsn {
+                            metadata_cache.invalidate(dsn).await;
+                            let _ = action_tx.send(Action::LoadMetadata).await;
+                        }
+                    }
                     _ => {}
                 }
             }

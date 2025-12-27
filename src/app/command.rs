@@ -27,7 +27,7 @@ pub fn command_to_action(cmd: Command) -> Action {
     match cmd {
         Command::Quit => Action::Quit,
         Command::Help => Action::OpenHelp,
-        Command::Sql => Action::None, // Will be implemented in PR4
+        Command::Sql => Action::OpenSqlModal,
         Command::OpenConsole => Action::None, // Will be implemented in PR5
         Command::Unknown(_) => Action::None,
     }
