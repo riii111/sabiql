@@ -28,27 +28,35 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
 }
 
 fn handle_normal_mode(key: KeyEvent) -> Action {
-    // Keys with modifiers
+    // Keys with modifiers (more specific conditions first)
     match (key.code, key.modifiers) {
-        // Ctrl+P: Open Table Picker
-        (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
+        // Ctrl+Shift+P: Open Command Palette
+        (KeyCode::Char('p'), m)
+            if m.contains(KeyModifiers::CONTROL) && m.contains(KeyModifiers::SHIFT) =>
+        {
+            return Action::OpenCommandPalette;
+        }
+        // Ctrl+P: Open Table Picker (without Shift)
+        (KeyCode::Char('p'), m)
+            if m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::SHIFT) =>
+        {
             return Action::OpenTablePicker;
         }
-        // Ctrl+K: Open Command Palette
+        // Ctrl+K: Open Command Palette (alternative)
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
         // Shift+Tab: Previous tab
         (KeyCode::Tab, m) if m.contains(KeyModifiers::SHIFT) => {
-            return Action::SwitchToBrowse;
+            return Action::PreviousTab;
         }
         // BackTab (some terminals send this for Shift+Tab)
         (KeyCode::BackTab, _) => {
-            return Action::SwitchToBrowse;
+            return Action::PreviousTab;
         }
         // Tab: Next tab
         (KeyCode::Tab, _) => {
-            return Action::SwitchToER;
+            return Action::NextTab;
         }
         _ => {}
     }
@@ -59,6 +67,7 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
         KeyCode::Char('f') => Action::ToggleFocus,
+        KeyCode::Char('r') => Action::ReloadMetadata,
         KeyCode::Esc => Action::Escape,
 
         // Navigation

@@ -11,7 +11,7 @@ use super::overlay::centered_rect;
 pub struct TablePicker;
 
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &mut AppState) {
         let area = centered_rect(
             frame.area(),
             Constraint::Percentage(60),
@@ -45,27 +45,11 @@ impl TablePicker {
         let filter_widget = Paragraph::new(filter_line).block(filter_block);
         frame.render_widget(filter_widget, filter_area);
 
-        let filter_lower = state.filter_input.to_lowercase();
-        let filtered: Vec<&String> = state
-            .tables
-            .iter()
-            .filter(|t| t.to_lowercase().contains(&filter_lower))
-            .collect();
+        let filtered = state.filtered_tables();
 
         let items: Vec<ListItem> = filtered
             .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                let style = if i == state.picker_selected {
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(t.as_str()).style(style)
-            })
+            .map(|t| ListItem::new(t.qualified_name()))
             .collect();
 
         let list_block = Block::default()
@@ -73,7 +57,22 @@ impl TablePicker {
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
-        let list = List::new(items).block(list_block);
-        frame.render_widget(list, list_area);
+        let list = List::new(items)
+            .block(list_block)
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        if !filtered.is_empty() {
+            state.picker_list_state.select(Some(state.picker_selected));
+        } else {
+            state.picker_list_state.select(None);
+        }
+
+        frame.render_stateful_widget(list, list_area, &mut state.picker_list_state);
     }
 }

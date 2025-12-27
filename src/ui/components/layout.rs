@@ -17,7 +17,7 @@ use crate::app::state::AppState;
 pub struct MainLayout;
 
 impl MainLayout {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &mut AppState) {
         let area = frame.area();
 
         let [header_area, tabs_area, main_area, footer_area, cmdline_area] = Layout::vertical([

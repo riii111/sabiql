@@ -1,13 +1,14 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
+use crate::domain::{DatabaseMetadata, Table};
+
+#[derive(Debug, Clone)]
 pub enum Action {
     None,
     Quit,
     Tick,
     Render,
     Resize(u16, u16),
-    SwitchToBrowse,
-    SwitchToER,
+    NextTab,
+    PreviousTab,
     ToggleFocus,
     Up,
     Down,
@@ -47,4 +48,24 @@ pub enum Action {
 
     // Escape (context-dependent close)
     Escape,
+
+    // Metadata loading
+    LoadMetadata,
+    ReloadMetadata,
+    MetadataLoaded(Box<DatabaseMetadata>),
+    MetadataFailed(String),
+
+    // Table detail loading
+    LoadTableDetail { schema: String, table: String },
+    TableDetailLoaded(Box<Table>),
+    TableDetailFailed(String),
+
+    // Cache operations
+    InvalidateCache,
+}
+
+impl Action {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Action::None)
+    }
 }

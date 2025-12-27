@@ -176,11 +176,11 @@ This minimizes dependencies and leverages users' existing DB tools.
 ## Build Commands
 
 ```bash
-cargo build              # Build
-cargo check              # Type check
-cargo clippy             # Lint
-cargo fmt                # Format
-cargo test               # Run tests
+mise run build              # Build
+mise run check              # Type check
+mise run clippy             # Lint
+mise run fmt                # Format
+mise run test               # Run tests
 ```
 
 ## Configuration
