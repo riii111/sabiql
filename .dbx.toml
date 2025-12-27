@@ -1,0 +1,6 @@
+[default]
+host = "localhost"
+port = 5433
+user = "dev"
+password = "dev"
+database = "testdb"
