@@ -27,10 +27,8 @@ impl CommandPalette {
             Constraint::Percentage(50),
         );
 
-        // Clear the background
         frame.render_widget(Clear, area);
 
-        // Outer block
         let block = Block::default()
             .title(" Command Palette (Ctrl+K) ")
             .borders(Borders::ALL)
@@ -39,7 +37,6 @@ impl CommandPalette {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        // Command list
         let items: Vec<ListItem> = Self::COMMANDS
             .iter()
             .enumerate()

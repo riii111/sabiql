@@ -27,7 +27,6 @@ impl Footer {
             InputMode::Normal => {}
         }
 
-        // Check for active overlays
         if state.show_table_picker {
             return vec![
                 ("Esc", "Close"),
@@ -43,7 +42,6 @@ impl Footer {
             return vec![("?/Esc", "Close"), ("↑↓", "Scroll")];
         }
 
-        // Normal mode hints
         vec![
             ("q", "Quit"),
             ("^P", "Tables"),

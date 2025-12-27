@@ -18,10 +18,8 @@ impl TablePicker {
             Constraint::Percentage(70),
         );
 
-        // Clear the background
         frame.render_widget(Clear, area);
 
-        // Outer block
         let block = Block::default()
             .title(" Table Picker (Ctrl+P) ")
             .borders(Borders::ALL)
@@ -30,11 +28,9 @@ impl TablePicker {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        // Split into filter input and list
         let [filter_area, list_area] =
             Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(inner);
 
-        // Filter input
         let filter_block = Block::default()
             .title(" Filter ")
             .borders(Borders::ALL)
@@ -49,7 +45,6 @@ impl TablePicker {
         let filter_widget = Paragraph::new(filter_line).block(filter_block);
         frame.render_widget(filter_widget, filter_area);
 
-        // Filtered tables list
         let filter_lower = state.filter_input.to_lowercase();
         let filtered: Vec<&String> = state
             .tables
