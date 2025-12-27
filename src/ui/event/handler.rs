@@ -59,6 +59,7 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
         KeyCode::Char('f') => Action::ToggleFocus,
+        KeyCode::Char('r') => Action::ReloadMetadata,
         KeyCode::Esc => Action::Escape,
 
         // Navigation
