@@ -1,0 +1,39 @@
+[tools]
+rust = "1.92.0"
+
+[tasks.build]
+description = "Build the project"
+run = "cargo build"
+sources = ["Cargo.toml", "src/**/*.rs"]
+
+[tasks.check]
+description = "Type check"
+run = "cargo check"
+
+[tasks.fmt]
+description = "Format code"
+run = "cargo fmt"
+
+[tasks.fmt-check]
+description = "Check formatting"
+run = "cargo fmt -- --check"
+
+[tasks.clippy]
+description = "Run lints"
+run = "cargo clippy -- -D warnings"
+
+[tasks.test]
+description = "Run tests"
+run = "cargo test"
+
+[tasks.run]
+description = "Run application"
+run = "cargo run"
+
+[tasks.dev]
+description = "Run with profile"
+run = "cargo run -- -p ${1:-default}"
+
+[tasks.pre-commit]
+description = "Pre-commit checks"
+depends = ["fmt-check", "clippy", "check", "test"]
