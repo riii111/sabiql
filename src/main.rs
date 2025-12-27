@@ -15,11 +15,12 @@ use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
-use app::ports::MetadataProvider;
+use app::ports::{ClipboardWriter, MetadataProvider};
 use app::state::{AppState, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
+use infra::clipboard::PbcopyAdapter;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
@@ -594,6 +595,50 @@ async fn handle_action(
                 .map(|r| r.rows.len().saturating_sub(10))
                 .unwrap_or(0);
             state.result_scroll_offset = max_scroll;
+        }
+
+        // Clipboard operations
+        Action::CopySelection => {
+            // Context-dependent copy
+            let content = if let Some(table) = &state.current_table {
+                Some(table.clone())
+            } else {
+                None
+            };
+
+            if let Some(content) = content {
+                let _ = action_tx.send(Action::CopyToClipboard(content)).await;
+            }
+        }
+
+        Action::CopyLastError => {
+            if let Some(error) = &state.last_error {
+                let _ = action_tx
+                    .send(Action::CopyToClipboard(error.clone()))
+                    .await;
+            }
+        }
+
+        Action::CopyToClipboard(content) => {
+            let clipboard = PbcopyAdapter::new();
+            match clipboard.write(&content) {
+                Ok(()) => {
+                    let _ = action_tx.send(Action::ClipboardSuccess).await;
+                }
+                Err(e) => {
+                    let _ = action_tx
+                        .send(Action::ClipboardFailed(e.to_string()))
+                        .await;
+                }
+            }
+        }
+
+        Action::ClipboardSuccess => {
+            // Could show a notification, for now just log or do nothing
+        }
+
+        Action::ClipboardFailed(error) => {
+            state.last_error = Some(format!("Clipboard error: {}", error));
         }
 
         _ => {}
