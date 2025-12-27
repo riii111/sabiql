@@ -1,5 +1,5 @@
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
@@ -8,8 +8,8 @@ use tokio::time::timeout;
 
 use crate::app::ports::{DatabaseType, MetadataError, MetadataProvider};
 use crate::domain::{
-    Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo,
-    RlsPolicy, Schema, Table, TableSummary,
+    Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
+    RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary,
 };
 
 pub struct PostgresAdapter {
@@ -470,6 +470,157 @@ impl PostgresAdapter {
             force: raw.force,
             policies,
         }))
+    }
+
+    /// Escape identifier for safe SQL interpolation (PostgreSQL quote_ident equivalent).
+    pub fn quote_identifier(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
+    /// Execute a raw SQL query and return structured results.
+    /// This is used for adhoc queries and preview queries.
+    pub async fn execute_query_raw(
+        &self,
+        dsn: &str,
+        query: &str,
+        source: QuerySource,
+    ) -> Result<QueryResult, MetadataError> {
+        let start = Instant::now();
+
+        // Execute with header (-t removed) and tab separator
+        let mut child = Command::new("psql")
+            .arg(dsn)
+            .arg("-X") // Ignore .psqlrc
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-A") // Unaligned output
+            .arg("-F")
+            .arg("\t") // Tab separator
+            .arg("-c")
+            .arg(query)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let elapsed = start.elapsed().as_millis() as u64;
+        let (status, stdout, stderr) = result;
+
+        if !status.success() {
+            return Ok(QueryResult::error(
+                query.to_string(),
+                stderr.trim().to_string(),
+                source,
+            ));
+        }
+
+        // Parse output: first line is header, rest are data rows
+        // Last line is often "(N rows)" which we skip
+        let lines: Vec<&str> = stdout.lines().collect();
+        if lines.is_empty() {
+            return Ok(QueryResult::success(
+                query.to_string(),
+                Vec::new(),
+                Vec::new(),
+                elapsed,
+                source,
+            ));
+        }
+
+        // Check if last line is row count indicator
+        let data_lines = if lines.last().map_or(false, |l| {
+            l.starts_with('(') && l.ends_with(" rows)") || l.ends_with(" row)")
+        }) {
+            &lines[..lines.len() - 1]
+        } else {
+            &lines[..]
+        };
+
+        if data_lines.is_empty() {
+            return Ok(QueryResult::success(
+                query.to_string(),
+                Vec::new(),
+                Vec::new(),
+                elapsed,
+                source,
+            ));
+        }
+
+        // First line is column headers
+        let columns: Vec<String> = data_lines[0].split('\t').map(|s| s.to_string()).collect();
+
+        // Rest are data rows
+        let rows: Vec<Vec<String>> = data_lines[1..]
+            .iter()
+            .map(|line| line.split('\t').map(|s| s.to_string()).collect())
+            .collect();
+
+        Ok(QueryResult::success(
+            query.to_string(),
+            columns,
+            rows,
+            elapsed,
+            source,
+        ))
+    }
+
+    /// Execute a preview query (SELECT * LIMIT N) for a table.
+    pub async fn execute_preview(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+    ) -> Result<QueryResult, MetadataError> {
+        let query = format!(
+            "SELECT * FROM {}.{} LIMIT {}",
+            Self::quote_identifier(schema),
+            Self::quote_identifier(table),
+            limit
+        );
+        self.execute_query_raw(dsn, &query, QuerySource::Preview)
+            .await
+    }
+
+    /// Execute an adhoc SQL query.
+    pub async fn execute_adhoc(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<QueryResult, MetadataError> {
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 
     /// Extract database name from DSN string.
