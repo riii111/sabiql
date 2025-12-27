@@ -306,7 +306,7 @@ async fn handle_action(
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.dsn {
                 metadata_cache.invalidate(dsn).await;
-                let _ = action_tx.try_send(Action::LoadMetadata);
+                let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
 
