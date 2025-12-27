@@ -535,6 +535,67 @@ async fn handle_action(
             state.last_error = Some(error);
         }
 
+        // Result history navigation
+        Action::HistoryPrev => {
+            let history_len = state.result_history.len();
+            if history_len > 0 {
+                match state.history_index {
+                    None => {
+                        // Start browsing history from the most recent
+                        state.history_index = Some(history_len - 1);
+                    }
+                    Some(idx) if idx > 0 => {
+                        state.history_index = Some(idx - 1);
+                    }
+                    _ => {}
+                }
+                state.result_scroll_offset = 0;
+            }
+        }
+
+        Action::HistoryNext => {
+            let history_len = state.result_history.len();
+            if let Some(idx) = state.history_index {
+                if idx + 1 < history_len {
+                    state.history_index = Some(idx + 1);
+                } else {
+                    // Return to current result
+                    state.history_index = None;
+                }
+                state.result_scroll_offset = 0;
+            }
+        }
+
+        // Result scroll
+        Action::ResultScrollUp => {
+            state.result_scroll_offset = state.result_scroll_offset.saturating_sub(1);
+        }
+
+        Action::ResultScrollDown => {
+            // We need the result to determine max scroll
+            let max_scroll = state
+                .current_result
+                .as_ref()
+                .map(|r| r.rows.len().saturating_sub(10))
+                .unwrap_or(0);
+            if state.result_scroll_offset < max_scroll {
+                state.result_scroll_offset += 1;
+            }
+        }
+
+        Action::ResultScrollTop => {
+            state.result_scroll_offset = 0;
+        }
+
+        Action::ResultScrollBottom => {
+            let max_scroll = state
+                .current_result
+                .as_ref()
+                .map(|r| r.rows.len().saturating_sub(10))
+                .unwrap_or(0);
+            state.result_scroll_offset = max_scroll;
+        }
+
         _ => {}
     }
 
