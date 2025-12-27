@@ -37,7 +37,7 @@ impl Footer {
             InputMode::CommandPalette => {
                 vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
             }
-            InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close"), ("↑↓", "Scroll")],
+            InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
         }
     }
 

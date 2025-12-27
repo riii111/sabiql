@@ -20,6 +20,10 @@ impl CommandPalette {
         ("r", "Reload metadata (PR3)"),
     ];
 
+    pub fn command_count() -> usize {
+        Self::COMMANDS.len()
+    }
+
     pub fn render(frame: &mut Frame, state: &AppState) {
         let area = centered_rect(
             frame.area(),
