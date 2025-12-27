@@ -8,6 +8,8 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 
 use app::action::Action;
+use app::command::{command_to_action, parse_command};
+use app::input_mode::InputMode;
 use app::state::AppState;
 use infra::config::{
     cache::get_cache_dir,
@@ -66,6 +68,138 @@ async fn main() -> Result<()> {
                 Action::SwitchToBrowse => state.active_tab = 0,
                 Action::SwitchToER => state.active_tab = 1,
                 Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+
+                // Overlay actions
+                Action::OpenTablePicker => {
+                    state.show_table_picker = true;
+                    state.filter_input.clear();
+                    state.picker_selected = 0;
+                }
+                Action::CloseTablePicker => {
+                    state.show_table_picker = false;
+                }
+                Action::OpenCommandPalette => {
+                    state.show_command_palette = true;
+                    state.picker_selected = 0;
+                }
+                Action::CloseCommandPalette => {
+                    state.show_command_palette = false;
+                }
+                Action::OpenHelp => {
+                    state.show_help = !state.show_help;
+                }
+                Action::CloseHelp => {
+                    state.show_help = false;
+                }
+
+                // Command line actions
+                Action::EnterCommandLine => {
+                    state.input_mode = InputMode::CommandLine;
+                    state.command_line_input.clear();
+                }
+                Action::ExitCommandLine => {
+                    state.input_mode = InputMode::Normal;
+                }
+                Action::CommandLineInput(c) => {
+                    state.command_line_input.push(c);
+                }
+                Action::CommandLineBackspace => {
+                    state.command_line_input.pop();
+                }
+                Action::CommandLineSubmit => {
+                    let cmd = parse_command(&state.command_line_input);
+                    let follow_up = command_to_action(cmd);
+                    state.input_mode = InputMode::Normal;
+                    state.command_line_input.clear();
+                    // Handle follow-up action
+                    if follow_up == Action::Quit {
+                        state.should_quit = true;
+                    } else if follow_up == Action::OpenHelp {
+                        state.show_help = true;
+                    }
+                }
+
+                // Filter actions
+                Action::FilterInput(c) => {
+                    state.filter_input.push(c);
+                    state.picker_selected = 0;
+                }
+                Action::FilterBackspace => {
+                    state.filter_input.pop();
+                    state.picker_selected = 0;
+                }
+                Action::FilterClear => {
+                    state.filter_input.clear();
+                    state.picker_selected = 0;
+                }
+
+                // Navigation
+                Action::SelectNext => {
+                    let max = if state.show_table_picker {
+                        let filter_lower = state.filter_input.to_lowercase();
+                        state
+                            .tables
+                            .iter()
+                            .filter(|t| t.to_lowercase().contains(&filter_lower))
+                            .count()
+                            .saturating_sub(1)
+                    } else {
+                        10 // Placeholder max
+                    };
+                    if state.picker_selected < max {
+                        state.picker_selected += 1;
+                    }
+                }
+                Action::SelectPrevious => {
+                    state.picker_selected = state.picker_selected.saturating_sub(1);
+                }
+                Action::SelectFirst => {
+                    state.picker_selected = 0;
+                }
+                Action::SelectLast => {
+                    let max = if state.show_table_picker {
+                        let filter_lower = state.filter_input.to_lowercase();
+                        state
+                            .tables
+                            .iter()
+                            .filter(|t| t.to_lowercase().contains(&filter_lower))
+                            .count()
+                            .saturating_sub(1)
+                    } else {
+                        10
+                    };
+                    state.picker_selected = max;
+                }
+
+                // Selection
+                Action::ConfirmSelection => {
+                    if state.show_table_picker {
+                        let filter_lower = state.filter_input.to_lowercase();
+                        let filtered: Vec<&String> = state
+                            .tables
+                            .iter()
+                            .filter(|t| t.to_lowercase().contains(&filter_lower))
+                            .collect();
+                        if let Some(table) = filtered.get(state.picker_selected) {
+                            state.current_table = Some((*table).clone());
+                        }
+                        state.show_table_picker = false;
+                    } else if state.show_command_palette {
+                        state.show_command_palette = false;
+                    }
+                }
+
+                // Escape
+                Action::Escape => {
+                    if state.show_table_picker {
+                        state.show_table_picker = false;
+                    } else if state.show_command_palette {
+                        state.show_command_palette = false;
+                    } else if state.show_help {
+                        state.show_help = false;
+                    }
+                }
+
                 _ => {}
             }
         }
