@@ -398,4 +398,131 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
     }
+
+    mod sql_modal {
+        use super::*;
+        use crate::app::action::CursorMove;
+
+        #[test]
+        fn ctrl_enter_submits_query() {
+            let key = key_with_mod(KeyCode::Enter, KeyModifiers::CONTROL);
+
+            let result = handle_sql_modal_keys(key);
+
+            assert!(matches!(result, Action::SqlModalSubmit));
+        }
+
+        #[test]
+        fn enter_without_ctrl_inserts_newline() {
+            let result = handle_sql_modal_keys(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::SqlModalNewLine));
+        }
+
+        #[test]
+        fn esc_closes_modal() {
+            let result = handle_sql_modal_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseSqlModal));
+        }
+
+        #[test]
+        fn tab_inserts_tab() {
+            let result = handle_sql_modal_keys(key(KeyCode::Tab));
+
+            assert!(matches!(result, Action::SqlModalTab));
+        }
+
+        #[test]
+        fn backspace_deletes_backward() {
+            let result = handle_sql_modal_keys(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::SqlModalBackspace));
+        }
+
+        #[test]
+        fn delete_deletes_forward() {
+            let result = handle_sql_modal_keys(key(KeyCode::Delete));
+
+            assert!(matches!(result, Action::SqlModalDelete));
+        }
+
+        #[test]
+        fn left_arrow_moves_cursor_left() {
+            let result = handle_sql_modal_keys(key(KeyCode::Left));
+
+            assert!(matches!(
+                result,
+                Action::SqlModalMoveCursor(CursorMove::Left)
+            ));
+        }
+
+        #[test]
+        fn right_arrow_moves_cursor_right() {
+            let result = handle_sql_modal_keys(key(KeyCode::Right));
+
+            assert!(matches!(
+                result,
+                Action::SqlModalMoveCursor(CursorMove::Right)
+            ));
+        }
+
+        #[test]
+        fn up_arrow_moves_cursor_up() {
+            let result = handle_sql_modal_keys(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SqlModalMoveCursor(CursorMove::Up)));
+        }
+
+        #[test]
+        fn down_arrow_moves_cursor_down() {
+            let result = handle_sql_modal_keys(key(KeyCode::Down));
+
+            assert!(matches!(
+                result,
+                Action::SqlModalMoveCursor(CursorMove::Down)
+            ));
+        }
+
+        #[test]
+        fn home_moves_cursor_to_line_start() {
+            let result = handle_sql_modal_keys(key(KeyCode::Home));
+
+            assert!(matches!(
+                result,
+                Action::SqlModalMoveCursor(CursorMove::Home)
+            ));
+        }
+
+        #[test]
+        fn end_moves_cursor_to_line_end() {
+            let result = handle_sql_modal_keys(key(KeyCode::End));
+
+            assert!(matches!(
+                result,
+                Action::SqlModalMoveCursor(CursorMove::End)
+            ));
+        }
+
+        #[test]
+        fn char_input_inserts_character() {
+            let result = handle_sql_modal_keys(key(KeyCode::Char('a')));
+
+            assert!(matches!(result, Action::SqlModalInput('a')));
+        }
+
+        #[test]
+        fn multibyte_char_input_inserts_character() {
+            let result = handle_sql_modal_keys(key(KeyCode::Char('あ')));
+
+            assert!(matches!(result, Action::SqlModalInput('あ')));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_sql_modal_keys(key(KeyCode::F(1)));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
 }
