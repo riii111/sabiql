@@ -24,8 +24,8 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
     },
     PaletteCommand {
         key: ":open-console",
-        description: "Open Console (PR5)",
-        action: Action::None,
+        description: "Open Console (pgcli)",
+        action: Action::OpenConsole,
     },
     PaletteCommand {
         key: "Ctrl+P",
