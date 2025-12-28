@@ -159,3 +159,243 @@ fn handle_sql_modal_keys(key: KeyEvent) -> Action {
         _ => Action::None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::inspector_tab::InspectorTab;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn key_with_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    mod normal_mode {
+        use super::*;
+
+        #[test]
+        fn ctrl_p_opens_table_picker() {
+            let key = key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(key);
+
+            assert!(matches!(result, Action::OpenTablePicker));
+        }
+
+        #[test]
+        fn ctrl_shift_p_opens_command_palette() {
+            let key = key_with_mod(
+                KeyCode::Char('p'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            );
+
+            let result = handle_normal_mode(key);
+
+            assert!(matches!(result, Action::OpenCommandPalette));
+        }
+
+        #[test]
+        fn ctrl_k_opens_command_palette() {
+            let key = key_with_mod(KeyCode::Char('k'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(key);
+
+            assert!(matches!(result, Action::OpenCommandPalette));
+        }
+
+        #[test]
+        fn q_returns_quit() {
+            let result = handle_normal_mode(key(KeyCode::Char('q')));
+
+            assert!(matches!(result, Action::Quit));
+        }
+
+        #[test]
+        fn question_mark_opens_help() {
+            let result = handle_normal_mode(key(KeyCode::Char('?')));
+
+            assert!(matches!(result, Action::OpenHelp));
+        }
+
+        #[test]
+        fn colon_enters_command_line() {
+            let result = handle_normal_mode(key(KeyCode::Char(':')));
+
+            assert!(matches!(result, Action::EnterCommandLine));
+        }
+
+        #[test]
+        fn f_toggles_focus() {
+            let result = handle_normal_mode(key(KeyCode::Char('f')));
+
+            assert!(matches!(result, Action::ToggleFocus));
+        }
+
+        #[test]
+        fn r_reloads_metadata() {
+            let result = handle_normal_mode(key(KeyCode::Char('r')));
+
+            assert!(matches!(result, Action::ReloadMetadata));
+        }
+
+        #[test]
+        fn esc_returns_escape() {
+            let result = handle_normal_mode(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::Escape));
+        }
+
+        #[test]
+        fn tab_returns_next_tab() {
+            let result = handle_normal_mode(key(KeyCode::Tab));
+
+            assert!(matches!(result, Action::NextTab));
+        }
+
+        #[test]
+        fn shift_tab_returns_previous_tab() {
+            let key = key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT);
+
+            let result = handle_normal_mode(key);
+
+            assert!(matches!(result, Action::PreviousTab));
+        }
+
+        #[test]
+        fn backtab_returns_previous_tab() {
+            let result = handle_normal_mode(key(KeyCode::BackTab));
+
+            assert!(matches!(result, Action::PreviousTab));
+        }
+
+        #[test]
+        fn up_arrow_selects_previous() {
+            let result = handle_normal_mode(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn k_selects_previous() {
+            let result = handle_normal_mode(key(KeyCode::Char('k')));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn down_arrow_selects_next() {
+            let result = handle_normal_mode(key(KeyCode::Down));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn j_selects_next() {
+            let result = handle_normal_mode(key(KeyCode::Char('j')));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn g_selects_first() {
+            let result = handle_normal_mode(key(KeyCode::Char('g')));
+
+            assert!(matches!(result, Action::SelectFirst));
+        }
+
+        #[test]
+        fn capital_g_selects_last() {
+            let result = handle_normal_mode(key(KeyCode::Char('G')));
+
+            assert!(matches!(result, Action::SelectLast));
+        }
+
+        #[test]
+        fn home_selects_first() {
+            let result = handle_normal_mode(key(KeyCode::Home));
+
+            assert!(matches!(result, Action::SelectFirst));
+        }
+
+        #[test]
+        fn end_selects_last() {
+            let result = handle_normal_mode(key(KeyCode::End));
+
+            assert!(matches!(result, Action::SelectLast));
+        }
+
+        #[test]
+        fn key_1_selects_columns_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('1')));
+
+            assert!(matches!(
+                result,
+                Action::InspectorSelectTab(InspectorTab::Columns)
+            ));
+        }
+
+        #[test]
+        fn key_2_selects_indexes_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('2')));
+
+            assert!(matches!(
+                result,
+                Action::InspectorSelectTab(InspectorTab::Indexes)
+            ));
+        }
+
+        #[test]
+        fn key_3_selects_foreign_keys_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('3')));
+
+            assert!(matches!(
+                result,
+                Action::InspectorSelectTab(InspectorTab::ForeignKeys)
+            ));
+        }
+
+        #[test]
+        fn key_4_selects_rls_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('4')));
+
+            assert!(matches!(
+                result,
+                Action::InspectorSelectTab(InspectorTab::Rls)
+            ));
+        }
+
+        #[test]
+        fn key_5_selects_ddl_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('5')));
+
+            assert!(matches!(
+                result,
+                Action::InspectorSelectTab(InspectorTab::Ddl)
+            ));
+        }
+
+        #[test]
+        fn bracket_left_returns_inspector_prev_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char('[')));
+
+            assert!(matches!(result, Action::InspectorPrevTab));
+        }
+
+        #[test]
+        fn bracket_right_returns_inspector_next_tab() {
+            let result = handle_normal_mode(key(KeyCode::Char(']')));
+
+            assert!(matches!(result, Action::InspectorNextTab));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_normal_mode(key(KeyCode::Char('z')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+}
