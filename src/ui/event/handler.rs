@@ -695,4 +695,26 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
     }
+
+    /// Gap detection tests: spec vs implementation discrepancies
+    /// These tests document features specified but not yet implemented.
+    mod spec_gaps {
+        use super::*;
+
+        /// Spec: Ctrl+H should open Result History (screen_spec.md)
+        /// Status: NOT IMPLEMENTED - key binding missing in handler
+        #[test]
+        #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
+        fn ctrl_h_should_open_result_history() {
+            let key = key_with_mod(KeyCode::Char('h'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(key);
+
+            // When implemented, this should match Action::OpenResultHistory or similar
+            assert!(
+                !matches!(result, Action::None),
+                "Ctrl+H should open Result History per spec, but returns None"
+            );
+        }
+    }
 }
