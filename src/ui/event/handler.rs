@@ -32,19 +32,11 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
     use crate::app::inspector_tab::InspectorTab;
 
     match (key.code, key.modifiers) {
-        // Ctrl+Shift+P: Open Command Palette
-        (KeyCode::Char('p'), m)
-            if m.contains(KeyModifiers::CONTROL) && m.contains(KeyModifiers::SHIFT) =>
-        {
-            return Action::OpenCommandPalette;
-        }
-        // Ctrl+P: Open Table Picker (without Shift)
-        (KeyCode::Char('p'), m)
-            if m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::SHIFT) =>
-        {
+        // Ctrl+P: Open Table Picker
+        (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenTablePicker;
         }
-        // Ctrl+K: Open Command Palette (alternative)
+        // Ctrl+K: Open Command Palette
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
@@ -185,18 +177,6 @@ mod tests {
             let result = handle_normal_mode(key);
 
             assert!(matches!(result, Action::OpenTablePicker));
-        }
-
-        #[test]
-        fn ctrl_shift_p_opens_command_palette() {
-            let key = key_with_mod(
-                KeyCode::Char('p'),
-                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-            );
-
-            let result = handle_normal_mode(key);
-
-            assert!(matches!(result, Action::OpenCommandPalette));
         }
 
         #[test]
@@ -593,6 +573,37 @@ mod tests {
                 !matches!(result, Action::None),
                 "Ctrl+H should open Result History per spec, but returns None"
             );
+        }
+    }
+
+    /// Smoke tests for mode dispatch: verify handle_key_event routes to correct handler
+    mod mode_dispatch {
+        use super::*;
+
+        fn make_state(mode: InputMode) -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.input_mode = mode;
+            state
+        }
+
+        #[test]
+        fn normal_mode_routes_to_normal_handler() {
+            let state = make_state(InputMode::Normal);
+
+            // 'q' in Normal mode should quit
+            let result = handle_key_event(key(KeyCode::Char('q')), &state);
+
+            assert!(matches!(result, Action::Quit));
+        }
+
+        #[test]
+        fn sql_modal_mode_routes_to_sql_modal_handler() {
+            let state = make_state(InputMode::SqlModal);
+
+            // Esc in SqlModal should close modal (not Escape action)
+            let result = handle_key_event(key(KeyCode::Esc), &state);
+
+            assert!(matches!(result, Action::CloseSqlModal));
         }
     }
 }

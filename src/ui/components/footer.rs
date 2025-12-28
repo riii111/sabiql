@@ -25,6 +25,7 @@ impl Footer {
                 (":", "Cmd"),
                 ("?", "Help"),
                 ("f", "Focus"),
+                ("r", "Reload"),
                 ("Tab", "Switch"),
             ],
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
