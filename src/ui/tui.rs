@@ -142,7 +142,8 @@ impl TuiRunner {
     }
 
     /// Suspend TUI for external process execution (e.g., pgcli).
-    pub fn suspend(&mut self) -> Result<SuspendGuard> {
+    /// Caller must call `resume()` when the external process completes.
+    pub fn suspend(&mut self) -> Result<()> {
         self.stop_event_loop();
         while self.event_rx.try_recv().is_ok() {}
 
@@ -161,7 +162,7 @@ impl TuiRunner {
             disable_raw_mode()?;
         }
 
-        Ok(SuspendGuard { _private: () })
+        Ok(())
     }
 
     /// Resume TUI after external process completes.
@@ -193,7 +194,3 @@ impl TuiRunner {
     }
 }
 
-/// Marker for suspend state. Caller must explicitly call `resume()`.
-pub struct SuspendGuard {
-    _private: (),
-}

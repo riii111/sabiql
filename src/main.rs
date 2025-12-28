@@ -24,6 +24,7 @@ use infra::clipboard::PbcopyAdapter;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
+    pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
 use ui::components::layout::MainLayout;
@@ -309,6 +310,9 @@ async fn handle_action(
                     state.input_mode = InputMode::SqlModal;
                     state.sql_modal_state = app::state::SqlModalState::Editing;
                 }
+                Action::OpenConsole => {
+                    let _ = action_tx.send(Action::OpenConsole).await;
+                }
                 _ => {}
             }
         }
@@ -430,6 +434,9 @@ async fn handle_action(
                             metadata_cache.invalidate(dsn).await;
                             let _ = action_tx.send(Action::LoadMetadata).await;
                         }
+                    }
+                    Action::OpenConsole => {
+                        let _ = action_tx.send(Action::OpenConsole).await;
                     }
                     _ => {}
                 }
@@ -731,6 +738,31 @@ async fn handle_action(
 
         Action::ClipboardFailed(error) => {
             state.last_error = Some(format!("Clipboard error: {}", error));
+        }
+
+        Action::OpenConsole => {
+            if let Some(dsn) = &state.dsn {
+                let cache_dir = get_cache_dir(&state.project_name)?;
+                let pgclirc = generate_pgclirc(&cache_dir)?;
+
+                tui.suspend()?;
+
+                let status = std::process::Command::new("pgcli")
+                    .arg("--pgclirc")
+                    .arg(&pgclirc)
+                    .arg(dsn)
+                    .status();
+
+                if let Err(e) = status {
+                    state.last_error = Some(format!("pgcli failed: {}", e));
+                }
+
+                tui.resume()?;
+
+                let _ = action_tx.send(Action::Render).await;
+            } else {
+                state.last_error = Some("No DSN configured".to_string());
+            }
         }
 
         _ => {}
