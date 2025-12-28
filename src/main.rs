@@ -136,7 +136,7 @@ async fn handle_action(
             const TAB_COUNT: usize = 2;
             state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
         }
-        Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+        Action::SetFocusedPane(pane) => state.focused_pane = pane,
 
         // Inspector sub-tab actions
         Action::InspectorNextTab => {
@@ -420,7 +420,7 @@ async fn handle_action(
                         state.filter_input.clear();
                         state.picker_selected = 0;
                     }
-                    Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+                    Action::SetFocusedPane(pane) => state.focused_pane = pane,
                     Action::OpenSqlModal => {
                         state.input_mode = InputMode::SqlModal;
                         state.sql_modal_state = app::state::SqlModalState::Editing;

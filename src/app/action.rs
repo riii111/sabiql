@@ -1,3 +1,4 @@
+use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
 
@@ -21,7 +22,7 @@ pub enum Action {
     Resize(u16, u16),
     NextTab,
     PreviousTab,
-    ToggleFocus,
+    SetFocusedPane(FocusedPane),
     Up,
     Down,
     Left,
@@ -119,6 +120,9 @@ pub enum Action {
     CopyToClipboard(String),
     ClipboardSuccess,
     ClipboardFailed(String),
+
+    // Console
+    OpenConsole,
 }
 
 impl Action {

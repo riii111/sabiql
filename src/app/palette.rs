@@ -33,11 +33,6 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         action: Action::OpenTablePicker,
     },
     PaletteCommand {
-        key: "f",
-        description: "Toggle Focus mode",
-        action: Action::ToggleFocus,
-    },
-    PaletteCommand {
         key: "r",
         description: "Reload metadata",
         action: Action::ReloadMetadata,

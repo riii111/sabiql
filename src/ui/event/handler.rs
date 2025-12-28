@@ -60,7 +60,6 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Char('r') => Action::ReloadMetadata,
         KeyCode::Esc => Action::Escape,
 
@@ -207,13 +206,6 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char(':')));
 
             assert!(matches!(result, Action::EnterCommandLine));
-        }
-
-        #[test]
-        fn f_toggles_focus() {
-            let result = handle_normal_mode(key(KeyCode::Char('f')));
-
-            assert!(matches!(result, Action::ToggleFocus));
         }
 
         #[test]

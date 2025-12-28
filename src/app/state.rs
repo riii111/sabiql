@@ -4,6 +4,7 @@ use ratatui::widgets::ListState;
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
+use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::mode::Mode;
@@ -34,7 +35,7 @@ pub struct AppState {
     pub profile_name: String,
     pub database_name: Option<String>,
     pub current_table: Option<String>,
-    pub focus_mode: bool,
+    pub focused_pane: FocusedPane,
     pub active_tab: usize,
     pub input_mode: InputMode,
     pub command_line_input: String,
@@ -99,7 +100,7 @@ impl AppState {
             profile_name,
             database_name: None,
             current_table: None,
-            focus_mode: false,
+            focused_pane: FocusedPane::default(),
             active_tab: 0,
             input_mode: InputMode::default(),
             command_line_input: String::new(),

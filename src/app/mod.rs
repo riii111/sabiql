@@ -1,5 +1,6 @@
 pub mod action;
 pub mod command;
+pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;
 pub mod mode;
