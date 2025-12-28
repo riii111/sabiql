@@ -9,6 +9,7 @@ use super::header::Header;
 use super::help_overlay::HelpOverlay;
 use super::inspector::Inspector;
 use super::result::ResultPane;
+use super::sql_modal::SqlModal;
 use super::table_picker::TablePicker;
 use super::tabs::Tabs;
 use crate::app::input_mode::InputMode;
@@ -42,6 +43,9 @@ impl MainLayout {
             Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(right_area);
 
+        // Update result pane height for accurate scroll calculations
+        state.result_pane_height = result_area.height;
+
         Inspector::render(frame, inspector_area, state);
         ResultPane::render(frame, result_area, state);
 
@@ -52,6 +56,7 @@ impl MainLayout {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
+            InputMode::SqlModal => SqlModal::render(frame, state),
             _ => {}
         }
     }

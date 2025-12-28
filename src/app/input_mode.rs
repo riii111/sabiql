@@ -6,4 +6,5 @@ pub enum InputMode {
     TablePicker,
     CommandPalette,
     Help,
+    SqlModal,
 }
