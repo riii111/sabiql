@@ -164,12 +164,6 @@ impl AppState {
             .collect()
     }
 
-    pub fn send_action(&self, action: Action) {
-        if let Some(tx) = &self.action_tx {
-            let _ = tx.try_send(action);
-        }
-    }
-
     pub fn cache_age_display(&self) -> String {
         self.metadata
             .as_ref()

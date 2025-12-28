@@ -15,6 +15,7 @@ impl Default for ResultHistory {
     }
 }
 
+#[allow(dead_code)]
 impl ResultHistory {
     /// Create a new result history with the given capacity
     pub fn new(capacity: usize) -> Self {

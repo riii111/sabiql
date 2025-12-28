@@ -1,17 +1,14 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{DatabaseType, MetadataError, MetadataProvider};
+use crate::app::ports::{MetadataError, MetadataProvider};
 use crate::domain::{DatabaseMetadata, Table};
 
-// TODO: Implement MySQL adapter using mysql CLI
+#[allow(dead_code)]
 pub struct MySqlAdapter;
 
-trait NewTrait {
-    fn new() -> Self;
-}
-
-impl NewTrait for MySqlAdapter {
-    fn new() -> Self {
+#[allow(dead_code)]
+impl MySqlAdapter {
+    pub fn new() -> Self {
         Self
     }
 }
@@ -39,9 +36,5 @@ impl MetadataProvider for MySqlAdapter {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
-    }
-
-    fn db_type(&self) -> DatabaseType {
-        DatabaseType::MySQL
     }
 }

@@ -12,17 +12,10 @@ pub trait MetadataProvider: Send + Sync {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError>;
-
-    fn db_type(&self) -> DatabaseType;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DatabaseType {
-    PostgreSQL,
-    MySQL,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum MetadataError {
     ConnectionFailed(String),
     QueryFailed(String),

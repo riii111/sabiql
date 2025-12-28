@@ -6,7 +6,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::{DatabaseType, MetadataError, MetadataProvider};
+use crate::app::ports::{MetadataError, MetadataProvider};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary,
@@ -700,10 +700,6 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
         })
-    }
-
-    fn db_type(&self) -> DatabaseType {
-        DatabaseType::PostgreSQL
     }
 }
 

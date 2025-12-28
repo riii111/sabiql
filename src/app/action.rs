@@ -12,6 +12,7 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Action {
     None,
     Quit,

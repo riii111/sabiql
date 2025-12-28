@@ -9,6 +9,7 @@ pub enum InspectorTab {
     Ddl,
 }
 
+#[allow(dead_code)]
 impl InspectorTab {
     /// Get the next tab in order
     pub fn next(self) -> Self {
