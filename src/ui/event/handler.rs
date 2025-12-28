@@ -141,10 +141,7 @@ fn handle_sql_modal_keys(key: KeyEvent) -> Action {
         (KeyCode::Backspace, _) => Action::SqlModalBackspace,
         (KeyCode::Delete, _) => Action::SqlModalDelete,
         (KeyCode::Enter, _) => Action::SqlModalNewLine,
-        (KeyCode::Tab, _) => {
-            // Insert 4 spaces for tab
-            Action::SqlModalInput(' ')
-        }
+        (KeyCode::Tab, _) => Action::SqlModalTab,
         (KeyCode::Char(c), _) => Action::SqlModalInput(c),
         _ => Action::None,
     }

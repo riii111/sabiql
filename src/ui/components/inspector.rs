@@ -270,10 +270,11 @@ impl Inspector {
     }
 
     fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail) {
-        // Generate a simplified DDL representation
+        // Generate a simplified DDL representation with proper identifier quoting
         let mut ddl = format!(
             "CREATE TABLE {}.{} (\n",
-            table.schema, table.name
+            quote_ident(&table.schema),
+            quote_ident(&table.name)
         );
 
         for (i, col) in table.columns.iter().enumerate() {
@@ -286,7 +287,10 @@ impl Inspector {
 
             ddl.push_str(&format!(
                 "  {} {}{}{}",
-                col.name, col.data_type, nullable, default
+                quote_ident(&col.name),
+                col.data_type,
+                nullable,
+                default
             ));
 
             if i < table.columns.len() - 1 {
@@ -297,7 +301,8 @@ impl Inspector {
 
         // Add primary key constraint
         if let Some(pk) = &table.primary_key {
-            ddl.push_str(&format!("  PRIMARY KEY ({})\n", pk.join(", ")));
+            let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
+            ddl.push_str(&format!("  PRIMARY KEY ({})\n", quoted_cols.join(", ")));
         }
 
         ddl.push_str(");");
@@ -309,10 +314,17 @@ impl Inspector {
     }
 }
 
-fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+fn truncate_str(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_chars {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len - 3])
+        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
     }
+}
+
+/// Quote identifier for safe SQL representation (PostgreSQL style).
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }

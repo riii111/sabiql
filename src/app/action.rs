@@ -67,8 +67,12 @@ pub enum Action {
     MetadataFailed(String),
 
     // Table detail loading
-    LoadTableDetail { schema: String, table: String },
-    TableDetailLoaded(Box<Table>),
+    LoadTableDetail {
+        schema: String,
+        table: String,
+        generation: u64,
+    },
+    TableDetailLoaded(Box<Table>, u64),
     TableDetailFailed(String),
 
     // Cache operations
@@ -86,13 +90,18 @@ pub enum Action {
     SqlModalBackspace,
     SqlModalDelete,
     SqlModalNewLine,
+    SqlModalTab,
     SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
 
     // Query execution
-    ExecutePreview { schema: String, table: String },
+    ExecutePreview {
+        schema: String,
+        table: String,
+        generation: u64,
+    },
     ExecuteAdhoc(String),
-    QueryCompleted(Box<QueryResult>),
+    QueryCompleted(Box<QueryResult>, u64),
     QueryFailed(String),
 
     // Result pane

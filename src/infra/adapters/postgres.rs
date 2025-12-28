@@ -487,15 +487,13 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        // Execute with header (-t removed) and tab separator
+        // Execute with CSV output for robust parsing
         let mut child = Command::new("psql")
             .arg(dsn)
             .arg("-X") // Ignore .psqlrc
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
-            .arg("-A") // Unaligned output
-            .arg("-F")
-            .arg("\t") // Tab separator
+            .arg("--csv") // CSV output format (handles quoting/escaping)
             .arg("-c")
             .arg(query)
             .stdout(Stdio::piped())
@@ -542,14 +540,13 @@ impl PostgresAdapter {
             return Ok(QueryResult::error(
                 query.to_string(),
                 stderr.trim().to_string(),
+                elapsed,
                 source,
             ));
         }
 
-        // Parse output: first line is header, rest are data rows
-        // Last line is often "(N rows)" which we skip
-        let lines: Vec<&str> = stdout.lines().collect();
-        if lines.is_empty() {
+        // Parse CSV output using csv crate for robust handling
+        if stdout.trim().is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
                 Vec::new(),
@@ -559,33 +556,26 @@ impl PostgresAdapter {
             ));
         }
 
-        // Check if last line is row count indicator
-        let data_lines = if lines.last().map_or(false, |l| {
-            l.starts_with('(') && l.ends_with(" rows)") || l.ends_with(" row)")
-        }) {
-            &lines[..lines.len() - 1]
-        } else {
-            &lines[..]
-        };
+        let mut reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(stdout.as_bytes());
 
-        if data_lines.is_empty() {
-            return Ok(QueryResult::success(
-                query.to_string(),
-                Vec::new(),
-                Vec::new(),
-                elapsed,
-                source,
-            ));
-        }
-
-        // First line is column headers
-        let columns: Vec<String> = data_lines[0].split('\t').map(|s| s.to_string()).collect();
-
-        // Rest are data rows
-        let rows: Vec<Vec<String>> = data_lines[1..]
+        // Get column headers
+        let columns: Vec<String> = reader
+            .headers()
+            .map_err(|e| MetadataError::QueryFailed(format!("CSV parse error: {}", e)))?
             .iter()
-            .map(|line| line.split('\t').map(|s| s.to_string()).collect())
+            .map(|s| s.to_string())
             .collect();
+
+        // Parse data rows
+        let mut rows = Vec::new();
+        for result in reader.records() {
+            let record = result
+                .map_err(|e| MetadataError::QueryFailed(format!("CSV parse error: {}", e)))?;
+            let row: Vec<String> = record.iter().map(|s| s.to_string()).collect();
+            rows.push(row);
+        }
 
         Ok(QueryResult::success(
             query.to_string(),

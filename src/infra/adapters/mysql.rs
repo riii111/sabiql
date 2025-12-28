@@ -6,8 +6,12 @@ use crate::domain::{DatabaseMetadata, Table};
 // TODO: Implement MySQL adapter using mysql CLI
 pub struct MySqlAdapter;
 
-impl MySqlAdapter {
-    pub fn new() -> Self {
+trait NewTrait {
+    fn new() -> Self;
+}
+
+impl NewTrait for MySqlAdapter {
+    fn new() -> Self {
         Self
     }
 }
