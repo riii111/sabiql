@@ -74,7 +74,7 @@ pub enum Action {
         generation: u64,
     },
     TableDetailLoaded(Box<Table>, u64),
-    TableDetailFailed(String),
+    TableDetailFailed(String, u64),
 
     // Cache operations
     InvalidateCache,
@@ -103,7 +103,7 @@ pub enum Action {
     },
     ExecuteAdhoc(String),
     QueryCompleted(Box<QueryResult>, u64),
-    QueryFailed(String),
+    QueryFailed(String, u64),
 
     // Result pane
     ResultScrollUp,

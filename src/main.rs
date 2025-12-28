@@ -184,11 +184,13 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
         Action::SqlModalInput(c) => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, c);
             state.sql_modal_cursor += 1;
         }
         Action::SqlModalBackspace => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
             if state.sql_modal_cursor > 0 {
                 state.sql_modal_cursor -= 1;
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
@@ -196,6 +198,7 @@ async fn handle_action(
             }
         }
         Action::SqlModalDelete => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
             let total_chars = char_count(&state.sql_modal_content);
             if state.sql_modal_cursor < total_chars {
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
@@ -507,7 +510,9 @@ async fn handle_action(
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::TableDetailFailed(e.to_string())).await;
+                            let _ = tx
+                                .send(Action::TableDetailFailed(e.to_string(), generation))
+                                .await;
                         }
                     }
                 });
@@ -521,8 +526,11 @@ async fn handle_action(
             }
         }
 
-        Action::TableDetailFailed(error) => {
-            state.last_error = Some(error);
+        Action::TableDetailFailed(error, generation) => {
+            // Ignore stale errors from previous table selections
+            if generation == state.selection_generation {
+                state.last_error = Some(error);
+            }
         }
 
         // Query execution
@@ -546,7 +554,9 @@ async fn handle_action(
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::QueryFailed(e.to_string())).await;
+                            let _ = tx
+                                .send(Action::QueryFailed(e.to_string(), generation))
+                                .await;
                         }
                     }
                 });
@@ -567,7 +577,8 @@ async fn handle_action(
                             let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::QueryFailed(e.to_string())).await;
+                            // Adhoc queries use generation 0 to always show errors
+                            let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
                         }
                     }
                 });
@@ -600,12 +611,16 @@ async fn handle_action(
             }
         }
 
-        Action::QueryFailed(error) => {
-            state.query_state = QueryState::Idle;
-            state.last_error = Some(error.clone());
-            // If we're in SqlModal mode, set error state
-            if state.input_mode == InputMode::SqlModal {
-                state.sql_modal_state = app::state::SqlModalState::Error;
+        Action::QueryFailed(error, generation) => {
+            // For Preview (non-zero generation), check if this is still the current selection
+            // For Adhoc (generation 0), always show errors
+            if generation == 0 || generation == state.selection_generation {
+                state.query_state = QueryState::Idle;
+                state.last_error = Some(error.clone());
+                // If we're in SqlModal mode, set error state
+                if state.input_mode == InputMode::SqlModal {
+                    state.sql_modal_state = app::state::SqlModalState::Error;
+                }
             }
         }
 
