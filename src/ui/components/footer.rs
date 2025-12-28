@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::input_mode::InputMode;
+use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct Footer;
@@ -20,7 +21,6 @@ impl Footer {
         match state.input_mode {
             InputMode::Normal => {
                 if state.focus_mode {
-                    // Focus mode: scroll-focused hints
                     vec![
                         ("f", "Exit Focus"),
                         ("j/k", "Scroll"),
@@ -31,16 +31,19 @@ impl Footer {
                         ("q", "Quit"),
                     ]
                 } else {
-                    vec![
+                    let mut hints = vec![
                         ("q", "Quit"),
                         ("^P", "Tables"),
                         ("^K", "Palette"),
                         (":", "Cmd"),
                         ("?", "Help"),
-                        ("f", "Focus"),
-                        ("[/]", "InsTabs"),
-                        ("r", "Reload"),
-                    ]
+                    ];
+                    if state.mode == Mode::Browse {
+                        hints.push(("f", "Focus"));
+                    }
+                    hints.push(("[/]", "InsTabs"));
+                    hints.push(("r", "Reload"));
+                    hints
                 }
             }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],

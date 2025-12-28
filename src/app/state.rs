@@ -168,6 +168,40 @@ impl AppState {
             .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
     }
+
+    pub fn change_tab(&mut self, next: bool) {
+        const TAB_COUNT: usize = 2;
+        self.active_tab = if next {
+            (self.active_tab + 1) % TAB_COUNT
+        } else {
+            (self.active_tab + TAB_COUNT - 1) % TAB_COUNT
+        };
+        self.mode = Mode::from_tab_index(self.active_tab);
+        self.focused_pane = self.mode.default_pane();
+        self.focus_mode = false;
+    }
+
+    #[allow(dead_code)]
+    pub fn can_enter_focus(&self) -> bool {
+        self.mode == Mode::Browse && !self.focus_mode
+    }
+
+    pub fn toggle_focus(&mut self) -> bool {
+        if self.mode != Mode::Browse {
+            return false;
+        }
+        if self.focus_mode {
+            if let Some(prev) = self.focus_mode_prev_pane.take() {
+                self.focused_pane = prev;
+            }
+            self.focus_mode = false;
+        } else {
+            self.focus_mode_prev_pane = Some(self.focused_pane);
+            self.focused_pane = FocusedPane::Result;
+            self.focus_mode = true;
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -322,5 +356,115 @@ mod tests {
         let current_gen = state.selection_generation;
 
         assert!(initial_gen < current_gen);
+    }
+
+    // Tab change tests
+
+    #[test]
+    fn change_tab_next_updates_mode_and_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        assert_eq!(state.mode, Mode::Browse);
+
+        state.change_tab(true);
+
+        assert_eq!(state.mode, Mode::ER);
+        assert_eq!(state.focused_pane, Mode::ER.default_pane());
+    }
+
+    #[test]
+    fn change_tab_prev_updates_mode_and_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.active_tab = 1;
+        state.mode = Mode::ER;
+
+        state.change_tab(false);
+
+        assert_eq!(state.mode, Mode::Browse);
+        assert_eq!(state.focused_pane, Mode::Browse.default_pane());
+    }
+
+    #[test]
+    fn change_tab_resets_focus_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focus_mode = true;
+        state.focus_mode_prev_pane = Some(FocusedPane::Explorer);
+
+        state.change_tab(true);
+
+        assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn change_tab_while_in_focus_mode_exits_safely() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.toggle_focus();
+        assert!(state.focus_mode);
+
+        state.change_tab(true);
+
+        assert!(!state.focus_mode);
+        assert_eq!(state.mode, Mode::ER);
+    }
+
+    // Focus mode tests
+
+    #[test]
+    fn toggle_focus_enters_focus_mode_in_browse() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focused_pane = FocusedPane::Explorer;
+
+        let result = state.toggle_focus();
+
+        assert!(result);
+        assert!(state.focus_mode);
+        assert_eq!(state.focused_pane, FocusedPane::Result);
+        assert_eq!(state.focus_mode_prev_pane, Some(FocusedPane::Explorer));
+    }
+
+    #[test]
+    fn toggle_focus_exits_focus_mode_and_restores_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focused_pane = FocusedPane::Inspector;
+        state.toggle_focus();
+
+        let result = state.toggle_focus();
+
+        assert!(result);
+        assert!(!state.focus_mode);
+        assert_eq!(state.focused_pane, FocusedPane::Inspector);
+    }
+
+    #[test]
+    fn toggle_focus_is_blocked_in_er_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.mode = Mode::ER;
+
+        let result = state.toggle_focus();
+
+        assert!(!result);
+        assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn can_enter_focus_true_in_browse_mode() {
+        let state = AppState::new("test".to_string(), "default".to_string());
+
+        assert!(state.can_enter_focus());
+    }
+
+    #[test]
+    fn can_enter_focus_false_in_er_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.mode = Mode::ER;
+
+        assert!(!state.can_enter_focus());
+    }
+
+    #[test]
+    fn can_enter_focus_false_when_already_in_focus() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.toggle_focus();
+
+        assert!(!state.can_enter_focus());
     }
 }
