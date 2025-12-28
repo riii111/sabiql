@@ -55,11 +55,11 @@ impl Inspector {
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else {
-            Style::default()
+            Style::default().fg(Color::DarkGray)
         };
 
         let block = Block::default()
-            .title("Inspector")
+            .title(" [2] Inspector ")
             .borders(Borders::ALL)
             .border_style(border_style);
 

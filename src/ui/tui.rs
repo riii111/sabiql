@@ -165,11 +165,9 @@ impl TuiRunner {
         Ok(())
     }
 
-    /// Create an RAII guard that will resume the TUI on drop.
-    /// Use this when running external processes to ensure TUI is restored even on panic.
     pub fn suspend_guard(&mut self) -> Result<TuiSuspendGuard<'_>> {
         self.suspend()?;
-        Ok(TuiSuspendGuard { tui: self })
+        Ok(TuiSuspendGuard::new(self))
     }
 
     /// Resume TUI after external process completes.
@@ -204,18 +202,28 @@ impl TuiRunner {
 /// RAII guard for TUI suspension. Resumes on drop.
 pub struct TuiSuspendGuard<'a> {
     tui: &'a mut TuiRunner,
+    resumed: bool,
 }
 
 impl<'a> TuiSuspendGuard<'a> {
-    /// Resume the TUI, consuming the guard without triggering Drop.
-    pub fn resume(self) -> Result<()> {
-        let mut guard = std::mem::ManuallyDrop::new(self);
-        guard.tui.resume()
+    pub(crate) fn new(tui: &'a mut TuiRunner) -> Self {
+        Self {
+            tui,
+            resumed: false,
+        }
+    }
+
+    pub fn resume(mut self) -> Result<()> {
+        let result = self.tui.resume();
+        self.resumed = result.is_ok();
+        result
     }
 }
 
 impl Drop for TuiSuspendGuard<'_> {
     fn drop(&mut self) {
-        let _ = self.tui.resume();
+        if !self.resumed {
+            let _ = self.tui.resume();
+        }
     }
 }

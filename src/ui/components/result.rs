@@ -21,13 +21,12 @@ impl ResultPane {
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
 
-        // Focus takes priority over flash highlight
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else if should_highlight {
             Style::default().fg(Color::Green)
         } else {
-            Style::default()
+            Style::default().fg(Color::DarkGray)
         };
 
         // Determine which result to show
@@ -63,7 +62,7 @@ impl ResultPane {
 
     fn build_title(result: Option<&QueryResult>, state: &AppState) -> String {
         match result {
-            None => "Result".to_string(),
+            None => " [3] Result ".to_string(),
             Some(r) => {
                 let source_badge = match r.source {
                     QuerySource::Preview => "PREVIEW".to_string(),
@@ -77,10 +76,10 @@ impl ResultPane {
                 };
 
                 if r.is_error() {
-                    format!("Result [{}] ERROR", source_badge)
+                    format!(" [3] Result [{}] ERROR ", source_badge)
                 } else {
                     format!(
-                        "Result [{}] ({}, {}ms)",
+                        " [3] Result [{}] ({}, {}ms) ",
                         source_badge,
                         r.row_count_display(),
                         r.execution_time_ms

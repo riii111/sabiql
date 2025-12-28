@@ -5,7 +5,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::input_mode::InputMode;
-use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct Footer;
@@ -32,10 +31,6 @@ impl Footer {
                         ("q", "Quit"),
                     ]
                 } else {
-                    let pane_hint = match state.mode {
-                        Mode::Browse => ("1/2/3", "Pane"),
-                        Mode::ER => ("1/2", "Pane"),
-                    };
                     vec![
                         ("q", "Quit"),
                         ("^P", "Tables"),
@@ -43,7 +38,6 @@ impl Footer {
                         (":", "Cmd"),
                         ("?", "Help"),
                         ("f", "Focus"),
-                        pane_hint,
                         ("[/]", "InsTabs"),
                         ("r", "Reload"),
                     ]

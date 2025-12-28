@@ -15,22 +15,22 @@ impl Explorer {
         let is_focused = state.focused_pane == FocusedPane::Explorer;
 
         let title = match &state.metadata_state {
-            MetadataState::Loading => " Explorer [Loading...] ".to_string(),
+            MetadataState::Loading => " [1] Explorer [Loading...] ".to_string(),
             MetadataState::Error(_) if has_cached_data => {
-                format!(" Explorer [{} tables - Stale] ", state.tables().len())
+                format!(" [1] Explorer [{} tables - Stale] ", state.tables().len())
             }
-            MetadataState::Error(_) => " Explorer [Error] ".to_string(),
+            MetadataState::Error(_) => " [1] Explorer [Error] ".to_string(),
             MetadataState::Loaded => {
                 let count = state.tables().len();
-                format!(" Explorer [{} tables] ", count)
+                format!(" [1] Explorer [{} tables] ", count)
             }
-            MetadataState::NotLoaded => " Explorer ".to_string(),
+            MetadataState::NotLoaded => " [1] Explorer ".to_string(),
         };
 
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else {
-            Style::default()
+            Style::default().fg(Color::DarkGray)
         };
 
         let block = Block::default()

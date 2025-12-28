@@ -6,13 +6,22 @@ pub enum Mode {
     ER,
 }
 
+use super::focused_pane::FocusedPane;
+
 impl Mode {
-    /// Convert tab index to Mode (0 = Browse, 1 = ER)
     pub fn from_tab_index(index: usize) -> Self {
+        debug_assert!(index < 2, "Invalid tab index: {}", index);
         match index {
             0 => Mode::Browse,
             1 => Mode::ER,
-            _ => Mode::Browse, // fallback
+            _ => Mode::Browse,
+        }
+    }
+
+    pub fn default_pane(self) -> FocusedPane {
+        match self {
+            Mode::Browse => FocusedPane::Explorer,
+            Mode::ER => FocusedPane::Graph,
         }
     }
 }
@@ -25,9 +34,14 @@ mod tests {
     #[rstest]
     #[case(0, Mode::Browse)]
     #[case(1, Mode::ER)]
-    #[case(2, Mode::Browse)] // fallback
-    #[case(99, Mode::Browse)] // fallback
     fn from_tab_index_returns_correct_mode(#[case] index: usize, #[case] expected: Mode) {
         assert_eq!(Mode::from_tab_index(index), expected);
+    }
+
+    #[rstest]
+    #[case(Mode::Browse, FocusedPane::Explorer)]
+    #[case(Mode::ER, FocusedPane::Graph)]
+    fn default_pane_returns_correct_pane(#[case] mode: Mode, #[case] expected: FocusedPane) {
+        assert_eq!(mode.default_pane(), expected);
     }
 }
