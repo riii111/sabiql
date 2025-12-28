@@ -24,6 +24,7 @@ csv = "1"
 [dev-dependencies]
 pretty_assertions = "1"
 rstest = "0.19"
+tempfile = "3"
 
 [profile.release]
 lto = true

@@ -28,7 +28,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Quit => Action::Quit,
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
-        Command::OpenConsole => Action::None, // Will be implemented in PR5
+        Command::OpenConsole => Action::OpenConsole,
         Command::Unknown(_) => Action::None,
     }
 }
@@ -123,10 +123,10 @@ mod tests {
         }
 
         #[test]
-        fn open_console_returns_none_action() {
+        fn open_console_returns_open_console_action() {
             let result = command_to_action(Command::OpenConsole);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::OpenConsole));
         }
 
         #[test]
