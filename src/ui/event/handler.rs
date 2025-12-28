@@ -175,7 +175,9 @@ mod tests {
 
     mod normal_mode {
         use super::*;
+        use rstest::rstest;
 
+        // Important keys with special handling: keep individual tests
         #[test]
         fn ctrl_p_opens_table_picker() {
             let key = key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL);
@@ -271,110 +273,54 @@ mod tests {
             assert!(matches!(result, Action::PreviousTab));
         }
 
-        #[test]
-        fn up_arrow_selects_previous() {
-            let result = handle_normal_mode(key(KeyCode::Up));
+        // Navigation keys: equivalent actions (rstest)
+        #[rstest]
+        #[case(KeyCode::Up, "up arrow")]
+        #[case(KeyCode::Char('k'), "k")]
+        fn navigation_selects_previous(#[case] code: KeyCode, #[case] _desc: &str) {
+            let result = handle_normal_mode(key(code));
 
             assert!(matches!(result, Action::SelectPrevious));
         }
 
-        #[test]
-        fn k_selects_previous() {
-            let result = handle_normal_mode(key(KeyCode::Char('k')));
-
-            assert!(matches!(result, Action::SelectPrevious));
-        }
-
-        #[test]
-        fn down_arrow_selects_next() {
-            let result = handle_normal_mode(key(KeyCode::Down));
+        #[rstest]
+        #[case(KeyCode::Down, "down arrow")]
+        #[case(KeyCode::Char('j'), "j")]
+        fn navigation_selects_next(#[case] code: KeyCode, #[case] _desc: &str) {
+            let result = handle_normal_mode(key(code));
 
             assert!(matches!(result, Action::SelectNext));
         }
 
-        #[test]
-        fn j_selects_next() {
-            let result = handle_normal_mode(key(KeyCode::Char('j')));
-
-            assert!(matches!(result, Action::SelectNext));
-        }
-
-        #[test]
-        fn g_selects_first() {
-            let result = handle_normal_mode(key(KeyCode::Char('g')));
+        #[rstest]
+        #[case(KeyCode::Char('g'), "g")]
+        #[case(KeyCode::Home, "home")]
+        fn navigation_selects_first(#[case] code: KeyCode, #[case] _desc: &str) {
+            let result = handle_normal_mode(key(code));
 
             assert!(matches!(result, Action::SelectFirst));
         }
 
-        #[test]
-        fn capital_g_selects_last() {
-            let result = handle_normal_mode(key(KeyCode::Char('G')));
+        #[rstest]
+        #[case(KeyCode::Char('G'), "capital G")]
+        #[case(KeyCode::End, "end")]
+        fn navigation_selects_last(#[case] code: KeyCode, #[case] _desc: &str) {
+            let result = handle_normal_mode(key(code));
 
             assert!(matches!(result, Action::SelectLast));
         }
 
-        #[test]
-        fn home_selects_first() {
-            let result = handle_normal_mode(key(KeyCode::Home));
+        // Inspector tab selection (1-5 keys)
+        #[rstest]
+        #[case('1', InspectorTab::Columns)]
+        #[case('2', InspectorTab::Indexes)]
+        #[case('3', InspectorTab::ForeignKeys)]
+        #[case('4', InspectorTab::Rls)]
+        #[case('5', InspectorTab::Ddl)]
+        fn inspector_tab_selection(#[case] key_char: char, #[case] expected_tab: InspectorTab) {
+            let result = handle_normal_mode(key(KeyCode::Char(key_char)));
 
-            assert!(matches!(result, Action::SelectFirst));
-        }
-
-        #[test]
-        fn end_selects_last() {
-            let result = handle_normal_mode(key(KeyCode::End));
-
-            assert!(matches!(result, Action::SelectLast));
-        }
-
-        #[test]
-        fn key_1_selects_columns_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('1')));
-
-            assert!(matches!(
-                result,
-                Action::InspectorSelectTab(InspectorTab::Columns)
-            ));
-        }
-
-        #[test]
-        fn key_2_selects_indexes_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('2')));
-
-            assert!(matches!(
-                result,
-                Action::InspectorSelectTab(InspectorTab::Indexes)
-            ));
-        }
-
-        #[test]
-        fn key_3_selects_foreign_keys_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('3')));
-
-            assert!(matches!(
-                result,
-                Action::InspectorSelectTab(InspectorTab::ForeignKeys)
-            ));
-        }
-
-        #[test]
-        fn key_4_selects_rls_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('4')));
-
-            assert!(matches!(
-                result,
-                Action::InspectorSelectTab(InspectorTab::Rls)
-            ));
-        }
-
-        #[test]
-        fn key_5_selects_ddl_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('5')));
-
-            assert!(matches!(
-                result,
-                Action::InspectorSelectTab(InspectorTab::Ddl)
-            ));
+            assert!(matches!(result, Action::InspectorSelectTab(tab) if tab == expected_tab));
         }
 
         #[test]
@@ -402,7 +348,9 @@ mod tests {
     mod sql_modal {
         use super::*;
         use crate::app::action::CursorMove;
+        use rstest::rstest;
 
+        // Important keys with special handling: keep individual tests
         #[test]
         fn ctrl_enter_submits_query() {
             let key = key_with_mod(KeyCode::Enter, KeyModifiers::CONTROL);
@@ -447,60 +395,24 @@ mod tests {
             assert!(matches!(result, Action::SqlModalDelete));
         }
 
-        #[test]
-        fn left_arrow_moves_cursor_left() {
-            let result = handle_sql_modal_keys(key(KeyCode::Left));
+        // Cursor movement keys (rstest)
+        #[rstest]
+        #[case(KeyCode::Left, CursorMove::Left, "left arrow")]
+        #[case(KeyCode::Right, CursorMove::Right, "right arrow")]
+        #[case(KeyCode::Up, CursorMove::Up, "up arrow")]
+        #[case(KeyCode::Down, CursorMove::Down, "down arrow")]
+        #[case(KeyCode::Home, CursorMove::Home, "home")]
+        #[case(KeyCode::End, CursorMove::End, "end")]
+        fn cursor_movement(
+            #[case] code: KeyCode,
+            #[case] expected_move: CursorMove,
+            #[case] _desc: &str,
+        ) {
+            let result = handle_sql_modal_keys(key(code));
 
             assert!(matches!(
                 result,
-                Action::SqlModalMoveCursor(CursorMove::Left)
-            ));
-        }
-
-        #[test]
-        fn right_arrow_moves_cursor_right() {
-            let result = handle_sql_modal_keys(key(KeyCode::Right));
-
-            assert!(matches!(
-                result,
-                Action::SqlModalMoveCursor(CursorMove::Right)
-            ));
-        }
-
-        #[test]
-        fn up_arrow_moves_cursor_up() {
-            let result = handle_sql_modal_keys(key(KeyCode::Up));
-
-            assert!(matches!(result, Action::SqlModalMoveCursor(CursorMove::Up)));
-        }
-
-        #[test]
-        fn down_arrow_moves_cursor_down() {
-            let result = handle_sql_modal_keys(key(KeyCode::Down));
-
-            assert!(matches!(
-                result,
-                Action::SqlModalMoveCursor(CursorMove::Down)
-            ));
-        }
-
-        #[test]
-        fn home_moves_cursor_to_line_start() {
-            let result = handle_sql_modal_keys(key(KeyCode::Home));
-
-            assert!(matches!(
-                result,
-                Action::SqlModalMoveCursor(CursorMove::Home)
-            ));
-        }
-
-        #[test]
-        fn end_moves_cursor_to_line_end() {
-            let result = handle_sql_modal_keys(key(KeyCode::End));
-
-            assert!(matches!(
-                result,
-                Action::SqlModalMoveCursor(CursorMove::End)
+                Action::SqlModalMoveCursor(m) if m == expected_move
             ));
         }
 
