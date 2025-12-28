@@ -414,6 +414,32 @@ async fn handle_action(
                         })
                         .await;
                 }
+            } else if state.input_mode == InputMode::Normal {
+                // Explorer: select table with Enter
+                let tables = state.tables();
+                if let Some(table) = tables.get(state.explorer_selected) {
+                    let schema = table.schema.clone();
+                    let table_name = table.name.clone();
+                    state.current_table = Some(table.qualified_name());
+
+                    state.selection_generation += 1;
+                    let current_gen = state.selection_generation;
+
+                    let _ = action_tx
+                        .send(Action::LoadTableDetail {
+                            schema: schema.clone(),
+                            table: table_name.clone(),
+                            generation: current_gen,
+                        })
+                        .await;
+                    let _ = action_tx
+                        .send(Action::ExecutePreview {
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                        })
+                        .await;
+                }
             } else if state.input_mode == InputMode::CommandPalette {
                 let cmd_action = palette_action_for_index(state.picker_selected);
                 state.input_mode = InputMode::Normal;

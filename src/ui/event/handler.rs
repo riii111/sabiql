@@ -87,6 +87,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('[') => Action::InspectorPrevTab,
         KeyCode::Char(']') => Action::InspectorNextTab,
 
+        // Explorer: Enter to select table
+        KeyCode::Enter => Action::ConfirmSelection,
+
         _ => Action::None,
     }
 }
@@ -332,6 +335,15 @@ mod tests {
             let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectLast));
+        }
+
+        #[test]
+        fn enter_confirms_selection() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::ConfirmSelection));
         }
 
         // Pane focus switching in Browse mode (1/2/3 keys)
