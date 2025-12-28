@@ -81,6 +81,12 @@ pub struct AppState {
 
     // Last error for copy functionality
     pub last_error: Option<String>,
+
+    // Generation counter for race condition prevention
+    pub selection_generation: u64,
+
+    // Terminal dimensions for dynamic layout calculations
+    pub terminal_height: u16,
 }
 
 impl AppState {
@@ -124,7 +130,23 @@ impl AppState {
             query_state: QueryState::default(),
             // Last error
             last_error: None,
+            // Generation counter
+            selection_generation: 0,
+            // Terminal height (will be updated on resize)
+            terminal_height: 24, // default minimum
         }
+    }
+
+    /// Calculate the number of visible rows in the result pane.
+    /// Based on layout: header(1) + tabs(1) + main + footer(1) + cmdline(1) = 4 fixed
+    /// Right side: 70% of main, Result: 50% of right side = 35% of main
+    /// Result content = height - 2 (border) - 1 (header row) = height - 3
+    pub fn result_visible_rows(&self) -> usize {
+        let main_height = self.terminal_height.saturating_sub(4);
+        // Result pane gets approximately 35% of main area (70% * 50%)
+        let result_height = (main_height as u32 * 35 / 100) as u16;
+        // Subtract borders (2) and header row (1)
+        result_height.saturating_sub(3) as usize
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {

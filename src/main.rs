@@ -70,6 +70,10 @@ async fn main() -> Result<()> {
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
     tui.enter()?;
 
+    // Initialize terminal height from actual terminal size
+    let initial_size = tui.terminal().size()?;
+    state.terminal_height = initial_size.height;
+
     // Load metadata on startup if DSN is available
     if state.dsn.is_some() {
         let _ = action_tx.send(Action::LoadMetadata).await;
@@ -122,6 +126,7 @@ async fn handle_action(
         Action::Resize(w, h) => {
             tui.terminal()
                 .resize(ratatui::layout::Rect::new(0, 0, w, h))?;
+            state.terminal_height = h;
         }
         Action::NextTab => {
             const TAB_COUNT: usize = 2;
@@ -168,85 +173,88 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
         Action::SqlModalInput(c) => {
-            let cursor = state.sql_modal_cursor;
-            state.sql_modal_content.insert(cursor, c);
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert(byte_idx, c);
             state.sql_modal_cursor += 1;
         }
         Action::SqlModalBackspace => {
             if state.sql_modal_cursor > 0 {
                 state.sql_modal_cursor -= 1;
-                state.sql_modal_content.remove(state.sql_modal_cursor);
+                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                state.sql_modal_content.remove(byte_idx);
             }
         }
         Action::SqlModalDelete => {
-            if state.sql_modal_cursor < state.sql_modal_content.len() {
-                state.sql_modal_content.remove(state.sql_modal_cursor);
+            let total_chars = char_count(&state.sql_modal_content);
+            if state.sql_modal_cursor < total_chars {
+                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                state.sql_modal_content.remove(byte_idx);
             }
         }
         Action::SqlModalNewLine => {
-            let cursor = state.sql_modal_cursor;
-            state.sql_modal_content.insert(cursor, '\n');
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert(byte_idx, '\n');
             state.sql_modal_cursor += 1;
+        }
+        Action::SqlModalTab => {
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert_str(byte_idx, "    ");
+            state.sql_modal_cursor += 4;
         }
         Action::SqlModalMoveCursor(movement) => {
             use app::action::CursorMove;
             let content = &state.sql_modal_content;
             let cursor = state.sql_modal_cursor;
+            let total_chars = char_count(content);
+
+            // Build line info: Vec<(start_char_idx, char_count)>
+            let lines: Vec<(usize, usize)> = {
+                let mut result = Vec::new();
+                let mut start = 0;
+                for line in content.split('\n') {
+                    let len = line.chars().count();
+                    result.push((start, len));
+                    start += len + 1; // +1 for '\n'
+                }
+                result
+            };
+
+            // Find current line and column
+            let (current_line, current_col) = {
+                let mut line_idx = 0;
+                let mut col = cursor;
+                for (i, (start, len)) in lines.iter().enumerate() {
+                    if cursor >= *start && cursor <= start + len {
+                        line_idx = i;
+                        col = cursor - start;
+                        break;
+                    }
+                }
+                (line_idx, col)
+            };
 
             state.sql_modal_cursor = match movement {
                 CursorMove::Left => cursor.saturating_sub(1),
-                CursorMove::Right => (cursor + 1).min(content.len()),
-                CursorMove::Home => {
-                    // Move to start of current line
-                    content[..cursor]
-                        .rfind('\n')
-                        .map(|pos| pos + 1)
-                        .unwrap_or(0)
-                }
-                CursorMove::End => {
-                    // Move to end of current line
-                    content[cursor..]
-                        .find('\n')
-                        .map(|pos| cursor + pos)
-                        .unwrap_or(content.len())
-                }
+                CursorMove::Right => (cursor + 1).min(total_chars),
+                CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
+                CursorMove::End => lines
+                    .get(current_line)
+                    .map(|(s, l)| s + l)
+                    .unwrap_or(total_chars),
                 CursorMove::Up => {
-                    // Move to same column on previous line
-                    let current_line_start = content[..cursor]
-                        .rfind('\n')
-                        .map(|pos| pos + 1)
-                        .unwrap_or(0);
-                    let col = cursor - current_line_start;
-
-                    if current_line_start == 0 {
-                        cursor // Already on first line
+                    if current_line == 0 {
+                        cursor
                     } else {
-                        let prev_line_start = content[..current_line_start - 1]
-                            .rfind('\n')
-                            .map(|pos| pos + 1)
-                            .unwrap_or(0);
-                        let prev_line_len = current_line_start - 1 - prev_line_start;
-                        prev_line_start + col.min(prev_line_len)
+                        let (prev_start, prev_len) = lines[current_line - 1];
+                        prev_start + current_col.min(prev_len)
                     }
                 }
                 CursorMove::Down => {
-                    // Move to same column on next line
-                    let current_line_start = content[..cursor]
-                        .rfind('\n')
-                        .map(|pos| pos + 1)
-                        .unwrap_or(0);
-                    let col = cursor - current_line_start;
-
-                    if let Some(next_newline) = content[cursor..].find('\n') {
-                        let next_line_start = cursor + next_newline + 1;
-                        let next_line_end = content[next_line_start..]
-                            .find('\n')
-                            .map(|pos| next_line_start + pos)
-                            .unwrap_or(content.len());
-                        let next_line_len = next_line_end - next_line_start;
-                        next_line_start + col.min(next_line_len)
+                    if current_line + 1 >= lines.len() {
+                        cursor
                     } else {
-                        cursor // Already on last line
+                        let (next_start, next_len) = lines[current_line + 1];
+                        next_start + current_col.min(next_len)
                     }
                 }
             };
@@ -254,6 +262,7 @@ async fn handle_action(
         Action::SqlModalSubmit => {
             let query = state.sql_modal_content.trim().to_string();
             if !query.is_empty() {
+                state.sql_modal_state = app::state::SqlModalState::Running;
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
         }
@@ -364,17 +373,23 @@ async fn handle_action(
                     state.current_table = Some(table.qualified_name());
                     state.input_mode = InputMode::Normal;
 
+                    // Increment generation to invalidate any in-flight requests
+                    state.selection_generation += 1;
+                    let current_gen = state.selection_generation;
+
                     // Trigger table detail loading and preview
                     let _ = action_tx
                         .send(Action::LoadTableDetail {
                             schema: schema.clone(),
                             table: table_name.clone(),
+                            generation: current_gen,
                         })
                         .await;
                     let _ = action_tx
                         .send(Action::ExecutePreview {
                             schema,
                             table: table_name,
+                            generation: current_gen,
                         })
                         .await;
                 }
@@ -463,7 +478,11 @@ async fn handle_action(
         }
 
         // Table detail loading
-        Action::LoadTableDetail { schema, table } => {
+        Action::LoadTableDetail {
+            schema,
+            table,
+            generation,
+        } => {
             if let Some(dsn) = &state.dsn {
                 let dsn = dsn.clone();
                 let provider = Arc::clone(metadata_provider);
@@ -472,7 +491,9 @@ async fn handle_action(
                 tokio::spawn(async move {
                     match provider.fetch_table_detail(&dsn, &schema, &table).await {
                         Ok(detail) => {
-                            let _ = tx.send(Action::TableDetailLoaded(Box::new(detail))).await;
+                            let _ = tx
+                                .send(Action::TableDetailLoaded(Box::new(detail), generation))
+                                .await;
                         }
                         Err(e) => {
                             let _ = tx.send(Action::TableDetailFailed(e.to_string())).await;
@@ -482,8 +503,11 @@ async fn handle_action(
             }
         }
 
-        Action::TableDetailLoaded(detail) => {
-            state.table_detail = Some(*detail);
+        Action::TableDetailLoaded(detail, generation) => {
+            // Ignore stale results from previous table selections
+            if generation == state.selection_generation {
+                state.table_detail = Some(*detail);
+            }
         }
 
         Action::TableDetailFailed(error) => {
@@ -491,7 +515,11 @@ async fn handle_action(
         }
 
         // Query execution
-        Action::ExecutePreview { schema, table } => {
+        Action::ExecutePreview {
+            schema,
+            table,
+            generation,
+        } => {
             if let Some(dsn) = &state.dsn {
                 state.query_state = QueryState::Running;
                 let dsn = dsn.clone();
@@ -502,7 +530,9 @@ async fn handle_action(
                 tokio::spawn(async move {
                     match adapter.execute_preview(&dsn, &schema, &table, 100).await {
                         Ok(result) => {
-                            let _ = tx.send(Action::QueryCompleted(Box::new(result))).await;
+                            let _ = tx
+                                .send(Action::QueryCompleted(Box::new(result), generation))
+                                .await;
                         }
                         Err(e) => {
                             let _ = tx.send(Action::QueryFailed(e.to_string())).await;
@@ -522,7 +552,8 @@ async fn handle_action(
                 tokio::spawn(async move {
                     match adapter.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
-                            let _ = tx.send(Action::QueryCompleted(Box::new(result))).await;
+                            // Adhoc queries use generation 0 to always show results
+                            let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;
                         }
                         Err(e) => {
                             let _ = tx.send(Action::QueryFailed(e.to_string())).await;
@@ -532,22 +563,39 @@ async fn handle_action(
             }
         }
 
-        Action::QueryCompleted(result) => {
-            state.query_state = QueryState::Idle;
-            state.result_scroll_offset = 0;
-            state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+        Action::QueryCompleted(result, generation) => {
+            // For Preview (non-zero generation), check if this is still the current selection
+            // For Adhoc (generation 0), always show results
+            if generation == 0 || generation == state.selection_generation {
+                state.query_state = QueryState::Idle;
+                state.result_scroll_offset = 0;
+                state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+                state.history_index = None;
 
-            // Save adhoc results to history
-            if result.source == domain::QuerySource::Adhoc && !result.is_error() {
-                state.result_history.push((*result).clone());
+                if result.source == domain::QuerySource::Adhoc {
+                    if result.is_error() {
+                        state.sql_modal_state = app::state::SqlModalState::Error;
+                    } else {
+                        state.sql_modal_state = app::state::SqlModalState::Success;
+                    }
+                }
+
+                // Save adhoc results to history
+                if result.source == domain::QuerySource::Adhoc && !result.is_error() {
+                    state.result_history.push((*result).clone());
+                }
+
+                state.current_result = Some(*result);
             }
-
-            state.current_result = Some(*result);
         }
 
         Action::QueryFailed(error) => {
             state.query_state = QueryState::Idle;
-            state.last_error = Some(error);
+            state.last_error = Some(error.clone());
+            // If we're in SqlModal mode, set error state
+            if state.input_mode == InputMode::SqlModal {
+                state.sql_modal_state = app::state::SqlModalState::Error;
+            }
         }
 
         // Result history navigation
@@ -588,10 +636,11 @@ async fn handle_action(
 
         Action::ResultScrollDown => {
             // We need the result to determine max scroll
+            let visible = state.result_visible_rows();
             let max_scroll = state
                 .current_result
                 .as_ref()
-                .map(|r| r.rows.len().saturating_sub(10))
+                .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
             if state.result_scroll_offset < max_scroll {
                 state.result_scroll_offset += 1;
@@ -603,10 +652,11 @@ async fn handle_action(
         }
 
         Action::ResultScrollBottom => {
+            let visible = state.result_visible_rows();
             let max_scroll = state
                 .current_result
                 .as_ref()
-                .map(|r| r.rows.len().saturating_sub(10))
+                .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
             state.result_scroll_offset = max_scroll;
         }
@@ -627,9 +677,7 @@ async fn handle_action(
 
         Action::CopyLastError => {
             if let Some(error) = &state.last_error {
-                let _ = action_tx
-                    .send(Action::CopyToClipboard(error.clone()))
-                    .await;
+                let _ = action_tx.send(Action::CopyToClipboard(error.clone())).await;
             }
         }
 
@@ -640,9 +688,7 @@ async fn handle_action(
                     let _ = action_tx.send(Action::ClipboardSuccess).await;
                 }
                 Err(e) => {
-                    let _ = action_tx
-                        .send(Action::ClipboardFailed(e.to_string()))
-                        .await;
+                    let _ = action_tx.send(Action::ClipboardFailed(e.to_string())).await;
                 }
             }
         }
@@ -665,3 +711,17 @@ fn extract_database_name(dsn: &str) -> Option<String> {
     let name = PostgresAdapter::extract_database_name(dsn);
     if name == "unknown" { None } else { Some(name) }
 }
+
+/// Convert character index to byte index in a UTF-8 string.
+fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(byte_idx, _)| byte_idx)
+        .unwrap_or(s.len())
+}
+
+/// Get the number of characters in a UTF-8 string.
+fn char_count(s: &str) -> usize {
+    s.chars().count()
+}
+

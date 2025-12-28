@@ -192,13 +192,15 @@ impl ResultPane {
     }
 }
 
-fn truncate_cell(s: &str, max_len: usize) -> String {
+fn truncate_cell(s: &str, max_chars: usize) -> String {
     // Handle newlines - show first line only
     let first_line = s.lines().next().unwrap_or(s);
+    let char_count = first_line.chars().count();
 
-    if first_line.len() <= max_len {
+    if char_count <= max_chars {
         first_line.to_string()
     } else {
-        format!("{}...", &first_line[..max_len - 3])
+        let truncated: String = first_line.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
     }
 }
