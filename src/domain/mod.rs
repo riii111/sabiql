@@ -1,3 +1,6 @@
+// Domain models - some fields/methods are defined for future use
+#![allow(dead_code)]
+
 pub mod column;
 pub mod foreign_key;
 pub mod index;

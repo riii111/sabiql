@@ -154,12 +154,13 @@ impl SqlModal {
     }
 
     /// Convert a character index to (row, col) position
+    /// NOTE: This is O(n) on every render. For long documents, consider caching
+    /// line offsets and only recalculating on content change.
     fn cursor_to_position(content: &str, cursor_pos: usize) -> (usize, usize) {
         let mut row = 0;
         let mut col = 0;
-        let mut current_pos = 0;
 
-        for ch in content.chars() {
+        for (current_pos, ch) in content.chars().enumerate() {
             if current_pos >= cursor_pos {
                 break;
             }
@@ -169,7 +170,6 @@ impl SqlModal {
             } else {
                 col += 1;
             }
-            current_pos += 1;
         }
 
         (row, col)

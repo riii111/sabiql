@@ -7,6 +7,7 @@ use ratatui::Frame;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
 use crate::domain::Table as TableDetail;
+use crate::infra::utils::quote_ident;
 
 pub struct Inspector;
 
@@ -322,9 +323,4 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
         let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
         format!("{}...", truncated)
     }
-}
-
-/// Quote identifier for safe SQL representation (PostgreSQL style).
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
 }
