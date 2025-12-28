@@ -525,4 +525,174 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
     }
+
+    mod command_line {
+        use super::*;
+
+        #[test]
+        fn enter_submits_command() {
+            let result = handle_command_line_mode(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::CommandLineSubmit));
+        }
+
+        #[test]
+        fn esc_exits_command_line() {
+            let result = handle_command_line_mode(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::ExitCommandLine));
+        }
+
+        #[test]
+        fn backspace_deletes_character() {
+            let result = handle_command_line_mode(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::CommandLineBackspace));
+        }
+
+        #[test]
+        fn char_input_adds_character() {
+            let result = handle_command_line_mode(key(KeyCode::Char('s')));
+
+            assert!(matches!(result, Action::CommandLineInput('s')));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_command_line_mode(key(KeyCode::Tab));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod table_picker {
+        use super::*;
+
+        #[test]
+        fn esc_closes_picker() {
+            let result = handle_table_picker_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseTablePicker));
+        }
+
+        #[test]
+        fn enter_confirms_selection() {
+            let result = handle_table_picker_keys(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::ConfirmSelection));
+        }
+
+        #[test]
+        fn up_selects_previous() {
+            let result = handle_table_picker_keys(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn down_selects_next() {
+            let result = handle_table_picker_keys(key(KeyCode::Down));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn backspace_removes_filter_char() {
+            let result = handle_table_picker_keys(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::FilterBackspace));
+        }
+
+        #[test]
+        fn char_input_adds_to_filter() {
+            let result = handle_table_picker_keys(key(KeyCode::Char('u')));
+
+            assert!(matches!(result, Action::FilterInput('u')));
+        }
+
+        #[test]
+        fn multibyte_char_adds_to_filter() {
+            let result = handle_table_picker_keys(key(KeyCode::Char('日')));
+
+            assert!(matches!(result, Action::FilterInput('日')));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_table_picker_keys(key(KeyCode::Tab));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod command_palette {
+        use super::*;
+
+        #[test]
+        fn esc_closes_palette() {
+            let result = handle_command_palette_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseCommandPalette));
+        }
+
+        #[test]
+        fn enter_confirms_selection() {
+            let result = handle_command_palette_keys(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::ConfirmSelection));
+        }
+
+        #[test]
+        fn up_selects_previous() {
+            let result = handle_command_palette_keys(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn down_selects_next() {
+            let result = handle_command_palette_keys(key(KeyCode::Down));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_command_palette_keys(key(KeyCode::Char('a')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod help {
+        use super::*;
+
+        #[test]
+        fn q_quits() {
+            let result = handle_help_keys(key(KeyCode::Char('q')));
+
+            assert!(matches!(result, Action::Quit));
+        }
+
+        #[test]
+        fn esc_closes_help() {
+            let result = handle_help_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseHelp));
+        }
+
+        #[test]
+        fn question_mark_closes_help() {
+            let result = handle_help_keys(key(KeyCode::Char('?')));
+
+            assert!(matches!(result, Action::CloseHelp));
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_help_keys(key(KeyCode::Char('a')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
 }
