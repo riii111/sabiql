@@ -130,33 +130,14 @@ async fn handle_action(
             state.terminal_height = h;
         }
         Action::NextTab => {
-            const TAB_COUNT: usize = 2;
-            state.active_tab = (state.active_tab + 1) % TAB_COUNT;
-            state.mode = app::mode::Mode::from_tab_index(state.active_tab);
-            state.focused_pane = state.mode.default_pane();
+            state.change_tab(true);
         }
         Action::PreviousTab => {
-            const TAB_COUNT: usize = 2;
-            state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
-            state.mode = app::mode::Mode::from_tab_index(state.active_tab);
-            state.focused_pane = state.mode.default_pane();
+            state.change_tab(false);
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
         Action::ToggleFocus => {
-            // Focus mode is only available in Browse mode (Result full-screen)
-            if state.mode != app::mode::Mode::Browse {
-                return Ok(());
-            }
-            if state.focus_mode {
-                if let Some(prev) = state.focus_mode_prev_pane.take() {
-                    state.focused_pane = prev;
-                }
-                state.focus_mode = false;
-            } else {
-                state.focus_mode_prev_pane = Some(state.focused_pane);
-                state.focused_pane = app::focused_pane::FocusedPane::Result;
-                state.focus_mode = true;
-            }
+            state.toggle_focus();
         }
 
         // Inspector sub-tab actions
