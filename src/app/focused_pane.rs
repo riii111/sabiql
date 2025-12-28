@@ -5,8 +5,10 @@ pub enum FocusedPane {
     Explorer,
     Inspector,
     Result,
-    // ER mode panes
+    // ER mode panes (used when ER view is implemented)
+    #[allow(dead_code)]
     Graph,
+    #[allow(dead_code)]
     Details,
 }
 
@@ -30,6 +32,7 @@ impl FocusedPane {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_er_key(key: char) -> Option<Self> {
         match key {
             '1' => Some(Self::Graph),

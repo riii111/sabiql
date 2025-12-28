@@ -30,7 +30,6 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
 
 fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     use crate::app::focused_pane::FocusedPane;
-    use crate::app::mode::Mode;
 
     match (key.code, key.modifiers) {
         // Ctrl+P: Open Table Picker
@@ -56,7 +55,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         _ => {}
     }
 
-    // Regular keys
+    let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
+
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Char('?') => Action::OpenHelp,
@@ -65,23 +65,39 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Esc => Action::Escape,
 
-        // Navigation
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        KeyCode::Char('g') => Action::SelectFirst,
-        KeyCode::Char('G') => Action::SelectLast,
-        KeyCode::Home => Action::SelectFirst,
-        KeyCode::End => Action::SelectLast,
+        KeyCode::Up | KeyCode::Char('k') => {
+            if result_navigation {
+                Action::ResultScrollUp
+            } else {
+                Action::SelectPrevious
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if result_navigation {
+                Action::ResultScrollDown
+            } else {
+                Action::SelectNext
+            }
+        }
+        KeyCode::Char('g') | KeyCode::Home => {
+            if result_navigation {
+                Action::ResultScrollTop
+            } else {
+                Action::SelectFirst
+            }
+        }
+        KeyCode::Char('G') | KeyCode::End => {
+            if result_navigation {
+                Action::ResultScrollBottom
+            } else {
+                Action::SelectLast
+            }
+        }
 
-        // Pane focus switching (1/2/3 keys - mode dependent)
-        KeyCode::Char(c @ '1'..='3') => match state.mode {
-            Mode::Browse => FocusedPane::from_browse_key(c)
-                .map(Action::SetFocusedPane)
-                .unwrap_or(Action::None),
-            Mode::ER => FocusedPane::from_er_key(c)
-                .map(Action::SetFocusedPane)
-                .unwrap_or(Action::None),
-        },
+        // TODO: Use ER-specific panes once ER view is implemented
+        KeyCode::Char(c @ '1'..='3') => FocusedPane::from_browse_key(c)
+            .map(Action::SetFocusedPane)
+            .unwrap_or(Action::None),
 
         // Inspector sub-tab navigation ([ and ])
         KeyCode::Char('[') => Action::InspectorPrevTab,
@@ -359,26 +375,17 @@ mod tests {
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
         }
 
-        // Pane focus switching in ER mode (1/2 keys)
+        // ER mode uses Browse layout until ER view is implemented
         #[rstest]
-        #[case('1', FocusedPane::Graph)]
-        #[case('2', FocusedPane::Details)]
-        fn er_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+        #[case('1', FocusedPane::Explorer)]
+        #[case('2', FocusedPane::Inspector)]
+        #[case('3', FocusedPane::Result)]
+        fn er_mode_uses_browse_layout(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
             let state = er_state();
 
             let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
 
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
-        }
-
-        // Key '3' in ER mode should return None (only 2 panes)
-        #[test]
-        fn er_mode_key_3_returns_none() {
-            let state = er_state();
-
-            let result = handle_normal_mode(key(KeyCode::Char('3')), &state);
-
-            assert!(matches!(result, Action::None));
         }
 
         #[test]
@@ -406,6 +413,64 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('z')), &state);
 
             assert!(matches!(result, Action::None));
+        }
+
+        fn focus_mode_state() -> AppState {
+            let mut state = browse_state();
+            state.focus_mode = true;
+            state.focused_pane = FocusedPane::Result;
+            state
+        }
+
+        fn result_focused_state() -> AppState {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Result;
+            state
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('j'))]
+        #[case(KeyCode::Down)]
+        fn focus_mode_j_scrolls_down(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollDown));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('k'))]
+        #[case(KeyCode::Up)]
+        fn focus_mode_k_scrolls_up(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollUp));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('g'))]
+        #[case(KeyCode::Home)]
+        fn focus_mode_g_scrolls_top(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollTop));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('G'))]
+        #[case(KeyCode::End)]
+        fn focus_mode_G_scrolls_bottom(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollBottom));
+        }
+
+        #[test]
+        fn result_focused_navigation_scrolls_result() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('j')), &state);
+
+            assert!(matches!(result, Action::ResultScrollDown));
         }
     }
 
