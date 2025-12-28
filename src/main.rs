@@ -346,9 +346,11 @@ async fn handle_action(
                 }
             }
             InputMode::Normal => {
-                let max = state.tables().len().saturating_sub(1);
-                if state.explorer_selected < max {
-                    state.explorer_selected += 1;
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    let max = state.tables().len().saturating_sub(1);
+                    if state.explorer_selected < max {
+                        state.explorer_selected += 1;
+                    }
                 }
             }
             _ => {}
@@ -358,7 +360,9 @@ async fn handle_action(
                 state.picker_selected = state.picker_selected.saturating_sub(1);
             }
             InputMode::Normal => {
-                state.explorer_selected = state.explorer_selected.saturating_sub(1);
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.explorer_selected = state.explorer_selected.saturating_sub(1);
+                }
             }
             _ => {}
         },
@@ -367,7 +371,9 @@ async fn handle_action(
                 state.picker_selected = 0;
             }
             InputMode::Normal => {
-                state.explorer_selected = 0;
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.explorer_selected = 0;
+                }
             }
             _ => {}
         },
@@ -380,7 +386,9 @@ async fn handle_action(
                 state.picker_selected = palette_command_count() - 1;
             }
             InputMode::Normal => {
-                state.explorer_selected = state.tables().len().saturating_sub(1);
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.explorer_selected = state.tables().len().saturating_sub(1);
+                }
             }
             _ => {}
         },
@@ -414,7 +422,9 @@ async fn handle_action(
                         })
                         .await;
                 }
-            } else if state.input_mode == InputMode::Normal {
+            } else if state.input_mode == InputMode::Normal
+                && state.focused_pane == app::focused_pane::FocusedPane::Explorer
+            {
                 // Explorer: select table with Enter
                 let tables = state.tables();
                 if let Some(table) = tables.get(state.explorer_selected) {
