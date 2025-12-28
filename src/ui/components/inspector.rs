@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 use ratatui::Frame;
 
+use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
 use crate::domain::Table as TableDetail;
@@ -13,12 +14,13 @@ pub struct Inspector;
 
 impl Inspector {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+        let is_focused = state.focused_pane == FocusedPane::Inspector;
         // Split into tab bar and content
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state);
+        Self::render_content(frame, content_area, state, is_focused);
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -49,11 +51,17 @@ impl Inspector {
         frame.render_widget(paragraph, area);
     }
 
-    fn render_content(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_content(frame: &mut Frame, area: Rect, state: &AppState, is_focused: bool) {
+        let border_style = if is_focused {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default()
+        };
+
         let block = Block::default()
             .title("Inspector")
             .borders(Borders::ALL)
-            .style(Style::default());
+            .border_style(border_style);
 
         if let Some(table) = &state.table_detail {
             let inner = block.inner(area);

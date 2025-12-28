@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem};
 
+use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
 
@@ -11,11 +12,11 @@ pub struct Explorer;
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let has_cached_data = state.metadata.is_some() && !state.tables().is_empty();
+        let is_focused = state.focused_pane == FocusedPane::Explorer;
 
         let title = match &state.metadata_state {
             MetadataState::Loading => " Explorer [Loading...] ".to_string(),
             MetadataState::Error(_) if has_cached_data => {
-                // Show stale data count with error indicator
                 format!(" Explorer [{} tables - Stale] ", state.tables().len())
             }
             MetadataState::Error(_) => " Explorer [Error] ".to_string(),
@@ -26,7 +27,16 @@ impl Explorer {
             MetadataState::NotLoaded => " Explorer ".to_string(),
         };
 
-        let block = Block::default().title(title).borders(Borders::ALL);
+        let border_style = if is_focused {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default()
+        };
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(border_style);
 
         let items: Vec<ListItem> = if has_cached_data {
             // Show existing tables (even during loading or after error)

@@ -5,6 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 use ratatui::Frame;
 
+use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
@@ -12,13 +13,18 @@ pub struct ResultPane;
 
 impl ResultPane {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+        let is_focused = state.focused_pane == FocusedPane::Result;
+
         // Check if we should show highlight (flash effect on new results)
         let should_highlight = state
             .result_highlight_until
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
 
-        let border_style = if should_highlight {
+        // Focus takes priority over flash highlight
+        let border_style = if is_focused {
+            Style::default().fg(Color::Cyan)
+        } else if should_highlight {
             Style::default().fg(Color::Green)
         } else {
             Style::default()

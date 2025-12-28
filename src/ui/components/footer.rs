@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::input_mode::InputMode;
+use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct Footer;
@@ -18,16 +19,22 @@ impl Footer {
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         match state.input_mode {
-            InputMode::Normal => vec![
-                ("q", "Quit"),
-                ("^P", "Tables"),
-                ("^K", "Cmds"),
-                (":", "Cmd"),
-                ("?", "Help"),
-                ("f", "Focus"),
-                ("r", "Reload"),
-                ("Tab", "Switch"),
-            ],
+            InputMode::Normal => {
+                let pane_hint = match state.mode {
+                    Mode::Browse => ("1/2/3", "Pane"),
+                    Mode::ER => ("1/2", "Pane"),
+                };
+                vec![
+                    ("q", "Quit"),
+                    ("^P", "Tables"),
+                    ("^K", "Cmds"),
+                    (":", "Cmd"),
+                    ("?", "Help"),
+                    pane_hint,
+                    ("r", "Reload"),
+                    ("Tab", "Switch"),
+                ]
+            }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![
                 ("Esc", "Close"),
