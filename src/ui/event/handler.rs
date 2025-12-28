@@ -440,139 +440,105 @@ mod tests {
 
     mod command_line {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn enter_submits_command() {
-            let result = handle_command_line_mode(key(KeyCode::Enter));
-
-            assert!(matches!(result, Action::CommandLineSubmit));
+        enum Expected {
+            Submit,
+            Exit,
+            Backspace,
+            Input(char),
+            None,
         }
 
-        #[test]
-        fn esc_exits_command_line() {
-            let result = handle_command_line_mode(key(KeyCode::Esc));
+        #[rstest]
+        #[case(KeyCode::Enter, Expected::Submit)]
+        #[case(KeyCode::Esc, Expected::Exit)]
+        #[case(KeyCode::Backspace, Expected::Backspace)]
+        #[case(KeyCode::Char('s'), Expected::Input('s'))]
+        #[case(KeyCode::Tab, Expected::None)]
+        fn command_line_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_command_line_mode(key(code));
 
-            assert!(matches!(result, Action::ExitCommandLine));
-        }
-
-        #[test]
-        fn backspace_deletes_character() {
-            let result = handle_command_line_mode(key(KeyCode::Backspace));
-
-            assert!(matches!(result, Action::CommandLineBackspace));
-        }
-
-        #[test]
-        fn char_input_adds_character() {
-            let result = handle_command_line_mode(key(KeyCode::Char('s')));
-
-            assert!(matches!(result, Action::CommandLineInput('s')));
-        }
-
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_command_line_mode(key(KeyCode::Tab));
-
-            assert!(matches!(result, Action::None));
+            match expected {
+                Expected::Submit => assert!(matches!(result, Action::CommandLineSubmit)),
+                Expected::Exit => assert!(matches!(result, Action::ExitCommandLine)),
+                Expected::Backspace => assert!(matches!(result, Action::CommandLineBackspace)),
+                Expected::Input(ch) => {
+                    assert!(matches!(result, Action::CommandLineInput(c) if c == ch))
+                }
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
         }
     }
 
     mod table_picker {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn esc_closes_picker() {
-            let result = handle_table_picker_keys(key(KeyCode::Esc));
-
-            assert!(matches!(result, Action::CloseTablePicker));
+        enum Expected {
+            Close,
+            Confirm,
+            SelectPrev,
+            SelectNext,
+            FilterBackspace,
+            FilterInput(char),
+            None,
         }
 
-        #[test]
-        fn enter_confirms_selection() {
-            let result = handle_table_picker_keys(key(KeyCode::Enter));
+        #[rstest]
+        #[case(KeyCode::Esc, Expected::Close)]
+        #[case(KeyCode::Enter, Expected::Confirm)]
+        #[case(KeyCode::Up, Expected::SelectPrev)]
+        #[case(KeyCode::Down, Expected::SelectNext)]
+        #[case(KeyCode::Backspace, Expected::FilterBackspace)]
+        #[case(KeyCode::Char('u'), Expected::FilterInput('u'))]
+        #[case(KeyCode::Char('日'), Expected::FilterInput('日'))]
+        #[case(KeyCode::Tab, Expected::None)]
+        fn table_picker_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_table_picker_keys(key(code));
 
-            assert!(matches!(result, Action::ConfirmSelection));
-        }
-
-        #[test]
-        fn up_selects_previous() {
-            let result = handle_table_picker_keys(key(KeyCode::Up));
-
-            assert!(matches!(result, Action::SelectPrevious));
-        }
-
-        #[test]
-        fn down_selects_next() {
-            let result = handle_table_picker_keys(key(KeyCode::Down));
-
-            assert!(matches!(result, Action::SelectNext));
-        }
-
-        #[test]
-        fn backspace_removes_filter_char() {
-            let result = handle_table_picker_keys(key(KeyCode::Backspace));
-
-            assert!(matches!(result, Action::FilterBackspace));
-        }
-
-        #[test]
-        fn char_input_adds_to_filter() {
-            let result = handle_table_picker_keys(key(KeyCode::Char('u')));
-
-            assert!(matches!(result, Action::FilterInput('u')));
-        }
-
-        #[test]
-        fn multibyte_char_adds_to_filter() {
-            let result = handle_table_picker_keys(key(KeyCode::Char('日')));
-
-            assert!(matches!(result, Action::FilterInput('日')));
-        }
-
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_table_picker_keys(key(KeyCode::Tab));
-
-            assert!(matches!(result, Action::None));
+            match expected {
+                Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
+                Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
+                Expected::SelectPrev => assert!(matches!(result, Action::SelectPrevious)),
+                Expected::SelectNext => assert!(matches!(result, Action::SelectNext)),
+                Expected::FilterBackspace => assert!(matches!(result, Action::FilterBackspace)),
+                Expected::FilterInput(ch) => {
+                    assert!(matches!(result, Action::FilterInput(c) if c == ch))
+                }
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
         }
     }
 
     mod command_palette {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn esc_closes_palette() {
-            let result = handle_command_palette_keys(key(KeyCode::Esc));
-
-            assert!(matches!(result, Action::CloseCommandPalette));
+        enum Expected {
+            Close,
+            Confirm,
+            SelectPrev,
+            SelectNext,
+            None,
         }
 
-        #[test]
-        fn enter_confirms_selection() {
-            let result = handle_command_palette_keys(key(KeyCode::Enter));
+        #[rstest]
+        #[case(KeyCode::Esc, Expected::Close)]
+        #[case(KeyCode::Enter, Expected::Confirm)]
+        #[case(KeyCode::Up, Expected::SelectPrev)]
+        #[case(KeyCode::Down, Expected::SelectNext)]
+        #[case(KeyCode::Char('a'), Expected::None)]
+        fn command_palette_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_command_palette_keys(key(code));
 
-            assert!(matches!(result, Action::ConfirmSelection));
-        }
-
-        #[test]
-        fn up_selects_previous() {
-            let result = handle_command_palette_keys(key(KeyCode::Up));
-
-            assert!(matches!(result, Action::SelectPrevious));
-        }
-
-        #[test]
-        fn down_selects_next() {
-            let result = handle_command_palette_keys(key(KeyCode::Down));
-
-            assert!(matches!(result, Action::SelectNext));
-        }
-
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_command_palette_keys(key(KeyCode::Char('a')));
-
-            assert!(matches!(result, Action::None));
+            match expected {
+                Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
+                Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
+                Expected::SelectPrev => assert!(matches!(result, Action::SelectPrevious)),
+                Expected::SelectNext => assert!(matches!(result, Action::SelectNext)),
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
         }
     }
 
