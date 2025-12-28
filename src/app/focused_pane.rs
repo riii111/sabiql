@@ -11,10 +11,12 @@ pub enum FocusedPane {
 }
 
 impl FocusedPane {
+    #[allow(dead_code)]
     pub fn browse_default() -> Self {
         Self::Explorer
     }
 
+    #[allow(dead_code)]
     pub fn er_default() -> Self {
         Self::Graph
     }

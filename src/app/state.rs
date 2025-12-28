@@ -92,6 +92,7 @@ pub struct AppState {
 
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
+    pub focus_mode_prev_pane: Option<FocusedPane>,
 }
 
 impl AppState {
@@ -142,6 +143,7 @@ impl AppState {
             result_pane_height: 0, // will be updated on render
             // Focus mode
             focus_mode: false,
+            focus_mode_prev_pane: None,
         }
     }
 

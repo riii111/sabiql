@@ -21,10 +21,13 @@ impl Footer {
         match state.input_mode {
             InputMode::Normal => {
                 if state.focus_mode {
-                    // Focus mode: minimal hints
+                    // Focus mode: scroll-focused hints
                     vec![
                         ("f", "Exit Focus"),
                         ("j/k", "Scroll"),
+                        ("g/G", "Top/Bottom"),
+                        ("^P", "Tables"),
+                        ("^K", "Palette"),
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
@@ -36,6 +39,7 @@ impl Footer {
                     vec![
                         ("q", "Quit"),
                         ("^P", "Tables"),
+                        ("^K", "Palette"),
                         (":", "Cmd"),
                         ("?", "Help"),
                         ("f", "Focus"),

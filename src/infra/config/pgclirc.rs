@@ -8,7 +8,7 @@ pub fn generate_pgclirc(cache_dir: &Path) -> Result<PathBuf> {
     let pgclirc_path = cache_dir.join("pgclirc");
     let history_path = cache_dir.join("pgcli_history");
 
-    let content = format!("[main]\nhistory_file = {}\n", history_path.display());
+    let content = format!("[main]\nhistory_file = \"{}\"\n", history_path.display());
 
     fs::create_dir_all(cache_dir)?;
     fs::write(&pgclirc_path, content)?;
@@ -21,7 +21,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn generate_pgclirc_creates_file_with_correct_content() {
+    fn generate_pgclirc_creates_file_with_quoted_path() {
         let temp_dir = tempdir().unwrap();
         let cache_dir = temp_dir.path();
 
@@ -33,8 +33,8 @@ mod tests {
 
         let content = fs::read_to_string(&pgclirc_path).unwrap();
         assert!(content.contains("[main]"));
-        assert!(content.contains("history_file"));
-        assert!(content.contains("pgcli_history"));
+        assert!(content.contains("history_file = \""));
+        assert!(content.contains("pgcli_history\""));
     }
 
     #[test]

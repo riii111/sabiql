@@ -132,13 +132,28 @@ async fn handle_action(
         Action::NextTab => {
             const TAB_COUNT: usize = 2;
             state.active_tab = (state.active_tab + 1) % TAB_COUNT;
+            state.mode = app::mode::Mode::from_tab_index(state.active_tab);
         }
         Action::PreviousTab => {
             const TAB_COUNT: usize = 2;
             state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
+            state.mode = app::mode::Mode::from_tab_index(state.active_tab);
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
-        Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+        Action::ToggleFocus => {
+            if state.focus_mode {
+                // Exiting focus mode: restore previous pane
+                if let Some(prev) = state.focus_mode_prev_pane.take() {
+                    state.focused_pane = prev;
+                }
+                state.focus_mode = false;
+            } else {
+                // Entering focus mode: save current pane and switch to Result
+                state.focus_mode_prev_pane = Some(state.focused_pane);
+                state.focused_pane = app::focused_pane::FocusedPane::Result;
+                state.focus_mode = true;
+            }
+        }
 
         // Inspector sub-tab actions
         Action::InspectorNextTab => {
@@ -746,28 +761,35 @@ async fn handle_action(
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let pgclirc = generate_pgclirc(&cache_dir)?;
 
-                tui.suspend()?;
+                let guard = tui.suspend_guard()?;
 
-                let status = std::process::Command::new("pgcli")
-                    .arg("--pgclirc")
-                    .arg(&pgclirc)
-                    .arg(dsn)
-                    .status();
+                let dsn = dsn.clone();
+                let status = tokio::task::spawn_blocking(move || {
+                    std::process::Command::new("pgcli")
+                        .arg("--pgclirc")
+                        .arg(&pgclirc)
+                        .arg(&dsn)
+                        .status()
+                })
+                .await;
+
+                guard.resume()?;
 
                 match status {
                     Err(e) => {
+                        state.last_error = Some(format!("pgcli task failed: {}", e));
+                    }
+                    Ok(Err(e)) => {
                         state.last_error = Some(format!("pgcli failed to start: {}", e));
                     }
-                    Ok(exit_status) if !exit_status.success() => {
+                    Ok(Ok(exit_status)) if !exit_status.success() => {
                         let code = exit_status
                             .code()
                             .map_or("unknown".to_string(), |c| c.to_string());
                         state.last_error = Some(format!("pgcli exited with code {}", code));
                     }
-                    Ok(_) => {}
+                    Ok(Ok(_)) => {}
                 }
-
-                tui.resume()?;
 
                 let _ = action_tx.send(Action::Render).await;
             } else {
