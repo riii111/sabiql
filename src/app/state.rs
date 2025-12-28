@@ -160,13 +160,6 @@ impl AppState {
             .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
     }
-
-    pub fn cache_age_display(&self) -> String {
-        self.metadata
-            .as_ref()
-            .map(|m| format!("{}s", m.age_seconds()))
-            .unwrap_or_else(|| "-".to_string())
-    }
 }
 
 #[cfg(test)]
