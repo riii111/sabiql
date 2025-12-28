@@ -8,10 +8,7 @@ pub fn generate_pgclirc(cache_dir: &Path) -> Result<PathBuf> {
     let pgclirc_path = cache_dir.join("pgclirc");
     let history_path = cache_dir.join("pgcli_history");
 
-    let content = format!(
-        "[main]\nhistory_file = {}\n",
-        history_path.display()
-    );
+    let content = format!("[main]\nhistory_file = {}\n", history_path.display());
 
     fs::create_dir_all(cache_dir)?;
     fs::write(&pgclirc_path, content)?;

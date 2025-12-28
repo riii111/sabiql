@@ -1,9 +1,9 @@
 use std::time::Instant;
 
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
-use ratatui::Frame;
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -141,13 +141,11 @@ impl ResultPane {
         };
 
         // Header row
-        let header = Row::new(
-            result
-                .columns
-                .iter()
-                .map(|c| Cell::from(c.clone()).style(Style::default().add_modifier(Modifier::BOLD))),
-        )
-        .height(1);
+        let header =
+            Row::new(result.columns.iter().map(|c| {
+                Cell::from(c.clone()).style(Style::default().add_modifier(Modifier::BOLD))
+            }))
+            .height(1);
 
         // Data rows with scroll offset
         let visible_rows = inner.height.saturating_sub(2) as usize; // Account for header and border
@@ -191,8 +189,8 @@ impl ResultPane {
                 width: indicator.len() as u16,
                 height: 1,
             };
-            let indicator_widget = Paragraph::new(indicator)
-                .style(Style::default().fg(Color::DarkGray));
+            let indicator_widget =
+                Paragraph::new(indicator).style(Style::default().fg(Color::DarkGray));
             frame.render_widget(indicator_widget, indicator_area);
         }
     }
@@ -206,7 +204,10 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
     if char_count <= max_chars {
         first_line.to_string()
     } else {
-        let truncated: String = first_line.chars().take(max_chars.saturating_sub(3)).collect();
+        let truncated: String = first_line
+            .chars()
+            .take(max_chars.saturating_sub(3))
+            .collect();
         format!("{}...", truncated)
     }
 }

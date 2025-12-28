@@ -605,12 +605,8 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         // Check if query is a SELECT statement (basic validation)
         let trimmed = query.trim();
-        let is_select = trimmed
-            .to_lowercase()
-            .starts_with("select")
-            || trimmed
-                .to_lowercase()
-                .starts_with("with"); // CTEs are also read-only
+        let is_select = trimmed.to_lowercase().starts_with("select")
+            || trimmed.to_lowercase().starts_with("with"); // CTEs are also read-only
 
         if !is_select {
             return Err(MetadataError::QueryFailed(

@@ -759,7 +759,9 @@ async fn handle_action(
                         state.last_error = Some(format!("pgcli failed to start: {}", e));
                     }
                     Ok(exit_status) if !exit_status.success() => {
-                        let code = exit_status.code().map_or("unknown".to_string(), |c| c.to_string());
+                        let code = exit_status
+                            .code()
+                            .map_or("unknown".to_string(), |c| c.to_string());
                         state.last_error = Some(format!("pgcli exited with code {}", code));
                     }
                     Ok(_) => {}
@@ -796,4 +798,3 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 fn char_count(s: &str) -> usize {
     s.chars().count()
 }
-

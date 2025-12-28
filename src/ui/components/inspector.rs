@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
-use ratatui::Frame;
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
@@ -267,7 +267,8 @@ impl Inspector {
                             }
                         )));
                         if let Some(qual) = &policy.qual {
-                            lines.push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
+                            lines
+                                .push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
                         }
                     }
                 }

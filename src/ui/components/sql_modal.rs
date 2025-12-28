@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use ratatui::Frame;
 
 use crate::app::state::{AppState, QueryState, SqlModalState};
 
@@ -51,10 +51,7 @@ impl SqlModal {
             // Show placeholder with cursor
             vec![Line::from(vec![
                 Span::styled("█", Style::default().fg(Color::White)),
-                Span::styled(
-                    " Enter SQL query...",
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(" Enter SQL query...", Style::default().fg(Color::DarkGray)),
             ])]
         } else {
             content
@@ -148,7 +145,8 @@ impl SqlModal {
             Span::styled(hints, Style::default().fg(Color::DarkGray)),
         ]);
 
-        let paragraph = Paragraph::new(line).style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+        let paragraph =
+            Paragraph::new(line).style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         frame.render_widget(paragraph, area);
     }

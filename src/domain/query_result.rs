@@ -53,7 +53,12 @@ impl QueryResult {
     }
 
     /// Create an error query result
-    pub fn error(query: String, error: String, execution_time_ms: u64, source: QuerySource) -> Self {
+    pub fn error(
+        query: String,
+        error: String,
+        execution_time_ms: u64,
+        source: QuerySource,
+    ) -> Self {
         Self {
             query,
             columns: Vec::new(),
