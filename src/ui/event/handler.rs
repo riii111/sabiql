@@ -273,7 +273,7 @@ mod tests {
             assert!(matches!(result, Action::PreviousTab));
         }
 
-        // Navigation keys: equivalent actions (rstest)
+        // Navigation keys: equivalent actions
         #[rstest]
         #[case(KeyCode::Up, "up arrow")]
         #[case(KeyCode::Char('k'), "k")]
@@ -395,7 +395,7 @@ mod tests {
             assert!(matches!(result, Action::SqlModalDelete));
         }
 
-        // Cursor movement keys (rstest)
+        // Cursor movement keys
         #[rstest]
         #[case(KeyCode::Left, CursorMove::Left, "left arrow")]
         #[case(KeyCode::Right, CursorMove::Right, "right arrow")]
