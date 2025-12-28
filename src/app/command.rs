@@ -39,33 +39,25 @@ mod tests {
 
     mod parse_command {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn q_returns_quit() {
-            let result = parse_command("q");
+        // Aliases with equivalent behavior
+        #[rstest]
+        #[case("q", Command::Quit)]
+        #[case("quit", Command::Quit)]
+        fn quit_aliases(#[case] input: &str, #[case] expected: Command) {
+            let result = parse_command(input);
 
-            assert_eq!(result, Command::Quit);
+            assert_eq!(result, expected);
         }
 
-        #[test]
-        fn quit_returns_quit() {
-            let result = parse_command("quit");
+        #[rstest]
+        #[case("?", Command::Help)]
+        #[case("help", Command::Help)]
+        fn help_aliases(#[case] input: &str, #[case] expected: Command) {
+            let result = parse_command(input);
 
-            assert_eq!(result, Command::Quit);
-        }
-
-        #[test]
-        fn question_mark_returns_help() {
-            let result = parse_command("?");
-
-            assert_eq!(result, Command::Help);
-        }
-
-        #[test]
-        fn help_returns_help() {
-            let result = parse_command("help");
-
-            assert_eq!(result, Command::Help);
+            assert_eq!(result, expected);
         }
 
         #[test]
@@ -75,18 +67,13 @@ mod tests {
             assert_eq!(result, Command::Sql);
         }
 
-        #[test]
-        fn open_console_returns_open_console() {
-            let result = parse_command("open-console");
+        #[rstest]
+        #[case("open-console", Command::OpenConsole)]
+        #[case("console", Command::OpenConsole)]
+        fn open_console_aliases(#[case] input: &str, #[case] expected: Command) {
+            let result = parse_command(input);
 
-            assert_eq!(result, Command::OpenConsole);
-        }
-
-        #[test]
-        fn console_returns_open_console() {
-            let result = parse_command("console");
-
-            assert_eq!(result, Command::OpenConsole);
+            assert_eq!(result, expected);
         }
 
         #[test]
