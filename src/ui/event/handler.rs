@@ -19,7 +19,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 
 fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     match state.input_mode {
-        InputMode::Normal => handle_normal_mode(key),
+        InputMode::Normal => handle_normal_mode(key, state),
         InputMode::CommandLine => handle_command_line_mode(key),
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
@@ -28,8 +28,9 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     }
 }
 
-fn handle_normal_mode(key: KeyEvent) -> Action {
-    use crate::app::inspector_tab::InspectorTab;
+fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::focused_pane::FocusedPane;
+    use crate::app::mode::Mode;
 
     match (key.code, key.modifiers) {
         // Ctrl+P: Open Table Picker
@@ -71,12 +72,15 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Home => Action::SelectFirst,
         KeyCode::End => Action::SelectLast,
 
-        // Inspector sub-tab switching (1-5 keys)
-        KeyCode::Char('1') => Action::InspectorSelectTab(InspectorTab::Columns),
-        KeyCode::Char('2') => Action::InspectorSelectTab(InspectorTab::Indexes),
-        KeyCode::Char('3') => Action::InspectorSelectTab(InspectorTab::ForeignKeys),
-        KeyCode::Char('4') => Action::InspectorSelectTab(InspectorTab::Rls),
-        KeyCode::Char('5') => Action::InspectorSelectTab(InspectorTab::Ddl),
+        // Pane focus switching (1/2/3 keys - mode dependent)
+        KeyCode::Char(c @ '1'..='3') => match state.mode {
+            Mode::Browse => FocusedPane::from_browse_key(c)
+                .map(Action::SetFocusedPane)
+                .unwrap_or(Action::None),
+            Mode::ER => FocusedPane::from_er_key(c)
+                .map(Action::SetFocusedPane)
+                .unwrap_or(Action::None),
+        },
 
         // Inspector sub-tab navigation ([ and ])
         KeyCode::Char('[') => Action::InspectorPrevTab,
@@ -154,7 +158,6 @@ fn handle_sql_modal_keys(key: KeyEvent) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::inspector_tab::InspectorTab;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -166,14 +169,29 @@ mod tests {
 
     mod normal_mode {
         use super::*;
+        use crate::app::focused_pane::FocusedPane;
+        use crate::app::mode::Mode;
         use rstest::rstest;
+
+        fn browse_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.mode = Mode::Browse;
+            state
+        }
+
+        fn er_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.mode = Mode::ER;
+            state
+        }
 
         // Important keys with special handling: keep individual tests
         #[test]
         fn ctrl_p_opens_table_picker() {
             let key = key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::OpenTablePicker));
         }
@@ -181,50 +199,63 @@ mod tests {
         #[test]
         fn ctrl_k_opens_command_palette() {
             let key = key_with_mod(KeyCode::Char('k'), KeyModifiers::CONTROL);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::OpenCommandPalette));
         }
 
         #[test]
         fn q_returns_quit() {
-            let result = handle_normal_mode(key(KeyCode::Char('q')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
 
         #[test]
         fn question_mark_opens_help() {
-            let result = handle_normal_mode(key(KeyCode::Char('?')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('?')), &state);
 
             assert!(matches!(result, Action::OpenHelp));
         }
 
         #[test]
         fn colon_enters_command_line() {
-            let result = handle_normal_mode(key(KeyCode::Char(':')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(':')), &state);
 
             assert!(matches!(result, Action::EnterCommandLine));
         }
 
         #[test]
         fn r_reloads_metadata() {
-            let result = handle_normal_mode(key(KeyCode::Char('r')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('r')), &state);
 
             assert!(matches!(result, Action::ReloadMetadata));
         }
 
         #[test]
         fn esc_returns_escape() {
-            let result = handle_normal_mode(key(KeyCode::Esc));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Esc), &state);
 
             assert!(matches!(result, Action::Escape));
         }
 
         #[test]
         fn tab_returns_next_tab() {
-            let result = handle_normal_mode(key(KeyCode::Tab));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
             assert!(matches!(result, Action::NextTab));
         }
@@ -232,15 +263,18 @@ mod tests {
         #[test]
         fn shift_tab_returns_previous_tab() {
             let key = key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::PreviousTab));
         }
 
         #[test]
         fn backtab_returns_previous_tab() {
-            let result = handle_normal_mode(key(KeyCode::BackTab));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
 
             assert!(matches!(result, Action::PreviousTab));
         }
@@ -250,7 +284,9 @@ mod tests {
         #[case(KeyCode::Up, "up arrow")]
         #[case(KeyCode::Char('k'), "k")]
         fn navigation_selects_previous(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectPrevious));
         }
@@ -259,7 +295,9 @@ mod tests {
         #[case(KeyCode::Down, "down arrow")]
         #[case(KeyCode::Char('j'), "j")]
         fn navigation_selects_next(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectNext));
         }
@@ -268,7 +306,9 @@ mod tests {
         #[case(KeyCode::Char('g'), "g")]
         #[case(KeyCode::Home, "home")]
         fn navigation_selects_first(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectFirst));
         }
@@ -277,41 +317,71 @@ mod tests {
         #[case(KeyCode::Char('G'), "capital G")]
         #[case(KeyCode::End, "end")]
         fn navigation_selects_last(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectLast));
         }
 
-        // Inspector tab selection (1-5 keys)
+        // Pane focus switching in Browse mode (1/2/3 keys)
         #[rstest]
-        #[case('1', InspectorTab::Columns)]
-        #[case('2', InspectorTab::Indexes)]
-        #[case('3', InspectorTab::ForeignKeys)]
-        #[case('4', InspectorTab::Rls)]
-        #[case('5', InspectorTab::Ddl)]
-        fn inspector_tab_selection(#[case] key_char: char, #[case] expected_tab: InspectorTab) {
-            let result = handle_normal_mode(key(KeyCode::Char(key_char)));
+        #[case('1', FocusedPane::Explorer)]
+        #[case('2', FocusedPane::Inspector)]
+        #[case('3', FocusedPane::Result)]
+        fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+            let state = browse_state();
 
-            assert!(matches!(result, Action::InspectorSelectTab(tab) if tab == expected_tab));
+            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
+
+            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
+        }
+
+        // Pane focus switching in ER mode (1/2 keys)
+        #[rstest]
+        #[case('1', FocusedPane::Graph)]
+        #[case('2', FocusedPane::Details)]
+        fn er_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+            let state = er_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
+
+            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
+        }
+
+        // Key '3' in ER mode should return None (only 2 panes)
+        #[test]
+        fn er_mode_key_3_returns_none() {
+            let state = er_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('3')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
         fn bracket_left_returns_inspector_prev_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('[')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
 
             assert!(matches!(result, Action::InspectorPrevTab));
         }
 
         #[test]
         fn bracket_right_returns_inspector_next_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char(']')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
 
             assert!(matches!(result, Action::InspectorNextTab));
         }
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_normal_mode(key(KeyCode::Char('z')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('z')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -557,8 +627,9 @@ mod tests {
         #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
         fn ctrl_h_should_open_result_history() {
             let key = key_with_mod(KeyCode::Char('h'), KeyModifiers::CONTROL);
+            let state = AppState::new("test".to_string(), "default".to_string());
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             // When implemented, this should match Action::OpenResultHistory or similar
             assert!(
