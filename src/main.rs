@@ -206,11 +206,13 @@ async fn handle_action(
             }
         }
         Action::SqlModalNewLine => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, '\n');
             state.sql_modal_cursor += 1;
         }
         Action::SqlModalTab => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert_str(byte_idx, "    ");
             state.sql_modal_cursor += 4;
@@ -617,9 +619,17 @@ async fn handle_action(
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
                 state.last_error = Some(error.clone());
-                // If we're in SqlModal mode, set error state
+                // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
                     state.sql_modal_state = app::state::SqlModalState::Error;
+                    // Show error in result pane for better visibility
+                    let error_result = domain::QueryResult::error(
+                        state.sql_modal_content.clone(),
+                        error,
+                        0,
+                        domain::QuerySource::Adhoc,
+                    );
+                    state.current_result = Some(error_result);
                 }
             }
         }
