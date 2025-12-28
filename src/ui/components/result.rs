@@ -204,3 +204,94 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
         format!("{}...", truncated)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[test]
+    fn short_string_returns_unchanged() {
+        let result = truncate_cell("hello", 10);
+
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn exact_length_returns_unchanged() {
+        let result = truncate_cell("hello", 5);
+
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn long_string_truncates_with_ellipsis() {
+        let result = truncate_cell("hello world", 8);
+
+        assert_eq!(result, "hello...");
+    }
+
+    #[test]
+    fn multibyte_characters_count_correctly() {
+        let result = truncate_cell("こんにちは世界", 5);
+
+        assert_eq!(result, "こん...");
+    }
+
+    #[rstest]
+    #[case("日本語テスト", 10, "日本語テスト")]
+    #[case("日本語テスト", 5, "日本...")]
+    #[case("日本語テスト", 4, "日...")]
+    #[case("日本語テスト", 3, "...")]
+    #[case("SELECT * FROM 日本語テーブル", 15, "SELECT * FRO...")]
+    fn multibyte_truncation_is_safe(
+        #[case] input: &str,
+        #[case] max: usize,
+        #[case] expected: &str,
+    ) {
+        let result = truncate_cell(input, max);
+
+        assert_eq!(result, expected);
+        assert!(result.chars().count() <= max);
+    }
+
+    #[test]
+    fn newline_shows_first_line_only() {
+        let result = truncate_cell("first\nsecond\nthird", 20);
+
+        assert_eq!(result, "first");
+    }
+
+    #[test]
+    fn newline_with_truncation_applies_to_first_line() {
+        let result = truncate_cell("this is a long first line\nsecond", 10);
+
+        assert_eq!(result, "this is...");
+    }
+
+    #[test]
+    fn empty_string_returns_empty() {
+        let result = truncate_cell("", 10);
+
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn zero_max_chars_returns_ellipsis_only() {
+        let result = truncate_cell("hello", 0);
+
+        assert_eq!(result, "...");
+    }
+
+    #[rstest]
+    #[case(1, "...")]
+    #[case(2, "...")]
+    #[case(3, "...")]
+    #[case(4, "h...")]
+    #[case(5, "he...")]
+    fn small_max_chars_handles_edge_cases(#[case] max: usize, #[case] expected: &str) {
+        let result = truncate_cell("hello world", max);
+
+        assert_eq!(result, expected);
+    }
+}

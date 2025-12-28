@@ -23,6 +23,7 @@ csv = "1"
 
 [dev-dependencies]
 pretty_assertions = "1"
+rstest = "0.19"
 
 [profile.release]
 lto = true

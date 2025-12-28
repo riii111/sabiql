@@ -138,6 +138,17 @@ async fn handle_action(
         }
         Action::ToggleFocus => state.focus_mode = !state.focus_mode,
 
+        // Inspector sub-tab actions
+        Action::InspectorNextTab => {
+            state.inspector_tab = state.inspector_tab.next();
+        }
+        Action::InspectorPrevTab => {
+            state.inspector_tab = state.inspector_tab.prev();
+        }
+        Action::InspectorSelectTab(tab) => {
+            state.inspector_tab = tab;
+        }
+
         Action::OpenTablePicker => {
             state.input_mode = InputMode::TablePicker;
             state.filter_input.clear();

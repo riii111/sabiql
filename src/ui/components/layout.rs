@@ -43,6 +43,9 @@ impl MainLayout {
             Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(right_area);
 
+        // Update result pane height for accurate scroll calculations
+        state.result_pane_height = result_area.height;
+
         Inspector::render(frame, inspector_area, state);
         ResultPane::render(frame, result_area, state);
 

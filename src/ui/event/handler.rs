@@ -29,6 +29,8 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
 }
 
 fn handle_normal_mode(key: KeyEvent) -> Action {
+    use crate::app::inspector_tab::InspectorTab;
+
     match (key.code, key.modifiers) {
         // Ctrl+Shift+P: Open Command Palette
         (KeyCode::Char('p'), m)
@@ -77,6 +79,17 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         KeyCode::Char('G') => Action::SelectLast,
         KeyCode::Home => Action::SelectFirst,
         KeyCode::End => Action::SelectLast,
+
+        // Inspector sub-tab switching (1-5 keys)
+        KeyCode::Char('1') => Action::InspectorSelectTab(InspectorTab::Columns),
+        KeyCode::Char('2') => Action::InspectorSelectTab(InspectorTab::Indexes),
+        KeyCode::Char('3') => Action::InspectorSelectTab(InspectorTab::ForeignKeys),
+        KeyCode::Char('4') => Action::InspectorSelectTab(InspectorTab::Rls),
+        KeyCode::Char('5') => Action::InspectorSelectTab(InspectorTab::Ddl),
+
+        // Inspector sub-tab navigation ([ and ])
+        KeyCode::Char('[') => Action::InspectorPrevTab,
+        KeyCode::Char(']') => Action::InspectorNextTab,
 
         _ => Action::None,
     }

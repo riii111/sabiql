@@ -605,11 +605,28 @@ impl PostgresAdapter {
     }
 
     /// Execute an adhoc SQL query.
+    /// For safety, only SELECT queries are allowed to use CSV output format.
+    /// Non-SELECT queries may produce NOTICE messages that break CSV parsing.
     pub async fn execute_adhoc(
         &self,
         dsn: &str,
         query: &str,
     ) -> Result<QueryResult, MetadataError> {
+        // Check if query is a SELECT statement (basic validation)
+        let trimmed = query.trim();
+        let is_select = trimmed
+            .to_lowercase()
+            .starts_with("select")
+            || trimmed
+                .to_lowercase()
+                .starts_with("with"); // CTEs are also read-only
+
+        if !is_select {
+            return Err(MetadataError::QueryFailed(
+                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
+            ));
+        }
+
         self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 
@@ -775,5 +792,150 @@ mod tests {
             PostgresAdapter::extract_database_name("host=localhost user=postgres"),
             "unknown"
         );
+    }
+
+    #[test]
+    fn quote_identifier_wraps_with_double_quotes() {
+        let result = PostgresAdapter::quote_identifier("users");
+
+        assert_eq!(result, "\"users\"");
+    }
+
+    #[test]
+    fn quote_identifier_escapes_double_quotes() {
+        let result = PostgresAdapter::quote_identifier("my\"table");
+
+        assert_eq!(result, "\"my\"\"table\"");
+    }
+
+    #[test]
+    fn quote_identifier_handles_empty_string() {
+        let result = PostgresAdapter::quote_identifier("");
+
+        assert_eq!(result, "\"\"");
+    }
+
+    mod csv_parsing {
+        #[test]
+        fn empty_csv_output_has_no_headers() {
+            let csv_data = "";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(false)
+                .from_reader(csv_data.as_bytes());
+
+            let records: Vec<_> = reader.records().collect();
+
+            assert_eq!(records.len(), 0);
+        }
+
+        #[test]
+        fn valid_csv_parses_headers_and_rows() {
+            let csv_data = "id,name\n1,alice\n2,bob";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(csv_data.as_bytes());
+
+            let headers: Vec<String> = reader
+                .headers()
+                .unwrap()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let rows: Vec<_> = reader.records().collect();
+
+            assert_eq!(headers.len(), 2);
+            assert_eq!(headers[0], "id");
+            assert_eq!(headers[1], "name");
+            assert_eq!(rows.len(), 2);
+        }
+
+        #[test]
+        fn csv_with_multibyte_characters_parses_correctly() {
+            let csv_data = "名前,年齢\n太郎,25\n花子,30";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(csv_data.as_bytes());
+
+            let headers: Vec<String> = reader
+                .headers()
+                .unwrap()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let first_row = reader.records().next().unwrap().unwrap();
+
+            assert_eq!(headers[0], "名前");
+            assert_eq!(first_row.get(0), Some("太郎"));
+        }
+
+        #[test]
+        fn csv_with_quoted_fields_parses_correctly() {
+            let csv_data = "id,description\n1,\"hello, world\"\n2,\"line1\nline2\"";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(csv_data.as_bytes());
+
+            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
+
+            assert_eq!(rows[0].get(1), Some("hello, world"));
+            assert_eq!(rows[1].get(1), Some("line1\nline2"));
+        }
+
+        #[test]
+        fn csv_with_empty_values_parses_correctly() {
+            let csv_data = "id,name,email\n1,,alice@example.com\n2,bob,";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(csv_data.as_bytes());
+
+            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
+
+            assert_eq!(rows[0].get(1), Some(""));
+            assert_eq!(rows[1].get(2), Some(""));
+        }
+
+        #[test]
+        fn invalid_csv_returns_error() {
+            let csv_data = "id,name\n1,alice\n2,bob,extra";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .flexible(false)
+                .from_reader(csv_data.as_bytes());
+
+            let _ = reader.headers().unwrap();
+            let results: Vec<_> = reader.records().collect();
+
+            assert!(results[1].is_err());
+        }
+
+        #[test]
+        fn non_csv_output_like_notice_returns_error() {
+            let non_csv = "NOTICE: some database notice\nNOTICE: another line";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(non_csv.as_bytes());
+
+            let headers = reader.headers();
+
+            assert!(headers.is_ok());
+        }
+
+        #[test]
+        fn mixed_notice_and_csv_parses_first_line_as_header() {
+            let mixed = "id,name\n1,alice";
+            let mut reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(mixed.as_bytes());
+
+            let headers: Vec<String> = reader
+                .headers()
+                .unwrap()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+
+            assert_eq!(headers[0], "id");
+            assert_eq!(headers[1], "name");
+        }
     }
 }
