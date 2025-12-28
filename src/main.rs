@@ -675,11 +675,7 @@ async fn handle_action(
         // Clipboard operations
         Action::CopySelection => {
             // Context-dependent copy
-            let content = if let Some(table) = &state.current_table {
-                Some(table.clone())
-            } else {
-                None
-            };
+            let content = state.current_table.clone();
 
             if let Some(content) = content {
                 let _ = action_tx.send(Action::CopyToClipboard(content)).await;

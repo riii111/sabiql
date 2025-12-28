@@ -11,6 +11,7 @@ use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary,
 };
+use crate::infra::utils::{quote_ident, quote_literal};
 
 pub struct PostgresAdapter {
     timeout_secs: u64,
@@ -82,11 +83,6 @@ impl PostgresAdapter {
         Ok(stdout)
     }
 
-    /// Escape string literal for safe SQL interpolation (PostgreSQL quote_literal equivalent).
-    pub fn quote_literal(value: &str) -> String {
-        format!("'{}'", value.replace('\'', "''"))
-    }
-
     fn tables_query() -> &'static str {
         r#"
         SELECT json_agg(row_to_json(t))
@@ -155,8 +151,8 @@ impl PostgresAdapter {
                   AND NOT a.attisdropped
             ) c
             "#,
-            Self::quote_literal(schema),
-            Self::quote_literal(table)
+            quote_literal(schema),
+            quote_literal(table)
         )
     }
 
@@ -184,8 +180,8 @@ impl PostgresAdapter {
                 ORDER BY idx.relname
             ) i
             "#,
-            Self::quote_literal(schema),
-            Self::quote_literal(table)
+            quote_literal(schema),
+            quote_literal(table)
         )
     }
 
@@ -217,8 +213,8 @@ impl PostgresAdapter {
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
             "#,
-            Self::quote_literal(schema),
-            Self::quote_literal(table)
+            quote_literal(schema),
+            quote_literal(table)
         )
     }
 
@@ -250,8 +246,8 @@ impl PostgresAdapter {
             WHERE n.nspname = {}
               AND c.relname = {}
             "#,
-            Self::quote_literal(schema),
-            Self::quote_literal(table)
+            quote_literal(schema),
+            quote_literal(table)
         )
     }
 
@@ -472,11 +468,6 @@ impl PostgresAdapter {
         }))
     }
 
-    /// Escape identifier for safe SQL interpolation (PostgreSQL quote_ident equivalent).
-    pub fn quote_identifier(name: &str) -> String {
-        format!("\"{}\"", name.replace('"', "\"\""))
-    }
-
     /// Execute a raw SQL query and return structured results.
     /// This is used for adhoc queries and preview queries.
     pub async fn execute_query_raw(
@@ -596,8 +587,8 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         let query = format!(
             "SELECT * FROM {}.{} LIMIT {}",
-            Self::quote_identifier(schema),
-            Self::quote_identifier(table),
+            quote_ident(schema),
+            quote_ident(table),
             limit
         );
         self.execute_query_raw(dsn, &query, QuerySource::Preview)
@@ -725,26 +716,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_quote_literal_simple() {
-        assert_eq!(PostgresAdapter::quote_literal("hello"), "'hello'");
-    }
-
-    #[test]
-    fn test_quote_literal_with_single_quote() {
-        assert_eq!(PostgresAdapter::quote_literal("it's"), "'it''s'");
-    }
-
-    #[test]
-    fn test_quote_literal_multiple_quotes() {
-        assert_eq!(PostgresAdapter::quote_literal("a'b'c"), "'a''b''c'");
-    }
-
-    #[test]
-    fn test_quote_literal_empty() {
-        assert_eq!(PostgresAdapter::quote_literal(""), "''");
-    }
-
-    #[test]
     fn test_extract_database_name_uri_format() {
         assert_eq!(
             PostgresAdapter::extract_database_name("postgres://user:pass@host:5432/mydb"),
@@ -792,27 +763,6 @@ mod tests {
             PostgresAdapter::extract_database_name("host=localhost user=postgres"),
             "unknown"
         );
-    }
-
-    #[test]
-    fn quote_identifier_wraps_with_double_quotes() {
-        let result = PostgresAdapter::quote_identifier("users");
-
-        assert_eq!(result, "\"users\"");
-    }
-
-    #[test]
-    fn quote_identifier_escapes_double_quotes() {
-        let result = PostgresAdapter::quote_identifier("my\"table");
-
-        assert_eq!(result, "\"my\"\"table\"");
-    }
-
-    #[test]
-    fn quote_identifier_handles_empty_string() {
-        let result = PostgresAdapter::quote_identifier("");
-
-        assert_eq!(result, "\"\"");
     }
 
     mod csv_parsing {
