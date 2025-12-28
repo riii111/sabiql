@@ -34,10 +34,7 @@ impl Explorer {
                 .tables()
                 .iter()
                 .map(|t| {
-                    let mut text = t.qualified_name();
-                    if t.has_rls {
-                        text.push_str(" [RLS]");
-                    }
+                    let text = t.qualified_name();
                     ListItem::new(text)
                 })
                 .collect()
