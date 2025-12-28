@@ -5,6 +5,7 @@ mod infra;
 mod ui;
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use color_eyre::eyre::Result;
@@ -14,11 +15,12 @@ use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
-use app::ports::MetadataProvider;
-use app::state::AppState;
+use app::ports::{ClipboardWriter, MetadataProvider};
+use app::state::{AppState, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
+use infra::clipboard::PbcopyAdapter;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
@@ -67,6 +69,10 @@ async fn main() -> Result<()> {
 
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
     tui.enter()?;
+
+    // Initialize terminal height from actual terminal size
+    let initial_size = tui.terminal().size()?;
+    state.terminal_height = initial_size.height;
 
     // Load metadata on startup if DSN is available
     if state.dsn.is_some() {
@@ -120,6 +126,7 @@ async fn handle_action(
         Action::Resize(w, h) => {
             tui.terminal()
                 .resize(ratatui::layout::Rect::new(0, 0, w, h))?;
+            state.terminal_height = h;
         }
         Action::NextTab => {
             const TAB_COUNT: usize = 2;
@@ -130,6 +137,17 @@ async fn handle_action(
             state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
         }
         Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+
+        // Inspector sub-tab actions
+        Action::InspectorNextTab => {
+            state.inspector_tab = state.inspector_tab.next();
+        }
+        Action::InspectorPrevTab => {
+            state.inspector_tab = state.inspector_tab.prev();
+        }
+        Action::InspectorSelectTab(tab) => {
+            state.inspector_tab = tab;
+        }
 
         Action::OpenTablePicker => {
             state.input_mode = InputMode::TablePicker;
@@ -157,6 +175,114 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
 
+        // SQL Modal actions
+        Action::OpenSqlModal => {
+            state.input_mode = InputMode::SqlModal;
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+        }
+        Action::CloseSqlModal => {
+            state.input_mode = InputMode::Normal;
+        }
+        Action::SqlModalInput(c) => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert(byte_idx, c);
+            state.sql_modal_cursor += 1;
+        }
+        Action::SqlModalBackspace => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+            if state.sql_modal_cursor > 0 {
+                state.sql_modal_cursor -= 1;
+                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                state.sql_modal_content.remove(byte_idx);
+            }
+        }
+        Action::SqlModalDelete => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+            let total_chars = char_count(&state.sql_modal_content);
+            if state.sql_modal_cursor < total_chars {
+                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                state.sql_modal_content.remove(byte_idx);
+            }
+        }
+        Action::SqlModalNewLine => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert(byte_idx, '\n');
+            state.sql_modal_cursor += 1;
+        }
+        Action::SqlModalTab => {
+            state.sql_modal_state = app::state::SqlModalState::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+            state.sql_modal_content.insert_str(byte_idx, "    ");
+            state.sql_modal_cursor += 4;
+        }
+        Action::SqlModalMoveCursor(movement) => {
+            use app::action::CursorMove;
+            let content = &state.sql_modal_content;
+            let cursor = state.sql_modal_cursor;
+            let total_chars = char_count(content);
+
+            // Build line info: Vec<(start_char_idx, char_count)>
+            let lines: Vec<(usize, usize)> = {
+                let mut result = Vec::new();
+                let mut start = 0;
+                for line in content.split('\n') {
+                    let len = line.chars().count();
+                    result.push((start, len));
+                    start += len + 1; // +1 for '\n'
+                }
+                result
+            };
+
+            // Find current line and column
+            let (current_line, current_col) = {
+                let mut line_idx = 0;
+                let mut col = cursor;
+                for (i, (start, len)) in lines.iter().enumerate() {
+                    if cursor >= *start && cursor <= start + len {
+                        line_idx = i;
+                        col = cursor - start;
+                        break;
+                    }
+                }
+                (line_idx, col)
+            };
+
+            state.sql_modal_cursor = match movement {
+                CursorMove::Left => cursor.saturating_sub(1),
+                CursorMove::Right => (cursor + 1).min(total_chars),
+                CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
+                CursorMove::End => lines
+                    .get(current_line)
+                    .map(|(s, l)| s + l)
+                    .unwrap_or(total_chars),
+                CursorMove::Up => {
+                    if current_line == 0 {
+                        cursor
+                    } else {
+                        let (prev_start, prev_len) = lines[current_line - 1];
+                        prev_start + current_col.min(prev_len)
+                    }
+                }
+                CursorMove::Down => {
+                    if current_line + 1 >= lines.len() {
+                        cursor
+                    } else {
+                        let (next_start, next_len) = lines[current_line + 1];
+                        next_start + current_col.min(next_len)
+                    }
+                }
+            };
+        }
+        Action::SqlModalSubmit => {
+            let query = state.sql_modal_content.trim().to_string();
+            if !query.is_empty() {
+                state.sql_modal_state = app::state::SqlModalState::Running;
+                let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
+            }
+        }
+
         // Command line actions
         Action::EnterCommandLine => {
             state.input_mode = InputMode::CommandLine;
@@ -176,10 +302,14 @@ async fn handle_action(
             let follow_up = command_to_action(cmd);
             state.input_mode = InputMode::Normal;
             state.command_line_input.clear();
-            if matches!(follow_up, Action::Quit) {
-                state.should_quit = true;
-            } else if matches!(follow_up, Action::OpenHelp) {
-                state.input_mode = InputMode::Help;
+            match follow_up {
+                Action::Quit => state.should_quit = true,
+                Action::OpenHelp => state.input_mode = InputMode::Help,
+                Action::OpenSqlModal => {
+                    state.input_mode = InputMode::SqlModal;
+                    state.sql_modal_state = app::state::SqlModalState::Editing;
+                }
+                _ => {}
             }
         }
 
@@ -254,8 +384,30 @@ async fn handle_action(
             if state.input_mode == InputMode::TablePicker {
                 let filtered = state.filtered_tables();
                 if let Some(table) = filtered.get(state.picker_selected) {
+                    let schema = table.schema.clone();
+                    let table_name = table.name.clone();
                     state.current_table = Some(table.qualified_name());
                     state.input_mode = InputMode::Normal;
+
+                    // Increment generation to invalidate any in-flight requests
+                    state.selection_generation += 1;
+                    let current_gen = state.selection_generation;
+
+                    // Trigger table detail loading and preview
+                    let _ = action_tx
+                        .send(Action::LoadTableDetail {
+                            schema: schema.clone(),
+                            table: table_name.clone(),
+                            generation: current_gen,
+                        })
+                        .await;
+                    let _ = action_tx
+                        .send(Action::ExecutePreview {
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                        })
+                        .await;
                 }
             } else if state.input_mode == InputMode::CommandPalette {
                 let cmd_action = palette_action_for_index(state.picker_selected);
@@ -269,6 +421,16 @@ async fn handle_action(
                         state.picker_selected = 0;
                     }
                     Action::ToggleFocus => state.focus_mode = !state.focus_mode,
+                    Action::OpenSqlModal => {
+                        state.input_mode = InputMode::SqlModal;
+                        state.sql_modal_state = app::state::SqlModalState::Editing;
+                    }
+                    Action::ReloadMetadata => {
+                        if let Some(dsn) = &state.dsn {
+                            metadata_cache.invalidate(dsn).await;
+                            let _ = action_tx.send(Action::LoadMetadata).await;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -331,6 +493,246 @@ async fn handle_action(
             }
         }
 
+        // Table detail loading
+        Action::LoadTableDetail {
+            schema,
+            table,
+            generation,
+        } => {
+            if let Some(dsn) = &state.dsn {
+                let dsn = dsn.clone();
+                let provider = Arc::clone(metadata_provider);
+                let tx = action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx
+                                .send(Action::TableDetailLoaded(Box::new(detail), generation))
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::TableDetailFailed(e.to_string(), generation))
+                                .await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::TableDetailLoaded(detail, generation) => {
+            // Ignore stale results from previous table selections
+            if generation == state.selection_generation {
+                state.table_detail = Some(*detail);
+            }
+        }
+
+        Action::TableDetailFailed(error, generation) => {
+            // Ignore stale errors from previous table selections
+            if generation == state.selection_generation {
+                state.last_error = Some(error);
+            }
+        }
+
+        // Query execution
+        Action::ExecutePreview {
+            schema,
+            table,
+            generation,
+        } => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = QueryState::Running;
+                let dsn = dsn.clone();
+                let tx = action_tx.clone();
+
+                // Create a new PostgresAdapter for query execution
+                let adapter = PostgresAdapter::new();
+                tokio::spawn(async move {
+                    match adapter.execute_preview(&dsn, &schema, &table, 100).await {
+                        Ok(result) => {
+                            let _ = tx
+                                .send(Action::QueryCompleted(Box::new(result), generation))
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::QueryFailed(e.to_string(), generation))
+                                .await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::ExecuteAdhoc(query) => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = QueryState::Running;
+                let dsn = dsn.clone();
+                let tx = action_tx.clone();
+
+                let adapter = PostgresAdapter::new();
+                tokio::spawn(async move {
+                    match adapter.execute_adhoc(&dsn, &query).await {
+                        Ok(result) => {
+                            // Adhoc queries use generation 0 to always show results
+                            let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;
+                        }
+                        Err(e) => {
+                            // Adhoc queries use generation 0 to always show errors
+                            let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::QueryCompleted(result, generation) => {
+            // For Preview (non-zero generation), check if this is still the current selection
+            // For Adhoc (generation 0), always show results
+            if generation == 0 || generation == state.selection_generation {
+                state.query_state = QueryState::Idle;
+                state.result_scroll_offset = 0;
+                state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+                state.history_index = None;
+
+                if result.source == domain::QuerySource::Adhoc {
+                    if result.is_error() {
+                        state.sql_modal_state = app::state::SqlModalState::Error;
+                    } else {
+                        state.sql_modal_state = app::state::SqlModalState::Success;
+                    }
+                }
+
+                // Save adhoc results to history
+                if result.source == domain::QuerySource::Adhoc && !result.is_error() {
+                    state.result_history.push((*result).clone());
+                }
+
+                state.current_result = Some(*result);
+            }
+        }
+
+        Action::QueryFailed(error, generation) => {
+            // For Preview (non-zero generation), check if this is still the current selection
+            // For Adhoc (generation 0), always show errors
+            if generation == 0 || generation == state.selection_generation {
+                state.query_state = QueryState::Idle;
+                state.last_error = Some(error.clone());
+                // If we're in SqlModal mode, set error state and show error in result pane
+                if state.input_mode == InputMode::SqlModal {
+                    state.sql_modal_state = app::state::SqlModalState::Error;
+                    // Show error in result pane for better visibility
+                    let error_result = domain::QueryResult::error(
+                        state.sql_modal_content.clone(),
+                        error,
+                        0,
+                        domain::QuerySource::Adhoc,
+                    );
+                    state.current_result = Some(error_result);
+                }
+            }
+        }
+
+        // Result history navigation
+        Action::HistoryPrev => {
+            let history_len = state.result_history.len();
+            if history_len > 0 {
+                match state.history_index {
+                    None => {
+                        // Start browsing history from the most recent
+                        state.history_index = Some(history_len - 1);
+                    }
+                    Some(idx) if idx > 0 => {
+                        state.history_index = Some(idx - 1);
+                    }
+                    _ => {}
+                }
+                state.result_scroll_offset = 0;
+            }
+        }
+
+        Action::HistoryNext => {
+            let history_len = state.result_history.len();
+            if let Some(idx) = state.history_index {
+                if idx + 1 < history_len {
+                    state.history_index = Some(idx + 1);
+                } else {
+                    // Return to current result
+                    state.history_index = None;
+                }
+                state.result_scroll_offset = 0;
+            }
+        }
+
+        // Result scroll
+        Action::ResultScrollUp => {
+            state.result_scroll_offset = state.result_scroll_offset.saturating_sub(1);
+        }
+
+        Action::ResultScrollDown => {
+            // We need the result to determine max scroll
+            let visible = state.result_visible_rows();
+            let max_scroll = state
+                .current_result
+                .as_ref()
+                .map(|r| r.rows.len().saturating_sub(visible))
+                .unwrap_or(0);
+            if state.result_scroll_offset < max_scroll {
+                state.result_scroll_offset += 1;
+            }
+        }
+
+        Action::ResultScrollTop => {
+            state.result_scroll_offset = 0;
+        }
+
+        Action::ResultScrollBottom => {
+            let visible = state.result_visible_rows();
+            let max_scroll = state
+                .current_result
+                .as_ref()
+                .map(|r| r.rows.len().saturating_sub(visible))
+                .unwrap_or(0);
+            state.result_scroll_offset = max_scroll;
+        }
+
+        // Clipboard operations
+        Action::CopySelection => {
+            // Context-dependent copy
+            let content = state.current_table.clone();
+
+            if let Some(content) = content {
+                let _ = action_tx.send(Action::CopyToClipboard(content)).await;
+            }
+        }
+
+        Action::CopyLastError => {
+            if let Some(error) = &state.last_error {
+                let _ = action_tx.send(Action::CopyToClipboard(error.clone())).await;
+            }
+        }
+
+        Action::CopyToClipboard(content) => {
+            let clipboard = PbcopyAdapter::new();
+            match clipboard.write(&content) {
+                Ok(()) => {
+                    let _ = action_tx.send(Action::ClipboardSuccess).await;
+                }
+                Err(e) => {
+                    let _ = action_tx.send(Action::ClipboardFailed(e.to_string())).await;
+                }
+            }
+        }
+
+        Action::ClipboardSuccess => {
+            // Could show a notification, for now just log or do nothing
+        }
+
+        Action::ClipboardFailed(error) => {
+            state.last_error = Some(format!("Clipboard error: {}", error));
+        }
+
         _ => {}
     }
 
@@ -341,3 +743,17 @@ fn extract_database_name(dsn: &str) -> Option<String> {
     let name = PostgresAdapter::extract_database_name(dsn);
     if name == "unknown" { None } else { Some(name) }
 }
+
+/// Convert character index to byte index in a UTF-8 string.
+fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(byte_idx, _)| byte_idx)
+        .unwrap_or(s.len())
+}
+
+/// Get the number of characters in a UTF-8 string.
+fn char_count(s: &str) -> usize {
+    s.chars().count()
+}
+

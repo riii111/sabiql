@@ -1,3 +1,5 @@
+pub mod clipboard;
 pub mod metadata;
 
-pub use metadata::{DatabaseType, MetadataError, MetadataProvider};
+pub use clipboard::{ClipboardError, ClipboardWriter};
+pub use metadata::{MetadataError, MetadataProvider};

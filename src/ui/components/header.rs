@@ -13,7 +13,6 @@ impl Header {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let db_name = state.database_name.as_deref().unwrap_or("-");
         let table = state.current_table.as_deref().unwrap_or("-");
-        let cache_age = state.cache_age_display();
 
         let (status_text, status_color) = if state.dsn.is_none() {
             ("no dsn", Color::Red)
@@ -34,8 +33,6 @@ impl Header {
             Span::raw(db_name),
             Span::raw(" | "),
             Span::raw(table),
-            Span::raw(" | cache:"),
-            Span::raw(&cache_age),
             Span::raw(" | "),
             Span::styled(status_text, Style::default().fg(status_color)),
         ]);

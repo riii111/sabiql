@@ -42,6 +42,7 @@ impl HelpOverlay {
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
             Self::key_line("f", "Toggle Focus mode"),
+            Self::key_line("r", "Reload metadata"),
             Self::key_line("Tab", "Next tab"),
             Self::key_line("Shift+Tab", "Previous tab"),
             Line::from(""),
@@ -56,6 +57,17 @@ impl HelpOverlay {
             Self::key_line("k / ↑", "Move up"),
             Self::key_line("g / Home", "Go to first item"),
             Self::key_line("G / End", "Go to last item"),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "=== SQL Editor ===",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Self::key_line("Ctrl+Enter", "Execute query"),
+            Self::key_line("Esc", "Close editor"),
+            Self::key_line("↑↓←→", "Move cursor"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== Overlays ===",
@@ -76,7 +88,7 @@ impl HelpOverlay {
             Line::from(""),
             Self::key_line(":quit", "Quit application"),
             Self::key_line(":help", "Show this help"),
-            Self::key_line(":sql", "Open SQL Modal (PR4)"),
+            Self::key_line(":sql", "Open SQL Editor"),
             Self::key_line(":open-console", "Open Console (PR5)"),
         ];
 
