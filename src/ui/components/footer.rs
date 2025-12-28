@@ -20,20 +20,30 @@ impl Footer {
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         match state.input_mode {
             InputMode::Normal => {
-                let pane_hint = match state.mode {
-                    Mode::Browse => ("1/2/3", "Pane"),
-                    Mode::ER => ("1/2", "Pane"),
-                };
-                vec![
-                    ("q", "Quit"),
-                    ("^P", "Tables"),
-                    ("^K", "Cmds"),
-                    (":", "Cmd"),
-                    ("?", "Help"),
-                    pane_hint,
-                    ("r", "Reload"),
-                    ("Tab", "Switch"),
-                ]
+                if state.focus_mode {
+                    // Focus mode: minimal hints
+                    vec![
+                        ("f", "Exit Focus"),
+                        ("j/k", "Scroll"),
+                        ("?", "Help"),
+                        ("q", "Quit"),
+                    ]
+                } else {
+                    let pane_hint = match state.mode {
+                        Mode::Browse => ("1/2/3", "Pane"),
+                        Mode::ER => ("1/2", "Pane"),
+                    };
+                    vec![
+                        ("q", "Quit"),
+                        ("^P", "Tables"),
+                        (":", "Cmd"),
+                        ("?", "Help"),
+                        ("f", "Focus"),
+                        pane_hint,
+                        ("[/]", "InsTabs"),
+                        ("r", "Reload"),
+                    ]
+                }
             }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![

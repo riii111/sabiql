@@ -41,7 +41,9 @@ impl HelpOverlay {
             Self::key_line("Ctrl+P", "Open Table Picker"),
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
-            Self::key_line("f", "Toggle Focus mode"),
+            Self::key_line("f", "Toggle Focus mode (Result full-screen)"),
+            Self::key_line("1/2/3", "Switch pane focus"),
+            Self::key_line("[ / ]", "Inspector prev/next tab"),
             Self::key_line("r", "Reload metadata"),
             Self::key_line("Tab", "Next tab"),
             Self::key_line("Shift+Tab", "Previous tab"),
@@ -89,7 +91,7 @@ impl HelpOverlay {
             Self::key_line(":quit", "Quit application"),
             Self::key_line(":help", "Show this help"),
             Self::key_line(":sql", "Open SQL Editor"),
-            Self::key_line(":open-console", "Open Console (PR5)"),
+            Self::key_line(":console", "Open Console (pgcli)"),
         ];
 
         let help = Paragraph::new(help_lines)

@@ -138,6 +138,7 @@ async fn handle_action(
             state.active_tab = (state.active_tab + TAB_COUNT - 1) % TAB_COUNT;
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
+        Action::ToggleFocus => state.focus_mode = !state.focus_mode,
 
         // Inspector sub-tab actions
         Action::InspectorNextTab => {
@@ -753,8 +754,15 @@ async fn handle_action(
                     .arg(dsn)
                     .status();
 
-                if let Err(e) = status {
-                    state.last_error = Some(format!("pgcli failed: {}", e));
+                match status {
+                    Err(e) => {
+                        state.last_error = Some(format!("pgcli failed to start: {}", e));
+                    }
+                    Ok(exit_status) if !exit_status.success() => {
+                        let code = exit_status.code().map_or("unknown".to_string(), |c| c.to_string());
+                        state.last_error = Some(format!("pgcli exited with code {}", code));
+                    }
+                    Ok(_) => {}
                 }
 
                 tui.resume()?;

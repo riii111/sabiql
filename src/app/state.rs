@@ -89,6 +89,9 @@ pub struct AppState {
     // Terminal dimensions for dynamic layout calculations
     pub terminal_height: u16,
     pub result_pane_height: u16,
+
+    // Focus mode (Result full-screen)
+    pub focus_mode: bool,
 }
 
 impl AppState {
@@ -135,8 +138,10 @@ impl AppState {
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
-            terminal_height: 24, // default minimum
+            terminal_height: 24,   // default minimum
             result_pane_height: 0, // will be updated on render
+            // Focus mode
+            focus_mode: false,
         }
     }
 
@@ -269,9 +274,12 @@ mod tests {
         state.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            tables: vec![
-                TableSummary::new("public".to_string(), "Users".to_string(), Some(100), false),
-            ],
+            tables: vec![TableSummary::new(
+                "public".to_string(),
+                "Users".to_string(),
+                Some(100),
+                false,
+            )],
             fetched_at: std::time::Instant::now(),
         });
         state.filter_input = "user".to_string();

@@ -62,6 +62,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
         KeyCode::Char('r') => Action::ReloadMetadata,
+        KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Esc => Action::Escape,
 
         // Navigation
@@ -240,6 +241,15 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('r')), &state);
 
             assert!(matches!(result, Action::ReloadMetadata));
+        }
+
+        #[test]
+        fn f_toggles_focus() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('f')), &state);
+
+            assert!(matches!(result, Action::ToggleFocus));
         }
 
         #[test]

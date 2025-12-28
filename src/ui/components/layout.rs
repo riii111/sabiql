@@ -33,21 +33,27 @@ impl MainLayout {
         Header::render(frame, header_area, state);
         Tabs::render(frame, tabs_area, state);
 
-        let [left_area, right_area] =
-            Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
-                .areas(main_area);
+        if state.focus_mode {
+            // Focus mode: Result takes full main area
+            state.result_pane_height = main_area.height;
+            ResultPane::render(frame, main_area, state);
+        } else {
+            // Normal mode: Explorer | Inspector / Result
+            let [left_area, right_area] =
+                Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+                    .areas(main_area);
 
-        Explorer::render(frame, left_area, state);
+            Explorer::render(frame, left_area, state);
 
-        let [inspector_area, result_area] =
-            Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(right_area);
+            let [inspector_area, result_area] =
+                Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .areas(right_area);
 
-        // Update result pane height for accurate scroll calculations
-        state.result_pane_height = result_area.height;
+            state.result_pane_height = result_area.height;
 
-        Inspector::render(frame, inspector_area, state);
-        ResultPane::render(frame, result_area, state);
+            Inspector::render(frame, inspector_area, state);
+            ResultPane::render(frame, result_area, state);
+        }
 
         Footer::render(frame, footer_area, state);
         CommandLine::render(frame, cmdline_area, state);

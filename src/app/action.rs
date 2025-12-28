@@ -123,6 +123,9 @@ pub enum Action {
 
     // Console
     OpenConsole,
+
+    // Focus mode
+    ToggleFocus,
 }
 
 impl Action {
