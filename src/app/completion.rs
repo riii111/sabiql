@@ -4,6 +4,8 @@ use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, TokenCache};
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
+const COMPLETION_MAX_CANDIDATES: usize = 20;
+
 /// Context detected from SQL text at cursor position
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompletionContext {
@@ -354,7 +356,7 @@ impl CompletionEngine {
             }
         });
 
-        candidates.into_iter().take(10).collect()
+        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
     }
 
     fn table_candidates(
@@ -403,7 +405,7 @@ impl CompletionEngine {
             }
         });
 
-        candidates.into_iter().take(10).collect()
+        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
     }
 
     fn column_candidates(
@@ -486,7 +488,7 @@ impl CompletionEngine {
             other => other,
         });
 
-        candidates.into_iter().take(10).collect()
+        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
     }
 
     fn schema_qualified_candidates(
@@ -528,7 +530,7 @@ impl CompletionEngine {
             }
         });
 
-        candidates.into_iter().take(10).collect()
+        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
     }
 
     fn alias_column_candidates(
@@ -580,7 +582,7 @@ impl CompletionEngine {
                     text: cte.name.clone(),
                     kind: CompletionKind::Table,
                     detail: Some("CTE".to_string()),
-                    score: 150, // CTEs get highest priority
+                    score: 110, // CTEs slightly above prefix-matched tables
                 });
             }
         }
@@ -609,7 +611,7 @@ impl CompletionEngine {
             other => other,
         });
 
-        candidates.into_iter().take(10).collect()
+        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
     }
 
     fn qualified_name_from_ref(
@@ -804,15 +806,15 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn schema_qualified_candidates_limited_to_10() {
+        fn schema_qualified_candidates_limited_to_max() {
             let e = engine();
 
-            // Create metadata with 15 tables in the same schema
+            // Create metadata with 25 tables in the same schema
             let mut tables = vec![];
-            for i in 0..15 {
+            for i in 0..25 {
                 tables.push(TableSummary::new(
                     "public".to_string(),
-                    format!("table_{}", i),
+                    format!("table_{:02}", i),
                     Some(100),
                     false,
                 ));
@@ -821,14 +823,11 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
             metadata.tables = tables;
 
-            let candidates = e.schema_qualified_candidates(
-                Some(&metadata),
-                "public",
-                "table"
-            );
+            let candidates =
+                e.schema_qualified_candidates(Some(&metadata), "public", "table");
 
-            // Should be limited to 10 candidates
-            assert_eq!(candidates.len(), 10);
+            // Should be limited to COMPLETION_MAX_CANDIDATES
+            assert_eq!(candidates.len(), COMPLETION_MAX_CANDIDATES);
             assert!(candidates.iter().all(|c| c.kind == CompletionKind::Table));
         }
 
