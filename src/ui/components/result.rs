@@ -140,9 +140,10 @@ impl ResultPane {
 
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
         let max_offset = calculate_max_offset(&all_ideal_widths, inner.width);
+        let clamped_offset = horizontal_offset.min(max_offset);
 
         let (viewport_indices, viewport_widths) =
-            select_viewport_columns(&all_ideal_widths, horizontal_offset, inner.width);
+            select_viewport_columns(&all_ideal_widths, clamped_offset, inner.width);
 
         if viewport_indices.is_empty() {
             return max_offset;
@@ -205,10 +206,10 @@ impl ResultPane {
             frame,
             inner,
             HorizontalScrollParams {
-                position: horizontal_offset,
+                position: clamped_offset,
                 viewport_size: viewport_indices.len(),
                 total_items: total_cols,
-                display_start: horizontal_offset + 1,
+                display_start: clamped_offset + 1,
                 display_end: viewport_end,
             },
         );
@@ -298,6 +299,7 @@ fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
         }
     }
 
+    let cols_from_right = cols_from_right.max(1);
     all_widths.len().saturating_sub(cols_from_right)
 }
 

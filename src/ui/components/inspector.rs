@@ -136,9 +136,10 @@ impl Inspector {
 
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
         let max_offset = calculate_max_offset(&all_ideal_widths, area.width.saturating_sub(2));
+        let clamped_offset = horizontal_offset.min(max_offset);
 
         let (viewport_indices, viewport_widths) =
-            select_viewport_columns(&all_ideal_widths, horizontal_offset, area.width.saturating_sub(2));
+            select_viewport_columns(&all_ideal_widths, clamped_offset, area.width.saturating_sub(2));
 
         if viewport_indices.is_empty() {
             return max_offset;
@@ -212,10 +213,10 @@ impl Inspector {
             frame,
             area,
             HorizontalScrollParams {
-                position: horizontal_offset,
+                position: clamped_offset,
                 viewport_size: viewport_indices.len(),
                 total_items: headers.len(),
-                display_start: horizontal_offset + 1,
+                display_start: clamped_offset + 1,
                 display_end: viewport_indices.last().map(|&i| i + 1).unwrap_or(0),
             },
         );
@@ -522,6 +523,7 @@ fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
         }
     }
 
+    let cols_from_right = cols_from_right.max(1);
     all_widths.len().saturating_sub(cols_from_right)
 }
 
