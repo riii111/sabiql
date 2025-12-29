@@ -111,6 +111,7 @@ pub struct AppState {
 
     // SQL Modal completion
     pub completion: CompletionState,
+    pub completion_debounce: Option<Instant>,
 
     // Query execution state
     pub query_state: QueryState,
@@ -174,6 +175,7 @@ impl AppState {
             sql_modal_cursor: 0,
             sql_modal_state: SqlModalState::default(),
             completion: CompletionState::default(),
+            completion_debounce: None,
             // Query state
             query_state: QueryState::default(),
             // Last error
