@@ -214,9 +214,11 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
         (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => Action::CompletionTrigger,
         // Esc: Close modal (when completion not visible)
         (KeyCode::Esc, _, false) => Action::CloseSqlModal,
-        // Navigation
-        (KeyCode::Left, _, _) => Action::SqlModalMoveCursor(CursorMove::Left),
-        (KeyCode::Right, _, _) => Action::SqlModalMoveCursor(CursorMove::Right),
+        // Navigation: dismiss completion on horizontal movement
+        (KeyCode::Left, _, true) => Action::CompletionDismiss,
+        (KeyCode::Right, _, true) => Action::CompletionDismiss,
+        (KeyCode::Left, _, false) => Action::SqlModalMoveCursor(CursorMove::Left),
+        (KeyCode::Right, _, false) => Action::SqlModalMoveCursor(CursorMove::Right),
         (KeyCode::Up, _, false) => Action::SqlModalMoveCursor(CursorMove::Up),
         (KeyCode::Down, _, false) => Action::SqlModalMoveCursor(CursorMove::Down),
         (KeyCode::Home, _, _) => Action::SqlModalMoveCursor(CursorMove::Home),

@@ -172,7 +172,13 @@ impl SqlModal {
         let popup_width = 45u16;
 
         // Position popup below cursor (global coordinates)
-        let popup_x = (editor_area.x + cursor_col as u16).min(modal_area.right() - popup_width - 1);
+        // Ensure popup fits within modal bounds
+        let popup_x = if modal_area.width < popup_width {
+            modal_area.x
+        } else {
+            (editor_area.x + cursor_col as u16)
+                .min(modal_area.right().saturating_sub(popup_width))
+        };
         let cursor_screen_y = editor_area.y + cursor_row as u16;
 
         // Show above cursor if not enough space below
@@ -186,14 +192,32 @@ impl SqlModal {
 
         frame.render_widget(Clear, popup_area);
 
+        // Calculate scroll window to keep selected item visible
+        let selected = state.completion.selected_index;
+        let total = state.completion.candidates.len();
+        let scroll_offset = if total <= max_items {
+            0
+        } else {
+            // Keep selected item in middle of window when possible
+            let half = max_items / 2;
+            if selected < half {
+                0
+            } else if selected >= total - half {
+                total - max_items
+            } else {
+                selected - half
+            }
+        };
+
         let items: Vec<ListItem> = state
             .completion
             .candidates
             .iter()
             .enumerate()
+            .skip(scroll_offset)
             .take(max_items)
             .map(|(i, candidate)| {
-                let is_selected = i == state.completion.selected_index;
+                let is_selected = i == selected;
 
                 // Kind indicator
                 let kind_char = match candidate.kind {
