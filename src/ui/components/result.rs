@@ -195,7 +195,6 @@ impl ResultPane {
         // Scroll indicators (pass inner area, not outer with border)
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
-        let viewport_end = viewport_indices.last().map(|&i| i + 1).unwrap_or(0);
 
         use super::scroll_indicator::{
             render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
@@ -209,8 +208,6 @@ impl ResultPane {
                 position: clamped_offset,
                 viewport_size: viewport_indices.len(),
                 total_items: total_cols,
-                display_start: clamped_offset + 1,
-                display_end: viewport_end,
             },
         );
 

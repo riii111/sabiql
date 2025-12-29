@@ -216,8 +216,6 @@ impl Inspector {
                 position: clamped_offset,
                 viewport_size: viewport_indices.len(),
                 total_items: headers.len(),
-                display_start: clamped_offset + 1,
-                display_end: viewport_indices.last().map(|&i| i + 1).unwrap_or(0),
             },
         );
 

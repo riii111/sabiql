@@ -7,8 +7,6 @@ pub struct HorizontalScrollParams {
     pub position: usize,
     pub viewport_size: usize,
     pub total_items: usize,
-    pub display_start: usize,
-    pub display_end: usize,
 }
 
 /// Render a horizontal scroll indicator at the bottom of an area.
@@ -35,13 +33,16 @@ pub fn render_horizontal_scroll_indicator(
         return;
     }
 
-    let position_text = format!(
-        "col {}-{}/{}",
-        params.display_start, params.display_end, params.total_items
-    );
+    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
+    let percentage = if scrollable_range > 0 {
+        (params.position * 100) / scrollable_range
+    } else {
+        0
+    };
+    let position_text = format!("col {:>3}%", percentage.min(100));
 
-    // Layout: [col X-Y/Z][space][scrollbar with < and >]
-    let fixed_parts_len = position_text.len() + 1; // "col X-Y/Z "
+    // Layout: [col XXX%][space][scrollbar with < and >]
+    let fixed_parts_len = position_text.len() + 1;
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
     use ratatui::text::{Line, Span};
@@ -76,8 +77,6 @@ pub fn render_horizontal_scroll_indicator(
         .begin_style(Style::default().fg(Color::Yellow))
         .end_style(Style::default().fg(Color::Yellow));
 
-
-    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
         .content_length(scrollable_range.saturating_add(1))
         .viewport_content_length(params.viewport_size)
