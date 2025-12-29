@@ -239,16 +239,28 @@ impl CompletionEngine {
 
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
-        self.keywords
+        let mut candidates: Vec<_> = self.keywords
             .iter()
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
-            .take(10)
             .map(|kw| CompletionCandidate {
                 text: (*kw).to_string(),
                 kind: CompletionKind::Keyword,
                 detail: None,
             })
-            .collect()
+            .collect();
+
+        // Sort by prefix match priority
+        candidates.sort_by(|a, b| {
+            let a_prefix = a.text.starts_with(&prefix_upper);
+            let b_prefix = b.text.starts_with(&prefix_upper);
+            match (a_prefix, b_prefix) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.text.cmp(&b.text),
+            }
+        });
+
+        candidates.into_iter().take(10).collect()
     }
 
     fn table_candidates(
@@ -261,7 +273,7 @@ impl CompletionEngine {
         };
 
         let prefix_lower = prefix.to_lowercase();
-        metadata
+        let mut candidates: Vec<_> = metadata
             .tables
             .iter()
             .filter(|t| {
@@ -269,13 +281,28 @@ impl CompletionEngine {
                     || t.name.to_lowercase().starts_with(&prefix_lower)
                     || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
             })
-            .take(10)
             .map(|t| CompletionCandidate {
                 text: t.qualified_name(),
                 kind: CompletionKind::Table,
                 detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
             })
-            .collect()
+            .collect();
+
+        // Sort by prefix match priority: name prefix > qualified name prefix
+        candidates.sort_by(|a, b| {
+            let a_name = a.text.rsplit('.').next().unwrap_or(&a.text);
+            let b_name = b.text.rsplit('.').next().unwrap_or(&b.text);
+            let a_name_prefix = a_name.to_lowercase().starts_with(&prefix_lower);
+            let b_name_prefix = b_name.to_lowercase().starts_with(&prefix_lower);
+
+            match (a_name_prefix, b_name_prefix) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.text.cmp(&b.text),
+            }
+        });
+
+        candidates.into_iter().take(10).collect()
     }
 
     fn column_candidates(
@@ -288,17 +315,29 @@ impl CompletionEngine {
         };
 
         let prefix_lower = prefix.to_lowercase();
-        table
+        let mut candidates: Vec<_> = table
             .columns
             .iter()
             .filter(|c| prefix.is_empty() || c.name.to_lowercase().starts_with(&prefix_lower))
-            .take(10)
             .map(|c| CompletionCandidate {
                 text: c.name.clone(),
                 kind: CompletionKind::Column,
                 detail: Some(c.type_display()),
             })
-            .collect()
+            .collect();
+
+        // Sort by prefix match priority
+        candidates.sort_by(|a, b| {
+            let a_prefix = a.text.to_lowercase().starts_with(&prefix_lower);
+            let b_prefix = b.text.to_lowercase().starts_with(&prefix_lower);
+            match (a_prefix, b_prefix) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.text.cmp(&b.text),
+            }
+        });
+
+        candidates.into_iter().take(10).collect()
     }
 
     fn schema_qualified_candidates(
@@ -314,20 +353,32 @@ impl CompletionEngine {
         let schema_lower = schema.to_lowercase();
         let prefix_lower = prefix.to_lowercase();
 
-        metadata
+        let mut candidates: Vec<_> = metadata
             .tables
             .iter()
             .filter(|t| {
                 t.schema.to_lowercase() == schema_lower
                     && t.name.to_lowercase().starts_with(&prefix_lower)
             })
-            .take(10)
             .map(|t| CompletionCandidate {
                 text: t.name.clone(),
                 kind: CompletionKind::Table,
                 detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
             })
-            .collect()
+            .collect();
+
+        // Sort by prefix match priority
+        candidates.sort_by(|a, b| {
+            let a_prefix = a.text.to_lowercase().starts_with(&prefix_lower);
+            let b_prefix = b.text.to_lowercase().starts_with(&prefix_lower);
+            match (a_prefix, b_prefix) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.text.cmp(&b.text),
+            }
+        });
+
+        candidates.into_iter().take(10).collect()
     }
 }
 
@@ -449,6 +500,197 @@ mod tests {
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "SELECT");
+        }
+    }
+
+    mod word_boundary {
+        use super::*;
+
+        #[test]
+        fn froma_does_not_match_from() {
+            let e = engine();
+            let (token, ctx) = e.analyze("SELECT * FROMA", 14);
+
+            // "FROMA" should be treated as a single token, not as FROM + A
+            assert_eq!(token, "FROMA");
+            // Since "FROMA" doesn't match FROM at word boundary,
+            // the last valid keyword is SELECT, so context is Column
+            assert_eq!(ctx, CompletionContext::Column);
+        }
+
+        #[test]
+        fn from_with_space_matches_from() {
+            let e = engine();
+            let (token, ctx) = e.analyze("SELECT * FROM ", 14);
+
+            assert_eq!(token, "");
+            assert_eq!(ctx, CompletionContext::Table);
+        }
+
+        #[test]
+        fn from_at_word_boundary_matches() {
+            let e = engine();
+            let (_token, ctx) = e.analyze("SELECT * FROM u", 15);
+
+            // FROM is properly detected at word boundary
+            assert_eq!(ctx, CompletionContext::Table);
+        }
+
+        #[test]
+        fn selecta_does_not_match_select() {
+            let e = engine();
+            let (token, ctx) = e.analyze("SELECTA", 7);
+
+            // "SELECTA" should be treated as a single token
+            assert_eq!(token, "SELECTA");
+            // Should not trigger column context
+            assert_eq!(ctx, CompletionContext::Keyword);
+        }
+    }
+
+    mod schema_qualified_limit {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        #[test]
+        fn schema_qualified_candidates_limited_to_10() {
+            let e = engine();
+
+            // Create metadata with 15 tables in the same schema
+            let mut tables = vec![];
+            for i in 0..15 {
+                tables.push(TableSummary::new(
+                    "public".to_string(),
+                    format!("table_{}", i),
+                    Some(100),
+                    false,
+                ));
+            }
+
+            let mut metadata = DatabaseMetadata::new("test_db".to_string());
+            metadata.tables = tables;
+
+            let candidates = e.schema_qualified_candidates(
+                Some(&metadata),
+                "public",
+                "table"
+            );
+
+            // Should be limited to 10 candidates
+            assert_eq!(candidates.len(), 10);
+            assert!(candidates.iter().all(|c| c.kind == CompletionKind::Table));
+        }
+
+        #[test]
+        fn schema_qualified_candidates_with_empty_prefix() {
+            let e = engine();
+
+            let mut tables = vec![];
+            for i in 0..5 {
+                tables.push(TableSummary::new(
+                    "myschema".to_string(),
+                    format!("foo_{}", i),
+                    None,
+                    false,
+                ));
+            }
+
+            let mut metadata = DatabaseMetadata::new("test_db".to_string());
+            metadata.tables = tables;
+
+            let candidates = e.schema_qualified_candidates(
+                Some(&metadata),
+                "myschema",
+                ""
+            );
+
+            // Empty prefix should match all tables in schema
+            assert_eq!(candidates.len(), 5);
+        }
+    }
+
+    mod prefix_match_ranking {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        #[test]
+        fn keyword_prefix_match_ranked_first() {
+            let e = engine();
+
+            // Search with "S" - should prioritize SELECT over SET
+            let candidates = e.keyword_candidates("S");
+
+            assert!(!candidates.is_empty());
+            // All returned candidates should start with "S"
+            assert!(candidates.iter().all(|c| c.text.starts_with('S')));
+            // Check that results are sorted
+            let texts: Vec<_> = candidates.iter().map(|c| c.text.as_str()).collect();
+            let mut sorted = texts.clone();
+            sorted.sort();
+            assert_eq!(texts, sorted);
+        }
+
+        #[test]
+        fn table_name_prefix_ranked_over_qualified() {
+            let e = engine();
+
+            let mut metadata = DatabaseMetadata::new("test_db".to_string());
+            metadata.tables = vec![
+                TableSummary::new("users".to_string(), "data".to_string(), None, false),
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+            ];
+
+            let candidates = e.table_candidates(Some(&metadata), "u");
+
+            // "public.users" should be ranked before "users.data"
+            // because "users" table name starts with "u"
+            assert_eq!(candidates.len(), 2);
+            assert_eq!(candidates[0].text, "public.users");
+        }
+
+        #[test]
+        fn column_prefix_match_sorted_alphabetically() {
+            let e = engine();
+
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "user_name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "user_id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: Some(vec!["user_id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let candidates = e.column_candidates(Some(&table), "user");
+
+            assert_eq!(candidates.len(), 2);
+            // Should be sorted alphabetically among prefix matches
+            assert_eq!(candidates[0].text, "user_id");
+            assert_eq!(candidates[1].text, "user_name");
         }
     }
 }
