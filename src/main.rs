@@ -84,7 +84,6 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
                 if !action.is_none() {
-                    // Use send().await for user input to ensure no key events are lost
                     let _ = action_tx.send(action).await;
                 }
             }
@@ -98,6 +97,13 @@ async fn main() -> Result<()> {
                     &metadata_cache,
                     &completion_engine,
                 ).await?;
+            }
+        }
+
+        if let Some(debounce_until) = state.completion_debounce {
+            if Instant::now() >= debounce_until {
+                state.completion_debounce = None;
+                let _ = action_tx.send(Action::CompletionTrigger).await;
             }
         }
 
@@ -183,16 +189,19 @@ async fn handle_action(
             state.completion.visible = false;
             state.completion.candidates.clear();
             state.completion.selected_index = 0;
+            state.completion_debounce = None;
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
+            state.completion_debounce = None;
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, c);
             state.sql_modal_cursor += 1;
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(200));
         }
         Action::SqlModalBackspace => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -201,6 +210,7 @@ async fn handle_action(
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
                 state.sql_modal_content.remove(byte_idx);
             }
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(200));
         }
         Action::SqlModalDelete => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -328,10 +338,12 @@ async fn handle_action(
                 }
                 state.completion.visible = false;
                 state.completion.candidates.clear();
+                state.completion_debounce = None;
             }
         }
         Action::CompletionDismiss => {
             state.completion.visible = false;
+            state.completion_debounce = None;
         }
         Action::CompletionNext => {
             if !state.completion.candidates.is_empty() {
