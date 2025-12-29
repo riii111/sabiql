@@ -306,11 +306,13 @@ async fn handle_action(
             let cursor = state.sql_modal_cursor;
             let engine = completion_engine.borrow();
             let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
+            let recent_cols = state.completion.recent_columns_vec();
             let candidates = engine.get_candidates(
                 &state.sql_modal_content,
                 cursor,
                 state.metadata.as_ref(),
                 state.table_detail.as_ref(),
+                &recent_cols,
             );
             state.completion.candidates = candidates;
             state.completion.selected_index = 0;

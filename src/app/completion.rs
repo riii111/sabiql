@@ -4,7 +4,7 @@ use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenCa
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
-const COMPLETION_MAX_CANDIDATES: usize = 20;
+const COMPLETION_MAX_CANDIDATES: usize = 30;
 
 /// Context detected from SQL text at cursor position
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,6 +121,7 @@ impl CompletionEngine {
         cursor_pos: usize,
         metadata: Option<&DatabaseMetadata>,
         table_detail: Option<&Table>,
+        recent_columns: &[String],
     ) -> Vec<CompletionCandidate> {
         // Skip completion inside strings or comments
         if self.lexer.is_in_string_or_comment(content, cursor_pos) {
@@ -134,10 +135,29 @@ impl CompletionEngine {
         let (current_token, context) =
             self.analyze_with_context(content, cursor_pos, &sql_context, &tokens);
 
-        let candidates = match &context {
+        let mut candidates = match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
-            CompletionContext::Column => self.column_candidates(table_detail, &current_token),
+            CompletionContext::Column => {
+                // Mix columns with primary keywords (FROM, WHERE, etc.)
+                // Reserve slots for both: keywords get priority but columns are guaranteed some space
+                let keywords = self.primary_clause_keywords(&current_token);
+                let columns =
+                    self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
+
+                // Take up to 15 keywords (sorted by score), then fill rest with columns
+                let max_keywords = 15.min(keywords.len());
+                let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
+
+                let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
+                mixed.extend(columns.into_iter().take(max_columns));
+
+                mixed.sort_by(|a, b| match b.score.cmp(&a.score) {
+                    std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+                    other => other,
+                });
+                mixed
+            }
             CompletionContext::SchemaQualified(schema) => {
                 self.schema_qualified_candidates(metadata, schema, &current_token)
             }
@@ -153,6 +173,9 @@ impl CompletionEngine {
         if candidates.is_empty() && context != CompletionContext::Keyword {
             return self.keyword_candidates(&current_token);
         }
+
+        // Deduplicate by text (keep highest score)
+        candidates.dedup_by(|a, b| a.text == b.text);
 
         candidates
     }
@@ -333,6 +356,58 @@ impl CompletionEngine {
         candidates
             .into_iter()
             .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
+    }
+
+    /// Primary SQL clause keywords that should always appear in Column context
+    /// These get high score (200) to ensure they appear above column candidates
+    fn primary_clause_keywords(&self, prefix: &str) -> Vec<CompletionCandidate> {
+        const PRIMARY_KEYWORDS: &[&str] = &[
+            "FROM",
+            "WHERE",
+            "ORDER",
+            "GROUP",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "JOIN",
+            "LEFT",
+            "RIGHT",
+            "INNER",
+            "OUTER",
+            "CROSS",
+            "ON",
+            "AND",
+            "OR",
+            "AS",
+            "DISTINCT",
+            "UNION",
+            "EXCEPT",
+            "INTERSECT",
+            "CASE",
+            "WHEN",
+            "THEN",
+            "ELSE",
+            "END",
+            "IN",
+            "NOT",
+            "NULL",
+            "LIKE",
+            "BETWEEN",
+            "EXISTS",
+            "IS",
+        ];
+
+        let prefix_upper = prefix.to_uppercase();
+        PRIMARY_KEYWORDS
+            .iter()
+            .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
+            .map(|kw| CompletionCandidate {
+                text: (*kw).to_string(),
+                kind: CompletionKind::Keyword,
+                detail: None,
+                score: 200, // Higher than column scores (max ~170)
+            })
             .collect()
     }
 
@@ -795,9 +870,9 @@ mod tests {
         fn schema_qualified_candidates_limited_to_max() {
             let e = engine();
 
-            // Create metadata with 25 tables in the same schema
+            // Create metadata with 35 tables in the same schema (more than COMPLETION_MAX_CANDIDATES)
             let mut tables = vec![];
-            for i in 0..25 {
+            for i in 0..35 {
                 tables.push(TableSummary::new(
                     "public".to_string(),
                     format!("table_{:02}", i),
@@ -932,7 +1007,7 @@ mod tests {
         fn inside_single_quote_string_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("SELECT 'SEL", 11, None, None);
+            let candidates = e.get_candidates("SELECT 'SEL", 11, None, None, &[]);
 
             assert!(candidates.is_empty());
         }
@@ -941,7 +1016,7 @@ mod tests {
         fn inside_line_comment_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("-- SEL", 6, None, None);
+            let candidates = e.get_candidates("-- SEL", 6, None, None, &[]);
 
             assert!(candidates.is_empty());
         }
@@ -950,7 +1025,7 @@ mod tests {
         fn inside_block_comment_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("/* SEL", 6, None, None);
+            let candidates = e.get_candidates("/* SEL", 6, None, None, &[]);
 
             assert!(candidates.is_empty());
         }
@@ -959,7 +1034,7 @@ mod tests {
         fn inside_dollar_quote_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("SELECT $$SEL", 12, None, None);
+            let candidates = e.get_candidates("SELECT $$SEL", 12, None, None, &[]);
 
             assert!(candidates.is_empty());
         }
@@ -968,7 +1043,7 @@ mod tests {
         fn after_closed_string_returns_candidates() {
             let e = engine();
 
-            let candidates = e.get_candidates("'value' SEL", 11, None, None);
+            let candidates = e.get_candidates("'value' SEL", 11, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
@@ -978,7 +1053,7 @@ mod tests {
         fn after_closed_comment_returns_candidates() {
             let e = engine();
 
-            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None);
+            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
@@ -1668,7 +1743,7 @@ mod tests {
             let e = engine();
 
             // Column context but no table_detail -> should fallback to keywords
-            let candidates = e.get_candidates("SELECT xxx F", 12, None, None);
+            let candidates = e.get_candidates("SELECT xxx F", 12, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "FROM"));
@@ -1679,7 +1754,7 @@ mod tests {
             let e = engine();
 
             // "FROM" inside string should not trigger Table context
-            let candidates = e.get_candidates("SELECT 'FROM' ", 14, None, None);
+            let candidates = e.get_candidates("SELECT 'FROM' ", 14, None, None, &[]);
 
             // Should be Column context (after SELECT), but fallback to Keyword
             assert!(!candidates.is_empty());
@@ -1692,7 +1767,7 @@ mod tests {
             let e = engine();
 
             // "FROM" inside comment should not trigger Table context
-            let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None);
+            let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
@@ -1754,7 +1829,7 @@ mod tests {
             let table = create_users_table();
 
             // SELECT context with table_detail should return columns
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
 
             assert!(!candidates.is_empty());
             assert!(
@@ -1791,8 +1866,13 @@ mod tests {
             )];
 
             // "u." should trigger alias column completion from cache
-            let candidates =
-                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
+            let candidates = e.get_candidates(
+                "SELECT u. FROM public.users u",
+                9,
+                Some(&metadata),
+                None,
+                &[],
+            );
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "id"));
@@ -1806,7 +1886,7 @@ mod tests {
             let table = create_users_table();
 
             // Typing after SELECT with table_detail should show columns
-            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
+            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table), &[]);
 
             // Should include "name" column that starts with "n"
             assert!(
@@ -1822,7 +1902,8 @@ mod tests {
             let table = create_users_table();
 
             // WHERE context with table_detail should return columns
-            let candidates = e.get_candidates("SELECT * FROM users WHERE ", 26, None, Some(&table));
+            let candidates =
+                e.get_candidates("SELECT * FROM users WHERE ", 26, None, Some(&table), &[]);
 
             assert!(!candidates.is_empty());
             assert!(
@@ -1845,11 +1926,69 @@ mod tests {
             )];
 
             // "u." without cache should fallback to keywords
-            let candidates =
-                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
+            let candidates = e.get_candidates(
+                "SELECT u. FROM public.users u",
+                9,
+                Some(&metadata),
+                None,
+                &[],
+            );
 
             // Should fallback to keywords since cache is empty
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
+        }
+
+        #[test]
+        fn from_keyword_appears_even_with_column_candidates() {
+            let e = engine();
+            let table = create_users_table();
+
+            // "SELECT xxx F" with table_detail - should show both FROM keyword and columns starting with F
+            let candidates = e.get_candidates("SELECT xxx F", 12, None, Some(&table), &[]);
+
+            // FROM keyword should appear (high priority)
+            assert!(
+                candidates.iter().any(|c| c.text == "FROM"),
+                "FROM keyword should appear in candidates"
+            );
+
+            // Verify FROM has higher score than columns
+            let from_candidate = candidates.iter().find(|c| c.text == "FROM").unwrap();
+            assert_eq!(from_candidate.score, 200, "FROM should have score 200");
+        }
+
+        #[test]
+        fn column_context_mixes_keywords_and_columns() {
+            let e = engine();
+            let table = create_users_table();
+
+            // SELECT context should show both keywords and columns
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+
+            // Should have keywords
+            assert!(
+                candidates.iter().any(|c| c.kind == CompletionKind::Keyword),
+                "Should include keywords"
+            );
+
+            // Should have columns
+            assert!(
+                candidates.iter().any(|c| c.kind == CompletionKind::Column),
+                "Should include columns"
+            );
+
+            // Keywords should be ranked higher
+            let first_keyword_idx = candidates
+                .iter()
+                .position(|c| c.kind == CompletionKind::Keyword);
+            let first_column_idx = candidates
+                .iter()
+                .position(|c| c.kind == CompletionKind::Column);
+
+            assert!(
+                first_keyword_idx < first_column_idx,
+                "Keywords should appear before columns"
+            );
         }
     }
 }
