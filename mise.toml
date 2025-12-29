@@ -14,17 +14,13 @@ run = "cargo check"
 description = "Format code"
 run = "cargo fmt"
 
-[tasks.fmt-check]
-description = "Check formatting"
-run = "cargo fmt -- --check"
-
 [tasks.clippy]
 description = "Run lints"
 run = "cargo clippy -- -D warnings"
 
 [tasks.test]
 description = "Run tests"
-run = "cargo test"
+run = "cargo test -q"
 
 [tasks.run]
 description = "Run application"
