@@ -100,11 +100,12 @@ async fn main() -> Result<()> {
             }
         }
 
-        if let Some(debounce_until) = state.completion_debounce {
-            if Instant::now() >= debounce_until {
+        match state.completion_debounce {
+            Some(debounce_until) if Instant::now() >= debounce_until => {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
+            _ => (),
         }
 
         if state.should_quit {
