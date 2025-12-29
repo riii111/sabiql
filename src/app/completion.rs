@@ -143,14 +143,18 @@ impl CompletionEngine {
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
 
-                // Prefix exists + columns available → boost columns above keywords
-                if !current_token.is_empty() && !columns.is_empty() {
+                let has_prefix = current_token.len() >= 2;
+                if has_prefix && !columns.is_empty() {
+                    // Boost only prefix-matched columns (score >= 100)
                     for col in &mut columns {
-                        col.score += 250;
+                        if col.score >= 100 {
+                            col.score += 250;
+                        }
                     }
                 }
 
-                let max_keywords = 15.min(keywords.len());
+                // Reduce keyword slots when user is typing
+                let max_keywords = if has_prefix { 5 } else { 15 }.min(keywords.len());
                 let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
 
                 let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
@@ -2081,40 +2085,29 @@ mod tests {
         }
 
         #[test]
-        fn prefix_f_shows_from_but_columns_higher_if_match() {
+        fn single_char_prefix_keeps_keywords_first() {
             let e = engine();
+            let table = create_users_table();
 
-            // Table with a column starting with "f"
-            let table = Table {
-                schema: "public".to_string(),
-                name: "test".to_string(),
-                columns: vec![Column {
-                    name: "first_name".to_string(),
-                    data_type: "text".to_string(),
-                    nullable: true,
-                    default: None,
-                    is_primary_key: false,
-                    is_unique: false,
-                    comment: None,
-                    ordinal_position: 1,
-                }],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                row_count_estimate: None,
-                comment: None,
-            };
+            // 1 char prefix: keywords stay first (no boost)
+            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table), &[]);
 
-            // "F" prefix: "first_name" should come before FROM
-            let candidates = e.get_candidates("SELECT f", 8, None, Some(&table), &[]);
+            assert!(candidates.iter().any(|c| c.text == "name"));
+            assert!(candidates.iter().any(|c| c.text == "NOT"));
+            // Keyword should be first with 1-char prefix
+            assert_eq!(candidates[0].kind, CompletionKind::Keyword);
+        }
 
-            // Both should be present
-            assert!(candidates.iter().any(|c| c.text == "first_name"));
-            assert!(candidates.iter().any(|c| c.text == "FROM"));
+        #[test]
+        fn two_char_prefix_boosts_columns() {
+            let e = engine();
+            let table = create_users_table();
 
-            // Column should be first (boosted)
-            assert_eq!(candidates[0].text, "first_name");
+            // 2+ char prefix: columns get boosted
+            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table), &[]);
+
+            assert_eq!(candidates[0].text, "name");
+            assert_eq!(candidates[0].kind, CompletionKind::Column);
         }
     }
 }
