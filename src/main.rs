@@ -757,23 +757,17 @@ async fn handle_action(
 
         // Inspector scroll (Columns tab only)
         Action::InspectorScrollUp => {
-            if state.inspector_selected_row > 0 {
-                state.inspector_selected_row -= 1;
-                // Adjust scroll to keep selection visible
-                if state.inspector_selected_row < state.inspector_scroll_offset {
-                    state.inspector_scroll_offset = state.inspector_selected_row;
-                }
-            }
+            state.inspector_scroll_offset = state.inspector_scroll_offset.saturating_sub(1);
         }
 
         Action::InspectorScrollDown => {
-            let max_row = state
+            let max_offset = state
                 .table_detail
                 .as_ref()
                 .map(|t| t.columns.len().saturating_sub(1))
                 .unwrap_or(0);
-            if state.inspector_selected_row < max_row {
-                state.inspector_selected_row += 1;
+            if state.inspector_scroll_offset < max_offset {
+                state.inspector_scroll_offset += 1;
             }
         }
 

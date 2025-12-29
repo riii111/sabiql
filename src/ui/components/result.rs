@@ -174,16 +174,13 @@ impl ResultPane {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 };
 
-                Row::new(
-                    viewport_indices
-                        .iter()
-                        .zip(viewport_widths.iter())
-                        .map(|(&orig_idx, &col_width)| {
-                            let cell = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
-                            let display = truncate_cell(cell, col_width as usize);
-                            Cell::from(display)
-                        }),
-                )
+                Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
+                    |(&orig_idx, &col_width)| {
+                        let cell = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
+                        let display = truncate_cell(cell, col_width as usize);
+                        Cell::from(display)
+                    },
+                ))
                 .style(style)
             })
             .collect();
@@ -197,8 +194,8 @@ impl ResultPane {
         let total_cols = result.columns.len();
 
         use super::scroll_indicator::{
-            render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
-            HorizontalScrollParams,
+            HorizontalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator,
         };
         render_vertical_scroll_indicator(frame, inner, scroll_offset, visible_rows, total_rows);
         render_horizontal_scroll_indicator(

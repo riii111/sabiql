@@ -75,7 +75,6 @@ impl Inspector {
                     table,
                     state.inspector_scroll_offset,
                     state.inspector_horizontal_offset,
-                    state.inspector_selected_row,
                 ),
                 InspectorTab::Indexes => {
                     Self::render_indexes(frame, inner, table);
@@ -109,7 +108,6 @@ impl Inspector {
         table: &TableDetail,
         scroll_offset: usize,
         horizontal_offset: usize,
-        selected_row: usize,
     ) -> usize {
         if table.columns.is_empty() {
             let msg = Paragraph::new("No columns");
@@ -127,8 +125,16 @@ impl Inspector {
                 vec![
                     col.name.clone(),
                     col.data_type.clone(),
-                    if col.nullable { "✓".to_string() } else { String::new() },
-                    if col.is_primary_key { "●".to_string() } else { String::new() },
+                    if col.nullable {
+                        "✓".to_string()
+                    } else {
+                        String::new()
+                    },
+                    if col.is_primary_key {
+                        "●".to_string()
+                    } else {
+                        String::new()
+                    },
                     col.default.clone().unwrap_or_default(),
                 ]
             })
@@ -138,8 +144,11 @@ impl Inspector {
         let max_offset = calculate_max_offset(&all_ideal_widths, area.width.saturating_sub(2));
         let clamped_offset = horizontal_offset.min(max_offset);
 
-        let (viewport_indices, viewport_widths) =
-            select_viewport_columns(&all_ideal_widths, clamped_offset, area.width.saturating_sub(2));
+        let (viewport_indices, viewport_widths) = select_viewport_columns(
+            &all_ideal_widths,
+            clamped_offset,
+            area.width.saturating_sub(2),
+        );
 
         if viewport_indices.is_empty() {
             return max_offset;
@@ -167,36 +176,30 @@ impl Inspector {
             .skip(scroll_offset)
             .take(visible_rows)
             .map(|(row_idx, row)| {
-                let is_selected = row_idx == selected_row;
                 let is_striped = (row_idx - scroll_offset) % 2 == 1;
 
-                let base_style = if is_selected {
-                    Style::default().bg(Color::Rgb(0x3a, 0x3a, 0x4e))
-                } else if is_striped {
+                let base_style = if is_striped {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 } else {
                     Style::default()
                 };
 
-                Row::new(
-                    viewport_indices
-                        .iter()
-                        .zip(viewport_widths.iter())
-                        .map(|(&col_idx, &col_width)| {
-                            let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
-                            let display = truncate_cell(text, col_width as usize);
+                Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
+                    |(&col_idx, &col_width)| {
+                        let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
+                        let display = truncate_cell(text, col_width as usize);
 
-                            // Special styling for PK and Default columns
-                            let cell_style = if col_idx == 3 && !text.is_empty() {
-                                Style::default().fg(Color::Yellow)
-                            } else if col_idx == 4 {
-                                Style::default().fg(Color::Gray)
-                            } else {
-                                Style::default()
-                            };
-                            Cell::from(display).style(cell_style)
-                        }),
-                )
+                        // Special styling for PK and Default columns
+                        let cell_style = if col_idx == 3 && !text.is_empty() {
+                            Style::default().fg(Color::Yellow)
+                        } else if col_idx == 4 {
+                            Style::default().fg(Color::Gray)
+                        } else {
+                            Style::default()
+                        };
+                        Cell::from(display).style(cell_style)
+                    },
+                ))
                 .style(base_style)
             })
             .collect();
@@ -205,8 +208,8 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         use super::scroll_indicator::{
-            render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
-            HorizontalScrollParams,
+            HorizontalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator,
         };
         render_vertical_scroll_indicator(frame, area, scroll_offset, visible_rows, total_rows);
         render_horizontal_scroll_indicator(
