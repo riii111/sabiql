@@ -26,6 +26,7 @@ impl Footer {
                     vec![
                         ("f", "Exit Focus"),
                         ("j/k", "Scroll"),
+                        ("h/l", "H-Scroll"),
                         ("g/G", "Top/Bottom"),
                         ("1/2/3", "Pane"),
                         ("?", "Help"),
@@ -39,6 +40,7 @@ impl Footer {
                     // Show scroll hint when Result pane is focused
                     if state.focused_pane == FocusedPane::Result {
                         hints.push(("j/k/g/G", "Scroll"));
+                        hints.push(("h/l", "H-Scroll"));
                     }
                     hints.push(("[/]", "InsTabs"));
                     hints.push(("r", "Reload"));
