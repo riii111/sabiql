@@ -13,14 +13,15 @@ use crate::infra::utils::quote_ident;
 pub struct Inspector;
 
 impl Inspector {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let is_focused = state.focused_pane == FocusedPane::Inspector;
         // Split into tab bar and content
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state, is_focused);
+        let max_offset = Self::render_content(frame, content_area, state, is_focused);
+        state.inspector_max_horizontal_offset = max_offset;
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -51,7 +52,7 @@ impl Inspector {
         frame.render_widget(paragraph, area);
     }
 
-    fn render_content(frame: &mut Frame, area: Rect, state: &AppState, is_focused: bool) {
+    fn render_content(frame: &mut Frame, area: Rect, state: &AppState, is_focused: bool) -> usize {
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else {
@@ -76,16 +77,29 @@ impl Inspector {
                     state.inspector_horizontal_offset,
                     state.inspector_selected_row,
                 ),
-                InspectorTab::Indexes => Self::render_indexes(frame, inner, table),
-                InspectorTab::ForeignKeys => Self::render_foreign_keys(frame, inner, table),
-                InspectorTab::Rls => Self::render_rls(frame, inner, table),
-                InspectorTab::Ddl => Self::render_ddl(frame, inner, table),
+                InspectorTab::Indexes => {
+                    Self::render_indexes(frame, inner, table);
+                    0
+                }
+                InspectorTab::ForeignKeys => {
+                    Self::render_foreign_keys(frame, inner, table);
+                    0
+                }
+                InspectorTab::Rls => {
+                    Self::render_rls(frame, inner, table);
+                    0
+                }
+                InspectorTab::Ddl => {
+                    Self::render_ddl(frame, inner, table);
+                    0
+                }
             }
         } else {
             let content = Paragraph::new("(select a table)")
                 .block(block)
                 .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(content, area);
+            0
         }
     }
 
@@ -96,11 +110,11 @@ impl Inspector {
         scroll_offset: usize,
         horizontal_offset: usize,
         selected_row: usize,
-    ) {
+    ) -> usize {
         if table.columns.is_empty() {
             let msg = Paragraph::new("No columns");
             frame.render_widget(msg, area);
-            return;
+            return 0;
         }
 
         let headers = vec!["Name", "Type", "Null", "PK", "Default"];
@@ -122,11 +136,16 @@ impl Inspector {
 
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
 
+        // Calculate max offset at initial position (offset=0) to determine scroll limit
+        let (initial_viewport, _) =
+            select_viewport_columns(&all_ideal_widths, 0, area.width.saturating_sub(2));
+        let max_offset = headers.len().saturating_sub(initial_viewport.len());
+
         let (viewport_indices, viewport_widths) =
             select_viewport_columns(&all_ideal_widths, horizontal_offset, area.width.saturating_sub(2));
 
         if viewport_indices.is_empty() {
-            return;
+            return max_offset;
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -204,6 +223,8 @@ impl Inspector {
                 display_end: viewport_indices.last().map(|&i| i + 1).unwrap_or(0),
             },
         );
+
+        max_offset
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {

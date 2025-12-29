@@ -49,11 +49,21 @@ pub fn render_horizontal_scroll_indicator(
     let arrow_inactive = Style::default().fg(Color::DarkGray);
     let text_style = Style::default().fg(Color::Yellow);
 
-    let left_arrow =
-        Span::styled("<", if can_scroll_left { arrow_active } else { arrow_inactive });
+    let left_arrow = Span::styled(
+        "<",
+        if can_scroll_left {
+            arrow_active
+        } else {
+            arrow_inactive
+        },
+    );
     let right_arrow = Span::styled(
         " >",
-        if can_scroll_right { arrow_active } else { arrow_inactive },
+        if can_scroll_right {
+            arrow_active
+        } else {
+            arrow_inactive
+        },
     );
     let position_span = Span::styled(format!(" {} ", position_text), text_style);
 
@@ -75,7 +85,7 @@ pub fn render_horizontal_scroll_indicator(
     };
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-        .thumb_symbol("▬")
+        .thumb_symbol("▒▒")
         .track_symbol(Some("─"))
         .begin_symbol(None)
         .end_symbol(None)
@@ -83,7 +93,8 @@ pub fn render_horizontal_scroll_indicator(
         .track_style(Style::default().fg(Color::DarkGray));
 
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(params.total_items.saturating_sub(params.viewport_size))
+        .content_length(params.total_items)
+        .viewport_content_length(params.viewport_size)
         .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
@@ -125,4 +136,3 @@ pub fn render_vertical_scroll_indicator(
         indicator_area,
     );
 }
-

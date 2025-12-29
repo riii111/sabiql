@@ -64,6 +64,7 @@ pub struct AppState {
     pub inspector_tab: InspectorTab,
     pub inspector_scroll_offset: usize,
     pub inspector_horizontal_offset: usize,
+    pub inspector_max_horizontal_offset: usize,
     pub inspector_selected_row: usize,
 
     // Result pane
@@ -127,6 +128,7 @@ impl AppState {
             inspector_tab: InspectorTab::default(),
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
+            inspector_max_horizontal_offset: 0,
             inspector_selected_row: 0,
             // Result pane
             current_result: None,
