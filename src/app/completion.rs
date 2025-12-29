@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, TokenCache};
+use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenCache, TokenKind};
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
@@ -132,9 +132,10 @@ impl CompletionEngine {
         let tokens = self.lexer.tokenize(content, content.len(), None);
         let sql_context = self.lexer.build_context(&tokens, cursor_pos);
 
-        let (current_token, context) = self.analyze_with_context(content, cursor_pos, &sql_context);
+        let (current_token, context) =
+            self.analyze_with_context(content, cursor_pos, &sql_context, &tokens);
 
-        match &context {
+        let candidates = match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => self.column_candidates(table_detail, &current_token),
@@ -147,7 +148,14 @@ impl CompletionEngine {
             CompletionContext::CteOrTable => {
                 self.cte_or_table_candidates(&sql_context, metadata, &current_token)
             }
+        };
+
+        // Fallback to keywords if context-specific candidates are empty
+        if candidates.is_empty() && context != CompletionContext::Keyword {
+            return self.keyword_candidates(&current_token);
         }
+
+        candidates
     }
 
     pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
@@ -157,8 +165,9 @@ impl CompletionEngine {
 
     #[allow(dead_code)] // Keep for backwards compatibility in tests
     fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
+        let tokens = self.lexer.tokenize(content, cursor_pos, None);
         let sql_context = SqlContext::default();
-        self.analyze_with_context(content, cursor_pos, &sql_context)
+        self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
     }
 
     fn analyze_with_context(
@@ -166,9 +175,9 @@ impl CompletionEngine {
         content: &str,
         cursor_pos: usize,
         sql_context: &SqlContext,
+        tokens: &[Token],
     ) -> (String, CompletionContext) {
         let before_cursor: String = content.chars().take(cursor_pos).collect();
-        let before_upper = before_cursor.to_uppercase();
 
         // Extract current token (word being typed)
         let current_token = self.extract_current_token(&before_cursor);
@@ -183,8 +192,8 @@ impl CompletionEngine {
             return (current_token, CompletionContext::SchemaQualified(schema));
         }
 
-        // Detect context from preceding keywords
-        let base_context = self.detect_context(&before_upper);
+        // Detect context from tokens (ignores strings/comments)
+        let base_context = self.detect_context_from_tokens(tokens, cursor_pos);
 
         // If in FROM clause and CTEs are defined, suggest CTE names too
         if base_context == CompletionContext::Table && !sql_context.ctes.is_empty() {
@@ -268,26 +277,26 @@ impl CompletionEngine {
         None
     }
 
-    fn detect_context(&self, before_upper: &str) -> CompletionContext {
+    fn detect_context_from_tokens(&self, tokens: &[Token], cursor_pos: usize) -> CompletionContext {
         let keywords_table = ["FROM", "JOIN", "INTO", "UPDATE"];
         let keywords_column = ["SELECT", "WHERE", "ON", "SET", "AND", "OR", "BY"];
 
         let mut last_table_pos = None;
         let mut last_column_pos = None;
 
-        for kw in keywords_table {
-            if let Some(pos) = self.find_keyword(before_upper, kw)
-                && last_table_pos.is_none_or(|p| pos > p)
-            {
-                last_table_pos = Some(pos);
+        // Only look at tokens before cursor position
+        for token in tokens {
+            if token.start >= cursor_pos {
+                break;
             }
-        }
 
-        for kw in keywords_column {
-            if let Some(pos) = self.find_keyword(before_upper, kw)
-                && last_column_pos.is_none_or(|p| pos > p)
-            {
-                last_column_pos = Some(pos);
+            if let TokenKind::Keyword(kw) = &token.kind {
+                let kw_upper = kw.to_uppercase();
+                if keywords_table.contains(&kw_upper.as_str()) {
+                    last_table_pos = Some(token.start);
+                } else if keywords_column.contains(&kw_upper.as_str()) {
+                    last_column_pos = Some(token.start);
+                }
             }
         }
 
@@ -297,39 +306,6 @@ impl CompletionEngine {
             (_, Some(_)) => CompletionContext::Column,
             _ => CompletionContext::Keyword,
         }
-    }
-
-    fn find_keyword(&self, text: &str, keyword: &str) -> Option<usize> {
-        // Convert to char indices for safe multi-byte handling
-        let chars: Vec<char> = text.chars().collect();
-        let keyword_chars: Vec<char> = keyword.chars().collect();
-        let keyword_len = keyword_chars.len();
-
-        if chars.len() < keyword_len {
-            return None;
-        }
-
-        // Search from end to start (rfind semantics)
-        for start in (0..=chars.len() - keyword_len).rev() {
-            // Check if keyword matches at this position
-            if chars[start..start + keyword_len] != keyword_chars[..] {
-                continue;
-            }
-
-            // Check word boundaries
-            let before_ok = start == 0 || !Self::is_word_char(chars[start - 1]);
-            let after_ok =
-                start + keyword_len >= chars.len() || !Self::is_word_char(chars[start + keyword_len]);
-
-            if before_ok && after_ok {
-                return Some(start);
-            }
-        }
-        None
-    }
-
-    fn is_word_char(c: char) -> bool {
-        c.is_alphanumeric() || c == '_'
     }
 
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
@@ -1100,6 +1076,8 @@ mod tests {
         #[test]
         fn alias_dot_returns_alias_column_context() {
             let e = engine();
+            let sql = "SELECT u.";
+            let tokens = e.lexer.tokenize(sql, sql.len(), None);
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1111,7 +1089,7 @@ mod tests {
                 current_clause: Default::default(),
             };
 
-            let (token, ctx) = e.analyze_with_context("SELECT u.", 9, &sql_context);
+            let (token, ctx) = e.analyze_with_context(sql, 9, &sql_context, &tokens);
 
             assert_eq!(token, "");
             assert_eq!(ctx, CompletionContext::AliasColumn("u".to_string()));
@@ -1120,6 +1098,8 @@ mod tests {
         #[test]
         fn alias_dot_partial_column_returns_alias_column_context() {
             let e = engine();
+            let sql = "SELECT u.na";
+            let tokens = e.lexer.tokenize(sql, sql.len(), None);
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1131,7 +1111,7 @@ mod tests {
                 current_clause: Default::default(),
             };
 
-            let (token, ctx) = e.analyze_with_context("SELECT u.na", 11, &sql_context);
+            let (token, ctx) = e.analyze_with_context(sql, 11, &sql_context, &tokens);
 
             assert_eq!(token, "na");
             assert_eq!(ctx, CompletionContext::AliasColumn("u".to_string()));
@@ -1140,6 +1120,8 @@ mod tests {
         #[test]
         fn table_name_dot_returns_alias_column_context() {
             let e = engine();
+            let sql = "SELECT users.";
+            let tokens = e.lexer.tokenize(sql, sql.len(), None);
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1151,7 +1133,7 @@ mod tests {
                 current_clause: Default::default(),
             };
 
-            let (token, ctx) = e.analyze_with_context("SELECT users.", 13, &sql_context);
+            let (token, ctx) = e.analyze_with_context(sql, 13, &sql_context, &tokens);
 
             assert_eq!(token, "");
             assert_eq!(ctx, CompletionContext::AliasColumn("users".to_string()));
@@ -1160,6 +1142,8 @@ mod tests {
         #[test]
         fn unknown_alias_dot_returns_schema_qualified() {
             let e = engine();
+            let sql = "SELECT public.";
+            let tokens = e.lexer.tokenize(sql, sql.len(), None);
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1171,7 +1155,7 @@ mod tests {
                 current_clause: Default::default(),
             };
 
-            let (token, ctx) = e.analyze_with_context("SELECT public.", 14, &sql_context);
+            let (token, ctx) = e.analyze_with_context(sql, 14, &sql_context, &tokens);
 
             // "public" is not a known alias, so it falls back to schema-qualified
             assert_eq!(token, "");
@@ -1190,6 +1174,8 @@ mod tests {
         #[test]
         fn from_clause_with_cte_returns_cte_or_table() {
             let e = engine();
+            let sql = "WITH active_users AS (SELECT 1) SELECT * FROM ";
+            let tokens = e.lexer.tokenize(sql, sql.len(), None);
             let sql_context = SqlContext {
                 tables: vec![],
                 ctes: vec![CteDefinition {
@@ -1199,11 +1185,7 @@ mod tests {
                 current_clause: Default::default(),
             };
 
-            let (token, ctx) = e.analyze_with_context(
-                "WITH active_users AS (SELECT 1) SELECT * FROM ",
-                46,
-                &sql_context,
-            );
+            let (token, ctx) = e.analyze_with_context(sql, 46, &sql_context, &tokens);
 
             assert_eq!(token, "");
             assert_eq!(ctx, CompletionContext::CteOrTable);
@@ -1662,6 +1644,45 @@ mod tests {
 
             assert!(email_score > name_score);
             assert_eq!(email_score - name_score, 30);
+        }
+    }
+
+    mod regression_tests {
+        use super::*;
+
+        #[test]
+        fn select_xxx_f_returns_from_keyword() {
+            let e = engine();
+
+            // Column context but no table_detail -> should fallback to keywords
+            let candidates = e.get_candidates("SELECT xxx F", 12, None, None);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "FROM"));
+        }
+
+        #[test]
+        fn keyword_in_string_does_not_affect_context() {
+            let e = engine();
+
+            // "FROM" inside string should not trigger Table context
+            let candidates = e.get_candidates("SELECT 'FROM' ", 14, None, None);
+
+            // Should be Column context (after SELECT), but fallback to Keyword
+            assert!(!candidates.is_empty());
+            // Should not show table candidates (which would be empty anyway)
+            assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
+        }
+
+        #[test]
+        fn keyword_in_comment_does_not_affect_context() {
+            let e = engine();
+
+            // "FROM" inside comment should not trigger Table context
+            let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
         }
     }
 }
