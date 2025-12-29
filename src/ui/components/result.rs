@@ -138,46 +138,32 @@ impl ResultPane {
             return;
         }
 
-        // Apply horizontal scroll: skip columns based on offset
-        let visible_columns: Vec<&String> =
-            result.columns.iter().skip(horizontal_offset).collect();
-        let visible_column_indices: Vec<usize> =
-            (horizontal_offset..result.columns.len()).collect();
+        // Calculate ideal widths for ALL columns first (for viewport calculation)
+        let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
 
-        if visible_columns.is_empty() {
+        // Viewport-based column selection: only include columns that fit in available width
+        let (viewport_indices, viewport_widths) =
+            select_viewport_columns(&all_ideal_widths, horizontal_offset, inner.width);
+
+        if viewport_indices.is_empty() {
             return;
         }
 
-        // Get visible rows for width calculation
-        let visible_row_data: Vec<Vec<&String>> = result
-            .rows
+        // Convert to Constraints
+        let widths: Vec<Constraint> = viewport_widths
             .iter()
-            .map(|row| {
-                visible_column_indices
-                    .iter()
-                    .filter_map(|&idx| row.get(idx))
-                    .collect()
-            })
+            .map(|&w| Constraint::Length(w))
             .collect();
 
-        // Calculate column widths for visible columns only
-        let visible_headers: Vec<String> =
-            visible_columns.iter().map(|s| (*s).clone()).collect();
-        let visible_rows_for_calc: Vec<Vec<String>> = visible_row_data
-            .iter()
-            .map(|row| row.iter().map(|s| (*s).clone()).collect())
-            .collect();
-        let widths =
-            calculate_column_widths(&visible_headers, &visible_rows_for_calc, inner.width);
-
-        // Header row (visible columns only)
-        let header = Row::new(visible_columns.iter().map(|c| {
-            Cell::from((*c).clone()).style(Style::default().add_modifier(Modifier::BOLD))
+        // Header row (viewport columns only)
+        let header = Row::new(viewport_indices.iter().map(|&idx| {
+            let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
+            Cell::from(col_name.to_string()).style(Style::default().add_modifier(Modifier::BOLD))
         }))
         .height(1);
 
         // Data rows with scroll offset
-        let visible_rows = inner.height.saturating_sub(2) as usize; // Account for header and border
+        let visible_rows = inner.height.saturating_sub(2) as usize;
         let rows: Vec<Row> = result
             .rows
             .iter()
@@ -192,20 +178,12 @@ impl ResultPane {
                 };
 
                 Row::new(
-                    visible_column_indices
+                    viewport_indices
                         .iter()
-                        .enumerate()
-                        .map(|(vis_idx, &orig_idx)| {
+                        .zip(viewport_widths.iter())
+                        .map(|(&orig_idx, &col_width)| {
                             let cell = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
-                            // Extract width from constraint for this visible column
-                            let max_width =
-                                if let Some(Constraint::Length(w)) = widths.get(vis_idx) {
-                                    *w as usize
-                                } else {
-                                    50 // fallback
-                                };
-
-                            let display = truncate_cell(cell, max_width);
+                            let display = truncate_cell(cell, col_width as usize);
                             Cell::from(display)
                         }),
                 )
@@ -220,6 +198,7 @@ impl ResultPane {
         // Show scroll indicators
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
+        let viewport_end = viewport_indices.last().map(|&i| i + 1).unwrap_or(0);
 
         // Vertical scroll indicator (bottom-right)
         if total_rows > visible_rows {
@@ -241,12 +220,16 @@ impl ResultPane {
         }
 
         // Horizontal scroll indicator (bottom-left, inside the border)
-        if horizontal_offset > 0 || visible_columns.len() < total_cols {
+        if total_cols > 1 {
+            let left_arrow = if horizontal_offset > 0 { "◀ " } else { "" };
+            let right_arrow = if viewport_end < total_cols { " ▶" } else { "" };
             let h_indicator = format!(
-                " [col {}-{}/{}] ",
+                " {}col {}-{}/{}{}",
+                left_arrow,
                 horizontal_offset + 1,
-                (horizontal_offset + visible_columns.len()).min(total_cols),
-                total_cols
+                viewport_end,
+                total_cols,
+                right_arrow
             );
             let h_indicator_area = Rect {
                 x: area.x + 1,
@@ -254,29 +237,25 @@ impl ResultPane {
                 width: h_indicator.len() as u16,
                 height: 1,
             };
-            let h_indicator_widget =
-                Paragraph::new(h_indicator).style(Style::default().fg(Color::DarkGray));
+            let indicator_style = if horizontal_offset > 0 || viewport_end < total_cols {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            let h_indicator_widget = Paragraph::new(h_indicator).style(indicator_style);
             frame.render_widget(h_indicator_widget, h_indicator_area);
         }
     }
 }
 
-/// Calculate column widths based on content, scaled to fit available space.
-fn calculate_column_widths(
-    headers: &[String],
-    rows: &[Vec<String>],
-    available_width: u16,
-) -> Vec<Constraint> {
+/// Calculate ideal widths for all columns (no scaling, just content-based).
+fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
     const MIN_WIDTH: u16 = 4;
     const MAX_WIDTH: u16 = 50;
     const PADDING: u16 = 2;
     const SAMPLE_ROWS: usize = 50;
 
-    if headers.is_empty() {
-        return vec![];
-    }
-
-    let ideal_widths: Vec<u16> = headers
+    headers
         .iter()
         .enumerate()
         .map(|(col_idx, header)| {
@@ -293,31 +272,42 @@ fn calculate_column_widths(
 
             (max_width as u16 + PADDING).clamp(MIN_WIDTH, MAX_WIDTH)
         })
-        .collect();
-
-    let total_ideal: u16 = ideal_widths.iter().sum();
-
-    if total_ideal <= available_width {
-        return ideal_widths.into_iter().map(Constraint::Length).collect();
-    }
-
-    // Scale down proportionally
-    let separator_space = headers.len().saturating_sub(1) as u16;
-    let usable_width = available_width.saturating_sub(separator_space);
-
-    if usable_width == 0 || total_ideal == 0 {
-        return vec![Constraint::Length(MIN_WIDTH); headers.len()];
-    }
-
-    let scale_factor = usable_width as f64 / total_ideal as f64;
-
-    ideal_widths
-        .into_iter()
-        .map(|w| {
-            let scaled = (w as f64 * scale_factor).round() as u16;
-            Constraint::Length(scaled.max(MIN_WIDTH))
-        })
         .collect()
+}
+
+/// Select columns that fit within available width (viewport-based).
+/// Returns (column_indices, column_widths) for columns that fit.
+fn select_viewport_columns(
+    all_widths: &[u16],
+    horizontal_offset: usize,
+    available_width: u16,
+) -> (Vec<usize>, Vec<u16>) {
+    let mut indices = Vec::new();
+    let mut widths = Vec::new();
+    let mut used_width: u16 = 0;
+
+    for (i, &width) in all_widths.iter().enumerate().skip(horizontal_offset) {
+        // Account for column separator (1 char) except for first column
+        let separator = if indices.is_empty() { 0 } else { 1 };
+        let needed = width + separator;
+
+        if used_width + needed <= available_width {
+            used_width += needed;
+            indices.push(i);
+            widths.push(width);
+        } else {
+            // No more columns fit
+            break;
+        }
+    }
+
+    // Ensure at least one column is shown (even if it doesn't fully fit)
+    if indices.is_empty() && horizontal_offset < all_widths.len() {
+        indices.push(horizontal_offset);
+        widths.push(all_widths[horizontal_offset].min(available_width));
+    }
+
+    (indices, widths)
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
@@ -341,17 +331,15 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    mod calculate_column_widths_tests {
+    mod calculate_ideal_widths_tests {
         use super::*;
-
-        const WIDE_SCREEN: u16 = 200; // Plenty of space
 
         #[test]
         fn empty_headers_returns_empty_vec() {
             let headers: Vec<String> = vec![];
             let rows: Vec<Vec<String>> = vec![];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 0);
         }
@@ -361,11 +349,11 @@ mod tests {
             let headers = vec!["name".to_string()];
             let rows: Vec<Vec<String>> = vec![];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // "name" = 4 chars + 2 padding = 6, clamped to MIN_WIDTH (4) = 6
-            assert_eq!(result[0], Constraint::Length(6));
+            // "name" = 4 chars + 2 padding = 6
+            assert_eq!(result[0], 6);
         }
 
         #[test]
@@ -376,13 +364,13 @@ mod tests {
                 vec!["2".to_string(), "Bob".to_string()],
             ];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 2);
             // id: max(2, 1) + 2 = 4
-            assert_eq!(result[0], Constraint::Length(4));
+            assert_eq!(result[0], 4);
             // name: max(4, 5) + 2 = 7
-            assert_eq!(result[1], Constraint::Length(7));
+            assert_eq!(result[1], 7);
         }
 
         #[test]
@@ -391,11 +379,11 @@ mod tests {
             let long_text = "a".repeat(100);
             let rows = vec![vec![long_text]];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
             // Should be capped at MAX_WIDTH (50)
-            assert_eq!(result[0], Constraint::Length(50));
+            assert_eq!(result[0], 50);
         }
 
         #[test]
@@ -403,11 +391,11 @@ mod tests {
             let headers = vec!["名前".to_string()];
             let rows = vec![vec!["日本語テスト".to_string()]];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
             // "日本語テスト" = 6 chars + 2 padding = 8
-            assert_eq!(result[0], Constraint::Length(8));
+            assert_eq!(result[0], 8);
         }
 
         #[test]
@@ -417,11 +405,11 @@ mod tests {
                 "short\nvery long second line that should be ignored".to_string(),
             ]];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
             // "short" = 5 chars, max(4, 5) + 2 = 7
-            assert_eq!(result[0], Constraint::Length(7));
+            assert_eq!(result[0], 7);
         }
 
         #[test]
@@ -440,52 +428,84 @@ mod tests {
                 ],
             ];
 
-            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+            let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 3);
             // id: max(2, 2) + 2 = 4
-            assert_eq!(result[0], Constraint::Length(4));
+            assert_eq!(result[0], 4);
             // name: max(4, 13) + 2 = 15
-            assert_eq!(result[1], Constraint::Length(15));
+            assert_eq!(result[1], 15);
             // email: max(5, 17) + 2 = 19
-            assert_eq!(result[2], Constraint::Length(19));
+            assert_eq!(result[2], 19);
+        }
+    }
+
+    mod select_viewport_columns_tests {
+        use super::*;
+
+        #[test]
+        fn selects_columns_that_fit() {
+            let widths = vec![10, 10, 10, 10]; // 4 columns, each 10 wide
+            let available = 35; // Room for 3 columns (10 + 1 + 10 + 1 + 10 = 32)
+
+            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
+
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(selected_widths, vec![10, 10, 10]);
         }
 
         #[test]
-        fn scales_down_when_total_exceeds_available_width() {
-            // 10 columns each needing ~10 width = 100 ideal
-            let headers: Vec<String> = (0..10).map(|i| format!("col_{:02}", i)).collect();
-            let rows: Vec<Vec<String>> = vec![];
+        fn respects_horizontal_offset() {
+            let widths = vec![10, 10, 10, 10];
+            let available = 25; // Room for 2 columns from offset
 
-            // Only 50 available - should scale down
-            let result = calculate_column_widths(&headers, &rows, 50);
+            let (indices, selected_widths) = select_viewport_columns(&widths, 1, available);
 
-            assert_eq!(result.len(), 10);
-            // All columns should be scaled down proportionally
-            let total: u16 = result
-                .iter()
-                .map(|c| match c {
-                    Constraint::Length(w) => *w,
-                    _ => 0,
-                })
-                .sum();
-            // Total should fit within available space (accounting for separators)
-            assert!(total <= 50, "Total {} should be <= 50", total);
+            assert_eq!(indices, vec![1, 2]);
+            assert_eq!(selected_widths, vec![10, 10]);
         }
 
         #[test]
-        fn maintains_min_width_even_when_scaling() {
-            let headers: Vec<String> = (0..20).map(|i| format!("c{}", i)).collect();
-            let rows: Vec<Vec<String>> = vec![];
+        fn ensures_at_least_one_column() {
+            let widths = vec![100]; // One very wide column
+            let available = 20; // Not enough space
 
-            // Very narrow - each column should still have MIN_WIDTH
-            let result = calculate_column_widths(&headers, &rows, 40);
+            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
 
-            for (i, constraint) in result.iter().enumerate() {
-                if let Constraint::Length(w) = constraint {
-                    assert!(*w >= 4, "Column {} width {} should be >= MIN_WIDTH 4", i, w);
-                }
-            }
+            assert_eq!(indices, vec![0]);
+            assert_eq!(selected_widths, vec![20]); // Capped to available
+        }
+
+        #[test]
+        fn handles_empty_widths() {
+            let widths: Vec<u16> = vec![];
+            let available = 100;
+
+            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
+
+            assert!(indices.is_empty());
+            assert!(selected_widths.is_empty());
+        }
+
+        #[test]
+        fn offset_beyond_columns_returns_empty() {
+            let widths = vec![10, 10];
+            let available = 100;
+
+            let (indices, selected_widths) = select_viewport_columns(&widths, 5, available);
+
+            assert!(indices.is_empty());
+            assert!(selected_widths.is_empty());
+        }
+
+        #[test]
+        fn accounts_for_separators() {
+            let widths = vec![10, 10, 10];
+            let available = 31; // 10 + 1 + 10 + 1 + 10 = 32, so only 2 fit
+
+            let (indices, _) = select_viewport_columns(&widths, 0, available);
+
+            assert_eq!(indices.len(), 2);
         }
     }
 
