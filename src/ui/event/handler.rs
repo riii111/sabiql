@@ -135,6 +135,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('[') => Action::InspectorPrevTab,
         KeyCode::Char(']') => Action::InspectorNextTab,
 
+        // Console: open pgcli directly
+        KeyCode::Char('c') => Action::OpenConsole,
+
         // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
             if state.focused_pane == FocusedPane::Explorer {
