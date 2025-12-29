@@ -120,10 +120,8 @@ impl Inspector {
             })
             .collect();
 
-        // Calculate ideal widths
-        let all_ideal_widths = calculate_column_widths(&headers, &data_rows);
+        let (all_ideal_widths, true_total_width) = calculate_column_widths(&headers, &data_rows);
 
-        // Viewport-based column selection
         let (viewport_indices, viewport_widths) =
             select_viewport_columns(&all_ideal_widths, horizontal_offset, area.width.saturating_sub(2));
 
@@ -190,12 +188,7 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        // Scroll indicators
-        // Use width-based horizontal scroll detection instead of column count
-        let total_ideal_width: u16 = all_ideal_widths.iter().sum();
-
-        // Calculate total and visible width for scroll indicator
-        let total_width_units = total_ideal_width;
+        // Use true (unclamped) width for scroll detection to show bar when content is truncated
         let viewport_start_width: u16 = all_ideal_widths.iter().take(horizontal_offset).sum();
         let viewport_end_width: u16 = viewport_start_width + viewport_widths.iter().sum::<u16>();
 
@@ -203,7 +196,7 @@ impl Inspector {
             render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
         };
         render_vertical_scroll_indicator(frame, area, scroll_offset, visible_rows, total_rows);
-        render_horizontal_scroll_indicator(frame, area, viewport_start_width as usize, viewport_end_width as usize, total_width_units as usize);
+        render_horizontal_scroll_indicator(frame, area, viewport_start_width as usize, viewport_end_width as usize, true_total_width as usize);
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {
@@ -425,12 +418,16 @@ impl Inspector {
     }
 }
 
-fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
+/// Returns (clamped_widths, true_total_width)
+/// - clamped_widths: widths clamped to MIN/MAX for rendering
+/// - true_total_width: sum of unclamped widths (for scroll detection)
+fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
     const MIN_WIDTH: u16 = 4;
     const MAX_WIDTH: u16 = 40;
     const PADDING: u16 = 2;
 
-    headers
+    let mut true_total: u16 = 0;
+    let clamped: Vec<u16> = headers
         .iter()
         .enumerate()
         .map(|(col_idx, header)| {
@@ -442,9 +439,13 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
                 }
             }
 
-            (max_width as u16 + PADDING).clamp(MIN_WIDTH, MAX_WIDTH)
+            let true_width = max_width as u16 + PADDING;
+            true_total += true_width;
+            true_width.clamp(MIN_WIDTH, MAX_WIDTH)
         })
-        .collect()
+        .collect();
+
+    (clamped, true_total)
 }
 
 fn select_viewport_columns(

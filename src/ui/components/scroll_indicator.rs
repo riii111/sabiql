@@ -23,12 +23,13 @@ pub fn render_horizontal_scroll_indicator(
         return;
     }
 
-    let available_width = area.width as usize;
+    // Reserve 1 char for left margin, generate string to fit remaining width
+    let left_margin: u16 = 1;
+    let available_width = area.width.saturating_sub(left_margin) as usize;
     if available_width < 15 {
         return;
     }
 
-    // Build components
     let left_arrow = if can_scroll_left { "<" } else { " " };
     let right_arrow = if can_scroll_right { ">" } else { " " };
     let position_text = format!("col {}-{}/{}", current_start + 1, current_end, total);
@@ -44,11 +45,10 @@ pub fn render_horizontal_scroll_indicator(
         left_arrow, position_text, scrollbar, right_arrow
     );
 
-    // Render at bottom-left of inner area with left margin
     let indicator_area = Rect {
-        x: area.x + 1,
+        x: area.x + left_margin,
         y: area.y + area.height.saturating_sub(1),
-        width: (indicator.len() as u16).min(area.width.saturating_sub(1)),
+        width: (indicator.len() as u16).min(available_width as u16),
         height: 1,
     };
 
