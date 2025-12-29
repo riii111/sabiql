@@ -139,28 +139,22 @@ impl CompletionEngine {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => {
-                // Mix columns with primary keywords (FROM, WHERE, etc.)
-                // Priority switching based on prefix:
-                // - Empty prefix: keywords first (user wants FROM, WHERE, etc.)
-                // - Non-empty prefix: columns first (user is typing a column name)
                 let keywords = self.primary_clause_keywords(&current_token);
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
 
-                // Boost column scores when user is typing (prefix exists)
-                if !current_token.is_empty() {
+                // Prefix exists + columns available → boost columns above keywords
+                if !current_token.is_empty() && !columns.is_empty() {
                     for col in &mut columns {
-                        col.score += 150; // Boost to surpass keyword score (200)
+                        col.score += 250;
                     }
                 }
 
-                // Reserve slots for both
                 let max_keywords = 15.min(keywords.len());
                 let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
 
                 let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
                 mixed.extend(columns.into_iter().take(max_columns));
-
                 mixed.sort_by(|a, b| match b.score.cmp(&a.score) {
                     std::cmp::Ordering::Equal => a.text.cmp(&b.text),
                     other => other,
