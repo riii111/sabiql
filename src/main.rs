@@ -321,20 +321,13 @@ async fn handle_action(
                 if let Some(candidate) = state.completion.candidates.get(state.completion.selected_index) {
                     let insert_text = candidate.text.clone();
                     let trigger_pos = state.completion.trigger_position;
-                    let current_pos = state.sql_modal_cursor;
 
-                    let chars_to_delete = current_pos.saturating_sub(trigger_pos);
-                    for _ in 0..chars_to_delete {
-                        if state.sql_modal_cursor > trigger_pos {
-                            state.sql_modal_cursor -= 1;
-                            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                            state.sql_modal_content.remove(byte_idx);
-                        }
-                    }
+                    let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
+                    let end_byte = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                    state.sql_modal_content.drain(start_byte..end_byte);
 
-                    let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                    state.sql_modal_content.insert_str(byte_idx, &insert_text);
-                    state.sql_modal_cursor += insert_text.chars().count();
+                    state.sql_modal_content.insert_str(start_byte, &insert_text);
+                    state.sql_modal_cursor = trigger_pos + insert_text.chars().count();
                 }
                 state.completion.visible = false;
                 state.completion.candidates.clear();

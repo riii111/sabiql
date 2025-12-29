@@ -28,14 +28,69 @@ impl CompletionEngine {
     pub fn new() -> Self {
         Self {
             keywords: vec![
-                "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
-                "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "TRUE", "FALSE", "LIKE", "ILIKE",
-                "BETWEEN", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END", "AS", "DISTINCT",
-                "ORDER", "BY", "ASC", "DESC", "NULLS", "FIRST", "LAST", "GROUP", "HAVING",
-                "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT", "ALL", "INSERT", "INTO",
-                "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP", "ALTER", "TABLE",
-                "INDEX", "VIEW", "RETURNING", "WITH", "RECURSIVE", "COALESCE", "NULLIF",
-                "CAST", "USING",
+                "SELECT",
+                "FROM",
+                "WHERE",
+                "JOIN",
+                "LEFT",
+                "RIGHT",
+                "INNER",
+                "OUTER",
+                "CROSS",
+                "ON",
+                "AND",
+                "OR",
+                "NOT",
+                "IN",
+                "IS",
+                "NULL",
+                "TRUE",
+                "FALSE",
+                "LIKE",
+                "ILIKE",
+                "BETWEEN",
+                "EXISTS",
+                "CASE",
+                "WHEN",
+                "THEN",
+                "ELSE",
+                "END",
+                "AS",
+                "DISTINCT",
+                "ORDER",
+                "BY",
+                "ASC",
+                "DESC",
+                "NULLS",
+                "FIRST",
+                "LAST",
+                "GROUP",
+                "HAVING",
+                "LIMIT",
+                "OFFSET",
+                "UNION",
+                "INTERSECT",
+                "EXCEPT",
+                "ALL",
+                "INSERT",
+                "INTO",
+                "VALUES",
+                "UPDATE",
+                "SET",
+                "DELETE",
+                "CREATE",
+                "DROP",
+                "ALTER",
+                "TABLE",
+                "INDEX",
+                "VIEW",
+                "RETURNING",
+                "WITH",
+                "RECURSIVE",
+                "COALESCE",
+                "NULLIF",
+                "CAST",
+                "USING",
             ],
         }
     }
@@ -127,18 +182,19 @@ impl CompletionEngine {
         let mut last_column_pos = None;
 
         for kw in keywords_table {
-            if let Some(pos) = before_upper.rfind(kw) {
-                if last_table_pos.map_or(true, |p| pos > p) {
-                    last_table_pos = Some(pos);
-                }
+            if let Some(pos) = before_upper.rfind(kw)
+                && last_table_pos.map_or_else(|| true, |p| pos > p)
+            {
+                last_table_pos = Some(pos);
             }
         }
 
         for kw in keywords_column {
-            if let Some(pos) = before_upper.rfind(kw) {
-                if last_column_pos.map_or(true, |p| pos > p) {
-                    last_column_pos = Some(pos);
-                }
+            let Some(pos) = before_upper.rfind(kw) else {
+                continue;
+            };
+            if last_column_pos.map_or_else(|| true, |p| pos > p) {
+                last_column_pos = Some(pos);
             }
         }
 
@@ -310,7 +366,10 @@ mod tests {
             let (token, ctx) = e.analyze("SELECT * FROM public.", 21);
 
             assert_eq!(token, "");
-            assert_eq!(ctx, CompletionContext::SchemaQualified("public".to_string()));
+            assert_eq!(
+                ctx,
+                CompletionContext::SchemaQualified("public".to_string())
+            );
         }
 
         #[test]
@@ -319,7 +378,10 @@ mod tests {
             let (token, ctx) = e.analyze("SELECT * FROM public.us", 23);
 
             assert_eq!(token, "us");
-            assert_eq!(ctx, CompletionContext::SchemaQualified("public".to_string()));
+            assert_eq!(
+                ctx,
+                CompletionContext::SchemaQualified("public".to_string())
+            );
         }
     }
 
