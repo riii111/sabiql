@@ -201,7 +201,7 @@ async fn handle_action(
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, c);
             state.sql_modal_cursor += 1;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(200));
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalBackspace => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -210,7 +210,7 @@ async fn handle_action(
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
                 state.sql_modal_content.remove(byte_idx);
             }
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(200));
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalDelete => {
             state.sql_modal_state = app::state::SqlModalState::Editing;

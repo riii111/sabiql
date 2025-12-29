@@ -141,6 +141,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         // Console: open pgcli directly
         KeyCode::Char('c') => Action::OpenConsole,
+        // SQL Modal: open adhoc query editor
+        KeyCode::Char('s') => Action::OpenSqlModal,
 
         // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
@@ -199,17 +201,17 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
     match (key.code, key.modifiers, completion_visible) {
+        // Ctrl+Enter: Execute query (priority over completion)
+        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
+
         // Completion navigation (when popup is visible)
         (KeyCode::Up, _, true) => Action::CompletionPrev,
         (KeyCode::Down, _, true) => Action::CompletionNext,
-        (KeyCode::Tab, _, true) => Action::CompletionAccept,
+        (KeyCode::Tab | KeyCode::Enter, _, true) => Action::CompletionAccept,
         (KeyCode::Esc, _, true) => Action::CompletionDismiss,
 
         // Manual completion trigger
         (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => Action::CompletionTrigger,
-
-        // Ctrl+Enter: Execute query
-        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
         // Esc: Close modal (when completion not visible)
         (KeyCode::Esc, _, false) => Action::CloseSqlModal,
         // Navigation
@@ -651,6 +653,8 @@ mod tests {
         #[case(KeyCode::Esc, true, Expected::CompletionDismiss)]
         #[case(KeyCode::Tab, false, Expected::SqlModalTab)]
         #[case(KeyCode::Tab, true, Expected::CompletionAccept)]
+        #[case(KeyCode::Enter, false, Expected::SqlModalNewLine)]
+        #[case(KeyCode::Enter, true, Expected::CompletionAccept)]
         #[case(KeyCode::Up, false, Expected::SqlModalMoveCursor(CursorMove::Up))]
         #[case(KeyCode::Up, true, Expected::CompletionPrev)]
         #[case(KeyCode::Down, false, Expected::SqlModalMoveCursor(CursorMove::Down))]
@@ -667,7 +671,6 @@ mod tests {
 
         // Keys unaffected by completion visibility
         #[rstest]
-        #[case(KeyCode::Enter, Expected::SqlModalNewLine)]
         #[case(KeyCode::Backspace, Expected::SqlModalBackspace)]
         #[case(KeyCode::Delete, Expected::SqlModalDelete)]
         #[case(KeyCode::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]

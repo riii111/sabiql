@@ -45,6 +45,7 @@ impl Footer {
                     hints.push(("[/]", "InsTabs"));
                     hints.push(("r", "Reload"));
                     hints.push(("c", "Console"));
+                    hints.push(("s", "SQL"));
                     hints.push(("^P", "Tables"));
                     hints.push(("^K", "Palette"));
                     hints

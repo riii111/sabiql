@@ -210,7 +210,8 @@ impl CompletionEngine {
         let prefix_upper = prefix.to_uppercase();
         self.keywords
             .iter()
-            .filter(|kw| kw.starts_with(&prefix_upper))
+            .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
+            .take(10)
             .map(|kw| CompletionCandidate {
                 text: (*kw).to_string(),
                 kind: CompletionKind::Keyword,
@@ -233,9 +234,11 @@ impl CompletionEngine {
             .tables
             .iter()
             .filter(|t| {
-                t.name.to_lowercase().starts_with(&prefix_lower)
+                prefix.is_empty()
+                    || t.name.to_lowercase().starts_with(&prefix_lower)
                     || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
             })
+            .take(10)
             .map(|t| CompletionCandidate {
                 text: t.qualified_name(),
                 kind: CompletionKind::Table,
@@ -257,7 +260,8 @@ impl CompletionEngine {
         table
             .columns
             .iter()
-            .filter(|c| c.name.to_lowercase().starts_with(&prefix_lower))
+            .filter(|c| prefix.is_empty() || c.name.to_lowercase().starts_with(&prefix_lower))
+            .take(10)
             .map(|c| CompletionCandidate {
                 text: c.name.clone(),
                 kind: CompletionKind::Column,
