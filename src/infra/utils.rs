@@ -1,14 +1,10 @@
 /// SQL identifier and literal quoting utilities for PostgreSQL.
 ///
 /// These functions follow PostgreSQL's quoting rules for safe SQL interpolation.
-/// Quote identifier for safe SQL representation (PostgreSQL style).
-/// Doubles any embedded double quotes and wraps in double quotes.
 pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-/// Escape string literal for safe SQL interpolation (PostgreSQL quote_literal equivalent).
-/// Doubles any embedded single quotes and wraps in single quotes.
 pub fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }

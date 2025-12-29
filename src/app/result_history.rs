@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 
 use crate::domain::QueryResult;
 
-/// Ring buffer for storing query result history
 #[derive(Debug, Clone)]
 pub struct ResultHistory {
     entries: VecDeque<QueryResult>,
@@ -17,7 +16,6 @@ impl Default for ResultHistory {
 
 #[allow(dead_code)]
 impl ResultHistory {
-    /// Create a new result history with the given capacity
     pub fn new(capacity: usize) -> Self {
         Self {
             entries: VecDeque::with_capacity(capacity),
@@ -25,8 +23,6 @@ impl ResultHistory {
         }
     }
 
-    /// Add a query result to the history
-    /// If the history is at capacity, the oldest entry is removed
     pub fn push(&mut self, result: QueryResult) {
         if self.entries.len() >= self.capacity {
             self.entries.pop_front();
@@ -39,32 +35,27 @@ impl ResultHistory {
         self.entries.get(index)
     }
 
-    /// Get the most recent result
     pub fn latest(&self) -> Option<&QueryResult> {
         self.entries.back()
     }
 
-    /// Get the number of stored results
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// Check if the history is empty
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    /// Get an iterator over the results (oldest first)
+    /// Iterator over results (oldest first)
     pub fn iter(&self) -> impl Iterator<Item = &QueryResult> {
         self.entries.iter()
     }
 
-    /// Clear all history
     pub fn clear(&mut self) {
         self.entries.clear();
     }
 
-    /// Get the capacity of the history
     pub fn capacity(&self) -> usize {
         self.capacity
     }
