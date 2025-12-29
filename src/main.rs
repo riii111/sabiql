@@ -318,12 +318,17 @@ async fn handle_action(
         }
         Action::CompletionAccept => {
             if state.completion.visible && !state.completion.candidates.is_empty() {
-                if let Some(candidate) = state.completion.candidates.get(state.completion.selected_index) {
+                if let Some(candidate) = state
+                    .completion
+                    .candidates
+                    .get(state.completion.selected_index)
+                {
                     let insert_text = candidate.text.clone();
                     let trigger_pos = state.completion.trigger_position;
 
                     let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
-                    let end_byte = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                    let end_byte =
+                        char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
                     state.sql_modal_content.drain(start_byte..end_byte);
 
                     state.sql_modal_content.insert_str(start_byte, &insert_text);

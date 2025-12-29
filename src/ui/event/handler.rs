@@ -201,9 +201,11 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
     match (key.code, key.modifiers, completion_visible) {
-        // Execute query: Ctrl+Enter or Shift+Enter (some terminals don't send Ctrl+Enter correctly)
+        // Execute query: Ctrl+Enter, Cmd+Enter (macOS), or Alt+Enter
         (KeyCode::Enter, m, _)
-            if m.contains(KeyModifiers::CONTROL) || m.contains(KeyModifiers::SHIFT) =>
+            if m.contains(KeyModifiers::CONTROL)
+                || m.contains(KeyModifiers::SUPER)
+                || m.contains(KeyModifiers::ALT) =>
         {
             Action::SqlModalSubmit
         }

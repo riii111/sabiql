@@ -169,7 +169,7 @@ impl SqlModal {
         let max_items = 8;
         let visible_count = state.completion.candidates.len().min(max_items);
         let popup_height = (visible_count as u16) + 2; // +2 for borders
-        let popup_width = 45u16;
+        let popup_width = 45u16.min(modal_area.width);
 
         // Position popup below cursor (global coordinates)
         // Ensure popup fits within modal bounds
