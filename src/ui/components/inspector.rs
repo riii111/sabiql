@@ -131,7 +131,7 @@ impl Inspector {
                         String::new()
                     },
                     if col.is_primary_key {
-                        "●".to_string()
+                        "✓".to_string()
                     } else {
                         String::new()
                     },
