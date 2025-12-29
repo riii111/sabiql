@@ -94,6 +94,22 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
+        // Horizontal scroll for Result pane (h/l)
+        KeyCode::Char('h') | KeyCode::Left => {
+            if result_navigation {
+                Action::ResultScrollLeft
+            } else {
+                Action::None
+            }
+        }
+        KeyCode::Char('l') | KeyCode::Right => {
+            if result_navigation {
+                Action::ResultScrollRight
+            } else {
+                Action::None
+            }
+        }
+
         // TODO: Use ER-specific panes once ER view is implemented
         KeyCode::Char(c @ '1'..='3') => FocusedPane::from_browse_key(c)
             .map(Action::SetFocusedPane)
@@ -491,6 +507,24 @@ mod tests {
             assert!(matches!(result, Action::ResultScrollBottom));
         }
 
+        #[rstest]
+        #[case(KeyCode::Char('h'))]
+        #[case(KeyCode::Left)]
+        fn focus_mode_h_scrolls_left(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollLeft));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('l'))]
+        #[case(KeyCode::Right)]
+        fn focus_mode_l_scrolls_right(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollRight));
+        }
+
         #[test]
         fn result_focused_navigation_scrolls_result() {
             let state = result_focused_state();
@@ -498,6 +532,42 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('j')), &state);
 
             assert!(matches!(result, Action::ResultScrollDown));
+        }
+
+        #[test]
+        fn result_focused_h_scrolls_left() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+
+            assert!(matches!(result, Action::ResultScrollLeft));
+        }
+
+        #[test]
+        fn result_focused_l_scrolls_right() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
+
+            assert!(matches!(result, Action::ResultScrollRight));
+        }
+
+        #[test]
+        fn h_key_does_nothing_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn l_key_does_nothing_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
+
+            assert!(matches!(result, Action::None));
         }
     }
 

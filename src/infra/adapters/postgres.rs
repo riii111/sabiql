@@ -672,6 +672,8 @@ impl MetadataProvider for PostgresAdapter {
 
         // Execute queries sequentially to avoid connection pool exhaustion
         // on tables with many columns
+        // TODO: If performance becomes an issue, consider migrating to controlled parallel
+        // execution using semaphores (e.g., tokio::sync::Semaphore) to limit concurrency
         let columns_json = self.execute_query(dsn, &columns_q).await?;
         let indexes_json = self.execute_query(dsn, &indexes_q).await?;
         let fks_json = self.execute_query(dsn, &fks_q).await?;

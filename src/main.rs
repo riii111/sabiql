@@ -649,6 +649,7 @@ async fn handle_action(
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
                 state.result_scroll_offset = 0;
+                state.result_horizontal_offset = 0;
                 state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
                 state.history_index = None;
 
@@ -705,6 +706,7 @@ async fn handle_action(
                     _ => {}
                 }
                 state.result_scroll_offset = 0;
+                state.result_horizontal_offset = 0;
             }
         }
 
@@ -718,6 +720,7 @@ async fn handle_action(
                     state.history_index = None;
                 }
                 state.result_scroll_offset = 0;
+                state.result_horizontal_offset = 0;
             }
         }
 
@@ -751,6 +754,22 @@ async fn handle_action(
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
             state.result_scroll_offset = max_scroll;
+        }
+
+        Action::ResultScrollLeft => {
+            state.result_horizontal_offset = state.result_horizontal_offset.saturating_sub(1);
+        }
+
+        Action::ResultScrollRight => {
+            // Calculate max horizontal scroll based on column count
+            let max_scroll = state
+                .current_result
+                .as_ref()
+                .map(|r| r.columns.len().saturating_sub(1))
+                .unwrap_or(0);
+            if state.result_horizontal_offset < max_scroll {
+                state.result_horizontal_offset += 1;
+            }
         }
 
         // Clipboard operations

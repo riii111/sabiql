@@ -46,7 +46,14 @@ impl ResultPane {
             } else if result.rows.is_empty() {
                 Self::render_empty(frame, area, block);
             } else {
-                Self::render_table(frame, area, result, block, state.result_scroll_offset);
+                Self::render_table(
+                    frame,
+                    area,
+                    result,
+                    block,
+                    state.result_scroll_offset,
+                    state.result_horizontal_offset,
+                );
             }
         } else {
             Self::render_placeholder(frame, area, block);
@@ -122,6 +129,7 @@ impl ResultPane {
         result: &QueryResult,
         block: Block,
         scroll_offset: usize,
+        horizontal_offset: usize,
     ) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -130,15 +138,43 @@ impl ResultPane {
             return;
         }
 
-        // Calculate column widths dynamically based on content and available space
-        let widths = calculate_column_widths(&result.columns, &result.rows, inner.width);
+        // Apply horizontal scroll: skip columns based on offset
+        let visible_columns: Vec<&String> =
+            result.columns.iter().skip(horizontal_offset).collect();
+        let visible_column_indices: Vec<usize> =
+            (horizontal_offset..result.columns.len()).collect();
 
-        // Header row
-        let header =
-            Row::new(result.columns.iter().map(|c| {
-                Cell::from(c.clone()).style(Style::default().add_modifier(Modifier::BOLD))
-            }))
-            .height(1);
+        if visible_columns.is_empty() {
+            return;
+        }
+
+        // Get visible rows for width calculation
+        let visible_row_data: Vec<Vec<&String>> = result
+            .rows
+            .iter()
+            .map(|row| {
+                visible_column_indices
+                    .iter()
+                    .filter_map(|&idx| row.get(idx))
+                    .collect()
+            })
+            .collect();
+
+        // Calculate column widths for visible columns only
+        let visible_headers: Vec<String> =
+            visible_columns.iter().map(|s| (*s).clone()).collect();
+        let visible_rows_for_calc: Vec<Vec<String>> = visible_row_data
+            .iter()
+            .map(|row| row.iter().map(|s| (*s).clone()).collect())
+            .collect();
+        let widths =
+            calculate_column_widths(&visible_headers, &visible_rows_for_calc, inner.width);
+
+        // Header row (visible columns only)
+        let header = Row::new(visible_columns.iter().map(|c| {
+            Cell::from((*c).clone()).style(Style::default().add_modifier(Modifier::BOLD))
+        }))
+        .height(1);
 
         // Data rows with scroll offset
         let visible_rows = inner.height.saturating_sub(2) as usize; // Account for header and border
@@ -155,17 +191,24 @@ impl ResultPane {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 };
 
-                Row::new(row.iter().enumerate().map(|(col_idx, cell)| {
-                    // Extract width from constraint for this column
-                    let max_width = if let Some(Constraint::Length(w)) = widths.get(col_idx) {
-                        *w as usize
-                    } else {
-                        50 // fallback
-                    };
+                Row::new(
+                    visible_column_indices
+                        .iter()
+                        .enumerate()
+                        .map(|(vis_idx, &orig_idx)| {
+                            let cell = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
+                            // Extract width from constraint for this visible column
+                            let max_width =
+                                if let Some(Constraint::Length(w)) = widths.get(vis_idx) {
+                                    *w as usize
+                                } else {
+                                    50 // fallback
+                                };
 
-                    let display = truncate_cell(cell, max_width);
-                    Cell::from(display)
-                }))
+                            let display = truncate_cell(cell, max_width);
+                            Cell::from(display)
+                        }),
+                )
                 .style(style)
             })
             .collect();
@@ -174,8 +217,11 @@ impl ResultPane {
 
         frame.render_widget(table, inner);
 
-        // Show scroll indicator if there are more rows
+        // Show scroll indicators
         let total_rows = result.rows.len();
+        let total_cols = result.columns.len();
+
+        // Vertical scroll indicator (bottom-right)
         if total_rows > visible_rows {
             let indicator = format!(
                 " [{}-{}/{}] ",
@@ -192,6 +238,25 @@ impl ResultPane {
             let indicator_widget =
                 Paragraph::new(indicator).style(Style::default().fg(Color::DarkGray));
             frame.render_widget(indicator_widget, indicator_area);
+        }
+
+        // Horizontal scroll indicator (bottom-left, inside the border)
+        if horizontal_offset > 0 || visible_columns.len() < total_cols {
+            let h_indicator = format!(
+                " [col {}-{}/{}] ",
+                horizontal_offset + 1,
+                (horizontal_offset + visible_columns.len()).min(total_cols),
+                total_cols
+            );
+            let h_indicator_area = Rect {
+                x: area.x + 1,
+                y: area.y + area.height - 1,
+                width: h_indicator.len() as u16,
+                height: 1,
+            };
+            let h_indicator_widget =
+                Paragraph::new(h_indicator).style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(h_indicator_widget, h_indicator_area);
         }
     }
 }
@@ -233,10 +298,7 @@ fn calculate_column_widths(
     let total_ideal: u16 = ideal_widths.iter().sum();
 
     if total_ideal <= available_width {
-        return ideal_widths
-            .into_iter()
-            .map(Constraint::Length)
-            .collect();
+        return ideal_widths.into_iter().map(Constraint::Length).collect();
     }
 
     // Scale down proportionally

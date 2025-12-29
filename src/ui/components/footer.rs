@@ -18,6 +18,8 @@ impl Footer {
     }
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
+        use crate::app::focused_pane::FocusedPane;
+
         match state.input_mode {
             InputMode::Normal => {
                 if state.focus_mode {
@@ -33,6 +35,10 @@ impl Footer {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
                     if state.mode == Mode::Browse {
                         hints.push(("f", "Focus"));
+                    }
+                    // Show scroll hint when Result pane is focused
+                    if state.focused_pane == FocusedPane::Result {
+                        hints.push(("j/k/g/G", "Scroll"));
                     }
                     hints.push(("[/]", "InsTabs"));
                     hints.push(("r", "Reload"));

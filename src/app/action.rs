@@ -111,6 +111,8 @@ pub enum Action {
     ResultScrollDown,
     ResultScrollTop,
     ResultScrollBottom,
+    ResultScrollLeft,
+    ResultScrollRight,
     HistoryPrev,
     HistoryNext,
 
