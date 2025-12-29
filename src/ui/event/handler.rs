@@ -687,6 +687,27 @@ mod tests {
         }
 
         #[test]
+        fn delete_key_returns_delete_action() {
+            let result = handle_sql_modal_keys(key(KeyCode::Delete), false);
+
+            assert_action(result, Expected::SqlModalDelete);
+        }
+
+        #[test]
+        fn enter_without_completion_returns_newline() {
+            let result = handle_sql_modal_keys(key(KeyCode::Enter), false);
+
+            assert_action(result, Expected::SqlModalNewLine);
+        }
+
+        #[test]
+        fn tab_without_completion_returns_tab() {
+            let result = handle_sql_modal_keys(key(KeyCode::Tab), false);
+
+            assert_action(result, Expected::SqlModalTab);
+        }
+
+        #[test]
         fn alt_enter_submits_query() {
             let key = key_with_mod(KeyCode::Enter, KeyModifiers::ALT);
 
