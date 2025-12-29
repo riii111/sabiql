@@ -75,7 +75,7 @@ pub fn render_horizontal_scroll_indicator(
     };
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-        .thumb_symbol("▄")
+        .thumb_symbol("▬")
         .track_symbol(Some("─"))
         .begin_symbol(None)
         .end_symbol(None)
