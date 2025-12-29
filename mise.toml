@@ -22,6 +22,10 @@ run = "cargo clippy -- -D warnings"
 description = "Run tests"
 run = "cargo test -q"
 
+[tasks."test:debug"]
+description = "Run specific test with output (e.g., mise run test:debug test_name)"
+run = "cargo test $1 -- --nocapture"
+
 [tasks.run]
 description = "Run application"
 run = "cargo run"
