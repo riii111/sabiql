@@ -30,7 +30,8 @@ INSERT INTO organizations (slug, name, description, logo_url, website, email, ph
 ('riverbend-media', 'Riverbend Media', 'Streaming media production', 'https://example.com/riverbend.png', 'https://riverbendmedia.com', 'studio@riverbendmedia.com', '+1-555-1007', 'United Kingdom', 'Manchester', 'Corporation', 'Media & Entertainment', '100-250', 2013, true, 'professional', 'active', 9),
 ('atlas-finance', 'Atlas Finance', 'Risk analytics for fintech', 'https://example.com/atlas-finance.png', 'https://atlasfinance.io', 'hello@atlasfinance.io', '+1-555-1008', 'United States', 'New York', 'Corporation', 'Fintech', '100-250', 2017, true, 'enterprise', 'active', 10),
 ('openlane-logistics', 'Openlane Logistics', 'Last-mile logistics software', 'https://example.com/openlane.png', 'https://openlane.ai', 'ops@openlane.ai', '+1-555-1009', 'United States', 'Atlanta', 'Corporation', 'Logistics', '50-100', 2020, true, 'starter', 'active', 11),
-('zenith-health', 'Zenith Health', 'Healthcare data platform', 'https://example.com/zenith-health.png', 'https://zenithhealth.io', 'info@zenithhealth.io', '+1-555-1010', 'United States', 'San Diego', 'Corporation', 'Health Tech', '250-500', 2014, true, 'enterprise', 'active', 12);
+('zenith-health', 'Zenith Health', 'Healthcare data platform', 'https://example.com/zenith-health.png', 'https://zenithhealth.io', 'info@zenithhealth.io', '+1-555-1010', 'United States', 'San Diego', 'Corporation', 'Health Tech', '250-500', 2014, true, 'enterprise', 'active', 12),
+('summit-edtech', 'Summit EdTech', 'Learning analytics and content delivery', 'https://example.com/summit-edtech.png', 'https://summitedtech.com', 'hello@summitedtech.com', '+1-555-1011', 'United States', 'Boston', 'Corporation', 'Education Technology', '50-100', 2019, true, 'professional', 'active', 15);
 
 -- Products
 INSERT INTO products (sku, name, description, category, subcategory, price, cost_price, discount_price, tax_rate, stock_quantity, weight, color, size, material, image_url, supplier_id, organization_id, is_active, is_featured, rating, review_count) VALUES
@@ -201,7 +202,7 @@ INSERT INTO settings (organization_id, setting_key, setting_value, data_type, is
 (4, 'max_api_calls', '20000', 'integer', false),
 (5, 'theme_color', '#3A86FF', 'string', true),
 (5, 'max_api_calls', '8000', 'integer', false),
-(5, 'timezone', 'America/Los_Angeles', 'string', false),
+(5, 'support_chat_enabled', 'true', 'boolean', false),
 (6, 'theme_color', '#FFBE0B', 'string', true),
 (6, 'max_api_calls', '12000', 'integer', false),
 (6, 'email_notifications_enabled', 'false', 'boolean', false),
