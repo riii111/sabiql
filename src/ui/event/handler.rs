@@ -24,7 +24,11 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
         InputMode::Help => handle_help_keys(key),
-        InputMode::SqlModal => handle_sql_modal_keys(key),
+        InputMode::SqlModal => {
+            let completion_visible =
+                state.completion.visible && !state.completion.candidates.is_empty();
+            handle_sql_modal_keys(key, completion_visible)
+        }
     }
 }
 
@@ -191,27 +195,36 @@ fn handle_help_keys(key: KeyEvent) -> Action {
     }
 }
 
-fn handle_sql_modal_keys(key: KeyEvent) -> Action {
+fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
-    match (key.code, key.modifiers) {
+    match (key.code, key.modifiers, completion_visible) {
+        // Completion navigation (when popup is visible)
+        (KeyCode::Up, _, true) => Action::CompletionPrev,
+        (KeyCode::Down, _, true) => Action::CompletionNext,
+        (KeyCode::Tab, _, true) => Action::CompletionAccept,
+        (KeyCode::Esc, _, true) => Action::CompletionDismiss,
+
+        // Manual completion trigger
+        (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => Action::CompletionTrigger,
+
         // Ctrl+Enter: Execute query
-        (KeyCode::Enter, m) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
-        // Esc: Close modal
-        (KeyCode::Esc, _) => Action::CloseSqlModal,
+        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
+        // Esc: Close modal (when completion not visible)
+        (KeyCode::Esc, _, false) => Action::CloseSqlModal,
         // Navigation
-        (KeyCode::Left, _) => Action::SqlModalMoveCursor(CursorMove::Left),
-        (KeyCode::Right, _) => Action::SqlModalMoveCursor(CursorMove::Right),
-        (KeyCode::Up, _) => Action::SqlModalMoveCursor(CursorMove::Up),
-        (KeyCode::Down, _) => Action::SqlModalMoveCursor(CursorMove::Down),
-        (KeyCode::Home, _) => Action::SqlModalMoveCursor(CursorMove::Home),
-        (KeyCode::End, _) => Action::SqlModalMoveCursor(CursorMove::End),
+        (KeyCode::Left, _, _) => Action::SqlModalMoveCursor(CursorMove::Left),
+        (KeyCode::Right, _, _) => Action::SqlModalMoveCursor(CursorMove::Right),
+        (KeyCode::Up, _, false) => Action::SqlModalMoveCursor(CursorMove::Up),
+        (KeyCode::Down, _, false) => Action::SqlModalMoveCursor(CursorMove::Down),
+        (KeyCode::Home, _, _) => Action::SqlModalMoveCursor(CursorMove::Home),
+        (KeyCode::End, _, _) => Action::SqlModalMoveCursor(CursorMove::End),
         // Editing
-        (KeyCode::Backspace, _) => Action::SqlModalBackspace,
-        (KeyCode::Delete, _) => Action::SqlModalDelete,
-        (KeyCode::Enter, _) => Action::SqlModalNewLine,
-        (KeyCode::Tab, _) => Action::SqlModalTab,
-        (KeyCode::Char(c), _) => Action::SqlModalInput(c),
+        (KeyCode::Backspace, _, _) => Action::SqlModalBackspace,
+        (KeyCode::Delete, _, _) => Action::SqlModalDelete,
+        (KeyCode::Enter, _, _) => Action::SqlModalNewLine,
+        (KeyCode::Tab, _, false) => Action::SqlModalTab,
+        (KeyCode::Char(c), _, _) => Action::SqlModalInput(c),
         _ => Action::None,
     }
 }
@@ -595,91 +608,106 @@ mod tests {
         use crate::app::action::CursorMove;
         use rstest::rstest;
 
-        // Important keys with special handling: keep individual tests
+        #[derive(Debug, PartialEq)]
+        enum Expected {
+            SqlModalSubmit,
+            SqlModalNewLine,
+            SqlModalTab,
+            SqlModalBackspace,
+            SqlModalDelete,
+            SqlModalInput(char),
+            SqlModalMoveCursor(CursorMove),
+            CloseSqlModal,
+            CompletionTrigger,
+            CompletionAccept,
+            CompletionDismiss,
+            CompletionPrev,
+            CompletionNext,
+            None,
+        }
+
+        fn assert_action(result: Action, expected: Expected) {
+            match expected {
+                Expected::SqlModalSubmit => assert!(matches!(result, Action::SqlModalSubmit)),
+                Expected::SqlModalNewLine => assert!(matches!(result, Action::SqlModalNewLine)),
+                Expected::SqlModalTab => assert!(matches!(result, Action::SqlModalTab)),
+                Expected::SqlModalBackspace => assert!(matches!(result, Action::SqlModalBackspace)),
+                Expected::SqlModalDelete => assert!(matches!(result, Action::SqlModalDelete)),
+                Expected::SqlModalInput(c) => assert!(matches!(result, Action::SqlModalInput(x) if x == c)),
+                Expected::SqlModalMoveCursor(m) => assert!(matches!(result, Action::SqlModalMoveCursor(x) if x == m)),
+                Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
+                Expected::CompletionTrigger => assert!(matches!(result, Action::CompletionTrigger)),
+                Expected::CompletionAccept => assert!(matches!(result, Action::CompletionAccept)),
+                Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
+                Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
+                Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
+        }
+
+        // Completion-aware keys: behavior changes based on completion visibility
+        #[rstest]
+        #[case(KeyCode::Esc, false, Expected::CloseSqlModal)]
+        #[case(KeyCode::Esc, true, Expected::CompletionDismiss)]
+        #[case(KeyCode::Tab, false, Expected::SqlModalTab)]
+        #[case(KeyCode::Tab, true, Expected::CompletionAccept)]
+        #[case(KeyCode::Up, false, Expected::SqlModalMoveCursor(CursorMove::Up))]
+        #[case(KeyCode::Up, true, Expected::CompletionPrev)]
+        #[case(KeyCode::Down, false, Expected::SqlModalMoveCursor(CursorMove::Down))]
+        #[case(KeyCode::Down, true, Expected::CompletionNext)]
+        fn completion_aware_keys(
+            #[case] code: KeyCode,
+            #[case] completion_visible: bool,
+            #[case] expected: Expected,
+        ) {
+            let result = handle_sql_modal_keys(key(code), completion_visible);
+
+            assert_action(result, expected);
+        }
+
+        // Keys unaffected by completion visibility
+        #[rstest]
+        #[case(KeyCode::Enter, Expected::SqlModalNewLine)]
+        #[case(KeyCode::Backspace, Expected::SqlModalBackspace)]
+        #[case(KeyCode::Delete, Expected::SqlModalDelete)]
+        #[case(KeyCode::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
+        #[case(KeyCode::Right, Expected::SqlModalMoveCursor(CursorMove::Right))]
+        #[case(KeyCode::Home, Expected::SqlModalMoveCursor(CursorMove::Home))]
+        #[case(KeyCode::End, Expected::SqlModalMoveCursor(CursorMove::End))]
+        #[case(KeyCode::F(1), Expected::None)]
+        fn completion_independent_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_sql_modal_keys(key(code), false);
+
+            assert_action(result, expected);
+        }
+
         #[test]
         fn ctrl_enter_submits_query() {
             let key = key_with_mod(KeyCode::Enter, KeyModifiers::CONTROL);
 
-            let result = handle_sql_modal_keys(key);
+            let result = handle_sql_modal_keys(key, false);
 
-            assert!(matches!(result, Action::SqlModalSubmit));
+            assert_action(result, Expected::SqlModalSubmit);
         }
 
         #[test]
-        fn enter_without_ctrl_inserts_newline() {
-            let result = handle_sql_modal_keys(key(KeyCode::Enter));
+        fn ctrl_space_triggers_completion() {
+            let key = key_with_mod(KeyCode::Char(' '), KeyModifiers::CONTROL);
 
-            assert!(matches!(result, Action::SqlModalNewLine));
+            let result = handle_sql_modal_keys(key, false);
+
+            assert_action(result, Expected::CompletionTrigger);
         }
 
-        #[test]
-        fn esc_closes_modal() {
-            let result = handle_sql_modal_keys(key(KeyCode::Esc));
-
-            assert!(matches!(result, Action::CloseSqlModal));
-        }
-
-        #[test]
-        fn tab_inserts_tab() {
-            let result = handle_sql_modal_keys(key(KeyCode::Tab));
-
-            assert!(matches!(result, Action::SqlModalTab));
-        }
-
-        #[test]
-        fn backspace_deletes_backward() {
-            let result = handle_sql_modal_keys(key(KeyCode::Backspace));
-
-            assert!(matches!(result, Action::SqlModalBackspace));
-        }
-
-        #[test]
-        fn delete_deletes_forward() {
-            let result = handle_sql_modal_keys(key(KeyCode::Delete));
-
-            assert!(matches!(result, Action::SqlModalDelete));
-        }
-
-        // Cursor movement keys
         #[rstest]
-        #[case(KeyCode::Left, CursorMove::Left, "left arrow")]
-        #[case(KeyCode::Right, CursorMove::Right, "right arrow")]
-        #[case(KeyCode::Up, CursorMove::Up, "up arrow")]
-        #[case(KeyCode::Down, CursorMove::Down, "down arrow")]
-        #[case(KeyCode::Home, CursorMove::Home, "home")]
-        #[case(KeyCode::End, CursorMove::End, "end")]
-        fn cursor_movement(
-            #[case] code: KeyCode,
-            #[case] expected_move: CursorMove,
-            #[case] _desc: &str,
-        ) {
-            let result = handle_sql_modal_keys(key(code));
+        #[case('a')]
+        #[case('Z')]
+        #[case('あ')]
+        #[case('日')]
+        fn char_input_inserts_character(#[case] c: char) {
+            let result = handle_sql_modal_keys(key(KeyCode::Char(c)), false);
 
-            assert!(matches!(
-                result,
-                Action::SqlModalMoveCursor(m) if m == expected_move
-            ));
-        }
-
-        #[test]
-        fn char_input_inserts_character() {
-            let result = handle_sql_modal_keys(key(KeyCode::Char('a')));
-
-            assert!(matches!(result, Action::SqlModalInput('a')));
-        }
-
-        #[test]
-        fn multibyte_char_input_inserts_character() {
-            let result = handle_sql_modal_keys(key(KeyCode::Char('あ')));
-
-            assert!(matches!(result, Action::SqlModalInput('あ')));
-        }
-
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_sql_modal_keys(key(KeyCode::F(1)));
-
-            assert!(matches!(result, Action::None));
+            assert_action(result, Expected::SqlModalInput(c));
         }
     }
 
