@@ -208,6 +208,17 @@ impl SqlModal {
             }
         };
 
+        // Calculate max text width for alignment
+        let max_text_width = state
+            .completion
+            .candidates
+            .iter()
+            .skip(scroll_offset)
+            .take(max_items)
+            .map(|c| c.text.len())
+            .max()
+            .unwrap_or(0);
+
         let items: Vec<ListItem> = state
             .completion
             .candidates
@@ -218,19 +229,23 @@ impl SqlModal {
             .map(|(i, candidate)| {
                 let is_selected = i == selected;
 
-                // Kind indicator
-                let kind_char = match candidate.kind {
-                    CompletionKind::Keyword => 'K',
-                    CompletionKind::Schema => 'S',
-                    CompletionKind::Table => 'T',
-                    CompletionKind::Column => 'C',
+                // Kind label (pgcli style)
+                let kind_label = match candidate.kind {
+                    CompletionKind::Keyword => "keyword",
+                    CompletionKind::Schema => "schema",
+                    CompletionKind::Table => "table",
+                    CompletionKind::Column => "column",
                 };
 
-                let text = if let Some(detail) = &candidate.detail {
-                    format!("{} {}  {}", kind_char, candidate.text, detail)
-                } else {
-                    format!("{} {}", kind_char, candidate.text)
-                };
+                // Format: "text    kind" with padding for alignment
+                let padding = max_text_width.saturating_sub(candidate.text.len()) + 2;
+                let text = format!(
+                    " {}{:padding$}{}",
+                    candidate.text,
+                    "",
+                    kind_label,
+                    padding = padding
+                );
 
                 let style = if is_selected {
                     Style::default()
