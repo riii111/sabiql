@@ -67,6 +67,9 @@ pub fn render_horizontal_scroll_indicator(
         height: 1,
     };
 
+    let arrow_active = Style::default().fg(Color::Yellow);
+    let arrow_inactive = Style::default().fg(Color::DarkGray);
+
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
         .thumb_symbol("═")
         .track_symbol(Some("─"))
@@ -74,8 +77,8 @@ pub fn render_horizontal_scroll_indicator(
         .end_symbol(Some(">"))
         .thumb_style(Style::default().fg(Color::Yellow))
         .track_style(Style::default().fg(Color::DarkGray))
-        .begin_style(Style::default().fg(Color::Yellow))
-        .end_style(Style::default().fg(Color::Yellow));
+        .begin_style(if can_scroll_left { arrow_active } else { arrow_inactive })
+        .end_style(if can_scroll_right { arrow_active } else { arrow_inactive });
 
     let mut scrollbar_state = ScrollbarState::default()
         .content_length(scrollable_range.saturating_add(1))
