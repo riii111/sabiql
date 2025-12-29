@@ -1,7 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use ratatui::symbols::scrollbar;
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 pub struct HorizontalScrollParams {
@@ -41,34 +40,16 @@ pub fn render_horizontal_scroll_indicator(
         params.display_start, params.display_end, params.total_items
     );
 
-    // Layout: [<][space][col X-Y/Z][space][scrollbar][space][>]
-    let fixed_parts_len = 1 + 1 + position_text.len() + 1 + 1 + 1;
+    // Layout: [col X-Y/Z][space][scrollbar with < and >]
+    let fixed_parts_len = position_text.len() + 1; // "col X-Y/Z "
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
     use ratatui::text::{Line, Span};
-    let arrow_active = Style::default().fg(Color::Yellow);
-    let arrow_inactive = Style::default().fg(Color::DarkGray);
     let text_style = Style::default().fg(Color::Yellow);
 
-    let left_arrow = Span::styled(
-        "<",
-        if can_scroll_left {
-            arrow_active
-        } else {
-            arrow_inactive
-        },
-    );
-    let right_arrow = Span::styled(
-        " >",
-        if can_scroll_right {
-            arrow_active
-        } else {
-            arrow_inactive
-        },
-    );
-    let position_span = Span::styled(format!(" {} ", position_text), text_style);
+    let position_span = Span::styled(format!("{} ", position_text), text_style);
 
-    let text_line = Line::from(vec![left_arrow.clone(), position_span]);
+    let text_line = Line::from(vec![position_span]);
 
     let text_area = Rect {
         x: area.x + left_margin,
@@ -86,26 +67,23 @@ pub fn render_horizontal_scroll_indicator(
     };
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-        .symbols(scrollbar::DOUBLE_HORIZONTAL)
-        .begin_symbol(None)
-        .end_symbol(None)
+        .thumb_symbol("═")
+        .track_symbol(Some("─"))
+        .begin_symbol(Some("<"))
+        .end_symbol(Some(">"))
         .thumb_style(Style::default().fg(Color::Yellow))
-        .track_style(Style::default().fg(Color::DarkGray));
+        .track_style(Style::default().fg(Color::DarkGray))
+        .begin_style(Style::default().fg(Color::Yellow))
+        .end_style(Style::default().fg(Color::Yellow));
+
 
     let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(scrollable_range)
-        .position(params.position);
+        .content_length(scrollable_range.saturating_add(1))
+        .viewport_content_length(params.viewport_size)
+        .position(params.position.min(scrollable_range));
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
-
-    let arrow_area = Rect {
-        x: scrollbar_area.x + scrollbar_area.width,
-        y: scrollbar_area.y,
-        width: 2,
-        height: 1,
-    };
-    frame.render_widget(Paragraph::new(right_arrow), arrow_area);
 }
 
 /// Render a vertical scroll indicator at the bottom-right of an area.
