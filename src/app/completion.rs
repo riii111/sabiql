@@ -174,7 +174,6 @@ impl CompletionEngine {
     }
 
     fn detect_context(&self, before_upper: &str) -> CompletionContext {
-        // Find last relevant keyword
         let keywords_table = ["FROM", "JOIN", "INTO", "UPDATE"];
         let keywords_column = ["SELECT", "WHERE", "ON", "SET", "AND", "OR", "BY"];
 
@@ -182,19 +181,18 @@ impl CompletionEngine {
         let mut last_column_pos = None;
 
         for kw in keywords_table {
-            if let Some(pos) = before_upper.rfind(kw)
-                && last_table_pos.map_or_else(|| true, |p| pos > p)
-            {
-                last_table_pos = Some(pos);
+            if let Some(pos) = self.find_keyword(before_upper, kw) {
+                if last_table_pos.map_or(true, |p| pos > p) {
+                    last_table_pos = Some(pos);
+                }
             }
         }
 
         for kw in keywords_column {
-            let Some(pos) = before_upper.rfind(kw) else {
-                continue;
-            };
-            if last_column_pos.map_or_else(|| true, |p| pos > p) {
-                last_column_pos = Some(pos);
+            if let Some(pos) = self.find_keyword(before_upper, kw) {
+                if last_column_pos.map_or(true, |p| pos > p) {
+                    last_column_pos = Some(pos);
+                }
             }
         }
 
@@ -204,6 +202,28 @@ impl CompletionEngine {
             (_, Some(_)) => CompletionContext::Column,
             _ => CompletionContext::Keyword,
         }
+    }
+
+    fn find_keyword(&self, text: &str, keyword: &str) -> Option<usize> {
+        let mut search_from = text.len();
+        while search_from > 0 {
+            let slice = &text[..search_from];
+            let Some(pos) = slice.rfind(keyword) else {
+                return None;
+            };
+
+            let before_ok = pos == 0
+                || !text.chars().nth(pos - 1).map_or(false, |c| c.is_alphanumeric() || c == '_');
+            let after_pos = pos + keyword.len();
+            let after_ok = after_pos >= text.len()
+                || !text.chars().nth(after_pos).map_or(false, |c| c.is_alphanumeric() || c == '_');
+
+            if before_ok && after_ok {
+                return Some(pos);
+            }
+            search_from = pos;
+        }
+        None
     }
 
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {

@@ -201,8 +201,12 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
     match (key.code, key.modifiers, completion_visible) {
-        // Ctrl+Enter: Execute query (priority over completion)
-        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalSubmit,
+        // Execute query: Ctrl+Enter or Shift+Enter (some terminals don't send Ctrl+Enter correctly)
+        (KeyCode::Enter, m, _)
+            if m.contains(KeyModifiers::CONTROL) || m.contains(KeyModifiers::SHIFT) =>
+        {
+            Action::SqlModalSubmit
+        }
 
         // Completion navigation (when popup is visible)
         (KeyCode::Up, _, true) => Action::CompletionPrev,

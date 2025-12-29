@@ -62,7 +62,7 @@ impl Footer {
                 vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
             }
             InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
-            InputMode::SqlModal => vec![("^Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
+            InputMode::SqlModal => vec![("⇧Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
         }
     }
 
