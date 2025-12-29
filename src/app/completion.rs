@@ -1,4 +1,6 @@
-use crate::app::sql_lexer::{SqlLexer, TokenCache};
+use std::collections::HashMap;
+
+use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, TokenCache};
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
@@ -13,6 +15,10 @@ pub enum CompletionContext {
     Column,
     /// After "schema." → tables in that schema
     SchemaQualified(String),
+    /// After "alias." → columns of that aliased table
+    AliasColumn(String),
+    /// CTE or table names (in FROM clause with CTEs defined)
+    CteOrTable,
 }
 
 pub struct CompletionEngine {
@@ -20,6 +26,7 @@ pub struct CompletionEngine {
     lexer: SqlLexer,
     #[allow(dead_code)] // Phase 3: differential tokenization
     token_cache: TokenCache,
+    table_detail_cache: HashMap<String, Table>,
 }
 
 impl Default for CompletionEngine {
@@ -98,7 +105,13 @@ impl CompletionEngine {
             ],
             lexer: SqlLexer::new(),
             token_cache: TokenCache::new(),
+            table_detail_cache: HashMap::new(),
         }
+    }
+
+    #[allow(dead_code)] // Phase 4: called from main.rs when table details are fetched
+    pub fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
+        self.table_detail_cache.insert(qualified_name, table);
     }
 
     pub fn get_candidates(
@@ -113,7 +126,11 @@ impl CompletionEngine {
             return vec![];
         }
 
-        let (current_token, context) = self.analyze(content, cursor_pos);
+        // Build SQL context for alias resolution
+        let tokens = self.lexer.tokenize(content, content.len(), None);
+        let sql_context = self.lexer.build_context(&tokens, cursor_pos);
+
+        let (current_token, context) = self.analyze_with_context(content, cursor_pos, &sql_context);
 
         match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
@@ -121,6 +138,12 @@ impl CompletionEngine {
             CompletionContext::Column => self.column_candidates(table_detail, &current_token),
             CompletionContext::SchemaQualified(schema) => {
                 self.schema_qualified_candidates(metadata, schema, &current_token)
+            }
+            CompletionContext::AliasColumn(alias) => {
+                self.alias_column_candidates(alias, &sql_context, metadata, &current_token)
+            }
+            CompletionContext::CteOrTable => {
+                self.cte_or_table_candidates(&sql_context, metadata, &current_token)
             }
         }
     }
@@ -130,13 +153,28 @@ impl CompletionEngine {
         self.extract_current_token(&before_cursor).chars().count()
     }
 
-    /// Analyze SQL content at cursor position to determine context and current token
+    #[allow(dead_code)] // Keep for backwards compatibility in tests
     fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
+        let sql_context = SqlContext::default();
+        self.analyze_with_context(content, cursor_pos, &sql_context)
+    }
+
+    fn analyze_with_context(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        sql_context: &SqlContext,
+    ) -> (String, CompletionContext) {
         let before_cursor: String = content.chars().take(cursor_pos).collect();
         let before_upper = before_cursor.to_uppercase();
 
         // Extract current token (word being typed)
         let current_token = self.extract_current_token(&before_cursor);
+
+        // Check for alias.column pattern first (e.g., "u." or "u.na")
+        if let Some(alias) = self.detect_alias_prefix(&before_cursor, &current_token, sql_context) {
+            return (current_token, CompletionContext::AliasColumn(alias));
+        }
 
         // Check for schema-qualified context: "schema."
         if let Some(schema) = self.detect_schema_prefix(&before_cursor, &current_token) {
@@ -144,9 +182,53 @@ impl CompletionEngine {
         }
 
         // Detect context from preceding keywords
-        let context = self.detect_context(&before_upper);
+        let base_context = self.detect_context(&before_upper);
 
-        (current_token, context)
+        // If in FROM clause and CTEs are defined, suggest CTE names too
+        if base_context == CompletionContext::Table && !sql_context.ctes.is_empty() {
+            return (current_token, CompletionContext::CteOrTable);
+        }
+
+        (current_token, base_context)
+    }
+
+    fn detect_alias_prefix(
+        &self,
+        before_cursor: &str,
+        current_token: &str,
+        sql_context: &SqlContext,
+    ) -> Option<String> {
+        let prefix_end = before_cursor.len().saturating_sub(current_token.len());
+        let prefix = &before_cursor[..prefix_end];
+
+        if prefix.ends_with('.') {
+            let potential_alias: String = prefix
+                .trim_end_matches('.')
+                .chars()
+                .rev()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
+
+            if !potential_alias.is_empty() {
+                // Check if it matches any table alias in the context
+                let alias_lower = potential_alias.to_lowercase();
+                for table_ref in &sql_context.tables {
+                    if let Some(ref alias) = table_ref.alias
+                        && alias.to_lowercase() == alias_lower
+                    {
+                        return Some(potential_alias);
+                    }
+                    // Also check if it matches the table name directly
+                    if table_ref.table.to_lowercase() == alias_lower {
+                        return Some(potential_alias);
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn extract_current_token(&self, before_cursor: &str) -> String {
@@ -411,6 +493,107 @@ impl CompletionEngine {
         });
 
         candidates.into_iter().take(10).collect()
+    }
+
+    fn alias_column_candidates(
+        &self,
+        alias: &str,
+        sql_context: &SqlContext,
+        metadata: Option<&DatabaseMetadata>,
+        prefix: &str,
+    ) -> Vec<CompletionCandidate> {
+        let alias_lower = alias.to_lowercase();
+
+        // Find the table reference matching this alias
+        let table_ref = sql_context.tables.iter().find(|t| {
+            t.alias
+                .as_ref()
+                .map(|a| a.to_lowercase() == alias_lower)
+                .unwrap_or(false)
+                || t.table.to_lowercase() == alias_lower
+        });
+
+        let Some(table_ref) = table_ref else {
+            return vec![];
+        };
+
+        // Try to find the table in cache
+        let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
+
+        if let Some(table) = self.table_detail_cache.get(&qualified_name) {
+            return self.column_candidates(Some(table), prefix);
+        }
+
+        // If not in cache, return empty (caller should request table details)
+        vec![]
+    }
+
+    fn cte_or_table_candidates(
+        &self,
+        sql_context: &SqlContext,
+        metadata: Option<&DatabaseMetadata>,
+        prefix: &str,
+    ) -> Vec<CompletionCandidate> {
+        let prefix_lower = prefix.to_lowercase();
+        let mut candidates = Vec::new();
+
+        // Add CTE names first (higher priority)
+        for cte in &sql_context.ctes {
+            if prefix.is_empty() || cte.name.to_lowercase().starts_with(&prefix_lower) {
+                candidates.push(CompletionCandidate {
+                    text: cte.name.clone(),
+                    kind: CompletionKind::Table,
+                    detail: Some("CTE".to_string()),
+                    score: 150, // CTEs get highest priority
+                });
+            }
+        }
+
+        // Add regular tables
+        if let Some(metadata) = metadata {
+            for t in &metadata.tables {
+                if prefix.is_empty()
+                    || t.name.to_lowercase().starts_with(&prefix_lower)
+                    || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
+                {
+                    let is_name_prefix = t.name.to_lowercase().starts_with(&prefix_lower);
+                    candidates.push(CompletionCandidate {
+                        text: t.qualified_name(),
+                        kind: CompletionKind::Table,
+                        detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
+                        score: if is_name_prefix { 100 } else { 50 },
+                    });
+                }
+            }
+        }
+
+        // Sort by score (descending), then alphabetically
+        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+            other => other,
+        });
+
+        candidates.into_iter().take(10).collect()
+    }
+
+    fn qualified_name_from_ref(
+        &self,
+        table_ref: &TableReference,
+        metadata: Option<&DatabaseMetadata>,
+    ) -> String {
+        if let Some(ref schema) = table_ref.schema {
+            format!("{}.{}", schema, table_ref.table)
+        } else if let Some(metadata) = metadata {
+            // Try to find the table and get its schema
+            metadata
+                .tables
+                .iter()
+                .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
+                .map(|t| t.qualified_name())
+                .unwrap_or_else(|| table_ref.table.clone())
+        } else {
+            table_ref.table.clone()
+        }
     }
 }
 
@@ -872,6 +1055,342 @@ mod tests {
 
             assert_eq!(candidates[0].text, "required_field");
             assert!(candidates[0].score > candidates[1].score);
+        }
+    }
+
+    mod alias_column_context {
+        use super::*;
+        use crate::app::sql_lexer::{SqlContext, TableReference};
+
+        #[test]
+        fn alias_dot_returns_alias_column_context() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: None,
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let (token, ctx) = e.analyze_with_context("SELECT u.", 9, &sql_context);
+
+            assert_eq!(token, "");
+            assert_eq!(ctx, CompletionContext::AliasColumn("u".to_string()));
+        }
+
+        #[test]
+        fn alias_dot_partial_column_returns_alias_column_context() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: None,
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let (token, ctx) = e.analyze_with_context("SELECT u.na", 11, &sql_context);
+
+            assert_eq!(token, "na");
+            assert_eq!(ctx, CompletionContext::AliasColumn("u".to_string()));
+        }
+
+        #[test]
+        fn table_name_dot_returns_alias_column_context() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: None,
+                    table: "users".to_string(),
+                    alias: None,
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let (token, ctx) = e.analyze_with_context("SELECT users.", 13, &sql_context);
+
+            assert_eq!(token, "");
+            assert_eq!(ctx, CompletionContext::AliasColumn("users".to_string()));
+        }
+
+        #[test]
+        fn unknown_alias_dot_returns_schema_qualified() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: None,
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let (token, ctx) = e.analyze_with_context("SELECT public.", 14, &sql_context);
+
+            // "public" is not a known alias, so it falls back to schema-qualified
+            assert_eq!(token, "");
+            assert_eq!(
+                ctx,
+                CompletionContext::SchemaQualified("public".to_string())
+            );
+        }
+    }
+
+    mod cte_or_table_context {
+        use super::*;
+        use crate::app::sql_lexer::{CteDefinition, SqlContext};
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn from_clause_with_cte_returns_cte_or_table() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![],
+                ctes: vec![CteDefinition {
+                    name: "active_users".to_string(),
+                    position: 5,
+                }],
+                current_clause: Default::default(),
+            };
+
+            let (token, ctx) = e.analyze_with_context(
+                "WITH active_users AS (SELECT 1) SELECT * FROM ",
+                46,
+                &sql_context,
+            );
+
+            assert_eq!(token, "");
+            assert_eq!(ctx, CompletionContext::CteOrTable);
+        }
+
+        #[test]
+        fn cte_candidates_ranked_higher_than_tables() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![],
+                ctes: vec![CteDefinition {
+                    name: "active_users".to_string(),
+                    position: 5,
+                }],
+                current_clause: Default::default(),
+            };
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![crate::domain::TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let candidates = e.cte_or_table_candidates(&sql_context, Some(&metadata), "");
+
+            // CTE should come first with highest score
+            assert!(!candidates.is_empty());
+            assert_eq!(candidates[0].text, "active_users");
+            assert_eq!(candidates[0].detail, Some("CTE".to_string()));
+            assert!(candidates[0].score > candidates[1].score);
+        }
+
+        #[test]
+        fn cte_prefix_filter_works() {
+            let e = engine();
+            let sql_context = SqlContext {
+                tables: vec![],
+                ctes: vec![
+                    CteDefinition {
+                        name: "active_users".to_string(),
+                        position: 5,
+                    },
+                    CteDefinition {
+                        name: "banned_users".to_string(),
+                        position: 50,
+                    },
+                ],
+                current_clause: Default::default(),
+            };
+
+            let candidates = e.cte_or_table_candidates(&sql_context, None, "act");
+
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].text, "active_users");
+        }
+    }
+
+    mod alias_column_completion {
+        use super::*;
+        use crate::app::sql_lexer::{SqlContext, TableReference};
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        #[test]
+        fn cached_table_returns_columns() {
+            let mut e = engine();
+
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            e.cache_table_detail("public.users".to_string(), table);
+
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: Some("public".to_string()),
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let candidates = e.alias_column_candidates("u", &sql_context, Some(&metadata), "");
+
+            assert_eq!(candidates.len(), 2);
+            assert!(candidates.iter().any(|c| c.text == "id"));
+            assert!(candidates.iter().any(|c| c.text == "name"));
+        }
+
+        #[test]
+        fn non_cached_table_returns_empty() {
+            let e = engine();
+
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: None,
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let candidates = e.alias_column_candidates("u", &sql_context, None, "");
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn alias_prefix_filters_columns() {
+            let mut e = engine();
+
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![
+                    Column {
+                        name: "user_id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "username".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                    Column {
+                        name: "email".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 3,
+                    },
+                ],
+                primary_key: Some(vec!["user_id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            e.cache_table_detail("public.users".to_string(), table);
+
+            let sql_context = SqlContext {
+                tables: vec![TableReference {
+                    schema: Some("public".to_string()),
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                    position: 0,
+                }],
+                ctes: vec![],
+                current_clause: Default::default(),
+            };
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let candidates = e.alias_column_candidates("u", &sql_context, Some(&metadata), "user");
+
+            assert_eq!(candidates.len(), 2);
+            assert!(candidates.iter().any(|c| c.text == "user_id"));
+            assert!(candidates.iter().any(|c| c.text == "username"));
         }
     }
 }

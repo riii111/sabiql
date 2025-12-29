@@ -27,10 +27,49 @@ pub enum TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    #[allow(dead_code)] // Phase 3: context analysis
+    #[allow(dead_code)] // Phase 4: used for detailed token analysis
     pub text: String,
     pub start: usize,
     pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableReference {
+    pub schema: Option<String>,
+    pub table: String,
+    pub alias: Option<String>,
+    pub position: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CteDefinition {
+    pub name: String,
+    pub position: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ClauseKind {
+    #[default]
+    Unknown,
+    Select,
+    From,
+    Join,
+    Where,
+    On,
+    GroupBy,
+    OrderBy,
+    Having,
+    InsertInto,
+    UpdateSet,
+    With,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SqlContext {
+    pub tables: Vec<TableReference>,
+    pub ctes: Vec<CteDefinition>,
+    #[allow(dead_code)] // Phase 4: clause-based completion logic
+    pub current_clause: ClauseKind,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -453,6 +492,268 @@ impl SqlLexer {
     fn is_punctuation(c: char) -> bool {
         matches!(c, '(' | ')' | ',' | ';' | '.' | '[' | ']')
     }
+
+    pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
+        let mut refs = Vec::new();
+        let mut i = 0;
+
+        while i < tokens.len() {
+            let token = &tokens[i];
+
+            // Look for FROM or JOIN keywords
+            if let TokenKind::Keyword(kw) = &token.kind
+                && matches!(
+                    kw.as_str(),
+                    "FROM" | "JOIN" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS"
+                )
+            {
+                // Skip to actual JOIN if this is a join modifier
+                if matches!(kw.as_str(), "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS") {
+                    i += 1;
+                    // Skip whitespace and find JOIN
+                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                        i += 1;
+                    }
+                    if i < tokens.len()
+                        && let TokenKind::Keyword(k) = &tokens[i].kind
+                        && k != "JOIN"
+                    {
+                        continue;
+                    }
+                }
+
+                i += 1;
+                // Skip whitespace after FROM/JOIN
+                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                    i += 1;
+                }
+
+                if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                    refs.push(table_ref);
+                    continue;
+                }
+            }
+            i += 1;
+        }
+
+        refs
+    }
+
+    fn parse_table_reference(&self, tokens: &[Token], i: &mut usize) -> Option<TableReference> {
+        if *i >= tokens.len() {
+            return None;
+        }
+
+        let position = tokens[*i].start;
+        let mut schema = None;
+        let mut table;
+        let mut alias = None;
+
+        // Get first identifier (could be schema or table)
+        match &tokens[*i].kind {
+            TokenKind::Identifier(name) | TokenKind::Keyword(name) => {
+                table = name.clone();
+            }
+            _ => return None,
+        }
+        *i += 1;
+
+        // Skip whitespace
+        while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+            *i += 1;
+        }
+
+        // Check for schema.table pattern
+        if *i < tokens.len() && tokens[*i].kind == TokenKind::Punctuation('.') {
+            *i += 1;
+            // Skip whitespace
+            while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+                *i += 1;
+            }
+            if *i < tokens.len()
+                && let TokenKind::Identifier(name) | TokenKind::Keyword(name) = &tokens[*i].kind
+            {
+                schema = Some(table);
+                table = name.clone();
+                *i += 1;
+            }
+        }
+
+        // Skip whitespace
+        while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+            *i += 1;
+        }
+
+        // Check for alias (optional AS keyword)
+        if *i < tokens.len()
+            && let TokenKind::Keyword(kw) = &tokens[*i].kind
+            && kw == "AS"
+        {
+            *i += 1;
+            // Skip whitespace
+            while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+                *i += 1;
+            }
+        }
+
+        // Get alias if present (identifier that's not a keyword like ON, WHERE, etc.)
+        if *i < tokens.len() {
+            match &tokens[*i].kind {
+                TokenKind::Identifier(name) => {
+                    alias = Some(name.clone());
+                    *i += 1;
+                }
+                TokenKind::Keyword(kw) => {
+                    // Don't treat SQL keywords as aliases
+                    if !Self::is_clause_keyword(kw) {
+                        alias = Some(kw.clone());
+                        *i += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Some(TableReference {
+            schema,
+            table,
+            alias,
+            position,
+        })
+    }
+
+    fn is_clause_keyword(kw: &str) -> bool {
+        matches!(
+            kw,
+            "SELECT" | "FROM" | "WHERE" | "JOIN" | "ON" | "AND" | "OR" | "ORDER" | "GROUP"
+                | "HAVING" | "LIMIT" | "OFFSET" | "UNION" | "INTERSECT" | "EXCEPT"
+                | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "CROSS" | "FULL" | "NATURAL"
+        )
+    }
+
+    pub fn extract_cte_definitions(&self, tokens: &[Token]) -> Vec<CteDefinition> {
+        let mut ctes = Vec::new();
+        let mut i = 0;
+
+        while i < tokens.len() {
+            let token = &tokens[i];
+
+            // Look for WITH keyword
+            if let TokenKind::Keyword(kw) = &token.kind
+                && kw == "WITH"
+            {
+                i += 1;
+
+                // Skip RECURSIVE if present
+                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                    i += 1;
+                }
+                if i < tokens.len()
+                    && let TokenKind::Keyword(k) = &tokens[i].kind
+                    && k == "RECURSIVE"
+                {
+                    i += 1;
+                }
+
+                // Parse CTE definitions separated by commas
+                loop {
+                    // Skip whitespace
+                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                        i += 1;
+                    }
+
+                    if i >= tokens.len() {
+                        break;
+                    }
+
+                    // Get CTE name
+                    let position = tokens[i].start;
+                    if let TokenKind::Identifier(name) | TokenKind::Keyword(name) = &tokens[i].kind
+                    {
+                        // Don't treat SELECT as a CTE name
+                        if name != "SELECT" {
+                            ctes.push(CteDefinition {
+                                name: name.clone(),
+                                position,
+                            });
+                        }
+                        i += 1;
+
+                        // Skip until we find AS or comma or SELECT
+                        let mut paren_depth = 0;
+                        while i < tokens.len() {
+                            match &tokens[i].kind {
+                                TokenKind::Punctuation('(') => paren_depth += 1,
+                                TokenKind::Punctuation(')') => {
+                                    if paren_depth > 0 {
+                                        paren_depth -= 1;
+                                    }
+                                }
+                                TokenKind::Punctuation(',') if paren_depth == 0 => {
+                                    i += 1;
+                                    break;
+                                }
+                                TokenKind::Keyword(k) if k == "SELECT" && paren_depth == 0 => {
+                                    // End of CTE definitions
+                                    return ctes;
+                                }
+                                _ => {}
+                            }
+                            i += 1;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        ctes
+    }
+
+    pub fn build_context(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
+        let tables = self.extract_table_references(tokens);
+        let ctes = self.extract_cte_definitions(tokens);
+        let current_clause = self.detect_clause_at_cursor(tokens, cursor_pos);
+
+        SqlContext {
+            tables,
+            ctes,
+            current_clause,
+        }
+    }
+
+    fn detect_clause_at_cursor(&self, tokens: &[Token], cursor_pos: usize) -> ClauseKind {
+        let mut last_clause = ClauseKind::Unknown;
+
+        for token in tokens {
+            if token.start > cursor_pos {
+                break;
+            }
+
+            if let TokenKind::Keyword(kw) = &token.kind {
+                last_clause = match kw.as_str() {
+                    "SELECT" => ClauseKind::Select,
+                    "FROM" => ClauseKind::From,
+                    "JOIN" | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "CROSS" | "FULL" => {
+                        ClauseKind::Join
+                    }
+                    "WHERE" => ClauseKind::Where,
+                    "ON" => ClauseKind::On,
+                    "GROUP" => ClauseKind::GroupBy,
+                    "ORDER" => ClauseKind::OrderBy,
+                    "HAVING" => ClauseKind::Having,
+                    "INSERT" | "INTO" => ClauseKind::InsertInto,
+                    "UPDATE" | "SET" => ClauseKind::UpdateSet,
+                    "WITH" => ClauseKind::With,
+                    _ => last_clause,
+                };
+            }
+        }
+
+        last_clause
+    }
 }
 
 impl Default for SqlLexer {
@@ -774,6 +1075,226 @@ mod tests {
             let is_valid = cache.is_valid("SELECT * FROM", 7);
 
             assert!(!is_valid);
+        }
+    }
+
+    mod table_references {
+        use super::*;
+
+        #[test]
+        fn simple_from_returns_single_reference() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, None);
+            assert_eq!(refs[0].schema, None);
+        }
+
+        #[test]
+        fn from_with_alias_returns_alias() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users u", 21, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+        }
+
+        #[test]
+        fn from_with_as_keyword_returns_alias() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users AS u", 24, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+        }
+
+        #[test]
+        fn schema_qualified_table_returns_schema() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM public.users", 26, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].schema, Some("public".to_string()));
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn join_returns_multiple_references() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users u JOIN posts p ON u.id = p.user_id", 54, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "posts");
+            assert_eq!(refs[1].alias, Some("p".to_string()));
+        }
+
+        #[test]
+        fn left_join_returns_reference() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users LEFT JOIN posts ON users.id = posts.user_id", 63, None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "posts");
+        }
+
+        #[test]
+        fn multiple_joins_returns_all_references() {
+            let l = lexer();
+            let sql = "SELECT * FROM users u JOIN posts p ON u.id = p.user_id JOIN comments c ON p.id = c.post_id";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 3);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "posts");
+            assert_eq!(refs[2].table, "comments");
+        }
+    }
+
+    mod cte_definitions {
+        use super::*;
+
+        #[test]
+        fn simple_cte_returns_definition() {
+            let l = lexer();
+            let sql = "WITH active_users AS (SELECT * FROM users WHERE active) SELECT * FROM active_users";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let ctes = l.extract_cte_definitions(&tokens);
+
+            assert_eq!(ctes.len(), 1);
+            assert_eq!(ctes[0].name, "active_users");
+        }
+
+        #[test]
+        fn recursive_cte_returns_definition() {
+            let l = lexer();
+            let sql = "WITH RECURSIVE tree AS (SELECT 1) SELECT * FROM tree";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let ctes = l.extract_cte_definitions(&tokens);
+
+            assert_eq!(ctes.len(), 1);
+            assert_eq!(ctes[0].name, "tree");
+        }
+
+        #[test]
+        fn multiple_ctes_returns_all_definitions() {
+            let l = lexer();
+            let sql = "WITH cte1 AS (SELECT 1), cte2 AS (SELECT 2) SELECT * FROM cte1, cte2";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let ctes = l.extract_cte_definitions(&tokens);
+
+            assert_eq!(ctes.len(), 2);
+            assert_eq!(ctes[0].name, "cte1");
+            assert_eq!(ctes[1].name, "cte2");
+        }
+
+        #[test]
+        fn no_cte_returns_empty() {
+            let l = lexer();
+            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+
+            let ctes = l.extract_cte_definitions(&tokens);
+
+            assert!(ctes.is_empty());
+        }
+    }
+
+    mod clause_detection {
+        use super::*;
+
+        #[test]
+        fn cursor_after_select_returns_select_clause() {
+            let l = lexer();
+            let sql = "SELECT ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
+
+            assert_eq!(clause, ClauseKind::Select);
+        }
+
+        #[test]
+        fn cursor_after_from_returns_from_clause() {
+            let l = lexer();
+            let sql = "SELECT * FROM ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
+
+            assert_eq!(clause, ClauseKind::From);
+        }
+
+        #[test]
+        fn cursor_after_where_returns_where_clause() {
+            let l = lexer();
+            let sql = "SELECT * FROM users WHERE ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
+
+            assert_eq!(clause, ClauseKind::Where);
+        }
+
+        #[test]
+        fn cursor_after_join_returns_join_clause() {
+            let l = lexer();
+            let sql = "SELECT * FROM users JOIN ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
+
+            assert_eq!(clause, ClauseKind::Join);
+        }
+
+        #[test]
+        fn cursor_after_with_returns_with_clause() {
+            let l = lexer();
+            let sql = "WITH ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
+
+            assert_eq!(clause, ClauseKind::With);
+        }
+    }
+
+    mod build_context {
+        use super::*;
+
+        #[test]
+        fn full_query_returns_complete_context() {
+            let l = lexer();
+            let sql = "WITH cte AS (SELECT 1) SELECT * FROM users u JOIN posts p ON u.id = p.user_id WHERE ";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let ctx = l.build_context(&tokens, sql.len());
+
+            assert_eq!(ctx.ctes.len(), 1);
+            assert_eq!(ctx.tables.len(), 2);
+            assert_eq!(ctx.current_clause, ClauseKind::Where);
         }
     }
 }
