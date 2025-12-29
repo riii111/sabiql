@@ -68,7 +68,7 @@ impl HelpOverlay {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
-            Self::key_line("Ctrl+Enter", "Execute query"),
+            Self::key_line("Alt+Enter", "Execute query"),
             Self::key_line("Esc", "Close editor"),
             Self::key_line("↑↓←→", "Move cursor"),
             Line::from(""),
