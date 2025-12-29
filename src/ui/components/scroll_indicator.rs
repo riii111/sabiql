@@ -92,9 +92,9 @@ pub fn render_horizontal_scroll_indicator(
         .thumb_style(Style::default().fg(Color::Yellow))
         .track_style(Style::default().fg(Color::DarkGray));
 
+    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(params.total_items)
-        .viewport_content_length(params.viewport_size)
+        .content_length(scrollable_range)
         .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
