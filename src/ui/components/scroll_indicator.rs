@@ -3,6 +3,14 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 
+pub struct HorizontalScrollParams {
+    pub position: usize,
+    pub viewport_size: usize,
+    pub total_items: usize,
+    pub display_start: usize,
+    pub display_end: usize,
+}
+
 /// Render a horizontal scroll indicator at the bottom of an area.
 /// NOTE: `area` should be the INNER area (without border).
 pub fn render_horizontal_scroll_indicator(
