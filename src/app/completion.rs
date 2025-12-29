@@ -310,6 +310,7 @@ impl CompletionEngine {
                 t.schema.to_lowercase() == schema_lower
                     && t.name.to_lowercase().starts_with(&prefix_lower)
             })
+            .take(10)
             .map(|t| CompletionCandidate {
                 text: t.name.clone(),
                 kind: CompletionKind::Table,
