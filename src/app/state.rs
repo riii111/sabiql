@@ -20,6 +20,33 @@ pub enum SqlModalState {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum CompletionKind {
+    Keyword,
+    Schema,
+    Table,
+    Column,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct CompletionCandidate {
+    pub text: String,
+    pub kind: CompletionKind,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct CompletionState {
+    pub visible: bool,
+    pub candidates: Vec<CompletionCandidate>,
+    pub selected_index: usize,
+    pub trigger_position: usize,
+    pub generation: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QueryState {
     #[default]
@@ -82,6 +109,9 @@ pub struct AppState {
     pub sql_modal_cursor: usize,
     pub sql_modal_state: SqlModalState,
 
+    // SQL Modal completion
+    pub completion: CompletionState,
+
     // Query execution state
     pub query_state: QueryState,
 
@@ -143,6 +173,7 @@ impl AppState {
             sql_modal_content: String::new(),
             sql_modal_cursor: 0,
             sql_modal_state: SqlModalState::default(),
+            completion: CompletionState::default(),
             // Query state
             query_state: QueryState::default(),
             // Last error
