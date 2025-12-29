@@ -59,6 +59,11 @@ impl CompletionEngine {
         }
     }
 
+    pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
+        let before_cursor: String = content.chars().take(cursor_pos).collect();
+        self.extract_current_token(&before_cursor).chars().count()
+    }
+
     /// Analyze SQL content at cursor position to determine context and current token
     fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
         let before_cursor: String = content.chars().take(cursor_pos).collect();

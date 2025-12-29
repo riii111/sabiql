@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
+use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{ClipboardWriter, MetadataProvider};
@@ -61,6 +62,7 @@ async fn main() -> Result<()> {
 
     let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
     let metadata_cache = TtlCache::new(300);
+    let completion_engine = CompletionEngine::new();
 
     let mut state = AppState::new(project_name, args.profile);
     state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
@@ -94,6 +96,7 @@ async fn main() -> Result<()> {
                     &action_tx,
                     &metadata_provider,
                     &metadata_cache,
+                    &completion_engine,
                 ).await?;
             }
         }
@@ -114,6 +117,7 @@ async fn handle_action(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
+    completion_engine: &CompletionEngine,
 ) -> Result<()> {
     match action {
         Action::Quit => state.should_quit = true,
@@ -176,9 +180,13 @@ async fn handle_action(
         Action::OpenSqlModal => {
             state.input_mode = InputMode::SqlModal;
             state.sql_modal_state = app::state::SqlModalState::Editing;
+            state.completion.visible = false;
+            state.completion.candidates.clear();
+            state.completion.selected_index = 0;
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
+            state.completion.visible = false;
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -274,8 +282,67 @@ async fn handle_action(
             let query = state.sql_modal_content.trim().to_string();
             if !query.is_empty() {
                 state.sql_modal_state = app::state::SqlModalState::Running;
+                state.completion.visible = false;
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
+        }
+
+        Action::CompletionTrigger => {
+            let cursor = state.sql_modal_cursor;
+            let token_len = completion_engine.current_token_len(&state.sql_modal_content, cursor);
+            let candidates = completion_engine.get_candidates(
+                &state.sql_modal_content,
+                cursor,
+                state.metadata.as_ref(),
+                state.table_detail.as_ref(),
+            );
+            state.completion.candidates = candidates;
+            state.completion.selected_index = 0;
+            state.completion.visible = !state.completion.candidates.is_empty();
+            state.completion.trigger_position = cursor.saturating_sub(token_len);
+        }
+        Action::CompletionUpdate(candidates) => {
+            state.completion.candidates = candidates;
+            state.completion.selected_index = 0;
+            state.completion.visible = !state.completion.candidates.is_empty();
+        }
+        Action::CompletionAccept => {
+            if state.completion.visible && !state.completion.candidates.is_empty() {
+                if let Some(candidate) = state.completion.candidates.get(state.completion.selected_index) {
+                    let insert_text = candidate.text.clone();
+                    let trigger_pos = state.completion.trigger_position;
+                    let current_pos = state.sql_modal_cursor;
+
+                    let chars_to_delete = current_pos.saturating_sub(trigger_pos);
+                    for _ in 0..chars_to_delete {
+                        if state.sql_modal_cursor > trigger_pos {
+                            state.sql_modal_cursor -= 1;
+                            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                            state.sql_modal_content.remove(byte_idx);
+                        }
+                    }
+
+                    let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                    state.sql_modal_content.insert_str(byte_idx, &insert_text);
+                    state.sql_modal_cursor += insert_text.chars().count();
+                }
+                state.completion.visible = false;
+                state.completion.candidates.clear();
+            }
+        }
+        Action::CompletionDismiss => {
+            state.completion.visible = false;
+        }
+        Action::CompletionNext => {
+            if !state.completion.candidates.is_empty() {
+                let max = state.completion.candidates.len() - 1;
+                if state.completion.selected_index < max {
+                    state.completion.selected_index += 1;
+                }
+            }
+        }
+        Action::CompletionPrev => {
+            state.completion.selected_index = state.completion.selected_index.saturating_sub(1);
         }
 
         Action::EnterCommandLine => {
