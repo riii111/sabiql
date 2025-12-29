@@ -65,7 +65,6 @@ pub struct AppState {
     pub inspector_scroll_offset: usize,
     pub inspector_horizontal_offset: usize,
     pub inspector_max_horizontal_offset: usize,
-    pub inspector_selected_row: usize,
 
     // Result pane
     pub current_result: Option<QueryResult>,
@@ -130,7 +129,6 @@ impl AppState {
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
             inspector_max_horizontal_offset: 0,
-            inspector_selected_row: 0,
             // Result pane
             current_result: None,
             result_highlight_until: None,
