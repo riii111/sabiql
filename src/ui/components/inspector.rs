@@ -120,7 +120,7 @@ impl Inspector {
             })
             .collect();
 
-        let (all_ideal_widths, true_total_width) = calculate_column_widths(&headers, &data_rows);
+        let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
 
         let (viewport_indices, viewport_widths) =
             select_viewport_columns(&all_ideal_widths, horizontal_offset, area.width.saturating_sub(2));
@@ -188,15 +188,22 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        // Use true (unclamped) width for scroll detection to show bar when content is truncated
-        let viewport_start_width: u16 = all_ideal_widths.iter().take(horizontal_offset).sum();
-        let viewport_end_width: u16 = viewport_start_width + viewport_widths.iter().sum::<u16>();
-
         use super::scroll_indicator::{
             render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
+            HorizontalScrollParams,
         };
         render_vertical_scroll_indicator(frame, area, scroll_offset, visible_rows, total_rows);
-        render_horizontal_scroll_indicator(frame, area, viewport_start_width as usize, viewport_end_width as usize, true_total_width as usize);
+        render_horizontal_scroll_indicator(
+            frame,
+            area,
+            HorizontalScrollParams {
+                position: horizontal_offset,
+                viewport_size: viewport_indices.len(),
+                total_items: headers.len(),
+                display_start: horizontal_offset + 1,
+                display_end: viewport_indices.last().map(|&i| i + 1).unwrap_or(0),
+            },
+        );
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {
