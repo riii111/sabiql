@@ -140,12 +140,21 @@ impl CompletionEngine {
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => {
                 // Mix columns with primary keywords (FROM, WHERE, etc.)
-                // Reserve slots for both: keywords get priority but columns are guaranteed some space
+                // Priority switching based on prefix:
+                // - Empty prefix: keywords first (user wants FROM, WHERE, etc.)
+                // - Non-empty prefix: columns first (user is typing a column name)
                 let keywords = self.primary_clause_keywords(&current_token);
-                let columns =
+                let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
 
-                // Take up to 15 keywords (sorted by score), then fill rest with columns
+                // Boost column scores when user is typing (prefix exists)
+                if !current_token.is_empty() {
+                    for col in &mut columns {
+                        col.score += 150; // Boost to surpass keyword score (200)
+                    }
+                }
+
+                // Reserve slots for both
                 let max_keywords = 15.min(keywords.len());
                 let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
 
@@ -2042,6 +2051,76 @@ mod tests {
                 .count();
 
             assert_eq!(and_count, 1, "AND should appear only once (deduplicated)");
+        }
+
+        #[test]
+        fn empty_prefix_shows_keywords_first() {
+            let e = engine();
+            let table = create_users_table();
+
+            // Empty prefix: keywords should come first
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+
+            // First candidate should be a keyword (score 200)
+            assert_eq!(
+                candidates[0].kind,
+                CompletionKind::Keyword,
+                "With empty prefix, keywords should come first"
+            );
+        }
+
+        #[test]
+        fn non_empty_prefix_shows_columns_first() {
+            let e = engine();
+            let table = create_users_table();
+
+            // "na" prefix: "name" column should come before keywords
+            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table), &[]);
+
+            // First candidate should be the "name" column (boosted score)
+            assert_eq!(candidates[0].text, "name");
+            assert_eq!(
+                candidates[0].kind,
+                CompletionKind::Column,
+                "With prefix, matching columns should come first"
+            );
+        }
+
+        #[test]
+        fn prefix_f_shows_from_but_columns_higher_if_match() {
+            let e = engine();
+
+            // Table with a column starting with "f"
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![Column {
+                    name: "first_name".to_string(),
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            // "F" prefix: "first_name" should come before FROM
+            let candidates = e.get_candidates("SELECT f", 8, None, Some(&table), &[]);
+
+            // Both should be present
+            assert!(candidates.iter().any(|c| c.text == "first_name"));
+            assert!(candidates.iter().any(|c| c.text == "FROM"));
+
+            // Column should be first (boosted)
+            assert_eq!(candidates[0].text, "first_name");
         }
     }
 }
