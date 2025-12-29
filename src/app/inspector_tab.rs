@@ -1,4 +1,3 @@
-/// Represents the active sub-tab in the Inspector pane
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InspectorTab {
     #[default]
@@ -11,7 +10,6 @@ pub enum InspectorTab {
 
 #[allow(dead_code)]
 impl InspectorTab {
-    /// Get the next tab in order
     pub fn next(self) -> Self {
         match self {
             Self::Columns => Self::Indexes,
@@ -22,7 +20,6 @@ impl InspectorTab {
         }
     }
 
-    /// Get the previous tab in order
     pub fn prev(self) -> Self {
         match self {
             Self::Columns => Self::Ddl,
@@ -33,7 +30,6 @@ impl InspectorTab {
         }
     }
 
-    /// Get the display name for the tab
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Columns => "Cols",
@@ -44,7 +40,6 @@ impl InspectorTab {
         }
     }
 
-    /// Get all tabs in order
     pub fn all() -> &'static [Self] {
         &[
             Self::Columns,
@@ -55,7 +50,7 @@ impl InspectorTab {
         ]
     }
 
-    /// Get the tab index (0-based)
+    /// 0-based index
     pub fn index(self) -> usize {
         match self {
             Self::Columns => 0,
@@ -66,7 +61,7 @@ impl InspectorTab {
         }
     }
 
-    /// Create a tab from index (1-based, for keyboard shortcuts)
+    /// 1-based key (for keyboard shortcuts)
     pub fn from_key(key: char) -> Option<Self> {
         match key {
             '1' => Some(Self::Columns),

@@ -56,12 +56,11 @@ async fn main() -> Result<()> {
     let dsn = config.as_ref().and_then(|c| c.resolve_dsn(&args.profile));
     let _cache_dir = get_cache_dir(&project_name)?;
 
-    // Action channel for async communication (bounded to prevent unbounded memory growth)
+    // Bounded to prevent unbounded memory growth
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
-    // Metadata provider and cache
     let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
-    let metadata_cache = TtlCache::new(300); // 5 min TTL
+    let metadata_cache = TtlCache::new(300);
 
     let mut state = AppState::new(project_name, args.profile);
     state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
@@ -71,11 +70,9 @@ async fn main() -> Result<()> {
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
     tui.enter()?;
 
-    // Initialize terminal height from actual terminal size
     let initial_size = tui.terminal().size()?;
     state.terminal_height = initial_size.height;
 
-    // Load metadata on startup if DSN is available
     if state.dsn.is_some() {
         let _ = action_tx.send(Action::LoadMetadata).await;
     }
@@ -140,7 +137,6 @@ async fn handle_action(
             state.toggle_focus();
         }
 
-        // Inspector sub-tab actions
         Action::InspectorNextTab => {
             state.inspector_tab = state.inspector_tab.next();
         }
@@ -177,7 +173,6 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
 
-        // SQL Modal actions
         Action::OpenSqlModal => {
             state.input_mode = InputMode::SqlModal;
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -225,7 +220,6 @@ async fn handle_action(
             let cursor = state.sql_modal_cursor;
             let total_chars = char_count(content);
 
-            // Build line info: Vec<(start_char_idx, char_count)>
             let lines: Vec<(usize, usize)> = {
                 let mut result = Vec::new();
                 let mut start = 0;
@@ -237,7 +231,6 @@ async fn handle_action(
                 result
             };
 
-            // Find current line and column
             let (current_line, current_col) = {
                 let mut line_idx = 0;
                 let mut col = cursor;
@@ -285,7 +278,6 @@ async fn handle_action(
             }
         }
 
-        // Command line actions
         Action::EnterCommandLine => {
             state.input_mode = InputMode::CommandLine;
             state.command_line_input.clear();
@@ -318,7 +310,6 @@ async fn handle_action(
             }
         }
 
-        // Filter actions
         Action::FilterInput(c) => {
             state.filter_input.push(c);
             state.picker_selected = 0;
@@ -427,7 +418,6 @@ async fn handle_action(
             } else if state.input_mode == InputMode::Normal
                 && state.focused_pane == app::focused_pane::FocusedPane::Explorer
             {
-                // Explorer: select table with Enter
                 let tables = state.tables();
                 if let Some(table) = tables.get(state.explorer_selected) {
                     let schema = table.schema.clone();
@@ -488,10 +478,8 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
         }
 
-        // Metadata loading
         Action::LoadMetadata => {
             if let Some(dsn) = &state.dsn {
-                // Check cache first
                 if let Some(cached) = metadata_cache.get(dsn).await {
                     state.metadata = Some(cached);
                     state.metadata_state = MetadataState::Loaded;
@@ -541,7 +529,6 @@ async fn handle_action(
             }
         }
 
-        // Table detail loading
         Action::LoadTableDetail {
             schema,
             table,
@@ -583,7 +570,6 @@ async fn handle_action(
             }
         }
 
-        // Query execution
         Action::ExecutePreview {
             schema,
             table,
@@ -606,7 +592,6 @@ async fn handle_action(
                     }
                 });
 
-                // Create a new PostgresAdapter for query execution
                 let adapter = PostgresAdapter::new();
                 tokio::spawn(async move {
                     match adapter.execute_preview(&dsn, &schema, &table, limit).await {
@@ -898,7 +883,6 @@ fn extract_database_name(dsn: &str) -> Option<String> {
     if name == "unknown" { None } else { Some(name) }
 }
 
-/// Convert character index to byte index in a UTF-8 string.
 fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
@@ -906,7 +890,6 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-/// Get the number of characters in a UTF-8 string.
 fn char_count(s: &str) -> usize {
     s.chars().count()
 }

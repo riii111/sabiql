@@ -18,8 +18,6 @@ impl fmt::Display for ClipboardError {
 
 impl Error for ClipboardError {}
 
-/// Trait for writing to the system clipboard.
 pub trait ClipboardWriter: Send + Sync {
-    /// Write the given content to the system clipboard.
     fn write(&self, content: &str) -> Result<(), ClipboardError>;
 }
