@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
+use ratatui::symbols::scrollbar;
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 pub struct HorizontalScrollParams {
@@ -85,8 +86,7 @@ pub fn render_horizontal_scroll_indicator(
     };
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-        .thumb_symbol("▬")
-        .track_symbol(Some("─"))
+        .symbols(scrollbar::DOUBLE_HORIZONTAL)
         .begin_symbol(None)
         .end_symbol(None)
         .thumb_style(Style::default().fg(Color::Yellow))
