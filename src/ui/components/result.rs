@@ -202,9 +202,20 @@ impl ResultPane {
 
         use super::scroll_indicator::{
             render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
+            HorizontalScrollParams,
         };
         render_vertical_scroll_indicator(frame, inner, scroll_offset, visible_rows, total_rows);
-        render_horizontal_scroll_indicator(frame, inner, horizontal_offset, viewport_end, total_cols);
+        render_horizontal_scroll_indicator(
+            frame,
+            inner,
+            HorizontalScrollParams {
+                position: horizontal_offset,
+                viewport_size: viewport_indices.len(),
+                total_items: total_cols,
+                display_start: horizontal_offset + 1,
+                display_end: viewport_end,
+            },
+        );
     }
 }
 
