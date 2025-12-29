@@ -201,14 +201,8 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
     match (key.code, key.modifiers, completion_visible) {
-        // Execute query: Ctrl+Enter, Cmd+Enter (macOS), or Alt+Enter
-        (KeyCode::Enter, m, _)
-            if m.contains(KeyModifiers::CONTROL)
-                || m.contains(KeyModifiers::SUPER)
-                || m.contains(KeyModifiers::ALT) =>
-        {
-            Action::SqlModalSubmit
-        }
+        // Alt+Enter: most reliable across terminal emulators
+        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::ALT) => Action::SqlModalSubmit,
 
         // Completion navigation (when popup is visible)
         (KeyCode::Up, _, true) => Action::CompletionPrev,
@@ -693,8 +687,8 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_enter_submits_query() {
-            let key = key_with_mod(KeyCode::Enter, KeyModifiers::CONTROL);
+        fn alt_enter_submits_query() {
+            let key = key_with_mod(KeyCode::Enter, KeyModifiers::ALT);
 
             let result = handle_sql_modal_keys(key, false);
 
