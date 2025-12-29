@@ -174,8 +174,9 @@ impl CompletionEngine {
             return self.keyword_candidates(&current_token);
         }
 
-        // Deduplicate by text (keep highest score)
-        candidates.dedup_by(|a, b| a.text == b.text);
+        // Deduplicate by text (keep highest score - first occurrence after sort)
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|c| seen.insert(c.text.to_uppercase()));
 
         candidates
     }
@@ -366,6 +367,7 @@ impl CompletionEngine {
             "FROM",
             "WHERE",
             "ORDER",
+            "BY", // For ORDER BY, GROUP BY
             "GROUP",
             "HAVING",
             "LIMIT",
@@ -1989,6 +1991,57 @@ mod tests {
                 first_keyword_idx < first_column_idx,
                 "Keywords should appear before columns"
             );
+        }
+
+        #[test]
+        fn order_by_keywords_appear_together() {
+            let e = engine();
+            let table = create_users_table();
+
+            // After "ORDER ", BY should appear in candidates
+            let candidates = e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
+
+            assert!(
+                candidates.iter().any(|c| c.text == "BY"),
+                "BY keyword should appear after ORDER"
+            );
+        }
+
+        #[test]
+        fn duplicate_text_is_deduplicated() {
+            let e = engine();
+
+            // Create a table with a column named "and" (same as keyword)
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![Column {
+                    name: "and".to_string(), // Same as keyword AND
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+
+            // Count how many times "AND" appears (case-insensitive)
+            let and_count = candidates
+                .iter()
+                .filter(|c| c.text.to_uppercase() == "AND")
+                .count();
+
+            assert_eq!(and_count, 1, "AND should appear only once (deduplicated)");
         }
     }
 }
