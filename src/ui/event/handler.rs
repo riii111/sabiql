@@ -103,8 +103,14 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('[') => Action::InspectorPrevTab,
         KeyCode::Char(']') => Action::InspectorNextTab,
 
-        // Explorer: Enter to select table
-        KeyCode::Enter => Action::ConfirmSelection,
+        // Explorer: Enter to select table (only when Explorer is focused)
+        KeyCode::Enter => {
+            if state.focused_pane == FocusedPane::Explorer {
+                Action::ConfirmSelection
+            } else {
+                Action::None
+            }
+        }
 
         _ => Action::None,
     }
@@ -354,12 +360,33 @@ mod tests {
         }
 
         #[test]
-        fn enter_confirms_selection() {
-            let state = browse_state();
+        fn enter_confirms_selection_when_explorer_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Explorer;
 
             let result = handle_normal_mode(key(KeyCode::Enter), &state);
 
             assert!(matches!(result, Action::ConfirmSelection));
+        }
+
+        #[test]
+        fn enter_does_nothing_when_inspector_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Inspector;
+
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn enter_does_nothing_when_result_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Result;
+
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         // Pane focus switching in Browse mode (1/2/3 keys)
@@ -458,7 +485,7 @@ mod tests {
         #[rstest]
         #[case(KeyCode::Char('G'))]
         #[case(KeyCode::End)]
-        fn focus_mode_G_scrolls_bottom(#[case] code: KeyCode) {
+        fn focus_mode_shift_g_scrolls_bottom(#[case] code: KeyCode) {
             let state = focus_mode_state();
             let result = handle_normal_mode(key(code), &state);
             assert!(matches!(result, Action::ResultScrollBottom));

@@ -25,24 +25,19 @@ impl Footer {
                         ("f", "Exit Focus"),
                         ("j/k", "Scroll"),
                         ("g/G", "Top/Bottom"),
-                        ("^P", "Tables"),
-                        ("^K", "Palette"),
+                        ("1/2/3", "Pane"),
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
                 } else {
-                    let mut hints = vec![
-                        ("q", "Quit"),
-                        ("^P", "Tables"),
-                        ("^K", "Palette"),
-                        (":", "Cmd"),
-                        ("?", "Help"),
-                    ];
+                    let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
                     if state.mode == Mode::Browse {
                         hints.push(("f", "Focus"));
                     }
                     hints.push(("[/]", "InsTabs"));
                     hints.push(("r", "Reload"));
+                    hints.push(("^P", "Tables"));
+                    hints.push(("^K", "Palette"));
                     hints
                 }
             }

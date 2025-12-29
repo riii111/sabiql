@@ -130,14 +130,8 @@ impl ResultPane {
             return;
         }
 
-        // Calculate column widths based on content
-        let col_count = result.columns.len();
-        let widths: Vec<Constraint> = if col_count <= 5 {
-            vec![Constraint::Percentage((100 / col_count as u16).max(10)); col_count]
-        } else {
-            // For many columns, use min width
-            vec![Constraint::Min(15); col_count]
-        };
+        // Calculate column widths dynamically based on content and available space
+        let widths = calculate_column_widths(&result.columns, &result.rows, inner.width);
 
         // Header row
         let header =
@@ -161,8 +155,15 @@ impl ResultPane {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 };
 
-                Row::new(row.iter().map(|cell| {
-                    let display = truncate_cell(cell, 30);
+                Row::new(row.iter().enumerate().map(|(col_idx, cell)| {
+                    // Extract width from constraint for this column
+                    let max_width = if let Some(Constraint::Length(w)) = widths.get(col_idx) {
+                        *w as usize
+                    } else {
+                        50 // fallback
+                    };
+
+                    let display = truncate_cell(cell, max_width);
                     Cell::from(display)
                 }))
                 .style(style)
@@ -195,6 +196,68 @@ impl ResultPane {
     }
 }
 
+/// Calculate column widths based on content, scaled to fit available space.
+fn calculate_column_widths(
+    headers: &[String],
+    rows: &[Vec<String>],
+    available_width: u16,
+) -> Vec<Constraint> {
+    const MIN_WIDTH: u16 = 4;
+    const MAX_WIDTH: u16 = 50;
+    const PADDING: u16 = 2;
+    const SAMPLE_ROWS: usize = 50;
+
+    if headers.is_empty() {
+        return vec![];
+    }
+
+    let ideal_widths: Vec<u16> = headers
+        .iter()
+        .enumerate()
+        .map(|(col_idx, header)| {
+            let mut max_width = header.chars().count();
+
+            let sample_size = rows.len().min(SAMPLE_ROWS);
+            for row in rows.iter().take(sample_size) {
+                if let Some(cell) = row.get(col_idx) {
+                    let first_line = cell.lines().next().unwrap_or(cell);
+                    let cell_width = first_line.chars().count();
+                    max_width = max_width.max(cell_width);
+                }
+            }
+
+            (max_width as u16 + PADDING).clamp(MIN_WIDTH, MAX_WIDTH)
+        })
+        .collect();
+
+    let total_ideal: u16 = ideal_widths.iter().sum();
+
+    if total_ideal <= available_width {
+        return ideal_widths
+            .into_iter()
+            .map(Constraint::Length)
+            .collect();
+    }
+
+    // Scale down proportionally
+    let separator_space = headers.len().saturating_sub(1) as u16;
+    let usable_width = available_width.saturating_sub(separator_space);
+
+    if usable_width == 0 || total_ideal == 0 {
+        return vec![Constraint::Length(MIN_WIDTH); headers.len()];
+    }
+
+    let scale_factor = usable_width as f64 / total_ideal as f64;
+
+    ideal_widths
+        .into_iter()
+        .map(|w| {
+            let scaled = (w as f64 * scale_factor).round() as u16;
+            Constraint::Length(scaled.max(MIN_WIDTH))
+        })
+        .collect()
+}
+
 fn truncate_cell(s: &str, max_chars: usize) -> String {
     // Handle newlines - show first line only
     let first_line = s.lines().next().unwrap_or(s);
@@ -215,6 +278,154 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    mod calculate_column_widths_tests {
+        use super::*;
+
+        const WIDE_SCREEN: u16 = 200; // Plenty of space
+
+        #[test]
+        fn empty_headers_returns_empty_vec() {
+            let headers: Vec<String> = vec![];
+            let rows: Vec<Vec<String>> = vec![];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 0);
+        }
+
+        #[test]
+        fn single_column_uses_header_width_plus_padding() {
+            let headers = vec!["name".to_string()];
+            let rows: Vec<Vec<String>> = vec![];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 1);
+            // "name" = 4 chars + 2 padding = 6, clamped to MIN_WIDTH (4) = 6
+            assert_eq!(result[0], Constraint::Length(6));
+        }
+
+        #[test]
+        fn uses_max_of_header_and_cell_widths() {
+            let headers = vec!["id".to_string(), "name".to_string()];
+            let rows = vec![
+                vec!["1".to_string(), "Alice".to_string()],
+                vec!["2".to_string(), "Bob".to_string()],
+            ];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 2);
+            // id: max(2, 1) + 2 = 4
+            assert_eq!(result[0], Constraint::Length(4));
+            // name: max(4, 5) + 2 = 7
+            assert_eq!(result[1], Constraint::Length(7));
+        }
+
+        #[test]
+        fn respects_max_width_constraint() {
+            let headers = vec!["description".to_string()];
+            let long_text = "a".repeat(100);
+            let rows = vec![vec![long_text]];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 1);
+            // Should be capped at MAX_WIDTH (50)
+            assert_eq!(result[0], Constraint::Length(50));
+        }
+
+        #[test]
+        fn handles_multibyte_characters_correctly() {
+            let headers = vec!["名前".to_string()];
+            let rows = vec![vec!["日本語テスト".to_string()]];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 1);
+            // "日本語テスト" = 6 chars + 2 padding = 8
+            assert_eq!(result[0], Constraint::Length(8));
+        }
+
+        #[test]
+        fn only_considers_first_line_for_multiline_cells() {
+            let headers = vec!["text".to_string()];
+            let rows = vec![vec![
+                "short\nvery long second line that should be ignored".to_string(),
+            ]];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 1);
+            // "short" = 5 chars, max(4, 5) + 2 = 7
+            assert_eq!(result[0], Constraint::Length(7));
+        }
+
+        #[test]
+        fn handles_multiple_columns_independently() {
+            let headers = vec!["id".to_string(), "name".to_string(), "email".to_string()];
+            let rows = vec![
+                vec![
+                    "1".to_string(),
+                    "Alice".to_string(),
+                    "alice@example.com".to_string(),
+                ],
+                vec![
+                    "22".to_string(),
+                    "Bob Smith Jr.".to_string(),
+                    "bob@ex.com".to_string(),
+                ],
+            ];
+
+            let result = calculate_column_widths(&headers, &rows, WIDE_SCREEN);
+
+            assert_eq!(result.len(), 3);
+            // id: max(2, 2) + 2 = 4
+            assert_eq!(result[0], Constraint::Length(4));
+            // name: max(4, 13) + 2 = 15
+            assert_eq!(result[1], Constraint::Length(15));
+            // email: max(5, 17) + 2 = 19
+            assert_eq!(result[2], Constraint::Length(19));
+        }
+
+        #[test]
+        fn scales_down_when_total_exceeds_available_width() {
+            // 10 columns each needing ~10 width = 100 ideal
+            let headers: Vec<String> = (0..10).map(|i| format!("col_{:02}", i)).collect();
+            let rows: Vec<Vec<String>> = vec![];
+
+            // Only 50 available - should scale down
+            let result = calculate_column_widths(&headers, &rows, 50);
+
+            assert_eq!(result.len(), 10);
+            // All columns should be scaled down proportionally
+            let total: u16 = result
+                .iter()
+                .map(|c| match c {
+                    Constraint::Length(w) => *w,
+                    _ => 0,
+                })
+                .sum();
+            // Total should fit within available space (accounting for separators)
+            assert!(total <= 50, "Total {} should be <= 50", total);
+        }
+
+        #[test]
+        fn maintains_min_width_even_when_scaling() {
+            let headers: Vec<String> = (0..20).map(|i| format!("c{}", i)).collect();
+            let rows: Vec<Vec<String>> = vec![];
+
+            // Very narrow - each column should still have MIN_WIDTH
+            let result = calculate_column_widths(&headers, &rows, 40);
+
+            for (i, constraint) in result.iter().enumerate() {
+                if let Constraint::Length(w) = constraint {
+                    assert!(*w >= 4, "Column {} width {} should be >= MIN_WIDTH 4", i, w);
+                }
+            }
+        }
+    }
 
     #[test]
     fn short_string_returns_unchanged() {

@@ -590,10 +590,22 @@ async fn handle_action(
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
+                // Adaptive limit: fewer rows for wide tables to avoid UI lag
+                let limit = state.table_detail.as_ref().map_or(100, |detail| {
+                    let col_count = detail.columns.len();
+                    if col_count >= 30 {
+                        20
+                    } else if col_count >= 20 {
+                        50
+                    } else {
+                        100
+                    }
+                });
+
                 // Create a new PostgresAdapter for query execution
                 let adapter = PostgresAdapter::new();
                 tokio::spawn(async move {
-                    match adapter.execute_preview(&dsn, &schema, &table, 100).await {
+                    match adapter.execute_preview(&dsn, &schema, &table, limit).await {
                         Ok(result) => {
                             let _ = tx
                                 .send(Action::QueryCompleted(Box::new(result), generation))

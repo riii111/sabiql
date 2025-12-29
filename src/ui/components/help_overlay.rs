@@ -42,6 +42,7 @@ impl HelpOverlay {
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
             Self::key_line("f", "Toggle Focus mode (Result full-screen)"),
+            // TODO: Update for ER-specific layout
             Self::key_line("1/2/3", "Switch pane focus"),
             Self::key_line("[ / ]", "Inspector prev/next tab"),
             Self::key_line("r", "Reload metadata"),
@@ -79,7 +80,7 @@ impl HelpOverlay {
             )]),
             Line::from(""),
             Self::key_line("Esc", "Close overlay / Cancel"),
-            Self::key_line("Enter", "Confirm selection"),
+            Self::key_line("Enter", "Confirm selection (Explorer/Picker)"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== Command Line ===",
