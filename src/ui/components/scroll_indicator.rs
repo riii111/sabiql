@@ -66,7 +66,13 @@ fn build_scrollbar_track(start: usize, end: usize, total: usize, width: usize) -
     let thumb_end = ((end * width) / total).max(thumb_start + 1).min(width);
 
     (0..width)
-        .map(|i| if i >= thumb_start && i < thumb_end { '█' } else { '─' })
+        .map(|i| {
+            if i >= thumb_start && i < thumb_end {
+                '█'
+            } else {
+                '─'
+            }
+        })
         .collect()
 }
 
@@ -122,7 +128,7 @@ mod tests {
         let result = build_scrollbar_track(4, 6, 10, 10);
         let chars: Vec<char> = result.chars().collect();
         assert_eq!(chars[0], '─');
-        assert!(chars.iter().any(|&c| c == '█'));
+        assert!(chars.contains(&'█'));
         assert_eq!(chars[9], '─');
     }
 
