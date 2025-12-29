@@ -135,11 +135,7 @@ impl Inspector {
             .collect();
 
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
-
-        // Calculate max offset at initial position (offset=0) to determine scroll limit
-        let (initial_viewport, _) =
-            select_viewport_columns(&all_ideal_widths, 0, area.width.saturating_sub(2));
-        let max_offset = headers.len().saturating_sub(initial_viewport.len());
+        let max_offset = calculate_max_offset(&all_ideal_widths, area.width.saturating_sub(2));
 
         let (viewport_indices, viewport_widths) =
             select_viewport_columns(&all_ideal_widths, horizontal_offset, area.width.saturating_sub(2));
@@ -504,6 +500,29 @@ fn select_viewport_columns(
     }
 
     (indices, widths)
+}
+
+fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
+    if all_widths.is_empty() {
+        return 0;
+    }
+
+    let mut sum: u16 = 0;
+    let mut cols_from_right = 0;
+
+    for (i, &width) in all_widths.iter().rev().enumerate() {
+        let separator = if i == 0 { 0 } else { 1 };
+        let needed = width + separator;
+
+        if sum + needed <= available_width {
+            sum += needed;
+            cols_from_right += 1;
+        } else {
+            break;
+        }
+    }
+
+    all_widths.len().saturating_sub(cols_from_right)
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
