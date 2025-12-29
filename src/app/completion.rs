@@ -104,14 +104,20 @@ impl CompletionEngine {
     ) -> Vec<CompletionCandidate> {
         let (current_token, context) = self.analyze(content, cursor_pos);
 
-        match context {
+        let candidates = match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => self.column_candidates(table_detail, &current_token),
             CompletionContext::SchemaQualified(schema) => {
-                self.schema_qualified_candidates(metadata, &schema, &current_token)
+                self.schema_qualified_candidates(metadata, schema, &current_token)
             }
+        };
+
+        // Fallback to keywords if context-specific candidates are empty
+        if candidates.is_empty() && !matches!(context, CompletionContext::Keyword) {
+            return self.keyword_candidates(&current_token);
         }
+        candidates
     }
 
     pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
