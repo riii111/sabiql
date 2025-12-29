@@ -50,6 +50,7 @@ impl MainLayout {
                     .areas(right_area);
 
             state.result_pane_height = result_area.height;
+            state.inspector_pane_height = inspector_area.height;
 
             Inspector::render(frame, inspector_area, state);
             ResultPane::render(frame, result_area, state);

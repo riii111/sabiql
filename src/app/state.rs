@@ -94,6 +94,7 @@ pub struct AppState {
     // Terminal dimensions for dynamic layout calculations
     pub terminal_height: u16,
     pub result_pane_height: u16,
+    pub inspector_pane_height: u16,
 
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
@@ -150,7 +151,8 @@ impl AppState {
             selection_generation: 0,
             // Terminal height (will be updated on resize)
             terminal_height: 24,   // default minimum
-            result_pane_height: 0, // will be updated on render
+            result_pane_height: 0,    // will be updated on render
+            inspector_pane_height: 0, // will be updated on render
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
@@ -162,6 +164,12 @@ impl AppState {
     /// Result content = height - 2 (border) - 1 (header row) = height - 3
     pub fn result_visible_rows(&self) -> usize {
         self.result_pane_height.saturating_sub(3) as usize
+    }
+
+    /// Calculate the number of visible rows in the inspector pane.
+    /// Inspector content = height - 2 (border) - 1 (header row) - 1 (scroll indicator) = height - 4
+    pub fn inspector_visible_rows(&self) -> usize {
+        self.inspector_pane_height.saturating_sub(4) as usize
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {

@@ -761,10 +761,11 @@ async fn handle_action(
         }
 
         Action::InspectorScrollDown => {
+            let visible = state.inspector_visible_rows();
             let max_offset = state
                 .table_detail
                 .as_ref()
-                .map(|t| t.columns.len().saturating_sub(1))
+                .map(|t| t.columns.len().saturating_sub(visible))
                 .unwrap_or(0);
             if state.inspector_scroll_offset < max_offset {
                 state.inspector_scroll_offset += 1;
