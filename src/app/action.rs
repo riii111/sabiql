@@ -102,6 +102,14 @@ pub enum Action {
     SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
 
+    // SQL Modal completion
+    CompletionTrigger,
+    CompletionUpdate(Vec<crate::app::state::CompletionCandidate>),
+    CompletionAccept,
+    CompletionDismiss,
+    CompletionNext,
+    CompletionPrev,
+
     // Query execution
     ExecutePreview {
         schema: String,
