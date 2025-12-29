@@ -41,9 +41,8 @@ impl HelpOverlay {
             Self::key_line("Ctrl+P", "Open Table Picker"),
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
-            Self::key_line("f", "Toggle Focus mode (Browse only)"),
-            // TODO: Update for ER-specific layout
-            Self::key_line("1/2/3", "Switch pane focus"),
+            Self::key_line("f", "Toggle Focus mode (Result fullscreen)"),
+            Self::key_line("1/2/3", "Switch pane focus (exits Focus first)"),
             Self::key_line("[ / ]", "Inspector prev/next tab"),
             Self::key_line("r", "Reload metadata"),
             Self::key_line("Tab", "Next tab"),

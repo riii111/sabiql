@@ -195,56 +195,16 @@ impl ResultPane {
 
         frame.render_widget(table, inner);
 
-        // Show scroll indicators
+        // Scroll indicators (pass inner area, not outer with border)
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
         let viewport_end = viewport_indices.last().map(|&i| i + 1).unwrap_or(0);
 
-        // Vertical scroll indicator (bottom-right)
-        if total_rows > visible_rows {
-            let indicator = format!(
-                " [{}-{}/{}] ",
-                scroll_offset + 1,
-                (scroll_offset + visible_rows).min(total_rows),
-                total_rows
-            );
-            let indicator_area = Rect {
-                x: area.x + area.width.saturating_sub(indicator.len() as u16 + 2),
-                y: area.y + area.height - 1,
-                width: indicator.len() as u16,
-                height: 1,
-            };
-            let indicator_widget =
-                Paragraph::new(indicator).style(Style::default().fg(Color::DarkGray));
-            frame.render_widget(indicator_widget, indicator_area);
-        }
-
-        // Horizontal scroll indicator (bottom-left, inside the border)
-        if total_cols > 1 {
-            let left_arrow = if horizontal_offset > 0 { "◀ " } else { "" };
-            let right_arrow = if viewport_end < total_cols { " ▶" } else { "" };
-            let h_indicator = format!(
-                " {}col {}-{}/{}{}",
-                left_arrow,
-                horizontal_offset + 1,
-                viewport_end,
-                total_cols,
-                right_arrow
-            );
-            let h_indicator_area = Rect {
-                x: area.x + 1,
-                y: area.y + area.height - 1,
-                width: h_indicator.len() as u16,
-                height: 1,
-            };
-            let indicator_style = if horizontal_offset > 0 || viewport_end < total_cols {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            };
-            let h_indicator_widget = Paragraph::new(h_indicator).style(indicator_style);
-            frame.render_widget(h_indicator_widget, h_indicator_area);
-        }
+        use super::scroll_indicator::{
+            render_horizontal_scroll_indicator, render_vertical_scroll_indicator,
+        };
+        render_vertical_scroll_indicator(frame, inner, scroll_offset, visible_rows, total_rows);
+        render_horizontal_scroll_indicator(frame, inner, horizontal_offset, viewport_end, total_cols);
     }
 }
 

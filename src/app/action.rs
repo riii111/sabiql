@@ -85,6 +85,12 @@ pub enum Action {
     InspectorPrevTab,
     InspectorSelectTab(InspectorTab),
 
+    // Inspector scroll
+    InspectorScrollUp,
+    InspectorScrollDown,
+    InspectorScrollLeft,
+    InspectorScrollRight,
+
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,

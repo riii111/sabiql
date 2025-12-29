@@ -8,6 +8,7 @@ pub mod inspector;
 pub mod layout;
 pub mod overlay;
 pub mod result;
+pub mod scroll_indicator;
 pub mod sql_modal;
 pub mod table_picker;
 pub mod tabs;

@@ -56,6 +56,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     }
 
     let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
+    let inspector_navigation = state.focused_pane == FocusedPane::Inspector;
 
     match key.code {
         KeyCode::Char('q') => Action::Quit,
@@ -68,6 +69,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Up | KeyCode::Char('k') => {
             if result_navigation {
                 Action::ResultScrollUp
+            } else if inspector_navigation {
+                Action::InspectorScrollUp
             } else {
                 Action::SelectPrevious
             }
@@ -75,6 +78,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Down | KeyCode::Char('j') => {
             if result_navigation {
                 Action::ResultScrollDown
+            } else if inspector_navigation {
+                Action::InspectorScrollDown
             } else {
                 Action::SelectNext
             }
@@ -94,10 +99,12 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        // Horizontal scroll for Result pane (h/l)
+        // Horizontal scroll (h/l)
         KeyCode::Char('h') | KeyCode::Left => {
             if result_navigation {
                 Action::ResultScrollLeft
+            } else if inspector_navigation {
+                Action::InspectorScrollLeft
             } else {
                 Action::None
             }
@@ -105,6 +112,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('l') | KeyCode::Right => {
             if result_navigation {
                 Action::ResultScrollRight
+            } else if inspector_navigation {
+                Action::InspectorScrollRight
             } else {
                 Action::None
             }
