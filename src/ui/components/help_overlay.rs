@@ -41,7 +41,9 @@ impl HelpOverlay {
             Self::key_line("Ctrl+P", "Open Table Picker"),
             Self::key_line("Ctrl+K", "Open Command Palette"),
             Self::key_line(":", "Enter command line"),
-            Self::key_line("f", "Toggle Focus mode"),
+            Self::key_line("f", "Toggle Focus mode (Result fullscreen)"),
+            Self::key_line("1/2/3", "Switch pane focus (exits Focus first)"),
+            Self::key_line("[ / ]", "Inspector prev/next tab"),
             Self::key_line("r", "Reload metadata"),
             Self::key_line("Tab", "Next tab"),
             Self::key_line("Shift+Tab", "Previous tab"),
@@ -53,10 +55,11 @@ impl HelpOverlay {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
-            Self::key_line("j / ↓", "Move down"),
-            Self::key_line("k / ↑", "Move up"),
-            Self::key_line("g / Home", "Go to first item"),
-            Self::key_line("G / End", "Go to last item"),
+            Self::key_line("j / ↓", "Move down (scroll in Result/Focus)"),
+            Self::key_line("k / ↑", "Move up (scroll in Result/Focus)"),
+            Self::key_line("g / Home", "First item (top in Result/Focus)"),
+            Self::key_line("G / End", "Last item (bottom in Result/Focus)"),
+            Self::key_line("h / l", "Scroll left/right (Result/Focus only)"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== SQL Editor ===",
@@ -77,7 +80,7 @@ impl HelpOverlay {
             )]),
             Line::from(""),
             Self::key_line("Esc", "Close overlay / Cancel"),
-            Self::key_line("Enter", "Confirm selection"),
+            Self::key_line("Enter", "Confirm selection (Explorer/Picker)"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "=== Command Line ===",
@@ -89,7 +92,7 @@ impl HelpOverlay {
             Self::key_line(":quit", "Quit application"),
             Self::key_line(":help", "Show this help"),
             Self::key_line(":sql", "Open SQL Editor"),
-            Self::key_line(":open-console", "Open Console (PR5)"),
+            Self::key_line(":console", "Open Console (pgcli)"),
         ];
 
         let help = Paragraph::new(help_lines)

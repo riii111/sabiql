@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::input_mode::InputMode;
+use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct Footer;
@@ -17,17 +18,37 @@ impl Footer {
     }
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
+        use crate::app::focused_pane::FocusedPane;
+
         match state.input_mode {
-            InputMode::Normal => vec![
-                ("q", "Quit"),
-                ("^P", "Tables"),
-                ("^K", "Cmds"),
-                (":", "Cmd"),
-                ("?", "Help"),
-                ("f", "Focus"),
-                ("r", "Reload"),
-                ("Tab", "Switch"),
-            ],
+            InputMode::Normal => {
+                if state.focus_mode {
+                    vec![
+                        ("f", "Exit Focus"),
+                        ("j/k", "Scroll"),
+                        ("h/l", "H-Scroll"),
+                        ("g/G", "Top/Bottom"),
+                        ("1/2/3", "Pane"),
+                        ("?", "Help"),
+                        ("q", "Quit"),
+                    ]
+                } else {
+                    let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
+                    if state.mode == Mode::Browse {
+                        hints.push(("f", "Focus"));
+                    }
+                    // Show scroll hint when Result pane is focused
+                    if state.focused_pane == FocusedPane::Result {
+                        hints.push(("j/k/g/G", "Scroll"));
+                        hints.push(("h/l", "H-Scroll"));
+                    }
+                    hints.push(("[/]", "InsTabs"));
+                    hints.push(("r", "Reload"));
+                    hints.push(("^P", "Tables"));
+                    hints.push(("^K", "Palette"));
+                    hints
+                }
+            }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![
                 ("Esc", "Close"),
@@ -39,11 +60,7 @@ impl Footer {
                 vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
             }
             InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
-            InputMode::SqlModal => vec![
-                ("^Enter", "Run"),
-                ("Esc", "Close"),
-                ("↑↓←→", "Move"),
-            ],
+            InputMode::SqlModal => vec![("^Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
         }
     }
 

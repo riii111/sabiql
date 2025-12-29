@@ -19,7 +19,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 
 fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     match state.input_mode {
-        InputMode::Normal => handle_normal_mode(key),
+        InputMode::Normal => handle_normal_mode(key, state),
         InputMode::CommandLine => handle_command_line_mode(key),
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
@@ -28,8 +28,8 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     }
 }
 
-fn handle_normal_mode(key: KeyEvent) -> Action {
-    use crate::app::inspector_tab::InspectorTab;
+fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::focused_pane::FocusedPane;
 
     match (key.code, key.modifiers) {
         // Ctrl+P: Open Table Picker
@@ -55,33 +55,94 @@ fn handle_normal_mode(key: KeyEvent) -> Action {
         _ => {}
     }
 
-    // Regular keys
+    let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
+    let inspector_navigation = state.focused_pane == FocusedPane::Inspector;
+
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Char('r') => Action::ReloadMetadata,
+        KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Esc => Action::Escape,
 
-        // Navigation
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        KeyCode::Char('g') => Action::SelectFirst,
-        KeyCode::Char('G') => Action::SelectLast,
-        KeyCode::Home => Action::SelectFirst,
-        KeyCode::End => Action::SelectLast,
+        KeyCode::Up | KeyCode::Char('k') => {
+            if result_navigation {
+                Action::ResultScrollUp
+            } else if inspector_navigation {
+                Action::InspectorScrollUp
+            } else {
+                Action::SelectPrevious
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if result_navigation {
+                Action::ResultScrollDown
+            } else if inspector_navigation {
+                Action::InspectorScrollDown
+            } else {
+                Action::SelectNext
+            }
+        }
+        KeyCode::Char('g') | KeyCode::Home => {
+            if result_navigation {
+                Action::ResultScrollTop
+            } else {
+                Action::SelectFirst
+            }
+        }
+        KeyCode::Char('G') | KeyCode::End => {
+            if result_navigation {
+                Action::ResultScrollBottom
+            } else {
+                Action::SelectLast
+            }
+        }
 
-        // Inspector sub-tab switching (1-5 keys)
-        KeyCode::Char('1') => Action::InspectorSelectTab(InspectorTab::Columns),
-        KeyCode::Char('2') => Action::InspectorSelectTab(InspectorTab::Indexes),
-        KeyCode::Char('3') => Action::InspectorSelectTab(InspectorTab::ForeignKeys),
-        KeyCode::Char('4') => Action::InspectorSelectTab(InspectorTab::Rls),
-        KeyCode::Char('5') => Action::InspectorSelectTab(InspectorTab::Ddl),
+        // Horizontal scroll (h/l)
+        KeyCode::Char('h') | KeyCode::Left => {
+            if result_navigation {
+                Action::ResultScrollLeft
+            } else if inspector_navigation {
+                Action::InspectorScrollLeft
+            } else {
+                Action::None
+            }
+        }
+        KeyCode::Char('l') | KeyCode::Right => {
+            if result_navigation {
+                Action::ResultScrollRight
+            } else if inspector_navigation {
+                Action::InspectorScrollRight
+            } else {
+                Action::None
+            }
+        }
+
+        // Pane switching: exit focus mode first if active
+        KeyCode::Char(c @ '1'..='3') => {
+            if state.focus_mode {
+                // Exit focus mode before switching panes
+                Action::ToggleFocus
+            } else {
+                FocusedPane::from_browse_key(c)
+                    .map(Action::SetFocusedPane)
+                    .unwrap_or(Action::None)
+            }
+        }
 
         // Inspector sub-tab navigation ([ and ])
         KeyCode::Char('[') => Action::InspectorPrevTab,
         KeyCode::Char(']') => Action::InspectorNextTab,
+
+        // Explorer: Enter to select table (only when Explorer is focused)
+        KeyCode::Enter => {
+            if state.focused_pane == FocusedPane::Explorer {
+                Action::ConfirmSelection
+            } else {
+                Action::None
+            }
+        }
 
         _ => Action::None,
     }
@@ -155,7 +216,6 @@ fn handle_sql_modal_keys(key: KeyEvent) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::inspector_tab::InspectorTab;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -167,14 +227,29 @@ mod tests {
 
     mod normal_mode {
         use super::*;
+        use crate::app::focused_pane::FocusedPane;
+        use crate::app::mode::Mode;
         use rstest::rstest;
+
+        fn browse_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.mode = Mode::Browse;
+            state
+        }
+
+        fn er_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.mode = Mode::ER;
+            state
+        }
 
         // Important keys with special handling: keep individual tests
         #[test]
         fn ctrl_p_opens_table_picker() {
             let key = key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::OpenTablePicker));
         }
@@ -182,57 +257,72 @@ mod tests {
         #[test]
         fn ctrl_k_opens_command_palette() {
             let key = key_with_mod(KeyCode::Char('k'), KeyModifiers::CONTROL);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::OpenCommandPalette));
         }
 
         #[test]
         fn q_returns_quit() {
-            let result = handle_normal_mode(key(KeyCode::Char('q')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
 
         #[test]
         fn question_mark_opens_help() {
-            let result = handle_normal_mode(key(KeyCode::Char('?')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('?')), &state);
 
             assert!(matches!(result, Action::OpenHelp));
         }
 
         #[test]
         fn colon_enters_command_line() {
-            let result = handle_normal_mode(key(KeyCode::Char(':')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(':')), &state);
 
             assert!(matches!(result, Action::EnterCommandLine));
         }
 
         #[test]
-        fn f_toggles_focus() {
-            let result = handle_normal_mode(key(KeyCode::Char('f')));
-
-            assert!(matches!(result, Action::ToggleFocus));
-        }
-
-        #[test]
         fn r_reloads_metadata() {
-            let result = handle_normal_mode(key(KeyCode::Char('r')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('r')), &state);
 
             assert!(matches!(result, Action::ReloadMetadata));
         }
 
         #[test]
+        fn f_toggles_focus() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('f')), &state);
+
+            assert!(matches!(result, Action::ToggleFocus));
+        }
+
+        #[test]
         fn esc_returns_escape() {
-            let result = handle_normal_mode(key(KeyCode::Esc));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Esc), &state);
 
             assert!(matches!(result, Action::Escape));
         }
 
         #[test]
         fn tab_returns_next_tab() {
-            let result = handle_normal_mode(key(KeyCode::Tab));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
             assert!(matches!(result, Action::NextTab));
         }
@@ -240,15 +330,18 @@ mod tests {
         #[test]
         fn shift_tab_returns_previous_tab() {
             let key = key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT);
+            let state = browse_state();
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             assert!(matches!(result, Action::PreviousTab));
         }
 
         #[test]
         fn backtab_returns_previous_tab() {
-            let result = handle_normal_mode(key(KeyCode::BackTab));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
 
             assert!(matches!(result, Action::PreviousTab));
         }
@@ -258,7 +351,9 @@ mod tests {
         #[case(KeyCode::Up, "up arrow")]
         #[case(KeyCode::Char('k'), "k")]
         fn navigation_selects_previous(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectPrevious));
         }
@@ -267,7 +362,9 @@ mod tests {
         #[case(KeyCode::Down, "down arrow")]
         #[case(KeyCode::Char('j'), "j")]
         fn navigation_selects_next(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectNext));
         }
@@ -276,7 +373,9 @@ mod tests {
         #[case(KeyCode::Char('g'), "g")]
         #[case(KeyCode::Home, "home")]
         fn navigation_selects_first(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectFirst));
         }
@@ -285,41 +384,204 @@ mod tests {
         #[case(KeyCode::Char('G'), "capital G")]
         #[case(KeyCode::End, "end")]
         fn navigation_selects_last(#[case] code: KeyCode, #[case] _desc: &str) {
-            let result = handle_normal_mode(key(code));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::SelectLast));
         }
 
-        // Inspector tab selection (1-5 keys)
-        #[rstest]
-        #[case('1', InspectorTab::Columns)]
-        #[case('2', InspectorTab::Indexes)]
-        #[case('3', InspectorTab::ForeignKeys)]
-        #[case('4', InspectorTab::Rls)]
-        #[case('5', InspectorTab::Ddl)]
-        fn inspector_tab_selection(#[case] key_char: char, #[case] expected_tab: InspectorTab) {
-            let result = handle_normal_mode(key(KeyCode::Char(key_char)));
+        #[test]
+        fn enter_confirms_selection_when_explorer_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Explorer;
 
-            assert!(matches!(result, Action::InspectorSelectTab(tab) if tab == expected_tab));
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::ConfirmSelection));
+        }
+
+        #[test]
+        fn enter_does_nothing_when_inspector_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Inspector;
+
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn enter_does_nothing_when_result_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Result;
+
+            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        // Pane focus switching in Browse mode (1/2/3 keys)
+        #[rstest]
+        #[case('1', FocusedPane::Explorer)]
+        #[case('2', FocusedPane::Inspector)]
+        #[case('3', FocusedPane::Result)]
+        fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
+
+            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
+        }
+
+        // ER mode uses Browse layout until ER view is implemented
+        #[rstest]
+        #[case('1', FocusedPane::Explorer)]
+        #[case('2', FocusedPane::Inspector)]
+        #[case('3', FocusedPane::Result)]
+        fn er_mode_uses_browse_layout(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+            let state = er_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
+
+            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
         }
 
         #[test]
         fn bracket_left_returns_inspector_prev_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char('[')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
 
             assert!(matches!(result, Action::InspectorPrevTab));
         }
 
         #[test]
         fn bracket_right_returns_inspector_next_tab() {
-            let result = handle_normal_mode(key(KeyCode::Char(']')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
 
             assert!(matches!(result, Action::InspectorNextTab));
         }
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_normal_mode(key(KeyCode::Char('z')));
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('z')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        fn focus_mode_state() -> AppState {
+            let mut state = browse_state();
+            state.focus_mode = true;
+            state.focused_pane = FocusedPane::Result;
+            state
+        }
+
+        fn result_focused_state() -> AppState {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Result;
+            state
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('j'))]
+        #[case(KeyCode::Down)]
+        fn focus_mode_j_scrolls_down(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollDown));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('k'))]
+        #[case(KeyCode::Up)]
+        fn focus_mode_k_scrolls_up(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollUp));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('g'))]
+        #[case(KeyCode::Home)]
+        fn focus_mode_g_scrolls_top(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollTop));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('G'))]
+        #[case(KeyCode::End)]
+        fn focus_mode_shift_g_scrolls_bottom(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollBottom));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('h'))]
+        #[case(KeyCode::Left)]
+        fn focus_mode_h_scrolls_left(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollLeft));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('l'))]
+        #[case(KeyCode::Right)]
+        fn focus_mode_l_scrolls_right(#[case] code: KeyCode) {
+            let state = focus_mode_state();
+            let result = handle_normal_mode(key(code), &state);
+            assert!(matches!(result, Action::ResultScrollRight));
+        }
+
+        #[test]
+        fn result_focused_navigation_scrolls_result() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('j')), &state);
+
+            assert!(matches!(result, Action::ResultScrollDown));
+        }
+
+        #[test]
+        fn result_focused_h_scrolls_left() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+
+            assert!(matches!(result, Action::ResultScrollLeft));
+        }
+
+        #[test]
+        fn result_focused_l_scrolls_right() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
+
+            assert!(matches!(result, Action::ResultScrollRight));
+        }
+
+        #[test]
+        fn h_key_does_nothing_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn l_key_does_nothing_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -565,8 +827,9 @@ mod tests {
         #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
         fn ctrl_h_should_open_result_history() {
             let key = key_with_mod(KeyCode::Char('h'), KeyModifiers::CONTROL);
+            let state = AppState::new("test".to_string(), "default".to_string());
 
-            let result = handle_normal_mode(key);
+            let result = handle_normal_mode(key, &state);
 
             // When implemented, this should match Action::OpenResultHistory or similar
             assert!(

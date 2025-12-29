@@ -4,6 +4,7 @@ use ratatui::widgets::ListState;
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
+use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::mode::Mode;
@@ -34,7 +35,7 @@ pub struct AppState {
     pub profile_name: String,
     pub database_name: Option<String>,
     pub current_table: Option<String>,
-    pub focus_mode: bool,
+    pub focused_pane: FocusedPane,
     pub active_tab: usize,
     pub input_mode: InputMode,
     pub command_line_input: String,
@@ -61,11 +62,16 @@ pub struct AppState {
 
     // Inspector sub-tabs
     pub inspector_tab: InspectorTab,
+    pub inspector_scroll_offset: usize,
+    pub inspector_horizontal_offset: usize,
+    pub inspector_max_horizontal_offset: usize,
 
     // Result pane
     pub current_result: Option<QueryResult>,
     pub result_highlight_until: Option<Instant>,
     pub result_scroll_offset: usize,
+    pub result_horizontal_offset: usize,
+    pub result_max_horizontal_offset: usize,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -88,6 +94,11 @@ pub struct AppState {
     // Terminal dimensions for dynamic layout calculations
     pub terminal_height: u16,
     pub result_pane_height: u16,
+    pub inspector_pane_height: u16,
+
+    // Focus mode (Result full-screen)
+    pub focus_mode: bool,
+    pub focus_mode_prev_pane: Option<FocusedPane>,
 }
 
 impl AppState {
@@ -99,7 +110,7 @@ impl AppState {
             profile_name,
             database_name: None,
             current_table: None,
-            focus_mode: false,
+            focused_pane: FocusedPane::default(),
             active_tab: 0,
             input_mode: InputMode::default(),
             command_line_input: String::new(),
@@ -114,12 +125,17 @@ impl AppState {
             table_detail: None,
             table_detail_state: MetadataState::default(),
             action_tx: None,
-            // Inspector sub-tabs
+            // Inspector
             inspector_tab: InspectorTab::default(),
+            inspector_scroll_offset: 0,
+            inspector_horizontal_offset: 0,
+            inspector_max_horizontal_offset: 0,
             // Result pane
             current_result: None,
             result_highlight_until: None,
             result_scroll_offset: 0,
+            result_horizontal_offset: 0,
+            result_max_horizontal_offset: 0,
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,
@@ -134,8 +150,12 @@ impl AppState {
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
-            terminal_height: 24, // default minimum
-            result_pane_height: 0, // will be updated on render
+            terminal_height: 24,   // default minimum
+            result_pane_height: 0,    // will be updated on render
+            inspector_pane_height: 0, // will be updated on render
+            // Focus mode
+            focus_mode: false,
+            focus_mode_prev_pane: None,
         }
     }
 
@@ -144,6 +164,12 @@ impl AppState {
     /// Result content = height - 2 (border) - 1 (header row) = height - 3
     pub fn result_visible_rows(&self) -> usize {
         self.result_pane_height.saturating_sub(3) as usize
+    }
+
+    /// Calculate the number of visible rows in the inspector pane.
+    /// Inspector content = height - 2 (border) - 1 (header row) - 1 (scroll indicator) = height - 4
+    pub fn inspector_visible_rows(&self) -> usize {
+        self.inspector_pane_height.saturating_sub(4) as usize
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -159,6 +185,43 @@ impl AppState {
             .into_iter()
             .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
+    }
+
+    pub fn change_tab(&mut self, next: bool) {
+        const TAB_COUNT: usize = 2;
+        self.active_tab = if next {
+            (self.active_tab + 1) % TAB_COUNT
+        } else {
+            (self.active_tab + TAB_COUNT - 1) % TAB_COUNT
+        };
+        self.mode = Mode::from_tab_index(self.active_tab);
+        self.focused_pane = self.mode.default_pane();
+        self.focus_mode = false;
+        self.focus_mode_prev_pane = None;
+        self.result_scroll_offset = 0;
+        self.result_horizontal_offset = 0;
+    }
+
+    #[allow(dead_code)]
+    pub fn can_enter_focus(&self) -> bool {
+        self.mode == Mode::Browse && !self.focus_mode
+    }
+
+    pub fn toggle_focus(&mut self) -> bool {
+        if self.mode != Mode::Browse {
+            return false;
+        }
+        if self.focus_mode {
+            if let Some(prev) = self.focus_mode_prev_pane.take() {
+                self.focused_pane = prev;
+            }
+            self.focus_mode = false;
+        } else {
+            self.focus_mode_prev_pane = Some(self.focused_pane);
+            self.focused_pane = FocusedPane::Result;
+            self.focus_mode = true;
+        }
+        true
     }
 }
 
@@ -268,9 +331,12 @@ mod tests {
         state.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            tables: vec![
-                TableSummary::new("public".to_string(), "Users".to_string(), Some(100), false),
-            ],
+            tables: vec![TableSummary::new(
+                "public".to_string(),
+                "Users".to_string(),
+                Some(100),
+                false,
+            )],
             fetched_at: std::time::Instant::now(),
         });
         state.filter_input = "user".to_string();
@@ -311,5 +377,115 @@ mod tests {
         let current_gen = state.selection_generation;
 
         assert!(initial_gen < current_gen);
+    }
+
+    // Tab change tests
+
+    #[test]
+    fn change_tab_next_updates_mode_and_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        assert_eq!(state.mode, Mode::Browse);
+
+        state.change_tab(true);
+
+        assert_eq!(state.mode, Mode::ER);
+        assert_eq!(state.focused_pane, Mode::ER.default_pane());
+    }
+
+    #[test]
+    fn change_tab_prev_updates_mode_and_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.active_tab = 1;
+        state.mode = Mode::ER;
+
+        state.change_tab(false);
+
+        assert_eq!(state.mode, Mode::Browse);
+        assert_eq!(state.focused_pane, Mode::Browse.default_pane());
+    }
+
+    #[test]
+    fn change_tab_resets_focus_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focus_mode = true;
+        state.focus_mode_prev_pane = Some(FocusedPane::Explorer);
+
+        state.change_tab(true);
+
+        assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn change_tab_while_in_focus_mode_exits_safely() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.toggle_focus();
+        assert!(state.focus_mode);
+
+        state.change_tab(true);
+
+        assert!(!state.focus_mode);
+        assert_eq!(state.mode, Mode::ER);
+    }
+
+    // Focus mode tests
+
+    #[test]
+    fn toggle_focus_enters_focus_mode_in_browse() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focused_pane = FocusedPane::Explorer;
+
+        let result = state.toggle_focus();
+
+        assert!(result);
+        assert!(state.focus_mode);
+        assert_eq!(state.focused_pane, FocusedPane::Result);
+        assert_eq!(state.focus_mode_prev_pane, Some(FocusedPane::Explorer));
+    }
+
+    #[test]
+    fn toggle_focus_exits_focus_mode_and_restores_pane() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.focused_pane = FocusedPane::Inspector;
+        state.toggle_focus();
+
+        let result = state.toggle_focus();
+
+        assert!(result);
+        assert!(!state.focus_mode);
+        assert_eq!(state.focused_pane, FocusedPane::Inspector);
+    }
+
+    #[test]
+    fn toggle_focus_is_blocked_in_er_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.mode = Mode::ER;
+
+        let result = state.toggle_focus();
+
+        assert!(!result);
+        assert!(!state.focus_mode);
+    }
+
+    #[test]
+    fn can_enter_focus_true_in_browse_mode() {
+        let state = AppState::new("test".to_string(), "default".to_string());
+
+        assert!(state.can_enter_focus());
+    }
+
+    #[test]
+    fn can_enter_focus_false_in_er_mode() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.mode = Mode::ER;
+
+        assert!(!state.can_enter_focus());
+    }
+
+    #[test]
+    fn can_enter_focus_false_when_already_in_focus() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.toggle_focus();
+
+        assert!(!state.can_enter_focus());
     }
 }

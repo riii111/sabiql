@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use color_eyre::eyre::Result;
 use crossterm::event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event as CrosstermEvent, EventStream, KeyEventKind,
 };
 use crossterm::execute;
@@ -139,5 +139,91 @@ impl TuiRunner {
 
     pub fn terminal(&mut self) -> &mut Tui {
         &mut self.terminal
+    }
+
+    /// Suspend TUI for external process execution (e.g., pgcli).
+    /// Caller must call `resume()` when the external process completes.
+    pub fn suspend(&mut self) -> Result<()> {
+        self.stop_event_loop();
+        while self.event_rx.try_recv().is_ok() {}
+
+        // Drain OS-level keyboard buffer to prevent key replay after resume
+        while event::poll(Duration::ZERO)? {
+            let _ = event::read();
+        }
+
+        if crossterm::terminal::is_raw_mode_enabled()? {
+            execute!(
+                stdout(),
+                LeaveAlternateScreen,
+                DisableMouseCapture,
+                DisableBracketedPaste
+            )?;
+            disable_raw_mode()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn suspend_guard(&mut self) -> Result<TuiSuspendGuard<'_>> {
+        self.suspend()?;
+        Ok(TuiSuspendGuard::new(self))
+    }
+
+    /// Resume TUI after external process completes.
+    pub fn resume(&mut self) -> Result<()> {
+        // Must create NEW token - old one is already cancelled and won't reset
+        self.cancellation_token = CancellationToken::new();
+
+        // New channel to discard any stale events from before suspend
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        self.event_tx = event_tx;
+        self.event_rx = event_rx;
+
+        // External process may have left input in OS buffer
+        while event::poll(Duration::ZERO)? {
+            let _ = event::read();
+        }
+
+        enable_raw_mode()?;
+        execute!(
+            stdout(),
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
+        self.terminal.clear()?;
+        self.start_event_loop();
+
+        Ok(())
+    }
+}
+
+/// RAII guard for TUI suspension. Resumes on drop.
+pub struct TuiSuspendGuard<'a> {
+    tui: &'a mut TuiRunner,
+    resumed: bool,
+}
+
+impl<'a> TuiSuspendGuard<'a> {
+    pub(crate) fn new(tui: &'a mut TuiRunner) -> Self {
+        Self {
+            tui,
+            resumed: false,
+        }
+    }
+
+    pub fn resume(mut self) -> Result<()> {
+        let result = self.tui.resume();
+        self.resumed = result.is_ok();
+        result
+    }
+}
+
+impl Drop for TuiSuspendGuard<'_> {
+    fn drop(&mut self) {
+        if !self.resumed {
+            let _ = self.tui.resume();
+        }
     }
 }

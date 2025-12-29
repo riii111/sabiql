@@ -1,9 +1,10 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
-use ratatui::Frame;
 
+use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
 use crate::domain::Table as TableDetail;
@@ -12,13 +13,15 @@ use crate::infra::utils::quote_ident;
 pub struct Inspector;
 
 impl Inspector {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+        let is_focused = state.focused_pane == FocusedPane::Inspector;
         // Split into tab bar and content
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state);
+        let max_offset = Self::render_content(frame, content_area, state, is_focused);
+        state.inspector_max_horizontal_offset = max_offset;
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -49,82 +52,177 @@ impl Inspector {
         frame.render_widget(paragraph, area);
     }
 
-    fn render_content(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_content(frame: &mut Frame, area: Rect, state: &AppState, is_focused: bool) -> usize {
+        let border_style = if is_focused {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
         let block = Block::default()
-            .title("Inspector")
+            .title(" [2] Inspector ")
             .borders(Borders::ALL)
-            .style(Style::default());
+            .border_style(border_style);
 
         if let Some(table) = &state.table_detail {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
             match state.inspector_tab {
-                InspectorTab::Columns => Self::render_columns(frame, inner, table),
-                InspectorTab::Indexes => Self::render_indexes(frame, inner, table),
-                InspectorTab::ForeignKeys => Self::render_foreign_keys(frame, inner, table),
-                InspectorTab::Rls => Self::render_rls(frame, inner, table),
-                InspectorTab::Ddl => Self::render_ddl(frame, inner, table),
+                InspectorTab::Columns => Self::render_columns(
+                    frame,
+                    inner,
+                    table,
+                    state.inspector_scroll_offset,
+                    state.inspector_horizontal_offset,
+                ),
+                InspectorTab::Indexes => {
+                    Self::render_indexes(frame, inner, table);
+                    0
+                }
+                InspectorTab::ForeignKeys => {
+                    Self::render_foreign_keys(frame, inner, table);
+                    0
+                }
+                InspectorTab::Rls => {
+                    Self::render_rls(frame, inner, table);
+                    0
+                }
+                InspectorTab::Ddl => {
+                    Self::render_ddl(frame, inner, table);
+                    0
+                }
             }
         } else {
             let content = Paragraph::new("(select a table)")
                 .block(block)
                 .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(content, area);
+            0
         }
     }
 
-    fn render_columns(frame: &mut Frame, area: Rect, table: &TableDetail) {
+    fn render_columns(
+        frame: &mut Frame,
+        area: Rect,
+        table: &TableDetail,
+        scroll_offset: usize,
+        horizontal_offset: usize,
+    ) -> usize {
         if table.columns.is_empty() {
             let msg = Paragraph::new("No columns");
             frame.render_widget(msg, area);
-            return;
+            return 0;
         }
 
-        let header = Row::new(vec![
-            Cell::from("Name").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Type").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Null").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("PK").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Default").style(Style::default().add_modifier(Modifier::BOLD)),
-        ])
-        .height(1);
+        let headers = vec!["Name", "Type", "Null", "PK", "Default"];
 
-        let rows: Vec<Row> = table
+        // Build data rows
+        let data_rows: Vec<Vec<String>> = table
             .columns
             .iter()
             .map(|col| {
-                let pk_marker = if col.is_primary_key { "●" } else { "" };
-                let null_marker = if col.nullable { "✓" } else { "" };
-                let default = col
-                    .default
-                    .as_ref()
-                    .map(|d| truncate_str(d, 20))
-                    .unwrap_or_default();
-
-                Row::new(vec![
-                    Cell::from(col.name.clone()),
-                    Cell::from(col.data_type.clone()),
-                    Cell::from(null_marker),
-                    Cell::from(pk_marker).style(Style::default().fg(Color::Yellow)),
-                    Cell::from(default).style(Style::default().fg(Color::DarkGray)),
-                ])
+                vec![
+                    col.name.clone(),
+                    col.data_type.clone(),
+                    if col.nullable {
+                        "✓".to_string()
+                    } else {
+                        String::new()
+                    },
+                    if col.is_primary_key {
+                        "✓".to_string()
+                    } else {
+                        String::new()
+                    },
+                    col.default.clone().unwrap_or_default(),
+                ]
             })
             .collect();
 
-        let widths = [
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(30),
-        ];
+        let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let max_offset = calculate_max_offset(&all_ideal_widths, area.width.saturating_sub(2));
+        let clamped_offset = horizontal_offset.min(max_offset);
 
-        let table_widget = Table::new(rows, widths)
-            .header(header)
-            .row_highlight_style(Style::default().bg(Color::DarkGray));
+        let (viewport_indices, viewport_widths) = select_viewport_columns(
+            &all_ideal_widths,
+            clamped_offset,
+            area.width.saturating_sub(2),
+        );
 
+        if viewport_indices.is_empty() {
+            return max_offset;
+        }
+
+        let widths: Vec<Constraint> = viewport_widths
+            .iter()
+            .map(|&w| Constraint::Length(w))
+            .collect();
+
+        // Header row
+        let header = Row::new(viewport_indices.iter().map(|&idx| {
+            let text = headers.get(idx).copied().unwrap_or("");
+            Cell::from(text).style(Style::default().add_modifier(Modifier::BOLD))
+        }))
+        .height(1);
+
+        // Visible data rows with scroll offset
+        let visible_rows = area.height.saturating_sub(2) as usize; // -1 header, -1 indicator
+        let total_rows = data_rows.len();
+
+        let rows: Vec<Row> = data_rows
+            .iter()
+            .enumerate()
+            .skip(scroll_offset)
+            .take(visible_rows)
+            .map(|(row_idx, row)| {
+                let is_striped = (row_idx - scroll_offset) % 2 == 1;
+
+                let base_style = if is_striped {
+                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                } else {
+                    Style::default()
+                };
+
+                Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
+                    |(&col_idx, &col_width)| {
+                        let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
+                        let display = truncate_cell(text, col_width as usize);
+
+                        // Special styling for PK and Default columns
+                        let cell_style = if col_idx == 3 && !text.is_empty() {
+                            Style::default().fg(Color::Yellow)
+                        } else if col_idx == 4 {
+                            Style::default().fg(Color::Gray)
+                        } else {
+                            Style::default()
+                        };
+                        Cell::from(display).style(cell_style)
+                    },
+                ))
+                .style(base_style)
+            })
+            .collect();
+
+        let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
+
+        use super::scroll_indicator::{
+            HorizontalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator,
+        };
+        render_vertical_scroll_indicator(frame, area, scroll_offset, visible_rows, total_rows);
+        render_horizontal_scroll_indicator(
+            frame,
+            area,
+            HorizontalScrollParams {
+                position: clamped_offset,
+                viewport_size: viewport_indices.len(),
+                total_items: headers.len(),
+            },
+        );
+
+        max_offset
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {
@@ -142,18 +240,29 @@ impl Inspector {
         ])
         .height(1);
 
+        let visible_rows = area.height.saturating_sub(2) as usize;
+        let total_rows = table.indexes.len();
+
         let rows: Vec<Row> = table
             .indexes
             .iter()
-            .map(|idx| {
+            .enumerate()
+            .take(visible_rows)
+            .map(|(i, idx)| {
                 let unique_marker = if idx.is_unique { "✓" } else { "" };
                 let type_str = format!("{:?}", idx.index_type).to_lowercase();
+                let style = if i % 2 == 1 {
+                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                } else {
+                    Style::default()
+                };
                 Row::new(vec![
                     Cell::from(idx.name.clone()),
                     Cell::from(idx.columns.join(", ")),
                     Cell::from(type_str),
                     Cell::from(unique_marker),
                 ])
+                .style(style)
             })
             .collect();
 
@@ -166,6 +275,10 @@ impl Inspector {
 
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
+
+        // Vertical scroll indicator
+        use super::scroll_indicator::render_vertical_scroll_indicator;
+        render_vertical_scroll_indicator(frame, area, 0, visible_rows, total_rows);
     }
 
     fn render_foreign_keys(frame: &mut Frame, area: Rect, table: &TableDetail) {
@@ -182,21 +295,32 @@ impl Inspector {
         ])
         .height(1);
 
+        let visible_rows = area.height.saturating_sub(2) as usize;
+        let total_rows = table.foreign_keys.len();
+
         let rows: Vec<Row> = table
             .foreign_keys
             .iter()
-            .map(|fk| {
+            .enumerate()
+            .take(visible_rows)
+            .map(|(i, fk)| {
                 let refs = format!(
                     "{}.{}({})",
                     fk.to_schema,
                     fk.to_table,
                     fk.to_columns.join(", ")
                 );
+                let style = if i % 2 == 1 {
+                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                } else {
+                    Style::default()
+                };
                 Row::new(vec![
                     Cell::from(fk.name.clone()),
                     Cell::from(fk.from_columns.join(", ")),
                     Cell::from(refs),
                 ])
+                .style(style)
             })
             .collect();
 
@@ -208,6 +332,10 @@ impl Inspector {
 
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
+
+        // Vertical scroll indicator
+        use super::scroll_indicator::render_vertical_scroll_indicator;
+        render_vertical_scroll_indicator(frame, area, 0, visible_rows, total_rows);
     }
 
     fn render_rls(frame: &mut Frame, area: Rect, table: &TableDetail) {
@@ -259,7 +387,8 @@ impl Inspector {
                             }
                         )));
                         if let Some(qual) = &policy.qual {
-                            lines.push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
+                            lines
+                                .push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
                         }
                     }
                 }
@@ -312,6 +441,100 @@ impl Inspector {
             .wrap(Wrap { trim: false })
             .style(Style::default().fg(Color::White));
         frame.render_widget(paragraph, area);
+    }
+}
+
+/// Returns (clamped_widths, true_total_width)
+/// - clamped_widths: widths clamped to MIN/MAX for rendering
+/// - true_total_width: sum of unclamped widths (for scroll detection)
+fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
+    const MIN_WIDTH: u16 = 4;
+    const MAX_WIDTH: u16 = 40;
+    const PADDING: u16 = 2;
+
+    let mut true_total: u16 = 0;
+    let clamped: Vec<u16> = headers
+        .iter()
+        .enumerate()
+        .map(|(col_idx, header)| {
+            let mut max_width = header.chars().count();
+
+            for row in rows.iter().take(50) {
+                if let Some(cell) = row.get(col_idx) {
+                    max_width = max_width.max(cell.chars().count());
+                }
+            }
+
+            let true_width = max_width as u16 + PADDING;
+            true_total += true_width;
+            true_width.clamp(MIN_WIDTH, MAX_WIDTH)
+        })
+        .collect();
+
+    (clamped, true_total)
+}
+
+fn select_viewport_columns(
+    all_widths: &[u16],
+    horizontal_offset: usize,
+    available_width: u16,
+) -> (Vec<usize>, Vec<u16>) {
+    let mut indices = Vec::new();
+    let mut widths = Vec::new();
+    let mut used_width: u16 = 0;
+
+    for (i, &width) in all_widths.iter().enumerate().skip(horizontal_offset) {
+        let separator = if indices.is_empty() { 0 } else { 1 };
+        let needed = width + separator;
+
+        if used_width + needed <= available_width {
+            used_width += needed;
+            indices.push(i);
+            widths.push(width);
+        } else {
+            break;
+        }
+    }
+
+    if indices.is_empty() && horizontal_offset < all_widths.len() {
+        indices.push(horizontal_offset);
+        widths.push(all_widths[horizontal_offset].min(available_width));
+    }
+
+    (indices, widths)
+}
+
+fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
+    if all_widths.is_empty() {
+        return 0;
+    }
+
+    let mut sum: u16 = 0;
+    let mut cols_from_right = 0;
+
+    for (i, &width) in all_widths.iter().rev().enumerate() {
+        let separator = if i == 0 { 0 } else { 1 };
+        let needed = width + separator;
+
+        if sum + needed <= available_width {
+            sum += needed;
+            cols_from_right += 1;
+        } else {
+            break;
+        }
+    }
+
+    let cols_from_right = cols_from_right.max(1);
+    all_widths.len().saturating_sub(cols_from_right)
+}
+
+fn truncate_cell(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
     }
 }
 

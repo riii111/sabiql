@@ -3,20 +3,16 @@ rust = "1.92.0"
 
 [tasks.build]
 description = "Build the project"
-run = "cargo build"
+run = "cargo build -q"
 sources = ["Cargo.toml", "src/**/*.rs"]
 
 [tasks.check]
 description = "Type check"
-run = "cargo check"
+run = "cargo check -q"
 
 [tasks.fmt]
 description = "Format code"
 run = "cargo fmt"
-
-[tasks.fmt-check]
-description = "Check formatting"
-run = "cargo fmt -- --check"
 
 [tasks.clippy]
 description = "Run lints"
@@ -24,7 +20,7 @@ run = "cargo clippy -- -D warnings"
 
 [tasks.test]
 description = "Run tests"
-run = "cargo test"
+run = "cargo test -q"
 
 [tasks.run]
 description = "Run application"

@@ -1,3 +1,4 @@
+use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
 
@@ -21,7 +22,7 @@ pub enum Action {
     Resize(u16, u16),
     NextTab,
     PreviousTab,
-    ToggleFocus,
+    SetFocusedPane(FocusedPane),
     Up,
     Down,
     Left,
@@ -84,6 +85,12 @@ pub enum Action {
     InspectorPrevTab,
     InspectorSelectTab(InspectorTab),
 
+    // Inspector scroll
+    InspectorScrollUp,
+    InspectorScrollDown,
+    InspectorScrollLeft,
+    InspectorScrollRight,
+
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,
@@ -110,6 +117,8 @@ pub enum Action {
     ResultScrollDown,
     ResultScrollTop,
     ResultScrollBottom,
+    ResultScrollLeft,
+    ResultScrollRight,
     HistoryPrev,
     HistoryNext,
 
@@ -119,6 +128,12 @@ pub enum Action {
     CopyToClipboard(String),
     ClipboardSuccess,
     ClipboardFailed(String),
+
+    // Console
+    OpenConsole,
+
+    // Focus mode
+    ToggleFocus,
 }
 
 impl Action {
