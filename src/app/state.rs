@@ -72,6 +72,7 @@ pub struct AppState {
     pub result_highlight_until: Option<Instant>,
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
+    pub result_max_horizontal_offset: usize,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -135,6 +136,7 @@ impl AppState {
             result_highlight_until: None,
             result_scroll_offset: 0,
             result_horizontal_offset: 0,
+            result_max_horizontal_offset: 0,
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,

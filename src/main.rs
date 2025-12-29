@@ -750,13 +750,7 @@ async fn handle_action(
         }
 
         Action::ResultScrollRight => {
-            // Calculate max horizontal scroll based on column count
-            let max_scroll = state
-                .current_result
-                .as_ref()
-                .map(|r| r.columns.len().saturating_sub(1))
-                .unwrap_or(0);
-            if state.result_horizontal_offset < max_scroll {
+            if state.result_horizontal_offset < state.result_max_horizontal_offset {
                 state.result_horizontal_offset += 1;
             }
         }

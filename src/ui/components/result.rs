@@ -12,10 +12,9 @@ use crate::domain::{QueryResult, QuerySource};
 pub struct ResultPane;
 
 impl ResultPane {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let is_focused = state.focused_pane == FocusedPane::Result;
 
-        // Check if we should show highlight (flash effect on new results)
         let should_highlight = state
             .result_highlight_until
             .map(|t| Instant::now() < t)
@@ -29,10 +28,7 @@ impl ResultPane {
             Style::default().fg(Color::DarkGray)
         };
 
-        // Determine which result to show
         let result = Self::current_result(state);
-
-        // Build title with source badge
         let title = Self::build_title(result, state);
 
         let block = Block::default()
@@ -40,11 +36,13 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        if let Some(result) = result {
+        let max_offset = if let Some(result) = result {
             if result.is_error() {
                 Self::render_error(frame, area, result, block);
+                0
             } else if result.rows.is_empty() {
                 Self::render_empty(frame, area, block);
+                0
             } else {
                 Self::render_table(
                     frame,
@@ -53,11 +51,13 @@ impl ResultPane {
                     block,
                     state.result_scroll_offset,
                     state.result_horizontal_offset,
-                );
+                )
             }
         } else {
             Self::render_placeholder(frame, area, block);
-        }
+            0
+        };
+        state.result_max_horizontal_offset = max_offset;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
@@ -130,39 +130,38 @@ impl ResultPane {
         block: Block,
         scroll_offset: usize,
         horizontal_offset: usize,
-    ) {
+    ) -> usize {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return;
+            return 0;
         }
 
-        // Calculate ideal widths for ALL columns first (for viewport calculation)
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
 
-        // Viewport-based column selection: only include columns that fit in available width
+        // max_offset calculation must use offset=0 to get consistent scroll limit
+        let (initial_viewport, _) = select_viewport_columns(&all_ideal_widths, 0, inner.width);
+        let max_offset = result.columns.len().saturating_sub(initial_viewport.len());
+
         let (viewport_indices, viewport_widths) =
             select_viewport_columns(&all_ideal_widths, horizontal_offset, inner.width);
 
         if viewport_indices.is_empty() {
-            return;
+            return max_offset;
         }
 
-        // Convert to Constraints
         let widths: Vec<Constraint> = viewport_widths
             .iter()
             .map(|&w| Constraint::Length(w))
             .collect();
 
-        // Header row (viewport columns only)
         let header = Row::new(viewport_indices.iter().map(|&idx| {
             let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
             Cell::from(col_name.to_string()).style(Style::default().add_modifier(Modifier::BOLD))
         }))
         .height(1);
 
-        // Data rows with scroll offset
         let visible_rows = inner.height.saturating_sub(2) as usize;
         let rows: Vec<Row> = result
             .rows
@@ -216,6 +215,8 @@ impl ResultPane {
                 display_end: viewport_end,
             },
         );
+
+        max_offset
     }
 }
 
@@ -267,7 +268,6 @@ fn select_viewport_columns(
             indices.push(i);
             widths.push(width);
         } else {
-            // No more columns fit
             break;
         }
     }
@@ -282,7 +282,6 @@ fn select_viewport_columns(
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
-    // Handle newlines - show first line only
     let first_line = s.lines().next().unwrap_or(s);
     let char_count = first_line.chars().count();
 
