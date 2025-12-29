@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
+use crate::ui::theme::Theme;
 
 use super::overlay::centered_rect;
 
@@ -23,7 +24,7 @@ impl SqlModal {
         let block = Block::default()
             .title(" SQL Editor ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -82,7 +83,7 @@ impl SqlModal {
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(paragraph, area);
     }
@@ -151,7 +152,7 @@ impl SqlModal {
         ]);
 
         let paragraph =
-            Paragraph::new(line).style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(paragraph, area);
     }
@@ -234,7 +235,7 @@ impl SqlModal {
                 };
 
                 let style = if is_selected {
-                    Style::default().bg(Color::Rgb(0x45, 0x47, 0x5a)).fg(Color::White)
+                    Style::default().bg(Theme::COMPLETION_SELECTED_BG).fg(Color::White)
                 } else {
                     Style::default().fg(Color::Gray)
                 };
@@ -247,7 +248,7 @@ impl SqlModal {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray))
-                .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e))),
+                .style(Style::default().bg(Theme::MODAL_BG)),
         );
 
         frame.render_widget(list, popup_area);
