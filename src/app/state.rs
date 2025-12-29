@@ -181,6 +181,9 @@ impl AppState {
         self.mode = Mode::from_tab_index(self.active_tab);
         self.focused_pane = self.mode.default_pane();
         self.focus_mode = false;
+        self.focus_mode_prev_pane = None;
+        self.result_scroll_offset = 0;
+        self.result_horizontal_offset = 0;
     }
 
     #[allow(dead_code)]

@@ -406,7 +406,9 @@ async fn handle_action(
                     state.selection_generation += 1;
                     let current_gen = state.selection_generation;
 
-                    // Trigger table detail loading and preview
+                    // Trigger table detail loading and preview (sequential to avoid rate limits)
+                    // TODO: If performance becomes an issue, consider parallel execution
+                    // with a semaphore to limit concurrency (e.g., tokio::sync::Semaphore)
                     let _ = action_tx
                         .send(Action::LoadTableDetail {
                             schema: schema.clone(),
@@ -435,6 +437,8 @@ async fn handle_action(
                     state.selection_generation += 1;
                     let current_gen = state.selection_generation;
 
+                    // TODO: If performance becomes an issue, consider parallel execution
+                    // with a semaphore to limit concurrency (e.g., tokio::sync::Semaphore)
                     let _ = action_tx
                         .send(Action::LoadTableDetail {
                             schema: schema.clone(),

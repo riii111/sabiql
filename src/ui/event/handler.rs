@@ -110,10 +110,17 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        // TODO: Use ER-specific panes once ER view is implemented
-        KeyCode::Char(c @ '1'..='3') => FocusedPane::from_browse_key(c)
-            .map(Action::SetFocusedPane)
-            .unwrap_or(Action::None),
+        // Pane switching: exit focus mode first if active
+        KeyCode::Char(c @ '1'..='3') => {
+            if state.focus_mode {
+                // Exit focus mode before switching panes
+                Action::ToggleFocus
+            } else {
+                FocusedPane::from_browse_key(c)
+                    .map(Action::SetFocusedPane)
+                    .unwrap_or(Action::None)
+            }
+        }
 
         // Inspector sub-tab navigation ([ and ])
         KeyCode::Char('[') => Action::InspectorPrevTab,
