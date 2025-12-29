@@ -1,0 +1,779 @@
+//! Lightweight SQL lexer for completion context detection.
+//!
+//! Handles PostgreSQL-specific syntax including:
+//! - Dollar-quoted strings ($tag$...$tag$)
+//! - Escape strings (E'...')
+//! - Line comments (--)
+//! - Block comments (/* */)
+//! - Cast operator (::)
+//! - Array access ([])
+
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenKind {
+    Keyword(String),
+    Identifier(String),
+    Operator(String),
+    Punctuation(char),
+    StringLiteral,
+    Number,
+    Comment,
+    Whitespace,
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub kind: TokenKind,
+    #[allow(dead_code)] // Phase 3: context analysis
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TokenCache {
+    pub tokens: Vec<Token>,
+    pub last_content_hash: u64,
+    pub last_cursor_pos: usize,
+}
+
+impl TokenCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn content_hash(content: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub fn is_valid(&self, content: &str, cursor_pos: usize) -> bool {
+        let hash = Self::content_hash(content);
+        self.last_content_hash == hash && self.last_cursor_pos == cursor_pos
+    }
+
+    #[allow(dead_code)] // Phase 3: differential tokenization
+    pub fn update(&mut self, content: &str, cursor_pos: usize, tokens: Vec<Token>) {
+        self.tokens = tokens;
+        self.last_content_hash = Self::content_hash(content);
+        self.last_cursor_pos = cursor_pos;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LexerState {
+    Normal,
+    InSingleQuote,
+    InDoubleQuote,
+    InDollarQuote,
+    InLineComment,
+    InBlockComment,
+    InEscapeString,
+}
+
+const SQL_KEYWORDS: &[&str] = &[
+    "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
+    "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "TRUE", "FALSE", "LIKE", "ILIKE",
+    "BETWEEN", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END", "AS", "DISTINCT",
+    "ORDER", "BY", "ASC", "DESC", "NULLS", "FIRST", "LAST", "GROUP", "HAVING",
+    "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT", "ALL", "INSERT", "INTO",
+    "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP", "ALTER", "TABLE",
+    "INDEX", "VIEW", "RETURNING", "WITH", "RECURSIVE", "COALESCE", "NULLIF",
+    "CAST", "USING", "FULL", "NATURAL", "LATERAL", "WINDOW", "OVER", "PARTITION",
+    "ROWS", "RANGE", "UNBOUNDED", "PRECEDING", "FOLLOWING", "CURRENT", "ROW",
+];
+
+pub struct SqlLexer;
+
+impl SqlLexer {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn tokenize(&self, text: &str, cursor_pos: usize, cache: Option<&TokenCache>) -> Vec<Token> {
+        // Check cache validity
+        if let Some(cache) = cache
+            && cache.is_valid(text, cursor_pos)
+        {
+            return cache.tokens.clone();
+        }
+
+        let chars: Vec<char> = text.chars().collect();
+        let end_pos = cursor_pos.min(chars.len());
+        let mut tokens = Vec::new();
+        let mut pos = 0;
+        let mut state = LexerState::Normal;
+        let mut token_start = 0;
+        let mut dollar_tag = String::new();
+
+        while pos < end_pos {
+            let c = chars[pos];
+
+            match state {
+                LexerState::Normal => {
+                    if c.is_whitespace() {
+                        let start = pos;
+                        while pos < end_pos && chars[pos].is_whitespace() {
+                            pos += 1;
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::Whitespace,
+                            text: chars[start..pos].iter().collect(),
+                            start,
+                            end: pos,
+                        });
+                        continue;
+                    }
+
+                    // Line comment: --
+                    if c == '-' && pos + 1 < end_pos && chars[pos + 1] == '-' {
+                        token_start = pos;
+                        state = LexerState::InLineComment;
+                        pos += 2;
+                        continue;
+                    }
+
+                    // Block comment: /*
+                    if c == '/' && pos + 1 < end_pos && chars[pos + 1] == '*' {
+                        token_start = pos;
+                        state = LexerState::InBlockComment;
+                        pos += 2;
+                        continue;
+                    }
+
+                    // Escape string: E'...'
+                    if (c == 'E' || c == 'e') && pos + 1 < end_pos && chars[pos + 1] == '\'' {
+                        token_start = pos;
+                        state = LexerState::InEscapeString;
+                        pos += 2;
+                        continue;
+                    }
+
+                    // Dollar-quoted string: $tag$...$tag$ or $$...$$
+                    if c == '$' {
+                        let tag_start = pos;
+                        pos += 1;
+                        let mut tag = String::new();
+                        while pos < end_pos && (chars[pos].is_alphanumeric() || chars[pos] == '_') {
+                            tag.push(chars[pos]);
+                            pos += 1;
+                        }
+                        if pos < end_pos && chars[pos] == '$' {
+                            pos += 1;
+                            token_start = tag_start;
+                            dollar_tag = tag;
+                            state = LexerState::InDollarQuote;
+                            continue;
+                        } else {
+                            // Not a valid dollar quote, treat as operator
+                            tokens.push(Token {
+                                kind: TokenKind::Operator("$".to_string()),
+                                text: "$".to_string(),
+                                start: tag_start,
+                                end: tag_start + 1,
+                            });
+                            // Reprocess characters after $
+                            pos = tag_start + 1;
+                            continue;
+                        }
+                    }
+
+                    // Single-quoted string: '...'
+                    if c == '\'' {
+                        token_start = pos;
+                        state = LexerState::InSingleQuote;
+                        pos += 1;
+                        continue;
+                    }
+
+                    // Double-quoted identifier: "..."
+                    if c == '"' {
+                        token_start = pos;
+                        state = LexerState::InDoubleQuote;
+                        pos += 1;
+                        continue;
+                    }
+
+                    // Cast operator: ::
+                    if c == ':' && pos + 1 < end_pos && chars[pos + 1] == ':' {
+                        tokens.push(Token {
+                            kind: TokenKind::Operator("::".to_string()),
+                            text: "::".to_string(),
+                            start: pos,
+                            end: pos + 2,
+                        });
+                        pos += 2;
+                        continue;
+                    }
+
+                    // Other operators
+                    if Self::is_operator_char(c) {
+                        let start = pos;
+                        let mut op = String::new();
+                        while pos < end_pos && Self::is_operator_char(chars[pos]) {
+                            op.push(chars[pos]);
+                            pos += 1;
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::Operator(op.clone()),
+                            text: op,
+                            start,
+                            end: pos,
+                        });
+                        continue;
+                    }
+
+                    // Punctuation: ( ) , ; . [ ]
+                    if Self::is_punctuation(c) {
+                        tokens.push(Token {
+                            kind: TokenKind::Punctuation(c),
+                            text: c.to_string(),
+                            start: pos,
+                            end: pos + 1,
+                        });
+                        pos += 1;
+                        continue;
+                    }
+
+                    // Number
+                    if c.is_ascii_digit() {
+                        let start = pos;
+                        while pos < end_pos && (chars[pos].is_ascii_digit() || chars[pos] == '.') {
+                            pos += 1;
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::Number,
+                            text: chars[start..pos].iter().collect(),
+                            start,
+                            end: pos,
+                        });
+                        continue;
+                    }
+
+                    // Identifier or keyword
+                    if c.is_alphabetic() || c == '_' {
+                        let start = pos;
+                        while pos < end_pos && (chars[pos].is_alphanumeric() || chars[pos] == '_') {
+                            pos += 1;
+                        }
+                        let text: String = chars[start..pos].iter().collect();
+                        let upper = text.to_uppercase();
+                        let kind = if SQL_KEYWORDS.contains(&upper.as_str()) {
+                            TokenKind::Keyword(upper)
+                        } else {
+                            TokenKind::Identifier(text.clone())
+                        };
+                        tokens.push(Token { kind, text, start, end: pos });
+                        continue;
+                    }
+
+                    // Unknown character
+                    tokens.push(Token {
+                        kind: TokenKind::Unknown,
+                        text: c.to_string(),
+                        start: pos,
+                        end: pos + 1,
+                    });
+                    pos += 1;
+                }
+
+                LexerState::InSingleQuote => {
+                    // Handle escaped single quotes: ''
+                    if c == '\'' {
+                        if pos + 1 < end_pos && chars[pos + 1] == '\'' {
+                            pos += 2;
+                            continue;
+                        }
+                        // End of string
+                        tokens.push(Token {
+                            kind: TokenKind::StringLiteral,
+                            text: chars[token_start..=pos].iter().collect(),
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InDoubleQuote => {
+                    // Handle escaped double quotes: ""
+                    if c == '"' {
+                        if pos + 1 < end_pos && chars[pos + 1] == '"' {
+                            pos += 2;
+                            continue;
+                        }
+                        // End of identifier
+                        let text: String = chars[token_start..=pos].iter().collect();
+                        tokens.push(Token {
+                            kind: TokenKind::Identifier(text.clone()),
+                            text,
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InDollarQuote => {
+                    // Look for closing $tag$
+                    if c == '$' {
+                        let tag_start = pos;
+                        pos += 1;
+                        let mut closing_tag = String::new();
+                        while pos < end_pos && (chars[pos].is_alphanumeric() || chars[pos] == '_') {
+                            closing_tag.push(chars[pos]);
+                            pos += 1;
+                        }
+                        if pos < end_pos && chars[pos] == '$' && closing_tag == dollar_tag {
+                            pos += 1;
+                            tokens.push(Token {
+                                kind: TokenKind::StringLiteral,
+                                text: chars[token_start..pos].iter().collect(),
+                                start: token_start,
+                                end: pos,
+                            });
+                            state = LexerState::Normal;
+                            dollar_tag.clear();
+                            continue;
+                        } else {
+                            // Not closing tag, continue in dollar quote
+                            pos = tag_start + 1;
+                            continue;
+                        }
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InLineComment => {
+                    if c == '\n' {
+                        tokens.push(Token {
+                            kind: TokenKind::Comment,
+                            text: chars[token_start..pos].iter().collect(),
+                            start: token_start,
+                            end: pos,
+                        });
+                        state = LexerState::Normal;
+                        // Don't consume newline, let Normal state handle it
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InBlockComment => {
+                    if c == '*' && pos + 1 < end_pos && chars[pos + 1] == '/' {
+                        pos += 2;
+                        tokens.push(Token {
+                            kind: TokenKind::Comment,
+                            text: chars[token_start..pos].iter().collect(),
+                            start: token_start,
+                            end: pos,
+                        });
+                        state = LexerState::Normal;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InEscapeString => {
+                    // Handle backslash escapes in E'...'
+                    if c == '\\' && pos + 1 < end_pos {
+                        pos += 2;
+                        continue;
+                    }
+                    if c == '\'' {
+                        tokens.push(Token {
+                            kind: TokenKind::StringLiteral,
+                            text: chars[token_start..=pos].iter().collect(),
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+            }
+        }
+
+        // Handle unterminated tokens at cursor position
+        if state != LexerState::Normal {
+            let text: String = chars[token_start..end_pos].iter().collect();
+            let kind = match state {
+                LexerState::InSingleQuote | LexerState::InDollarQuote | LexerState::InEscapeString => {
+                    TokenKind::StringLiteral
+                }
+                LexerState::InDoubleQuote => TokenKind::Identifier(text.clone()),
+                LexerState::InLineComment | LexerState::InBlockComment => TokenKind::Comment,
+                LexerState::Normal => unreachable!(),
+            };
+            tokens.push(Token {
+                kind,
+                text,
+                start: token_start,
+                end: end_pos,
+            });
+        }
+
+        tokens
+    }
+
+    pub fn is_in_string_or_comment(&self, text: &str, cursor_pos: usize) -> bool {
+        let tokens = self.tokenize(text, cursor_pos, None);
+
+        if let Some(last) = tokens.last() {
+            // If cursor is at the end of the last token
+            if last.end == cursor_pos {
+                matches!(last.kind, TokenKind::StringLiteral | TokenKind::Comment)
+            } else if last.start <= cursor_pos && cursor_pos < last.end {
+                // Cursor is inside a token
+                matches!(last.kind, TokenKind::StringLiteral | TokenKind::Comment)
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn is_operator_char(c: char) -> bool {
+        matches!(c, '+' | '-' | '*' | '/' | '<' | '>' | '=' | '!' | '%' | '&' | '|' | '^' | '~' | ':')
+    }
+
+    fn is_punctuation(c: char) -> bool {
+        matches!(c, '(' | ')' | ',' | ';' | '.' | '[' | ']')
+    }
+}
+
+impl Default for SqlLexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lexer() -> SqlLexer {
+        SqlLexer::new()
+    }
+
+    mod tokenization {
+        use super::*;
+
+        #[test]
+        fn simple_select_extracts_keywords() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Keyword(k) => Some(k.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(keywords, vec!["SELECT", "FROM"]);
+        }
+
+        #[test]
+        fn non_keyword_returns_identifier() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT username FROM users", 26, None);
+
+            let identifiers: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Identifier(id) => Some(id.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(identifiers.contains(&"username"));
+            assert!(identifiers.contains(&"users"));
+        }
+
+        #[test]
+        fn cast_operator_returns_operator_token() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT col::integer", 19, None);
+
+            let has_cast = tokens.iter().any(|t| {
+                matches!(&t.kind, TokenKind::Operator(op) if op == "::")
+            });
+            assert!(has_cast);
+        }
+
+        #[test]
+        fn array_access_returns_punctuation_tokens() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT arr[0]", 13, None);
+
+            let punctuations: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Punctuation(c) => Some(*c),
+                    _ => None,
+                })
+                .collect();
+            assert!(punctuations.contains(&'['));
+            assert!(punctuations.contains(&']'));
+        }
+    }
+
+    mod string_literals {
+        use super::*;
+
+        #[test]
+        fn single_quoted_string_returns_string_literal() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT 'hello'", 14, None);
+
+            let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
+            assert!(has_string);
+        }
+
+        #[test]
+        fn keyword_in_string_returns_only_outer_keyword() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT 'SELECT'", 15, None);
+
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Keyword(k) => Some(k.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(keywords.len(), 1);
+            assert_eq!(keywords[0], "SELECT");
+        }
+
+        #[test]
+        fn escaped_single_quote_returns_single_literal() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT 'O''Brien'", 17, None);
+
+            let string_tokens: Vec<_> = tokens
+                .iter()
+                .filter(|t| t.kind == TokenKind::StringLiteral)
+                .collect();
+            assert_eq!(string_tokens.len(), 1);
+            assert_eq!(string_tokens[0].text, "'O''Brien'");
+        }
+
+        #[test]
+        fn dollar_quoted_string_returns_string_literal() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT $$hello$$", 16, None);
+
+            let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
+            assert!(has_string);
+        }
+
+        #[test]
+        fn keyword_in_dollar_quote_returns_only_outer_keyword() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT $$SELECT$$", 17, None);
+
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Keyword(k) => Some(k.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(keywords.len(), 1);
+        }
+
+        #[test]
+        fn tagged_dollar_quote_returns_string_literal() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT $tag$SELECT$tag$", 23, None);
+
+            let string_tokens: Vec<_> = tokens
+                .iter()
+                .filter(|t| t.kind == TokenKind::StringLiteral)
+                .collect();
+            assert_eq!(string_tokens.len(), 1);
+            assert_eq!(string_tokens[0].text, "$tag$SELECT$tag$");
+        }
+
+        #[test]
+        fn escape_string_returns_string_literal() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT E'hello\\nworld'", 22, None);
+
+            let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
+            assert!(has_string);
+        }
+    }
+
+    mod comments {
+        use super::*;
+
+        #[test]
+        fn line_comment_returns_comment_token() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT -- comment\n* FROM", 24, None);
+
+            let has_comment = tokens.iter().any(|t| t.kind == TokenKind::Comment);
+            assert!(has_comment);
+        }
+
+        #[test]
+        fn keyword_in_line_comment_returns_only_outer_keyword() {
+            let l = lexer();
+
+            let tokens = l.tokenize("-- SELECT\nFROM", 14, None);
+
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Keyword(k) => Some(k.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(keywords, vec!["FROM"]);
+        }
+
+        #[test]
+        fn block_comment_returns_comment_token() {
+            let l = lexer();
+
+            let tokens = l.tokenize("SELECT /* comment */ * FROM", 27, None);
+
+            let has_comment = tokens.iter().any(|t| t.kind == TokenKind::Comment);
+            assert!(has_comment);
+        }
+
+        #[test]
+        fn keyword_in_block_comment_returns_only_outer_keyword() {
+            let l = lexer();
+
+            let tokens = l.tokenize("/* SELECT */ FROM", 17, None);
+
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|t| match &t.kind {
+                    TokenKind::Keyword(k) => Some(k.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(keywords, vec!["FROM"]);
+        }
+    }
+
+    mod cursor_context {
+        use super::*;
+
+        #[test]
+        fn cursor_in_string_returns_true() {
+            let l = lexer();
+
+            let result = l.is_in_string_or_comment("SELECT 'hel", 11);
+
+            assert!(result);
+        }
+
+        #[test]
+        fn cursor_in_line_comment_returns_true() {
+            let l = lexer();
+
+            let result = l.is_in_string_or_comment("SELECT -- com", 13);
+
+            assert!(result);
+        }
+
+        #[test]
+        fn cursor_in_block_comment_returns_true() {
+            let l = lexer();
+
+            let result = l.is_in_string_or_comment("SELECT /* com", 13);
+
+            assert!(result);
+        }
+
+        #[test]
+        fn cursor_in_normal_context_returns_false() {
+            let l = lexer();
+
+            let result = l.is_in_string_or_comment("SELECT * FROM ", 14);
+
+            assert!(!result);
+        }
+
+        #[test]
+        fn cursor_after_closed_string_returns_false() {
+            let l = lexer();
+
+            let result = l.is_in_string_or_comment("SELECT 'hello' FROM ", 20);
+
+            assert!(!result);
+        }
+    }
+
+    mod cache {
+        use super::*;
+
+        #[test]
+        fn valid_cache_returns_cached_tokens() {
+            let l = lexer();
+            let content = "SELECT * FROM users";
+            let cursor = 19;
+            let tokens1 = l.tokenize(content, cursor, None);
+            let mut cache = TokenCache::new();
+            cache.update(content, cursor, tokens1.clone());
+
+            let tokens2 = l.tokenize(content, cursor, Some(&cache));
+
+            assert_eq!(tokens1.len(), tokens2.len());
+        }
+
+        #[test]
+        fn content_change_invalidates_cache() {
+            let l = lexer();
+            let mut cache = TokenCache::new();
+            let tokens1 = l.tokenize("SELECT", 6, None);
+            cache.update("SELECT", 6, tokens1);
+
+            let is_valid = cache.is_valid("SELECT *", 8);
+
+            assert!(!is_valid);
+        }
+
+        #[test]
+        fn cursor_change_invalidates_cache() {
+            let l = lexer();
+            let mut cache = TokenCache::new();
+            let tokens1 = l.tokenize("SELECT * FROM", 13, None);
+            cache.update("SELECT * FROM", 13, tokens1);
+
+            let is_valid = cache.is_valid("SELECT * FROM", 7);
+
+            assert!(!is_valid);
+        }
+    }
+}

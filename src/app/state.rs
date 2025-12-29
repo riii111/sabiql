@@ -35,6 +35,7 @@ pub struct CompletionCandidate {
     pub text: String,
     pub kind: CompletionKind,
     pub detail: Option<String>,
+    pub score: i32,
 }
 
 #[derive(Debug, Clone, Default)]

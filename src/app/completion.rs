@@ -1,3 +1,4 @@
+use crate::app::sql_lexer::{SqlLexer, TokenCache};
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
@@ -16,6 +17,9 @@ pub enum CompletionContext {
 
 pub struct CompletionEngine {
     keywords: Vec<&'static str>,
+    lexer: SqlLexer,
+    #[allow(dead_code)] // Phase 3: differential tokenization
+    token_cache: TokenCache,
 }
 
 impl Default for CompletionEngine {
@@ -92,6 +96,8 @@ impl CompletionEngine {
                 "CAST",
                 "USING",
             ],
+            lexer: SqlLexer::new(),
+            token_cache: TokenCache::new(),
         }
     }
 
@@ -102,6 +108,11 @@ impl CompletionEngine {
         metadata: Option<&DatabaseMetadata>,
         table_detail: Option<&Table>,
     ) -> Vec<CompletionCandidate> {
+        // Skip completion inside strings or comments
+        if self.lexer.is_in_string_or_comment(content, cursor_pos) {
+            return vec![];
+        }
+
         let (current_token, context) = self.analyze(content, cursor_pos);
 
         match &context {
@@ -181,18 +192,18 @@ impl CompletionEngine {
         let mut last_column_pos = None;
 
         for kw in keywords_table {
-            if let Some(pos) = self.find_keyword(before_upper, kw) {
-                if last_table_pos.map_or(true, |p| pos > p) {
-                    last_table_pos = Some(pos);
-                }
+            if let Some(pos) = self.find_keyword(before_upper, kw)
+                && last_table_pos.is_none_or(|p| pos > p)
+            {
+                last_table_pos = Some(pos);
             }
         }
 
         for kw in keywords_column {
-            if let Some(pos) = self.find_keyword(before_upper, kw) {
-                if last_column_pos.map_or(true, |p| pos > p) {
-                    last_column_pos = Some(pos);
-                }
+            if let Some(pos) = self.find_keyword(before_upper, kw)
+                && last_column_pos.is_none_or(|p| pos > p)
+            {
+                last_column_pos = Some(pos);
             }
         }
 
@@ -242,21 +253,22 @@ impl CompletionEngine {
         let mut candidates: Vec<_> = self.keywords
             .iter()
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
-            .map(|kw| CompletionCandidate {
-                text: (*kw).to_string(),
-                kind: CompletionKind::Keyword,
-                detail: None,
+            .map(|kw| {
+                let is_prefix_match = kw.starts_with(&prefix_upper);
+                CompletionCandidate {
+                    text: (*kw).to_string(),
+                    kind: CompletionKind::Keyword,
+                    detail: None,
+                    score: if is_prefix_match { 100 } else { 10 },
+                }
             })
             .collect();
 
-        // Sort by prefix match priority
+        // Sort by score (descending), then alphabetically
         candidates.sort_by(|a, b| {
-            let a_prefix = a.text.starts_with(&prefix_upper);
-            let b_prefix = b.text.starts_with(&prefix_upper);
-            match (a_prefix, b_prefix) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.text.cmp(&b.text),
+            match b.score.cmp(&a.score) {
+                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+                other => other,
             }
         });
 
@@ -281,24 +293,31 @@ impl CompletionEngine {
                     || t.name.to_lowercase().starts_with(&prefix_lower)
                     || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
             })
-            .map(|t| CompletionCandidate {
-                text: t.qualified_name(),
-                kind: CompletionKind::Table,
-                detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
+            .map(|t| {
+                let name_lower = t.name.to_lowercase();
+                let is_name_prefix = name_lower.starts_with(&prefix_lower);
+                let is_qualified_prefix = t.qualified_name().to_lowercase().starts_with(&prefix_lower);
+                let score = if is_name_prefix {
+                    100
+                } else if is_qualified_prefix {
+                    50
+                } else {
+                    10
+                };
+                CompletionCandidate {
+                    text: t.qualified_name(),
+                    kind: CompletionKind::Table,
+                    detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
+                    score,
+                }
             })
             .collect();
 
-        // Sort by prefix match priority: name prefix > qualified name prefix
+        // Sort by score (descending), then alphabetically
         candidates.sort_by(|a, b| {
-            let a_name = a.text.rsplit('.').next().unwrap_or(&a.text);
-            let b_name = b.text.rsplit('.').next().unwrap_or(&b.text);
-            let a_name_prefix = a_name.to_lowercase().starts_with(&prefix_lower);
-            let b_name_prefix = b_name.to_lowercase().starts_with(&prefix_lower);
-
-            match (a_name_prefix, b_name_prefix) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.text.cmp(&b.text),
+            match b.score.cmp(&a.score) {
+                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+                other => other,
             }
         });
 
@@ -319,21 +338,33 @@ impl CompletionEngine {
             .columns
             .iter()
             .filter(|c| prefix.is_empty() || c.name.to_lowercase().starts_with(&prefix_lower))
-            .map(|c| CompletionCandidate {
-                text: c.name.clone(),
-                kind: CompletionKind::Column,
-                detail: Some(c.type_display()),
+            .map(|c| {
+                let is_prefix_match = c.name.to_lowercase().starts_with(&prefix_lower);
+                let mut score = if is_prefix_match { 100 } else { 10 };
+
+                // Boost PK columns
+                if c.is_primary_key {
+                    score += 50;
+                }
+                // Boost NOT NULL columns
+                if !c.nullable {
+                    score += 20;
+                }
+
+                CompletionCandidate {
+                    text: c.name.clone(),
+                    kind: CompletionKind::Column,
+                    detail: Some(c.type_display()),
+                    score,
+                }
             })
             .collect();
 
-        // Sort by prefix match priority
+        // Sort by score (descending), then alphabetically
         candidates.sort_by(|a, b| {
-            let a_prefix = a.text.to_lowercase().starts_with(&prefix_lower);
-            let b_prefix = b.text.to_lowercase().starts_with(&prefix_lower);
-            match (a_prefix, b_prefix) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.text.cmp(&b.text),
+            match b.score.cmp(&a.score) {
+                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+                other => other,
             }
         });
 
@@ -358,23 +389,24 @@ impl CompletionEngine {
             .iter()
             .filter(|t| {
                 t.schema.to_lowercase() == schema_lower
-                    && t.name.to_lowercase().starts_with(&prefix_lower)
+                    && (prefix.is_empty() || t.name.to_lowercase().starts_with(&prefix_lower))
             })
-            .map(|t| CompletionCandidate {
-                text: t.name.clone(),
-                kind: CompletionKind::Table,
-                detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
+            .map(|t| {
+                let is_prefix_match = t.name.to_lowercase().starts_with(&prefix_lower);
+                CompletionCandidate {
+                    text: t.name.clone(),
+                    kind: CompletionKind::Table,
+                    detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
+                    score: if is_prefix_match { 100 } else { 10 },
+                }
             })
             .collect();
 
-        // Sort by prefix match priority
+        // Sort by score (descending), then alphabetically
         candidates.sort_by(|a, b| {
-            let a_prefix = a.text.to_lowercase().starts_with(&prefix_lower);
-            let b_prefix = b.text.to_lowercase().starts_with(&prefix_lower);
-            match (a_prefix, b_prefix) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.text.cmp(&b.text),
+            match b.score.cmp(&a.score) {
+                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+                other => other,
             }
         });
 
@@ -691,6 +723,155 @@ mod tests {
             // Should be sorted alphabetically among prefix matches
             assert_eq!(candidates[0].text, "user_id");
             assert_eq!(candidates[1].text, "user_name");
+        }
+    }
+
+    mod string_and_comment_skip {
+        use super::*;
+
+        #[test]
+        fn inside_single_quote_string_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT 'SEL", 11, None, None);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn inside_line_comment_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("-- SEL", 6, None, None);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn inside_block_comment_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("/* SEL", 6, None, None);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn inside_dollar_quote_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT $$SEL", 12, None, None);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn after_closed_string_returns_candidates() {
+            let e = engine();
+
+            let candidates = e.get_candidates("'value' SEL", 11, None, None);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+
+        #[test]
+        fn after_closed_comment_returns_candidates() {
+            let e = engine();
+
+            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+    }
+
+    mod score_ranking {
+        use super::*;
+        use crate::domain::{Column, Table};
+
+        #[test]
+        fn pk_column_returns_higher_score() {
+            let e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let candidates = e.column_candidates(Some(&table), "");
+
+            assert_eq!(candidates[0].text, "id");
+            assert!(candidates[0].score > candidates[1].score);
+        }
+
+        #[test]
+        fn not_null_column_returns_higher_score() {
+            let e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "optional_field".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "required_field".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let candidates = e.column_candidates(Some(&table), "");
+
+            assert_eq!(candidates[0].text, "required_field");
+            assert!(candidates[0].score > candidates[1].score);
         }
     }
 }
