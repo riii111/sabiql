@@ -220,7 +220,7 @@ impl AppState {
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
-            terminal_height: 24,   // default minimum
+            terminal_height: 24,      // default minimum
             result_pane_height: 0,    // will be updated on render
             inspector_pane_height: 0, // will be updated on render
             // Focus mode

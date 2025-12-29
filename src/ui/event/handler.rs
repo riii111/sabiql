@@ -211,7 +211,9 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
         (KeyCode::Esc, _, true) => Action::CompletionDismiss,
 
         // Manual completion trigger
-        (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => Action::CompletionTrigger,
+        (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => {
+            Action::CompletionTrigger
+        }
         // Esc: Close modal (when completion not visible)
         (KeyCode::Esc, _, false) => Action::CloseSqlModal,
         // Navigation: dismiss completion on horizontal movement
@@ -637,8 +639,12 @@ mod tests {
                 Expected::SqlModalTab => assert!(matches!(result, Action::SqlModalTab)),
                 Expected::SqlModalBackspace => assert!(matches!(result, Action::SqlModalBackspace)),
                 Expected::SqlModalDelete => assert!(matches!(result, Action::SqlModalDelete)),
-                Expected::SqlModalInput(c) => assert!(matches!(result, Action::SqlModalInput(x) if x == c)),
-                Expected::SqlModalMoveCursor(m) => assert!(matches!(result, Action::SqlModalMoveCursor(x) if x == m)),
+                Expected::SqlModalInput(c) => {
+                    assert!(matches!(result, Action::SqlModalInput(x) if x == c))
+                }
+                Expected::SqlModalMoveCursor(m) => {
+                    assert!(matches!(result, Action::SqlModalMoveCursor(x) if x == m))
+                }
                 Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
                 Expected::CompletionTrigger => assert!(matches!(result, Action::CompletionTrigger)),
                 Expected::CompletionAccept => assert!(matches!(result, Action::CompletionAccept)),

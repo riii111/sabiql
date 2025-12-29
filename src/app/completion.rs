@@ -111,7 +111,6 @@ impl CompletionEngine {
         }
     }
 
-    #[allow(dead_code)] // Phase 4: called from main.rs when table details are fetched
     pub fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
         self.table_detail_cache.insert(qualified_name, table);
     }
@@ -310,7 +309,8 @@ impl CompletionEngine {
 
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
-        let mut candidates: Vec<_> = self.keywords
+        let mut candidates: Vec<_> = self
+            .keywords
             .iter()
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
             .map(|kw| {
@@ -325,14 +325,15 @@ impl CompletionEngine {
             .collect();
 
         // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| {
-            match b.score.cmp(&a.score) {
-                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-                other => other,
-            }
+        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+            other => other,
         });
 
-        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
+        candidates
+            .into_iter()
+            .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
     }
 
     fn table_candidates(
@@ -356,7 +357,8 @@ impl CompletionEngine {
             .map(|t| {
                 let name_lower = t.name.to_lowercase();
                 let is_name_prefix = name_lower.starts_with(&prefix_lower);
-                let is_qualified_prefix = t.qualified_name().to_lowercase().starts_with(&prefix_lower);
+                let is_qualified_prefix =
+                    t.qualified_name().to_lowercase().starts_with(&prefix_lower);
                 let score = if is_name_prefix {
                     100
                 } else if is_qualified_prefix {
@@ -374,14 +376,15 @@ impl CompletionEngine {
             .collect();
 
         // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| {
-            match b.score.cmp(&a.score) {
-                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-                other => other,
-            }
+        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+            other => other,
         });
 
-        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
+        candidates
+            .into_iter()
+            .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
     }
 
     fn column_candidates(
@@ -464,7 +467,10 @@ impl CompletionEngine {
             other => other,
         });
 
-        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
+        candidates
+            .into_iter()
+            .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
     }
 
     fn schema_qualified_candidates(
@@ -499,14 +505,15 @@ impl CompletionEngine {
             .collect();
 
         // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| {
-            match b.score.cmp(&a.score) {
-                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-                other => other,
-            }
+        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+            other => other,
         });
 
-        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
+        candidates
+            .into_iter()
+            .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
     }
 
     fn alias_column_candidates(
@@ -587,7 +594,10 @@ impl CompletionEngine {
             other => other,
         });
 
-        candidates.into_iter().take(COMPLETION_MAX_CANDIDATES).collect()
+        candidates
+            .into_iter()
+            .take(COMPLETION_MAX_CANDIDATES)
+            .collect()
     }
 
     fn qualified_name_from_ref(
@@ -799,8 +809,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
             metadata.tables = tables;
 
-            let candidates =
-                e.schema_qualified_candidates(Some(&metadata), "public", "table");
+            let candidates = e.schema_qualified_candidates(Some(&metadata), "public", "table");
 
             // Should be limited to COMPLETION_MAX_CANDIDATES
             assert_eq!(candidates.len(), COMPLETION_MAX_CANDIDATES);
@@ -824,11 +833,7 @@ mod tests {
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
             metadata.tables = tables;
 
-            let candidates = e.schema_qualified_candidates(
-                Some(&metadata),
-                "myschema",
-                ""
-            );
+            let candidates = e.schema_qualified_candidates(Some(&metadata), "myschema", "");
 
             // Empty prefix should match all tables in schema
             assert_eq!(candidates.len(), 5);
@@ -1413,7 +1418,7 @@ mod tests {
 
     mod fk_column_scoring {
         use super::*;
-        use crate::domain::{Column, ForeignKey, FkAction, Table};
+        use crate::domain::{Column, FkAction, ForeignKey, Table};
 
         fn create_table_with_fk() -> Table {
             Table {
@@ -1481,8 +1486,16 @@ mod tests {
             // user_id: FK(+40) + NOT NULL(+20) = 160
             // status: nullable = 100
             let id_score = candidates.iter().find(|c| c.text == "id").unwrap().score;
-            let user_id_score = candidates.iter().find(|c| c.text == "user_id").unwrap().score;
-            let status_score = candidates.iter().find(|c| c.text == "status").unwrap().score;
+            let user_id_score = candidates
+                .iter()
+                .find(|c| c.text == "user_id")
+                .unwrap()
+                .score;
+            let status_score = candidates
+                .iter()
+                .find(|c| c.text == "status")
+                .unwrap()
+                .score;
 
             assert!(id_score > user_id_score);
             assert!(user_id_score > status_score);
@@ -1682,6 +1695,160 @@ mod tests {
             let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None);
 
             assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
+        }
+    }
+
+    mod integration_tests {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        fn create_users_table() -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                    Column {
+                        name: "email".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 3,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn get_candidates_with_table_detail_returns_columns() {
+            let e = engine();
+            let table = create_users_table();
+
+            // SELECT context with table_detail should return columns
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
+
+            assert!(!candidates.is_empty());
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "id" && c.kind == CompletionKind::Column)
+            );
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "name" && c.kind == CompletionKind::Column)
+            );
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "email" && c.kind == CompletionKind::Column)
+            );
+        }
+
+        #[test]
+        fn get_candidates_with_cached_table_returns_alias_columns() {
+            let mut e = engine();
+            let table = create_users_table();
+
+            // Cache the table
+            e.cache_table_detail("public.users".to_string(), table);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            // "u." should trigger alias column completion from cache
+            let candidates =
+                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "id"));
+            assert!(candidates.iter().any(|c| c.text == "name"));
+            assert!(candidates.iter().any(|c| c.text == "email"));
+        }
+
+        #[test]
+        fn select_clause_with_table_detail_shows_column_candidates() {
+            let e = engine();
+            let table = create_users_table();
+
+            // Typing after SELECT with table_detail should show columns
+            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
+
+            // Should include "name" column that starts with "n"
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "name" && c.kind == CompletionKind::Column)
+            );
+        }
+
+        #[test]
+        fn where_clause_with_table_detail_shows_column_candidates() {
+            let e = engine();
+            let table = create_users_table();
+
+            // WHERE context with table_detail should return columns
+            let candidates = e.get_candidates("SELECT * FROM users WHERE ", 26, None, Some(&table));
+
+            assert!(!candidates.is_empty());
+            assert!(
+                candidates
+                    .iter()
+                    .any(|c| c.text == "id" && c.kind == CompletionKind::Column)
+            );
+        }
+
+        #[test]
+        fn alias_completion_without_cache_falls_back_to_keywords() {
+            let e = engine();
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            // "u." without cache should fallback to keywords
+            let candidates =
+                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
+
+            // Should fallback to keywords since cache is empty
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
         }
     }

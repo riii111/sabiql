@@ -151,8 +151,7 @@ impl SqlModal {
             Span::styled(hints, Style::default().fg(Color::DarkGray)),
         ]);
 
-        let paragraph =
-            Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
+        let paragraph = Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(paragraph, area);
     }
@@ -177,8 +176,7 @@ impl SqlModal {
         let popup_x = if modal_area.width < popup_width {
             modal_area.x
         } else {
-            (editor_area.x + cursor_col as u16)
-                .min(modal_area.right().saturating_sub(popup_width))
+            (editor_area.x + cursor_col as u16).min(modal_area.right().saturating_sub(popup_width))
         };
         let cursor_screen_y = editor_area.y + cursor_row as u16;
 
@@ -235,7 +233,9 @@ impl SqlModal {
                 };
 
                 let style = if is_selected {
-                    Style::default().bg(Theme::COMPLETION_SELECTED_BG).fg(Color::White)
+                    Style::default()
+                        .bg(Theme::COMPLETION_SELECTED_BG)
+                        .fg(Color::White)
                 } else {
                     Style::default().fg(Color::Gray)
                 };

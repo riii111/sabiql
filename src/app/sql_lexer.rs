@@ -115,15 +115,82 @@ enum LexerState {
 }
 
 const SQL_KEYWORDS: &[&str] = &[
-    "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
-    "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "TRUE", "FALSE", "LIKE", "ILIKE",
-    "BETWEEN", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END", "AS", "DISTINCT",
-    "ORDER", "BY", "ASC", "DESC", "NULLS", "FIRST", "LAST", "GROUP", "HAVING",
-    "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT", "ALL", "INSERT", "INTO",
-    "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP", "ALTER", "TABLE",
-    "INDEX", "VIEW", "RETURNING", "WITH", "RECURSIVE", "COALESCE", "NULLIF",
-    "CAST", "USING", "FULL", "NATURAL", "LATERAL", "WINDOW", "OVER", "PARTITION",
-    "ROWS", "RANGE", "UNBOUNDED", "PRECEDING", "FOLLOWING", "CURRENT", "ROW",
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "JOIN",
+    "LEFT",
+    "RIGHT",
+    "INNER",
+    "OUTER",
+    "CROSS",
+    "ON",
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "IS",
+    "NULL",
+    "TRUE",
+    "FALSE",
+    "LIKE",
+    "ILIKE",
+    "BETWEEN",
+    "EXISTS",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "AS",
+    "DISTINCT",
+    "ORDER",
+    "BY",
+    "ASC",
+    "DESC",
+    "NULLS",
+    "FIRST",
+    "LAST",
+    "GROUP",
+    "HAVING",
+    "LIMIT",
+    "OFFSET",
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+    "ALL",
+    "INSERT",
+    "INTO",
+    "VALUES",
+    "UPDATE",
+    "SET",
+    "DELETE",
+    "CREATE",
+    "DROP",
+    "ALTER",
+    "TABLE",
+    "INDEX",
+    "VIEW",
+    "RETURNING",
+    "WITH",
+    "RECURSIVE",
+    "COALESCE",
+    "NULLIF",
+    "CAST",
+    "USING",
+    "FULL",
+    "NATURAL",
+    "LATERAL",
+    "WINDOW",
+    "OVER",
+    "PARTITION",
+    "ROWS",
+    "RANGE",
+    "UNBOUNDED",
+    "PRECEDING",
+    "FOLLOWING",
+    "CURRENT",
+    "ROW",
 ];
 
 pub struct SqlLexer;
@@ -133,7 +200,12 @@ impl SqlLexer {
         Self
     }
 
-    pub fn tokenize(&self, text: &str, cursor_pos: usize, cache: Option<&TokenCache>) -> Vec<Token> {
+    pub fn tokenize(
+        &self,
+        text: &str,
+        cursor_pos: usize,
+        cache: Option<&TokenCache>,
+    ) -> Vec<Token> {
         // Check cache validity
         if let Some(cache) = cache
             && cache.is_valid(text, cursor_pos)
@@ -306,7 +378,12 @@ impl SqlLexer {
                         } else {
                             TokenKind::Identifier(text.clone())
                         };
-                        tokens.push(Token { kind, text, start, end: pos });
+                        tokens.push(Token {
+                            kind,
+                            text,
+                            start,
+                            end: pos,
+                        });
                         continue;
                     }
 
@@ -449,9 +526,9 @@ impl SqlLexer {
         if state != LexerState::Normal {
             let text: String = chars[token_start..end_pos].iter().collect();
             let kind = match state {
-                LexerState::InSingleQuote | LexerState::InDollarQuote | LexerState::InEscapeString => {
-                    TokenKind::StringLiteral
-                }
+                LexerState::InSingleQuote
+                | LexerState::InDollarQuote
+                | LexerState::InEscapeString => TokenKind::StringLiteral,
                 LexerState::InDoubleQuote => TokenKind::Identifier(text.clone()),
                 LexerState::InLineComment | LexerState::InBlockComment => TokenKind::Comment,
                 LexerState::Normal => unreachable!(),
@@ -486,7 +563,10 @@ impl SqlLexer {
     }
 
     fn is_operator_char(c: char) -> bool {
-        matches!(c, '+' | '-' | '*' | '/' | '<' | '>' | '=' | '!' | '%' | '&' | '|' | '^' | '~' | ':')
+        matches!(
+            c,
+            '+' | '-' | '*' | '/' | '<' | '>' | '=' | '!' | '%' | '&' | '|' | '^' | '~' | ':'
+        )
     }
 
     fn is_punctuation(c: char) -> bool {
@@ -625,9 +705,28 @@ impl SqlLexer {
     fn is_clause_keyword(kw: &str) -> bool {
         matches!(
             kw,
-            "SELECT" | "FROM" | "WHERE" | "JOIN" | "ON" | "AND" | "OR" | "ORDER" | "GROUP"
-                | "HAVING" | "LIMIT" | "OFFSET" | "UNION" | "INTERSECT" | "EXCEPT"
-                | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "CROSS" | "FULL" | "NATURAL"
+            "SELECT"
+                | "FROM"
+                | "WHERE"
+                | "JOIN"
+                | "ON"
+                | "AND"
+                | "OR"
+                | "ORDER"
+                | "GROUP"
+                | "HAVING"
+                | "LIMIT"
+                | "OFFSET"
+                | "UNION"
+                | "INTERSECT"
+                | "EXCEPT"
+                | "LEFT"
+                | "RIGHT"
+                | "INNER"
+                | "OUTER"
+                | "CROSS"
+                | "FULL"
+                | "NATURAL"
         )
     }
 
@@ -812,9 +911,9 @@ mod tests {
 
             let tokens = l.tokenize("SELECT col::integer", 19, None);
 
-            let has_cast = tokens.iter().any(|t| {
-                matches!(&t.kind, TokenKind::Operator(op) if op == "::")
-            });
+            let has_cast = tokens
+                .iter()
+                .any(|t| matches!(&t.kind, TokenKind::Operator(op) if op == "::"));
             assert!(has_cast);
         }
 
@@ -1133,7 +1232,11 @@ mod tests {
         #[test]
         fn join_returns_multiple_references() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users u JOIN posts p ON u.id = p.user_id", 54, None);
+            let tokens = l.tokenize(
+                "SELECT * FROM users u JOIN posts p ON u.id = p.user_id",
+                54,
+                None,
+            );
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1147,7 +1250,11 @@ mod tests {
         #[test]
         fn left_join_returns_reference() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users LEFT JOIN posts ON users.id = posts.user_id", 63, None);
+            let tokens = l.tokenize(
+                "SELECT * FROM users LEFT JOIN posts ON users.id = posts.user_id",
+                63,
+                None,
+            );
 
             let refs = l.extract_table_references(&tokens);
 

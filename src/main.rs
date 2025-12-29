@@ -28,6 +28,7 @@ use infra::config::{
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
+use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
@@ -62,7 +63,7 @@ async fn main() -> Result<()> {
 
     let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
     let metadata_cache = TtlCache::new(300);
-    let completion_engine = CompletionEngine::new();
+    let completion_engine = RefCell::new(CompletionEngine::new());
 
     let mut state = AppState::new(project_name, args.profile);
     state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
@@ -124,7 +125,7 @@ async fn handle_action(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
-    completion_engine: &CompletionEngine,
+    completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match action {
         Action::Quit => state.should_quit = true,
@@ -303,8 +304,9 @@ async fn handle_action(
 
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
-            let token_len = completion_engine.current_token_len(&state.sql_modal_content, cursor);
-            let candidates = completion_engine.get_candidates(
+            let engine = completion_engine.borrow();
+            let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
+            let candidates = engine.get_candidates(
                 &state.sql_modal_content,
                 cursor,
                 state.metadata.as_ref(),
@@ -640,6 +642,10 @@ async fn handle_action(
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
             if generation == state.selection_generation {
+                // Cache for alias column completion
+                completion_engine
+                    .borrow_mut()
+                    .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
             }
         }
