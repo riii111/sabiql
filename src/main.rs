@@ -788,9 +788,7 @@ async fn handle_action(
         }
 
         Action::InspectorScrollRight => {
-            // Max 4 for Columns tab (5 columns - 1)
-            let max_scroll = 4;
-            if state.inspector_horizontal_offset < max_scroll {
+            if state.inspector_horizontal_offset < state.inspector_max_horizontal_offset {
                 state.inspector_horizontal_offset += 1;
             }
         }
