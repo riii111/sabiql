@@ -411,26 +411,64 @@ impl CompletionEngine {
         table_detail: Option<&Table>,
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
+        self.column_candidates_with_fk(table_detail, prefix, &[])
+    }
+
+    fn column_candidates_with_fk(
+        &self,
+        table_detail: Option<&Table>,
+        prefix: &str,
+        recent_columns: &[String],
+    ) -> Vec<CompletionCandidate> {
         let Some(table) = table_detail else {
             return vec![];
         };
 
         let prefix_lower = prefix.to_lowercase();
+        let fk_columns: Vec<&str> = table
+            .foreign_keys
+            .iter()
+            .flat_map(|fk| fk.from_columns.iter().map(|s| s.as_str()))
+            .collect();
+
         let mut candidates: Vec<_> = table
             .columns
             .iter()
-            .filter(|c| prefix.is_empty() || c.name.to_lowercase().starts_with(&prefix_lower))
+            .filter(|c| {
+                if prefix.is_empty() {
+                    return true;
+                }
+                let name_lower = c.name.to_lowercase();
+                name_lower.starts_with(&prefix_lower) || name_lower.contains(&prefix_lower)
+            })
             .map(|c| {
-                let is_prefix_match = c.name.to_lowercase().starts_with(&prefix_lower);
-                let mut score = if is_prefix_match { 100 } else { 10 };
+                let name_lower = c.name.to_lowercase();
+                let is_prefix_match = name_lower.starts_with(&prefix_lower);
+                let is_contains_match = !is_prefix_match && name_lower.contains(&prefix_lower);
 
-                // Boost PK columns
+                let mut score = if is_prefix_match {
+                    100
+                } else if is_contains_match {
+                    10
+                } else {
+                    0
+                };
+
+                // Boost PK columns (+50)
                 if c.is_primary_key {
                     score += 50;
                 }
-                // Boost NOT NULL columns
+                // Boost FK columns (+40)
+                if fk_columns.contains(&c.name.as_str()) {
+                    score += 40;
+                }
+                // Boost NOT NULL columns (+20)
                 if !c.nullable {
                     score += 20;
+                }
+                // Boost recently used columns (+30)
+                if recent_columns.contains(&c.name) {
+                    score += 30;
                 }
 
                 CompletionCandidate {
@@ -443,11 +481,9 @@ impl CompletionEngine {
             .collect();
 
         // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| {
-            match b.score.cmp(&a.score) {
-                std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-                other => other,
-            }
+        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+            other => other,
         });
 
         candidates.into_iter().take(10).collect()
@@ -1391,6 +1427,242 @@ mod tests {
             assert_eq!(candidates.len(), 2);
             assert!(candidates.iter().any(|c| c.text == "user_id"));
             assert!(candidates.iter().any(|c| c.text == "username"));
+        }
+    }
+
+    mod fk_column_scoring {
+        use super::*;
+        use crate::domain::{Column, ForeignKey, FkAction, Table};
+
+        fn create_table_with_fk() -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: "orders".to_string(),
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "user_id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                    Column {
+                        name: "status".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 3,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![ForeignKey {
+                    name: "fk_orders_users".to_string(),
+                    from_schema: "public".to_string(),
+                    from_table: "orders".to_string(),
+                    from_columns: vec!["user_id".to_string()],
+                    to_schema: "public".to_string(),
+                    to_table: "users".to_string(),
+                    to_columns: vec!["id".to_string()],
+                    on_delete: FkAction::NoAction,
+                    on_update: FkAction::NoAction,
+                }],
+                indexes: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn fk_column_returns_higher_score() {
+            let e = engine();
+            let table = create_table_with_fk();
+
+            let candidates = e.column_candidates_with_fk(Some(&table), "", &[]);
+
+            // id: PK(+50) + NOT NULL(+20) = 170
+            // user_id: FK(+40) + NOT NULL(+20) = 160
+            // status: nullable = 100
+            let id_score = candidates.iter().find(|c| c.text == "id").unwrap().score;
+            let user_id_score = candidates.iter().find(|c| c.text == "user_id").unwrap().score;
+            let status_score = candidates.iter().find(|c| c.text == "status").unwrap().score;
+
+            assert!(id_score > user_id_score);
+            assert!(user_id_score > status_score);
+        }
+
+        #[test]
+        fn fk_column_with_prefix_match_returns_boosted_score() {
+            let e = engine();
+            let table = create_table_with_fk();
+
+            let candidates = e.column_candidates_with_fk(Some(&table), "user", &[]);
+
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].text, "user_id");
+            // Prefix(+100) + FK(+40) + NOT NULL(+20) = 160
+            assert_eq!(candidates[0].score, 160);
+        }
+    }
+
+    mod contains_match {
+        use super::*;
+        use crate::domain::{Column, Table};
+
+        #[test]
+        fn contains_match_returns_candidates() {
+            let e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "user_id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "created_at".to_string(),
+                        data_type: "timestamp".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            // "id" is contained in "user_id"
+            let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
+
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].text, "user_id");
+        }
+
+        #[test]
+        fn prefix_match_ranked_higher_than_contains() {
+            let e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "user_id".to_string(),
+                        data_type: "int".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
+
+            // "id" is prefix match (+100), "user_id" is contains match (+10)
+            assert_eq!(candidates.len(), 2);
+            assert_eq!(candidates[0].text, "id");
+            assert_eq!(candidates[1].text, "user_id");
+            assert!(candidates[0].score > candidates[1].score);
+        }
+    }
+
+    mod recent_columns_scoring {
+        use super::*;
+        use crate::domain::{Column, Table};
+
+        #[test]
+        fn recent_column_returns_boosted_score() {
+            let e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "test".to_string(),
+                columns: vec![
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "email".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+
+            let recent = vec!["email".to_string()];
+            let candidates = e.column_candidates_with_fk(Some(&table), "", &recent);
+
+            // "email" has recent bonus (+30)
+            let email_score = candidates.iter().find(|c| c.text == "email").unwrap().score;
+            let name_score = candidates.iter().find(|c| c.text == "name").unwrap().score;
+
+            assert!(email_score > name_score);
+            assert_eq!(email_score - name_score, 30);
         }
     }
 }
