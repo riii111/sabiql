@@ -104,20 +104,14 @@ impl CompletionEngine {
     ) -> Vec<CompletionCandidate> {
         let (current_token, context) = self.analyze(content, cursor_pos);
 
-        let candidates = match &context {
+        match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => self.column_candidates(table_detail, &current_token),
             CompletionContext::SchemaQualified(schema) => {
                 self.schema_qualified_candidates(metadata, schema, &current_token)
             }
-        };
-
-        // Fallback to keywords if context-specific candidates are empty
-        if candidates.is_empty() && !matches!(context, CompletionContext::Keyword) {
-            return self.keyword_candidates(&current_token);
         }
-        candidates
     }
 
     pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
@@ -211,25 +205,36 @@ impl CompletionEngine {
     }
 
     fn find_keyword(&self, text: &str, keyword: &str) -> Option<usize> {
-        let mut search_from = text.len();
-        while search_from > 0 {
-            let slice = &text[..search_from];
-            let Some(pos) = slice.rfind(keyword) else {
-                return None;
-            };
+        // Convert to char indices for safe multi-byte handling
+        let chars: Vec<char> = text.chars().collect();
+        let keyword_chars: Vec<char> = keyword.chars().collect();
+        let keyword_len = keyword_chars.len();
 
-            let before_ok = pos == 0
-                || !text.chars().nth(pos - 1).map_or(false, |c| c.is_alphanumeric() || c == '_');
-            let after_pos = pos + keyword.len();
-            let after_ok = after_pos >= text.len()
-                || !text.chars().nth(after_pos).map_or(false, |c| c.is_alphanumeric() || c == '_');
+        if chars.len() < keyword_len {
+            return None;
+        }
+
+        // Search from end to start (rfind semantics)
+        for start in (0..=chars.len() - keyword_len).rev() {
+            // Check if keyword matches at this position
+            if chars[start..start + keyword_len] != keyword_chars[..] {
+                continue;
+            }
+
+            // Check word boundaries
+            let before_ok = start == 0 || !Self::is_word_char(chars[start - 1]);
+            let after_ok =
+                start + keyword_len >= chars.len() || !Self::is_word_char(chars[start + keyword_len]);
 
             if before_ok && after_ok {
-                return Some(pos);
+                return Some(start);
             }
-            search_from = pos;
         }
         None
+    }
+
+    fn is_word_char(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
     }
 
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {

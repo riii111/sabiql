@@ -142,7 +142,7 @@ impl SqlModal {
             SqlModalState::Error => Style::default().fg(Color::Red),
         };
 
-        let hints = " Alt+Enter: Run  Esc: Close";
+        let hints = " Ctrl/⌘/Alt+Enter: Run  Esc: Close";
 
         let line = Line::from(vec![
             Span::styled(status_text, status_style),
