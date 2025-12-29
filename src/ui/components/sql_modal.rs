@@ -2,9 +2,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::state::{AppState, QueryState, SqlModalState};
+use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
 
 use super::overlay::centered_rect;
 
@@ -37,6 +37,11 @@ impl SqlModal {
 
         // Render status line
         Self::render_status(frame, status_area, state);
+
+        // Render completion popup if visible
+        if state.completion.visible && !state.completion.candidates.is_empty() {
+            Self::render_completion_popup(frame, area, editor_area, state);
+        }
     }
 
     fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -149,6 +154,79 @@ impl SqlModal {
             Paragraph::new(line).style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
 
         frame.render_widget(paragraph, area);
+    }
+
+    fn render_completion_popup(
+        frame: &mut Frame,
+        modal_area: Rect,
+        editor_area: Rect,
+        state: &AppState,
+    ) {
+        let (cursor_row, cursor_col) =
+            Self::cursor_to_position(&state.sql_modal_content, state.sql_modal_cursor);
+
+        // Popup dimensions
+        let max_items = 8;
+        let visible_count = state.completion.candidates.len().min(max_items);
+        let popup_height = (visible_count as u16) + 2; // +2 for borders
+        let popup_width = 45u16;
+
+        // Position popup below cursor (global coordinates)
+        let popup_x = (editor_area.x + cursor_col as u16).min(modal_area.right() - popup_width - 1);
+        let cursor_screen_y = editor_area.y + cursor_row as u16;
+
+        // Show above cursor if not enough space below
+        let popup_y = if cursor_screen_y + 1 + popup_height > modal_area.bottom() {
+            cursor_screen_y.saturating_sub(popup_height)
+        } else {
+            cursor_screen_y + 1
+        };
+
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+        frame.render_widget(Clear, popup_area);
+
+        let items: Vec<ListItem> = state
+            .completion
+            .candidates
+            .iter()
+            .enumerate()
+            .take(max_items)
+            .map(|(i, candidate)| {
+                let is_selected = i == state.completion.selected_index;
+
+                // Kind indicator
+                let kind_char = match candidate.kind {
+                    CompletionKind::Keyword => 'K',
+                    CompletionKind::Schema => 'S',
+                    CompletionKind::Table => 'T',
+                    CompletionKind::Column => 'C',
+                };
+
+                let text = if let Some(detail) = &candidate.detail {
+                    format!("{} {}  {}", kind_char, candidate.text, detail)
+                } else {
+                    format!("{} {}", kind_char, candidate.text)
+                };
+
+                let style = if is_selected {
+                    Style::default().bg(Color::Rgb(0x45, 0x47, 0x5a)).fg(Color::White)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+
+                ListItem::new(text).style(style)
+            })
+            .collect();
+
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e))),
+        );
+
+        frame.render_widget(list, popup_area);
     }
 
     /// Convert a character index to (row, col) position
