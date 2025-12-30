@@ -10,9 +10,7 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::mode::Mode;
 use super::result_history::ResultHistory;
-use crate::domain::{
-    DatabaseMetadata, MetadataState, NeighborhoodGraph, QueryResult, Table, TableSummary,
-};
+use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalState {
@@ -102,7 +100,6 @@ pub struct AppState {
     pub database_name: Option<String>,
     pub current_table: Option<String>,
     pub focused_pane: FocusedPane,
-    pub active_tab: usize,
     pub input_mode: InputMode,
     pub command_line_input: String,
     pub filter_input: String,
@@ -183,13 +180,6 @@ pub struct AppState {
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
-
-    pub er_center_table: Option<String>,
-    pub er_selected_node: usize,
-    pub er_graph: Option<NeighborhoodGraph>,
-    pub er_node_list_state: ListState,
-    pub er_depth: u8,
-    pub er_cache_sparse: bool,
 }
 
 impl AppState {
@@ -202,7 +192,6 @@ impl AppState {
             database_name: None,
             current_table: None,
             focused_pane: FocusedPane::default(),
-            active_tab: 0,
             input_mode: InputMode::default(),
             command_line_input: String::new(),
             filter_input: String::new(),
@@ -255,12 +244,6 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
-            er_center_table: None,
-            er_selected_node: 0,
-            er_graph: None,
-            er_node_list_state: ListState::default(),
-            er_depth: 1,
-            er_cache_sparse: false,
         }
     }
 
@@ -292,30 +275,12 @@ impl AppState {
             .collect()
     }
 
-    pub fn change_tab(&mut self, next: bool) {
-        const TAB_COUNT: usize = 2;
-        self.active_tab = if next {
-            (self.active_tab + 1) % TAB_COUNT
-        } else {
-            (self.active_tab + TAB_COUNT - 1) % TAB_COUNT
-        };
-        self.mode = Mode::from_tab_index(self.active_tab);
-        self.focused_pane = self.mode.default_pane();
-        self.focus_mode = false;
-        self.focus_mode_prev_pane = None;
-        self.result_scroll_offset = 0;
-        self.result_horizontal_offset = 0;
-    }
-
     #[allow(dead_code)]
     pub fn can_enter_focus(&self) -> bool {
-        self.mode == Mode::Browse && !self.focus_mode
+        !self.focus_mode
     }
 
     pub fn toggle_focus(&mut self) -> bool {
-        if self.mode != Mode::Browse {
-            return false;
-        }
         if self.focus_mode {
             if let Some(prev) = self.focus_mode_prev_pane.take() {
                 self.focused_pane = prev;
@@ -484,58 +449,10 @@ mod tests {
         assert!(initial_gen < current_gen);
     }
 
-    // Tab change tests
-
-    #[test]
-    fn change_tab_next_updates_mode_and_pane() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        assert_eq!(state.mode, Mode::Browse);
-
-        state.change_tab(true);
-
-        assert_eq!(state.mode, Mode::ER);
-        assert_eq!(state.focused_pane, Mode::ER.default_pane());
-    }
-
-    #[test]
-    fn change_tab_prev_updates_mode_and_pane() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.active_tab = 1;
-        state.mode = Mode::ER;
-
-        state.change_tab(false);
-
-        assert_eq!(state.mode, Mode::Browse);
-        assert_eq!(state.focused_pane, Mode::Browse.default_pane());
-    }
-
-    #[test]
-    fn change_tab_resets_focus_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.focus_mode = true;
-        state.focus_mode_prev_pane = Some(FocusedPane::Explorer);
-
-        state.change_tab(true);
-
-        assert!(!state.focus_mode);
-    }
-
-    #[test]
-    fn change_tab_while_in_focus_mode_exits_safely() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.toggle_focus();
-        assert!(state.focus_mode);
-
-        state.change_tab(true);
-
-        assert!(!state.focus_mode);
-        assert_eq!(state.mode, Mode::ER);
-    }
-
     // Focus mode tests
 
     #[test]
-    fn toggle_focus_enters_focus_mode_in_browse() {
+    fn toggle_focus_enters_focus_mode() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
         state.focused_pane = FocusedPane::Explorer;
 
@@ -561,29 +478,10 @@ mod tests {
     }
 
     #[test]
-    fn toggle_focus_is_blocked_in_er_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.mode = Mode::ER;
-
-        let result = state.toggle_focus();
-
-        assert!(!result);
-        assert!(!state.focus_mode);
-    }
-
-    #[test]
-    fn can_enter_focus_true_in_browse_mode() {
+    fn can_enter_focus_true_when_not_in_focus() {
         let state = AppState::new("test".to_string(), "default".to_string());
 
         assert!(state.can_enter_focus());
-    }
-
-    #[test]
-    fn can_enter_focus_false_in_er_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.mode = Mode::ER;
-
-        assert!(!state.can_enter_focus());
     }
 
     #[test]
