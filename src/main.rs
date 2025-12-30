@@ -1134,11 +1134,11 @@ async fn handle_action(
         Action::ErOpenDiagram => {
             let dot_content = {
                 let engine = completion_engine.borrow();
-                let tables: Vec<_> = engine.table_details_iter().collect();
-                if tables.is_empty() {
+                let mut iter = engine.table_details_iter();
+                if iter.clone().next().is_none() {
                     None
                 } else {
-                    Some(DotExporter::generate_full_dot(tables))
+                    Some(DotExporter::generate_full_dot(iter))
                 }
             };
 
