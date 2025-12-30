@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::action::Action;
 use crate::app::input_mode::InputMode;
+use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 use super::Event;
@@ -57,6 +58,11 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             return Action::NextTab;
         }
         _ => {}
+    }
+
+    // Handle mode-specific keys
+    if state.mode == Mode::ER {
+        return handle_er_mode_keys(key, state);
     }
 
     let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
@@ -152,6 +158,41 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::None
             }
         }
+
+        _ => Action::None,
+    }
+}
+
+fn handle_er_mode_keys(key: KeyEvent, _state: &AppState) -> Action {
+    use crate::app::focused_pane::FocusedPane;
+
+    match key.code {
+        // Global keys
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Char('?') => Action::OpenHelp,
+        KeyCode::Char(':') => Action::EnterCommandLine,
+        KeyCode::Char('r') => Action::ReloadMetadata,
+        KeyCode::Esc => Action::PreviousTab,
+
+        // Node navigation
+        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
+        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
+        KeyCode::Char('g') | KeyCode::Home => Action::SelectFirst,
+        KeyCode::Char('G') | KeyCode::End => Action::SelectLast,
+
+        // Recenter on selected node
+        KeyCode::Enter => Action::ErRecenter,
+
+        // Toggle depth (1 <-> 2)
+        KeyCode::Char('d') => Action::ErToggleDepth,
+
+        // Pane switching (1=Graph, 2=Details)
+        KeyCode::Char(c @ '1'..='2') => FocusedPane::from_er_key(c)
+            .map(Action::SetFocusedPane)
+            .unwrap_or(Action::None),
+
+        // Console: open pgcli directly
+        KeyCode::Char('c') => Action::OpenConsole,
 
         _ => Action::None,
     }
