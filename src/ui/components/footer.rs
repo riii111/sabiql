@@ -6,13 +6,17 @@ use ratatui::widgets::Paragraph;
 
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::state::{AppState, ErStatus};
 
 pub struct Footer;
 
 impl Footer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-        if let Some(error) = &state.last_error {
+        // ER Waiting status takes priority (persistent, doesn't timeout)
+        if state.er_status == ErStatus::Waiting {
+            let line = Self::build_er_waiting_line(state);
+            frame.render_widget(Paragraph::new(line), area);
+        } else if let Some(error) = &state.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
         } else if let Some(success) = &state.last_success {
@@ -23,6 +27,30 @@ impl Footer {
             let line = Self::build_hint_line(&hints);
             frame.render_widget(Paragraph::new(line), area);
         }
+    }
+
+    fn build_er_waiting_line(state: &AppState) -> Line<'static> {
+        const SPINNER_FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
+
+        // Use system time for spinner animation (wraps every ~1.2 seconds)
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let frame_idx = (now_ms / 300) as usize % SPINNER_FRAMES.len();
+        let spinner = SPINNER_FRAMES[frame_idx];
+
+        // Calculate progress from state
+        let total = state
+            .metadata
+            .as_ref()
+            .map(|m| m.tables.len())
+            .unwrap_or(0);
+        let remaining = state.prefetch_queue.len() + state.prefetching_tables.len();
+        let cached = total.saturating_sub(remaining);
+
+        let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
+        Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
     }
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
