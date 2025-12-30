@@ -115,6 +115,54 @@ impl CompletionEngine {
         self.table_detail_cache.insert(qualified_name, table);
     }
 
+    /// Check if a table is already cached
+    pub fn has_cached_table(&self, qualified_name: &str) -> bool {
+        self.table_detail_cache.contains_key(qualified_name)
+    }
+
+    /// Returns qualified table names that are referenced in SQL but not cached (max 10)
+    pub fn missing_tables(&self, content: &str, metadata: Option<&DatabaseMetadata>) -> Vec<String> {
+        const MAX_MISSING_TABLES: usize = 10;
+
+        // Parse SQL to get table references
+        let tokens = self.lexer.tokenize(content, content.len(), None);
+        let sql_context = self.lexer.build_context(&tokens, content.len());
+
+        // Collect CTE names to exclude
+        let cte_names: std::collections::HashSet<String> = sql_context
+            .ctes
+            .iter()
+            .map(|cte| cte.name.to_lowercase())
+            .collect();
+
+        let mut missing = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for table_ref in &sql_context.tables {
+            // Skip CTEs
+            if cte_names.contains(&table_ref.table.to_lowercase()) {
+                continue;
+            }
+
+            let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
+
+            // Skip if already seen or cached
+            if seen.contains(&qualified_name) || self.table_detail_cache.contains_key(&qualified_name)
+            {
+                continue;
+            }
+
+            seen.insert(qualified_name.clone());
+            missing.push(qualified_name);
+
+            if missing.len() >= MAX_MISSING_TABLES {
+                break;
+            }
+        }
+
+        missing
+    }
+
     pub fn get_candidates(
         &self,
         content: &str,
