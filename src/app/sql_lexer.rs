@@ -585,6 +585,14 @@ impl SqlLexer {
         while i < tokens.len() {
             let token = &tokens[i];
 
+            // Reset state on statement terminator
+            if token.kind == TokenKind::Punctuation(';') {
+                in_for_clause = false;
+                prev_keyword = None;
+                i += 1;
+                continue;
+            }
+
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
                     // FROM or JOIN keywords
@@ -886,6 +894,10 @@ impl SqlLexer {
             match &token.kind {
                 TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
                 TokenKind::Punctuation(p) if *p == ')' => paren_depth = paren_depth.saturating_sub(1),
+                // Reset state on statement terminator
+                TokenKind::Punctuation(p) if *p == ';' => {
+                    in_for_clause = false;
+                }
                 TokenKind::Keyword(kw) if paren_depth == 0 => {
                     match kw.as_str() {
                         // FOR starts a locking clause
@@ -1635,5 +1647,45 @@ mod tests {
 
             assert!(target.is_none());
         }
+
+        #[test]
+        fn multi_statement_for_share_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_for_update_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_for_no_key_update_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
     }
 }
