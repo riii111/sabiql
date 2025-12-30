@@ -548,6 +548,15 @@ mod tests {
 
             assert!(matches!(result, Action::None));
         }
+
+        #[test]
+        fn e_key_opens_er_diagram() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+
+            assert!(matches!(result, Action::ErOpenDiagram));
+        }
     }
 
     mod sql_modal {
