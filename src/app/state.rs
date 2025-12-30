@@ -156,6 +156,12 @@ pub struct AppState {
     // Tables that failed to prefetch (schema.table -> failure time) for backoff
     pub failed_prefetch_tables: HashMap<String, Instant>,
 
+    // Prefetch queue for all tables (schema.table qualified names)
+    pub prefetch_queue: VecDeque<String>,
+
+    // Whether prefetch-all has been started for this SQL modal session
+    pub prefetch_started: bool,
+
     // Query execution state
     pub query_state: QueryState,
     pub query_start_time: Option<Instant>,
@@ -222,6 +228,8 @@ impl AppState {
             completion_debounce: None,
             prefetching_tables: HashSet::new(),
             failed_prefetch_tables: HashMap::new(),
+            prefetch_queue: VecDeque::new(),
+            prefetch_started: false,
             // Query state
             query_state: QueryState::default(),
             query_start_time: None,
@@ -652,5 +660,59 @@ mod tests {
         assert_eq!(vec.len(), 2);
         assert_eq!(vec[0], "name");
         assert_eq!(vec[1], "id");
+    }
+
+    // Prefetch state tests
+
+    #[test]
+    fn prefetch_queue_starts_empty() {
+        let state = AppState::new("test".to_string(), "default".to_string());
+
+        assert!(state.prefetch_queue.is_empty());
+        assert!(!state.prefetch_started);
+    }
+
+    #[test]
+    fn prefetch_queue_pop_returns_fifo_order() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        state.prefetch_queue.push_back("public.users".to_string());
+        state.prefetch_queue.push_back("public.orders".to_string());
+
+        let first = state.prefetch_queue.pop_front();
+        let second = state.prefetch_queue.pop_front();
+
+        assert_eq!(first, Some("public.users".to_string()));
+        assert_eq!(second, Some("public.orders".to_string()));
+    }
+
+    #[test]
+    fn prefetching_tables_tracks_in_flight() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+
+        state.prefetching_tables.insert("public.users".to_string());
+
+        assert!(state.prefetching_tables.contains("public.users"));
+        assert!(!state.prefetching_tables.contains("public.orders"));
+    }
+
+    #[test]
+    fn failed_prefetch_tables_tracks_failure_time() {
+        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let now = Instant::now();
+
+        state
+            .failed_prefetch_tables
+            .insert("public.users".to_string(), now);
+
+        assert!(state.failed_prefetch_tables.contains_key("public.users"));
+        assert!(
+            state
+                .failed_prefetch_tables
+                .get("public.users")
+                .unwrap()
+                .elapsed()
+                .as_secs()
+                < 1
+        );
     }
 }

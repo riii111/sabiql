@@ -191,11 +191,19 @@ async fn handle_action(
             state.completion.candidates.clear();
             state.completion.selected_index = 0;
             state.completion_debounce = None;
+            if !state.prefetch_started && state.metadata.is_some() {
+                let _ = action_tx.send(Action::StartPrefetchAll).await;
+            }
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
             state.completion_debounce = None;
+            // In-flight fetches continue to populate cache for next session
+            state.prefetch_started = false;
+            state.prefetch_queue.clear();
+            // Keep prefetching_tables to prevent double fetch on reopen
+            state.failed_prefetch_tables.clear();
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -300,6 +308,12 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
         }
+        Action::SqlModalClear => {
+            state.sql_modal_content.clear();
+            state.sql_modal_cursor = 0;
+            state.completion.visible = false;
+            state.completion.candidates.clear();
+        }
 
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
@@ -334,7 +348,8 @@ async fn handle_action(
             );
             state.completion.candidates = candidates;
             state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty();
+            state.completion.visible = !state.completion.candidates.is_empty()
+                && !state.sql_modal_content.trim().is_empty();
             state.completion.trigger_position = cursor.saturating_sub(token_len);
         }
         Action::CompletionUpdate(candidates) => {
@@ -372,13 +387,22 @@ async fn handle_action(
         Action::CompletionNext => {
             if !state.completion.candidates.is_empty() {
                 let max = state.completion.candidates.len() - 1;
-                if state.completion.selected_index < max {
-                    state.completion.selected_index += 1;
-                }
+                state.completion.selected_index = if state.completion.selected_index >= max {
+                    0
+                } else {
+                    state.completion.selected_index + 1
+                };
             }
         }
         Action::CompletionPrev => {
-            state.completion.selected_index = state.completion.selected_index.saturating_sub(1);
+            if !state.completion.candidates.is_empty() {
+                let max = state.completion.candidates.len() - 1;
+                state.completion.selected_index = if state.completion.selected_index == 0 {
+                    max
+                } else {
+                    state.completion.selected_index - 1
+                };
+            }
         }
 
         Action::EnterCommandLine => {
@@ -620,6 +644,11 @@ async fn handle_action(
         Action::MetadataLoaded(metadata) => {
             state.metadata = Some(*metadata);
             state.metadata_state = MetadataState::Loaded;
+
+            // If SQL modal is open and prefetch hasn't started, trigger it now
+            if state.input_mode == InputMode::SqlModal && !state.prefetch_started {
+                let _ = action_tx.send(Action::StartPrefetchAll).await;
+            }
         }
 
         Action::MetadataFailed(error) => {
@@ -740,9 +769,13 @@ async fn handle_action(
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.input_mode == InputMode::SqlModal {
+            // Only trigger completion when queue is empty to avoid repeated recalculation
+            if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
+            }
+            if !state.prefetch_queue.is_empty() {
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
         }
 
@@ -756,6 +789,49 @@ async fn handle_action(
             state
                 .failed_prefetch_tables
                 .insert(qualified_name, Instant::now());
+            if !state.prefetch_queue.is_empty() {
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
+        }
+
+        Action::StartPrefetchAll => {
+            if !state.prefetch_started
+                && let Some(metadata) = &state.metadata
+            {
+                state.prefetch_started = true;
+                state.prefetch_queue.clear();
+                {
+                    let engine = completion_engine.borrow();
+                    for table_summary in &metadata.tables {
+                        let qualified_name = table_summary.qualified_name();
+                        if !engine.has_cached_table(&qualified_name) {
+                            state.prefetch_queue.push_back(qualified_name);
+                        }
+                    }
+                }
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
+        }
+
+        Action::ProcessPrefetchQueue => {
+            const MAX_CONCURRENT_PREFETCH: usize = 4;
+            let current_in_flight = state.prefetching_tables.len();
+            let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
+
+            for _ in 0..available_slots {
+                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                    if let Some((schema, table)) = qualified_name.split_once('.') {
+                        let _ = action_tx
+                            .send(Action::PrefetchTableDetail {
+                                schema: schema.to_string(),
+                                table: table.to_string(),
+                            })
+                            .await;
+                    } else {
+                        debug_assert!(false, "Invalid qualified_name format: {}", qualified_name);
+                    }
+                }
+            }
         }
 
         Action::ExecutePreview {
