@@ -2,6 +2,7 @@ pub mod action;
 pub mod command;
 pub mod completion;
 pub mod focused_pane;
+pub mod graph_builder;
 pub mod input_mode;
 pub mod inspector_tab;
 pub mod mode;
