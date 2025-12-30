@@ -38,11 +38,9 @@ impl GraphBuilder {
 
             // Add node
             if let Some((schema, table)) = Self::split_qualified_name(&current) {
-                graph.nodes.push(GraphNode::new(
-                    schema.to_string(),
-                    table.to_string(),
-                    depth,
-                ));
+                graph
+                    .nodes
+                    .push(GraphNode::new(schema.to_string(), table.to_string(), depth));
             }
 
             // Find outgoing FKs (this table references other tables)
@@ -198,13 +196,7 @@ mod tests {
                 "public",
                 "orders",
                 vec![make_fk(
-                    "fk_user",
-                    "public",
-                    "orders",
-                    "user_id",
-                    "public",
-                    "users",
-                    "id",
+                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
                 )],
             ),
         );
@@ -237,13 +229,7 @@ mod tests {
                 "public",
                 "orders",
                 vec![make_fk(
-                    "fk_user",
-                    "public",
-                    "orders",
-                    "user_id",
-                    "public",
-                    "users",
-                    "id",
+                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
                 )],
             ),
         );
@@ -277,13 +263,7 @@ mod tests {
                 "public",
                 "orders",
                 vec![make_fk(
-                    "fk_user",
-                    "public",
-                    "orders",
-                    "user_id",
-                    "public",
-                    "users",
-                    "id",
+                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
                 )],
             ),
         );
@@ -323,9 +303,7 @@ mod tests {
             make_table(
                 "public",
                 "a",
-                vec![make_fk(
-                    "fk_b", "public", "a", "b_id", "public", "b", "id",
-                )],
+                vec![make_fk("fk_b", "public", "a", "b_id", "public", "b", "id")],
             ),
         );
         tables.insert(
@@ -333,9 +311,7 @@ mod tests {
             make_table(
                 "public",
                 "b",
-                vec![make_fk(
-                    "fk_c", "public", "b", "c_id", "public", "c", "id",
-                )],
+                vec![make_fk("fk_c", "public", "b", "c_id", "public", "c", "id")],
             ),
         );
         tables.insert(
@@ -343,9 +319,7 @@ mod tests {
             make_table(
                 "public",
                 "c",
-                vec![make_fk(
-                    "fk_a", "public", "c", "a_id", "public", "a", "id",
-                )],
+                vec![make_fk("fk_a", "public", "c", "a_id", "public", "a", "id")],
             ),
         );
 
@@ -369,13 +343,7 @@ mod tests {
                 "orders",
                 vec![
                     make_fk(
-                        "fk_user",
-                        "public",
-                        "orders",
-                        "user_id",
-                        "public",
-                        "users",
-                        "id",
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
                     ),
                     make_fk(
                         "fk_created_by",
@@ -414,13 +382,7 @@ mod tests {
                 "public",
                 "orders",
                 vec![make_fk(
-                    "fk_user",
-                    "public",
-                    "orders",
-                    "user_id",
-                    "public",
-                    "users",
-                    "id",
+                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
                 )],
             ),
         );

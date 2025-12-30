@@ -126,7 +126,9 @@ impl NeighborhoodGraph {
 
     /// Find a node by qualified name
     pub fn get_node(&self, qualified_name: &str) -> Option<&GraphNode> {
-        self.nodes.iter().find(|n| n.qualified_name() == qualified_name)
+        self.nodes
+            .iter()
+            .find(|n| n.qualified_name() == qualified_name)
     }
 
     /// Get the center node

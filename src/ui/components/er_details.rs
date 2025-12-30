@@ -51,7 +51,11 @@ impl ErDetails {
                 Span::raw(format!(
                     "{} ({})",
                     node.hop_distance,
-                    if node.is_center() { "center" } else { "neighbor" }
+                    if node.is_center() {
+                        "center"
+                    } else {
+                        "neighbor"
+                    }
                 )),
             ]),
             Line::from(""),

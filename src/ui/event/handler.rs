@@ -498,17 +498,25 @@ mod tests {
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
         }
 
-        // ER mode uses Browse layout until ER view is implemented
+        // ER mode pane switching: 1->Graph, 2->Details
         #[rstest]
-        #[case('1', FocusedPane::Explorer)]
-        #[case('2', FocusedPane::Inspector)]
-        #[case('3', FocusedPane::Result)]
-        fn er_mode_uses_browse_layout(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+        #[case('1', FocusedPane::Graph)]
+        #[case('2', FocusedPane::Details)]
+        fn er_mode_pane_switch(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
             let state = er_state();
 
             let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
 
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
+        }
+
+        #[test]
+        fn er_mode_key_3_returns_none() {
+            let state = er_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('3')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

@@ -14,7 +14,9 @@ use tokio::sync::mpsc;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
+use app::graph_builder::GraphBuilder;
 use app::input_mode::InputMode;
+use app::mode::Mode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{ClipboardWriter, MetadataProvider};
 use app::state::{AppState, QueryState};
@@ -28,6 +30,7 @@ use infra::config::{
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
+use infra::export::DotExporter;
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
@@ -1125,6 +1128,115 @@ async fn handle_action(
             } else {
                 state.last_error = Some("No DSN configured".to_string());
             }
+        }
+
+        // ER Mode Actions
+        Action::SetErCenter(table) => {
+            state.er_center_table = Some(table.clone());
+            state.er_selected_node = 0;
+            state.er_node_list_state.select(Some(0));
+
+            // Build graph from cached table details
+            let engine = completion_engine.borrow();
+            let table_details: Vec<_> = engine.table_details_iter().collect();
+            let graph = GraphBuilder::build(&table, table_details.clone(), state.er_depth);
+            drop(engine);
+            state.er_graph = Some(graph);
+        }
+
+        Action::ErGraphBuilt(graph) => {
+            state.er_graph = Some(*graph);
+            state.er_selected_node = 0;
+            state.er_node_list_state.select(Some(0));
+        }
+
+        Action::ErSelectNode(index) => {
+            if let Some(graph) = &state.er_graph {
+                if index < graph.node_count() {
+                    state.er_selected_node = index;
+                    state.er_node_list_state.select(Some(index));
+                }
+            }
+        }
+
+        Action::ErRecenter => {
+            // Recenter on currently selected node
+            if let Some(graph) = &state.er_graph {
+                if let Some(node) = graph.nodes.get(state.er_selected_node) {
+                    let new_center = node.qualified_name();
+                    let _ = action_tx.send(Action::SetErCenter(new_center)).await;
+                }
+            }
+        }
+
+        Action::ErToggleDepth => {
+            // Toggle between 1 and 2 hops
+            state.er_depth = if state.er_depth == 1 { 2 } else { 1 };
+
+            // Rebuild graph with new depth
+            if let Some(center) = &state.er_center_table.clone() {
+                let engine = completion_engine.borrow();
+                let table_details: Vec<_> = engine.table_details_iter().collect();
+                let graph = GraphBuilder::build(center, table_details.clone(), state.er_depth);
+                drop(engine);
+                state.er_graph = Some(graph);
+                state.er_selected_node = 0;
+                state.er_node_list_state.select(Some(0));
+            }
+        }
+
+        Action::ErExportDot => {
+            if state.mode != Mode::ER {
+                state.last_error = Some("Switch to ER tab first".to_string());
+            } else if let Some(graph) = &state.er_graph {
+                let cache_dir = get_cache_dir(&state.project_name)?;
+                match DotExporter::export_to_file(graph, &cache_dir) {
+                    Ok(path) => {
+                        let _ = action_tx
+                            .send(Action::ErExportCompleted(path.display().to_string()))
+                            .await;
+                    }
+                    Err(e) => {
+                        let _ = action_tx.send(Action::ErExportFailed(e.to_string())).await;
+                    }
+                }
+            } else {
+                state.last_error = Some("No graph to export".to_string());
+            }
+        }
+
+        Action::ErExportDotAndOpen => {
+            if state.mode != Mode::ER {
+                state.last_error = Some("Switch to ER tab first".to_string());
+            } else if let Some(graph) = &state.er_graph {
+                let graph = graph.clone();
+                let cache_dir = get_cache_dir(&state.project_name)?;
+                let tx = action_tx.clone();
+
+                // Run export and open in background to avoid blocking UI
+                tokio::spawn(async move {
+                    match DotExporter::export_and_open(&graph, &cache_dir) {
+                        Ok(path) => {
+                            let _ = tx
+                                .send(Action::ErExportCompleted(path.display().to_string()))
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::ErExportFailed(e.to_string())).await;
+                        }
+                    }
+                });
+            } else {
+                state.last_error = Some("No graph to export".to_string());
+            }
+        }
+
+        Action::ErExportCompleted(path) => {
+            state.last_error = Some(format!("Exported to {}", path));
+        }
+
+        Action::ErExportFailed(error) => {
+            state.last_error = Some(format!("Export failed: {}", error));
         }
 
         _ => {}
