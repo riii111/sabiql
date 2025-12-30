@@ -8,6 +8,23 @@ use crate::domain::NeighborhoodGraph;
 pub struct DotExporter;
 
 impl DotExporter {
+    /// Escape special characters for DOT string literals
+    fn escape_dot_string(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    }
+
+    /// Sanitize string for use in filenames
+    fn sanitize_filename(s: &str) -> String {
+        s.chars()
+            .map(|c| match c {
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+                _ => c,
+            })
+            .collect()
+    }
+
     pub fn generate_dot(graph: &NeighborhoodGraph) -> String {
         let mut dot = String::new();
 
@@ -18,7 +35,9 @@ impl DotExporter {
         dot.push('\n');
 
         for node in &graph.nodes {
-            let full_name = node.qualified_name();
+            let full_name = Self::escape_dot_string(&node.qualified_name());
+            let table_name = Self::escape_dot_string(&node.table);
+            let schema_name = Self::escape_dot_string(&node.schema);
             let color = if node.is_center() {
                 "gold"
             } else {
@@ -30,16 +49,19 @@ impl DotExporter {
 
             dot.push_str(&format!(
                 "    \"{}\" [label=\"{}\\n({})\" style=filled fillcolor={}];\n",
-                full_name, node.table, node.schema, color
+                full_name, table_name, schema_name, color
             ));
         }
 
         dot.push('\n');
 
         for edge in &graph.edges {
+            let from = Self::escape_dot_string(&edge.from_node);
+            let to = Self::escape_dot_string(&edge.to_node);
+            let label = Self::escape_dot_string(&edge.fk_name);
             dot.push_str(&format!(
                 "    \"{}\" -> \"{}\" [label=\"{}\"];\n",
-                edge.from_node, edge.to_node, edge.fk_name
+                from, to, label
             ));
         }
 
@@ -47,10 +69,10 @@ impl DotExporter {
         dot
     }
 
-    /// Export graph to DOT file in cache directory
     pub fn export_to_file(graph: &NeighborhoodGraph, cache_dir: &Path) -> Result<PathBuf> {
         let dot_content = Self::generate_dot(graph);
-        let filename = format!("er_{}.dot", graph.center.replace('.', "_"));
+        let safe_center = Self::sanitize_filename(&graph.center).replace('.', "_");
+        let filename = format!("er_{}.dot", safe_center);
         let dot_path = cache_dir.join(&filename);
 
         std::fs::write(&dot_path, dot_content)?;

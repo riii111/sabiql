@@ -1176,9 +1176,18 @@ async fn handle_action(
             state.er_node_list_state.select(Some(0));
 
             let engine = completion_engine.borrow();
+            let cache_count = engine.cached_table_count();
             let table_details: Vec<_> = engine.table_details_iter().collect();
             let graph = GraphBuilder::build(&table, table_details.clone(), state.er_depth);
             drop(engine);
+
+            // Warn if cache is sparse (graph may be incomplete)
+            if graph.nodes.len() <= 1 && cache_count < state.tables().len() {
+                state.last_error = Some(
+                    "FK metadata still loading - graph may be incomplete. Try again shortly."
+                        .to_string(),
+                );
+            }
             state.er_graph = Some(graph);
         }
 

@@ -124,6 +124,10 @@ impl CompletionEngine {
         self.table_detail_cache.iter()
     }
 
+    pub fn cached_table_count(&self) -> usize {
+        self.table_detail_cache.len()
+    }
+
     /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(
         &self,
