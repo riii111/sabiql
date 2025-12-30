@@ -1132,17 +1132,18 @@ async fn handle_action(
         }
 
         Action::ErOpenDiagram => {
-            let dot_content = {
+            let (dot_content, table_count) = {
                 let engine = completion_engine.borrow();
-                let mut iter = engine.table_details_iter();
-                if iter.clone().next().is_none() {
-                    None
+                let iter = engine.table_details_iter();
+                let count = iter.len();
+                if count == 0 {
+                    (None, 0)
                 } else {
-                    Some(DotExporter::generate_full_dot(iter))
+                    (Some(DotExporter::generate_full_dot(iter)), count)
                 }
             };
 
-            if let Some(dot_content) = dot_content {
+            if let Some(ref dot_content) = dot_content {
                 let filename = "er_full.dot".to_string();
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();
@@ -1151,7 +1152,10 @@ async fn handle_action(
                     match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir) {
                         Ok(path) => {
                             let _ = tx
-                                .send(Action::ErDiagramOpened(path.display().to_string()))
+                                .send(Action::ErDiagramOpened {
+                                    path: path.display().to_string(),
+                                    table_count,
+                                })
                                 .await;
                         }
                         Err(e) => {
@@ -1164,8 +1168,8 @@ async fn handle_action(
             }
         }
 
-        Action::ErDiagramOpened(path) => {
-            state.last_success = Some(format!("✓ Opened {}", path));
+        Action::ErDiagramOpened { path, table_count } => {
+            state.last_success = Some(format!("✓ Opened {} ({} tables)", path, table_count));
         }
 
         Action::ErDiagramFailed(error) => {

@@ -13,7 +13,6 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum Action {
     None,
     Quit,
@@ -164,7 +163,7 @@ pub enum Action {
 
     // ER Diagram (full database diagram)
     ErOpenDiagram,
-    ErDiagramOpened(String),
+    ErDiagramOpened { path: String, table_count: usize },
     ErDiagramFailed(String),
 }
 
