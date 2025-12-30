@@ -754,11 +754,12 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
-            // Auto-trigger ER diagram when prefetch completes while in Waiting state
+            // Notify user when prefetch completes while in Waiting state
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
-                let _ = action_tx.send(Action::ErOpenDiagram).await;
+                state.er_status = ErStatus::Idle;
+                state.set_success("ER ready. Press 'e' to open.".to_string());
             }
         }
 
@@ -772,11 +773,12 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
-            // Auto-trigger ER diagram when prefetch completes while in Waiting state
+            // Notify user when prefetch completes while in Waiting state
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
-                let _ = action_tx.send(Action::ErOpenDiagram).await;
+                state.er_status = ErStatus::Idle;
+                state.set_success("ER ready. Press 'e' to open.".to_string());
             }
         }
 
