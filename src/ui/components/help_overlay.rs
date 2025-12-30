@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -20,6 +20,7 @@ impl HelpOverlay {
         );
 
         render_scrim(frame);
+        frame.render_widget(Clear, area);
 
         let block = modal_block_with_hint(" Help ".to_string(), " ? or Esc to close ".to_string());
         let inner = block.inner(area);
