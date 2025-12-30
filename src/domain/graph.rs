@@ -3,7 +3,6 @@
 //! Represents a subgraph of table relationships centered on a specific table,
 //! showing FK connections within 1-2 hops.
 
-/// A node in the neighborhood graph representing a database table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
     pub schema: String,
@@ -21,7 +20,6 @@ impl GraphNode {
         }
     }
 
-    /// Returns the fully qualified table name (schema.table)
     pub fn qualified_name(&self) -> String {
         format!("{}.{}", self.schema, self.table)
     }
@@ -40,7 +38,6 @@ pub enum EdgeDirection {
     Incoming,
 }
 
-/// An edge in the neighborhood graph representing an FK relationship.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphEdge {
     /// Source table (schema.table) - the table that has the FK constraint
@@ -95,9 +92,6 @@ impl GraphEdge {
     }
 }
 
-/// A neighborhood graph centered on a specific table.
-///
-/// Contains all tables within max_depth hops via FK relationships.
 #[derive(Debug, Clone, Default)]
 pub struct NeighborhoodGraph {
     pub center: String,
@@ -133,7 +127,6 @@ impl NeighborhoodGraph {
             .collect()
     }
 
-    /// Get outgoing edges from a node (this table references other tables)
     pub fn outgoing_edges(&self, qualified_name: &str) -> Vec<&GraphEdge> {
         self.edges
             .iter()
@@ -141,7 +134,6 @@ impl NeighborhoodGraph {
             .collect()
     }
 
-    /// Get incoming edges to a node (other tables reference this table)
     pub fn incoming_edges(&self, qualified_name: &str) -> Vec<&GraphEdge> {
         self.edges
             .iter()
