@@ -4,6 +4,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use super::status_message::{MessageType, StatusMessage};
 use crate::app::input_mode::InputMode;
 use crate::app::mode::Mode;
 use crate::app::state::AppState;
@@ -13,16 +14,10 @@ pub struct Footer;
 impl Footer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if let Some(error) = &state.last_error {
-            let line = Line::from(vec![Span::styled(
-                error.clone(),
-                Style::default().fg(Color::Red),
-            )]);
+            let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
         } else if let Some(success) = &state.last_success {
-            let line = Line::from(vec![Span::styled(
-                success.clone(),
-                Style::default().fg(Color::Green),
-            )]);
+            let line = StatusMessage::render_line(success, MessageType::Success);
             frame.render_widget(Paragraph::new(line), area);
         } else {
             let hints = Self::get_context_hints(state);

@@ -148,11 +148,11 @@ impl DotExporter {
             .arg(&svg_path)
             .arg(&dot_path)
             .status()
-            .map_err(|e| eyre!("Failed to run 'dot' command: {}. Is Graphviz installed?", e))?;
+            .map_err(|_| eyre!("Graphviz not found. Install with: brew install graphviz"))?;
 
         if !status.success() {
             return Err(eyre!(
-                "dot command failed with exit code: {:?}",
+                "Graphviz failed (exit code {:?}). Check DOT syntax.",
                 status.code()
             ));
         }
