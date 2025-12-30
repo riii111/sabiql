@@ -2390,4 +2390,69 @@ mod tests {
             assert_eq!(candidates[0].kind, CompletionKind::Column);
         }
     }
+
+    mod target_table_boost {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, col)| Column {
+                        name: (*col).to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: (i + 1) as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn update_target_columns_get_boost() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name", "email"]);
+            let orders = create_table("public", "orders", &["id", "user_id", "total"]);
+
+            // Cache both tables
+            e.cache_table_detail("public.users".to_string(), users.clone());
+            e.cache_table_detail("public.orders".to_string(), orders);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            // UPDATE users ... -> users columns should get +200 boost
+            let candidates = e.get_candidates(
+                "UPDATE users SET ",
+                17,
+                Some(&metadata),
+                Some(&users),
+                &[],
+            );
+
+            // Find a users column and verify it has the boost
+            let name_candidate = candidates.iter().find(|c| c.text == "name");
+            assert!(name_candidate.is_some());
+            // Base score (100 for no prefix) + 200 (target boost) = 300
+            // Actually, with empty prefix it's 0, then +200 = 200
+            assert!(name_candidate.unwrap().score >= 200);
+        }
+    }
 }

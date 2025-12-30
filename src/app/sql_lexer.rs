@@ -578,6 +578,7 @@ impl SqlLexer {
     pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
         let mut refs = Vec::new();
         let mut i = 0;
+        let mut prev_keyword: Option<&str> = None;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -586,6 +587,7 @@ impl SqlLexer {
                 match kw.as_str() {
                     // FROM or JOIN keywords
                     "FROM" | "JOIN" => {
+                        prev_keyword = Some(kw.as_str());
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -597,6 +599,7 @@ impl SqlLexer {
                     }
                     // JOIN modifiers - skip to find JOIN, then parse table
                     "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
+                        prev_keyword = Some(kw.as_str());
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -617,6 +620,7 @@ impl SqlLexer {
                     }
                     // UPDATE table_name SET ...
                     "UPDATE" => {
+                        prev_keyword = Some("UPDATE");
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -626,8 +630,8 @@ impl SqlLexer {
                             continue;
                         }
                     }
-                    // INSERT INTO table_name ...
-                    "INTO" => {
+                    // INSERT INTO table_name ... (only after INSERT, not SELECT INTO)
+                    "INTO" if prev_keyword == Some("INSERT") => {
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -637,8 +641,9 @@ impl SqlLexer {
                             continue;
                         }
                     }
-                    // DELETE FROM is handled by FROM above
-                    _ => {}
+                    other => {
+                        prev_keyword = Some(other);
+                    }
                 }
             }
             i += 1;
@@ -1559,6 +1564,19 @@ mod tests {
             let target = l.extract_target_table(&tokens);
 
             assert!(target.is_none());
+        }
+
+        #[test]
+        fn select_into_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * INTO new_table FROM users";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            // Only "users" should be included, not "new_table"
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
         }
     }
 }
