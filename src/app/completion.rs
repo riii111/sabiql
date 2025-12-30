@@ -183,8 +183,23 @@ impl CompletionEngine {
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
+
+                // Collect columns from selected table
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
+
+                // Also collect columns from SQL-detected tables (prefetch cache)
+                for cached_table in self.table_detail_cache.values() {
+                    // Skip if same as selected table to avoid duplicates
+                    if table_detail.map(|t| t.qualified_name()) == Some(cached_table.qualified_name()) {
+                        continue;
+                    }
+                    columns.extend(self.column_candidates_with_fk(
+                        Some(cached_table),
+                        &current_token,
+                        recent_columns,
+                    ));
+                }
 
                 let has_prefix = current_token.len() >= 2;
                 if has_prefix && !columns.is_empty() {
