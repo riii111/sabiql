@@ -828,6 +828,12 @@ async fn handle_action(
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
+            // Update ER cache status when in ER mode
+            if state.mode == Mode::ER {
+                let engine = completion_engine.borrow();
+                state.er_cache_sparse = engine.cached_table_count() < state.tables().len();
+            }
+
             // Only trigger completion when queue is empty to avoid repeated recalculation
             if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
                 state.completion_debounce = None;
@@ -1213,6 +1219,7 @@ async fn handle_action(
         Action::ErRefresh => {
             if let Some(center) = state.er_center_table.clone() {
                 let _ = action_tx.send(Action::SetErCenter(center)).await;
+                state.last_success = Some("✓ Graph refreshed".to_string());
             }
         }
 
