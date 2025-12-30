@@ -199,6 +199,8 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
             state.completion_debounce = None;
+            state.prefetch_started = false;
+            state.prefetch_queue.clear();
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -768,10 +770,10 @@ async fn handle_action(
         }
 
         Action::StartPrefetchAll => {
-            if !state.prefetch_started {
-                if let Some(metadata) = &state.metadata {
-                    state.prefetch_started = true;
-                    state.prefetch_queue.clear();
+            if !state.prefetch_started && let Some(metadata) = &state.metadata {
+                state.prefetch_started = true;
+                state.prefetch_queue.clear();
+                {
                     let engine = completion_engine.borrow();
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
@@ -779,9 +781,8 @@ async fn handle_action(
                             state.prefetch_queue.push_back(qualified_name);
                         }
                     }
-                    drop(engine);
-                    let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
                 }
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
         }
 
@@ -791,15 +792,15 @@ async fn handle_action(
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
             for _ in 0..available_slots {
-                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
-                    if let Some((schema, table)) = qualified_name.split_once('.') {
-                        let _ = action_tx
-                            .send(Action::PrefetchTableDetail {
-                                schema: schema.to_string(),
-                                table: table.to_string(),
-                            })
-                            .await;
-                    }
+                if let Some(qualified_name) = state.prefetch_queue.pop_front()
+                    && let Some((schema, table)) = qualified_name.split_once('.')
+                {
+                    let _ = action_tx
+                        .send(Action::PrefetchTableDetail {
+                            schema: schema.to_string(),
+                            table: table.to_string(),
+                        })
+                        .await;
                 }
             }
         }
