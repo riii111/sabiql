@@ -96,13 +96,6 @@ impl TokenCache {
         let hash = Self::content_hash(content);
         self.last_content_hash == hash && self.last_cursor_pos == cursor_pos
     }
-
-    #[allow(dead_code)] // Phase 3: differential tokenization
-    pub fn update(&mut self, content: &str, cursor_pos: usize, tokens: Vec<Token>) {
-        self.tokens = tokens;
-        self.last_content_hash = Self::content_hash(content);
-        self.last_cursor_pos = cursor_pos;
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1375,48 +1368,6 @@ mod tests {
             let result = l.is_in_string_or_comment("SELECT 'hello' FROM ", 20);
 
             assert!(!result);
-        }
-    }
-
-    mod cache {
-        use super::*;
-
-        #[test]
-        fn valid_cache_returns_cached_tokens() {
-            let l = lexer();
-            let content = "SELECT * FROM users";
-            let cursor = 19;
-            let tokens1 = l.tokenize(content, cursor, None);
-            let mut cache = TokenCache::new();
-            cache.update(content, cursor, tokens1.clone());
-
-            let tokens2 = l.tokenize(content, cursor, Some(&cache));
-
-            assert_eq!(tokens1.len(), tokens2.len());
-        }
-
-        #[test]
-        fn content_change_invalidates_cache() {
-            let l = lexer();
-            let mut cache = TokenCache::new();
-            let tokens1 = l.tokenize("SELECT", 6, None);
-            cache.update("SELECT", 6, tokens1);
-
-            let is_valid = cache.is_valid("SELECT *", 8);
-
-            assert!(!is_valid);
-        }
-
-        #[test]
-        fn cursor_change_invalidates_cache() {
-            let l = lexer();
-            let mut cache = TokenCache::new();
-            let tokens1 = l.tokenize("SELECT * FROM", 13, None);
-            cache.update("SELECT * FROM", 13, tokens1);
-
-            let is_valid = cache.is_valid("SELECT * FROM", 7);
-
-            assert!(!is_valid);
         }
     }
 
