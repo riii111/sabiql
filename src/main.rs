@@ -14,9 +14,7 @@ use tokio::sync::mpsc;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
-use app::graph_builder::GraphBuilder;
 use app::input_mode::InputMode;
-use app::mode::Mode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{ClipboardWriter, MetadataProvider};
 use app::state::{AppState, QueryState};
@@ -145,36 +143,6 @@ async fn handle_action(
         Action::Resize(_w, h) => {
             // Ratatui auto-tracks size; explicit resize() restricts viewport
             state.terminal_height = h;
-        }
-        Action::NextTab => {
-            let was_browse = state.mode == Mode::Browse;
-            state.change_tab(true);
-            if was_browse && state.mode == Mode::ER {
-                let center = state.current_table.clone().or_else(|| {
-                    state
-                        .tables()
-                        .get(state.explorer_selected)
-                        .map(|t| t.qualified_name())
-                });
-                if let Some(center) = center {
-                    let _ = action_tx.send(Action::SetErCenter(center)).await;
-                }
-            }
-        }
-        Action::PreviousTab => {
-            let was_browse = state.mode == Mode::Browse;
-            state.change_tab(false);
-            if was_browse && state.mode == Mode::ER {
-                let center = state.current_table.clone().or_else(|| {
-                    state
-                        .tables()
-                        .get(state.explorer_selected)
-                        .map(|t| t.qualified_name())
-                });
-                if let Some(center) = center {
-                    let _ = action_tx.send(Action::SetErCenter(center)).await;
-                }
-            }
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
         Action::ToggleFocus => {
@@ -500,16 +468,7 @@ async fn handle_action(
                 }
             }
             InputMode::Normal => {
-                if state.mode == Mode::ER
-                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
-                {
-                    if let Some(graph) = &state.er_graph {
-                        let max = graph.nodes.len().saturating_sub(1);
-                        if state.er_selected_node < max {
-                            state.er_selected_node += 1;
-                        }
-                    }
-                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     let max = state.tables().len().saturating_sub(1);
                     if state.explorer_selected < max {
                         state.explorer_selected += 1;
@@ -523,11 +482,7 @@ async fn handle_action(
                 state.picker_selected = state.picker_selected.saturating_sub(1);
             }
             InputMode::Normal => {
-                if state.mode == Mode::ER
-                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
-                {
-                    state.er_selected_node = state.er_selected_node.saturating_sub(1);
-                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = state.explorer_selected.saturating_sub(1);
                 }
             }
@@ -538,11 +493,7 @@ async fn handle_action(
                 state.picker_selected = 0;
             }
             InputMode::Normal => {
-                if state.mode == Mode::ER
-                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
-                {
-                    state.er_selected_node = 0;
-                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = 0;
                 }
             }
@@ -557,13 +508,7 @@ async fn handle_action(
                 state.picker_selected = palette_command_count() - 1;
             }
             InputMode::Normal => {
-                if state.mode == Mode::ER
-                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
-                {
-                    if let Some(graph) = &state.er_graph {
-                        state.er_selected_node = graph.nodes.len().saturating_sub(1);
-                    }
-                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = state.tables().len().saturating_sub(1);
                 }
             }
@@ -827,12 +772,6 @@ async fn handle_action(
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
-
-            // Update ER cache status when in ER mode
-            if state.mode == Mode::ER {
-                let engine = completion_engine.borrow();
-                state.er_cache_sparse = engine.cached_table_count() < state.tables().len();
-            }
 
             // Only trigger completion when queue is empty to avoid repeated recalculation
             if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
@@ -1189,51 +1128,6 @@ async fn handle_action(
                 let _ = action_tx.send(Action::Render).await;
             } else {
                 state.last_error = Some("No DSN configured".to_string());
-            }
-        }
-
-        Action::SetErCenter(table) => {
-            state.er_center_table = Some(table.clone());
-            state.er_selected_node = 0;
-            state.er_node_list_state.select(Some(0));
-
-            let engine = completion_engine.borrow();
-            let cache_count = engine.cached_table_count();
-            let table_details: Vec<_> = engine.table_details_iter().collect();
-            let graph = GraphBuilder::build(&table, table_details, state.er_depth);
-            drop(engine);
-
-            state.er_cache_sparse = cache_count < state.tables().len();
-            state.er_graph = Some(graph);
-        }
-
-        Action::ErRecenter => {
-            if let Some(graph) = &state.er_graph {
-                if let Some(node) = graph.nodes.get(state.er_selected_node) {
-                    let new_center = node.qualified_name();
-                    let _ = action_tx.send(Action::SetErCenter(new_center)).await;
-                }
-            }
-        }
-
-        Action::ErRefresh => {
-            if let Some(center) = state.er_center_table.clone() {
-                let _ = action_tx.send(Action::SetErCenter(center)).await;
-                state.last_success = Some("✓ Graph refreshed".to_string());
-            }
-        }
-
-        Action::ErToggleDepth => {
-            state.er_depth = if state.er_depth == 1 { 2 } else { 1 };
-
-            if let Some(center) = state.er_center_table.as_deref() {
-                let engine = completion_engine.borrow();
-                let table_details: Vec<_> = engine.table_details_iter().collect();
-                let graph = GraphBuilder::build(center, table_details, state.er_depth);
-                drop(engine);
-                state.er_graph = Some(graph);
-                state.er_selected_node = 0;
-                state.er_node_list_state.select(Some(0));
             }
         }
 

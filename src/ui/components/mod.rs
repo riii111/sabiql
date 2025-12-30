@@ -1,7 +1,5 @@
 pub mod command_line;
 pub mod command_palette;
-pub mod er_details;
-pub mod er_graph;
 pub mod explorer;
 pub mod footer;
 pub mod header;
@@ -14,4 +12,3 @@ pub mod scroll_indicator;
 pub mod sql_modal;
 pub mod status_message;
 pub mod table_picker;
-pub mod tabs;

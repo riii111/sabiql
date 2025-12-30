@@ -6,7 +6,6 @@ use ratatui::widgets::Paragraph;
 
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::input_mode::InputMode;
-use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct Footer;
@@ -41,16 +40,6 @@ impl Footer {
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
-                } else if state.mode == Mode::ER {
-                    vec![
-                        ("q", "Quit"),
-                        ("?", "Help"),
-                        ("1/2", "Pane"),
-                        ("j/k", "Navigate"),
-                        ("⏎", "Recenter"),
-                        ("d", "Depth"),
-                        ("e", "View"),
-                    ]
                 } else {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
                     hints.push(("f", "Focus"));
@@ -63,6 +52,7 @@ impl Footer {
                     hints.push(("r", "Reload"));
                     hints.push(("c", "Console"));
                     hints.push(("s", "SQL"));
+                    hints.push(("e", "ER Diagram"));
                     hints.push(("^P", "Tables"));
                     hints.push(("^K", "Palette"));
                     hints

@@ -3,8 +3,6 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 use super::command_line::CommandLine;
 use super::command_palette::CommandPalette;
-use super::er_details::ErDetails;
-use super::er_graph::ErGraph;
 use super::explorer::Explorer;
 use super::footer::Footer;
 use super::header::Header;
@@ -13,9 +11,7 @@ use super::inspector::Inspector;
 use super::result::ResultPane;
 use super::sql_modal::SqlModal;
 use super::table_picker::TablePicker;
-use super::tabs::Tabs;
 use crate::app::input_mode::InputMode;
-use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 pub struct MainLayout;
@@ -24,8 +20,7 @@ impl MainLayout {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
         let area = frame.area();
 
-        let [header_area, tabs_area, main_area, footer_area, cmdline_area] = Layout::vertical([
-            Constraint::Length(1),
+        let [header_area, main_area, footer_area, cmdline_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(10),
             Constraint::Length(1),
@@ -34,12 +29,7 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state);
-        Tabs::render(frame, tabs_area, state);
-
-        match state.mode {
-            Mode::Browse => Self::render_browse_mode(frame, main_area, state),
-            Mode::ER => Self::render_er_mode(frame, main_area, state),
-        }
+        Self::render_browse_mode(frame, main_area, state);
 
         Footer::render(frame, footer_area, state);
         CommandLine::render(frame, cmdline_area, state);
@@ -76,15 +66,5 @@ impl MainLayout {
             Inspector::render(frame, inspector_area, state);
             ResultPane::render(frame, result_area, state);
         }
-    }
-
-    fn render_er_mode(frame: &mut Frame, main_area: Rect, state: &mut AppState) {
-        // ER mode: Graph (60%) | Details (40%)
-        let [graph_area, details_area] =
-            Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)])
-                .areas(main_area);
-
-        ErGraph::render(frame, graph_area, state);
-        ErDetails::render(frame, details_area, state);
     }
 }

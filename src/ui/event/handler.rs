@@ -2,7 +2,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::action::Action;
 use crate::app::input_mode::InputMode;
-use crate::app::mode::Mode;
 use crate::app::state::AppState;
 
 use super::Event;
@@ -45,23 +44,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
-        // Shift+Tab: Previous tab
-        (KeyCode::Tab, m) if m.contains(KeyModifiers::SHIFT) => {
-            return Action::PreviousTab;
-        }
-        // BackTab (some terminals send this for Shift+Tab)
-        (KeyCode::BackTab, _) => {
-            return Action::PreviousTab;
-        }
-        // Tab: Next tab
-        (KeyCode::Tab, _) => {
-            return Action::NextTab;
-        }
         _ => {}
-    }
-
-    if state.mode == Mode::ER {
-        return handle_er_mode_keys(key, state);
     }
 
     let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
@@ -148,6 +131,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('c') => Action::OpenConsole,
         // SQL Modal: open adhoc query editor
         KeyCode::Char('s') => Action::OpenSqlModal,
+        // ER Diagram: open full database diagram in browser
+        KeyCode::Char('e') => Action::ErOpenDiagram,
 
         // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
@@ -158,30 +143,6 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        _ => Action::None,
-    }
-}
-
-fn handle_er_mode_keys(key: KeyEvent, _state: &AppState) -> Action {
-    use crate::app::focused_pane::FocusedPane;
-
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Char('?') => Action::OpenHelp,
-        KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char('r') => Action::ErRefresh,
-        KeyCode::Char('e') => Action::ErOpenDiagram,
-        KeyCode::Esc => Action::PreviousTab,
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        KeyCode::Char('g') | KeyCode::Home => Action::SelectFirst,
-        KeyCode::Char('G') | KeyCode::End => Action::SelectLast,
-        KeyCode::Enter => Action::ErRecenter,
-        KeyCode::Char('d') => Action::ErToggleDepth,
-        KeyCode::Char(c @ '1'..='2') => FocusedPane::from_er_key(c)
-            .map(Action::SetFocusedPane)
-            .unwrap_or(Action::None),
-        KeyCode::Char('c') => Action::OpenConsole,
         _ => Action::None,
     }
 }
@@ -280,19 +241,10 @@ mod tests {
     mod normal_mode {
         use super::*;
         use crate::app::focused_pane::FocusedPane;
-        use crate::app::mode::Mode;
         use rstest::rstest;
 
         fn browse_state() -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.mode = Mode::Browse;
-            state
-        }
-
-        fn er_state() -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.mode = Mode::ER;
-            state
+            AppState::new("test".to_string(), "default".to_string())
         }
 
         // Important keys with special handling: keep individual tests
@@ -368,34 +320,6 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Esc), &state);
 
             assert!(matches!(result, Action::Escape));
-        }
-
-        #[test]
-        fn tab_returns_next_tab() {
-            let state = browse_state();
-
-            let result = handle_normal_mode(key(KeyCode::Tab), &state);
-
-            assert!(matches!(result, Action::NextTab));
-        }
-
-        #[test]
-        fn shift_tab_returns_previous_tab() {
-            let key = key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT);
-            let state = browse_state();
-
-            let result = handle_normal_mode(key, &state);
-
-            assert!(matches!(result, Action::PreviousTab));
-        }
-
-        #[test]
-        fn backtab_returns_previous_tab() {
-            let state = browse_state();
-
-            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
-
-            assert!(matches!(result, Action::PreviousTab));
         }
 
         // Navigation keys: equivalent actions
@@ -484,26 +408,6 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
 
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
-        }
-
-        #[rstest]
-        #[case('1', FocusedPane::Graph)]
-        #[case('2', FocusedPane::Details)]
-        fn er_mode_pane_switch(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
-            let state = er_state();
-
-            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
-
-            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
-        }
-
-        #[test]
-        fn er_mode_key_3_returns_none() {
-            let state = er_state();
-
-            let result = handle_normal_mode(key(KeyCode::Char('3')), &state);
-
-            assert!(matches!(result, Action::None));
         }
 
         #[test]
