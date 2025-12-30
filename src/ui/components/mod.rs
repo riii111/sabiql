@@ -1,5 +1,7 @@
 pub mod command_line;
 pub mod command_palette;
+pub mod er_details;
+pub mod er_graph;
 pub mod explorer;
 pub mod footer;
 pub mod header;
