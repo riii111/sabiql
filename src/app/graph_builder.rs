@@ -108,6 +108,14 @@ impl GraphBuilder {
                 .then_with(|| a.qualified_name().cmp(&b.qualified_name()))
         });
 
+        // Sort edges for deterministic output
+        graph.edges.sort_by(|a, b| {
+            a.from_node
+                .cmp(&b.from_node)
+                .then_with(|| a.to_node.cmp(&b.to_node))
+                .then_with(|| a.fk_name.cmp(&b.fk_name))
+        });
+
         graph
     }
 
@@ -218,7 +226,10 @@ mod tests {
             let graph = GraphBuilder::build("public.orders", &tables, 1);
 
             assert_eq!(graph.nodes.len(), 2);
-            assert_eq!(graph.center_node().unwrap().qualified_name(), "public.orders");
+            assert_eq!(
+                graph.center_node().unwrap().qualified_name(),
+                "public.orders"
+            );
         }
 
         #[test]
@@ -267,7 +278,10 @@ mod tests {
             let graph = GraphBuilder::build("public.users", &tables, 1);
 
             assert_eq!(graph.nodes.len(), 2);
-            assert_eq!(graph.center_node().unwrap().qualified_name(), "public.users");
+            assert_eq!(
+                graph.center_node().unwrap().qualified_name(),
+                "public.users"
+            );
         }
 
         #[test]
