@@ -1190,21 +1190,6 @@ async fn handle_action(
             state.er_graph = Some(graph);
         }
 
-        Action::ErGraphBuilt(graph) => {
-            state.er_graph = Some(*graph);
-            state.er_selected_node = 0;
-            state.er_node_list_state.select(Some(0));
-        }
-
-        Action::ErSelectNode(index) => {
-            if let Some(graph) = &state.er_graph {
-                if index < graph.node_count() {
-                    state.er_selected_node = index;
-                    state.er_node_list_state.select(Some(index));
-                }
-            }
-        }
-
         Action::ErRecenter => {
             if let Some(graph) = &state.er_graph {
                 if let Some(node) = graph.nodes.get(state.er_selected_node) {

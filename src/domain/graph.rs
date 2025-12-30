@@ -84,6 +84,11 @@ impl GraphEdge {
     }
 
     pub fn direction_from(&self, table: &str) -> EdgeDirection {
+        debug_assert!(
+            self.from_node == table || self.to_node == table,
+            "direction_from called with unrelated table: {}",
+            table
+        );
         if self.from_node == table {
             EdgeDirection::Outgoing
         } else {

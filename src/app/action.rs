@@ -1,6 +1,6 @@
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
-use crate::domain::{DatabaseMetadata, NeighborhoodGraph, QueryResult, Table};
+use crate::domain::{DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorMove {
@@ -166,8 +166,6 @@ pub enum Action {
 
     // ER Diagram
     SetErCenter(String),
-    ErGraphBuilt(Box<NeighborhoodGraph>),
-    ErSelectNode(usize),
     ErRecenter,
     ErToggleDepth,
     ErExportDot,
