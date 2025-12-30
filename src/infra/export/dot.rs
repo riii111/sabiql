@@ -44,20 +44,29 @@ impl DotExporter {
 
         dot.push('\n');
 
-        // Add all FK relationships as edges
-        for (_, table) in &tables {
-            for fk in &table.foreign_keys {
-                let from = format!("{}.{}", fk.from_schema, fk.from_table);
-                let to = fk.referenced_table();
-                let from_escaped = Self::escape_dot_string(&from);
-                let to_escaped = Self::escape_dot_string(&to);
-                let label = Self::escape_dot_string(&fk.name);
+        // Collect and sort all FK relationships for stable output
+        let mut edges: Vec<_> = tables
+            .iter()
+            .flat_map(|(_, table)| {
+                table.foreign_keys.iter().map(|fk| {
+                    let from = format!("{}.{}", fk.from_schema, fk.from_table);
+                    let to = fk.referenced_table();
+                    (from, to, fk.name.clone())
+                })
+            })
+            .collect();
+        edges.sort();
 
-                dot.push_str(&format!(
-                    "    \"{}\" -> \"{}\" [label=\"{}\"];\n",
-                    from_escaped, to_escaped, label
-                ));
-            }
+        // Add all FK relationships as edges
+        for (from, to, label) in edges {
+            let from_escaped = Self::escape_dot_string(&from);
+            let to_escaped = Self::escape_dot_string(&to);
+            let label_escaped = Self::escape_dot_string(&label);
+
+            dot.push_str(&format!(
+                "    \"{}\" -> \"{}\" [label=\"{}\"];\n",
+                from_escaped, to_escaped, label_escaped
+            ));
         }
 
         dot.push_str("}\n");
