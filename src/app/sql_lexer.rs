@@ -618,8 +618,8 @@ impl SqlLexer {
                             }
                         }
                     }
-                    // UPDATE table_name SET ...
-                    "UPDATE" => {
+                    // UPDATE table_name SET ... (skip FOR UPDATE)
+                    "UPDATE" if prev_keyword != Some("FOR") => {
                         prev_keyword = Some("UPDATE");
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -1575,6 +1575,19 @@ mod tests {
             let refs = l.extract_table_references(&tokens);
 
             // Only "users" should be included, not "new_table"
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_update_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            // Only "users" should be included, FOR UPDATE should not add a reference
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].table, "users");
         }

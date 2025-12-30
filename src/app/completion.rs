@@ -2430,7 +2430,7 @@ mod tests {
 
             // Cache both tables
             e.cache_table_detail("public.users".to_string(), users.clone());
-            e.cache_table_detail("public.orders".to_string(), orders);
+            e.cache_table_detail("public.orders".to_string(), orders.clone());
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.tables = vec![
@@ -2438,21 +2438,56 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            // UPDATE users ... -> users columns should get +200 boost
+            // UPDATE users with subquery referencing orders
+            // Both tables are in SQL, but users is the target
             let candidates = e.get_candidates(
-                "UPDATE users SET ",
-                17,
+                "UPDATE users SET name = (SELECT user_id FROM orders) WHERE ",
+                59,
                 Some(&metadata),
                 Some(&users),
                 &[],
             );
 
-            // Find a users column and verify it has the boost
+            // Find columns from both tables
+            let users_name = candidates.iter().find(|c| c.text == "name");
+            let orders_user_id = candidates.iter().find(|c| c.text == "user_id");
+
+            assert!(users_name.is_some(), "users.name should be in candidates");
+            assert!(
+                orders_user_id.is_some(),
+                "orders.user_id should be in candidates"
+            );
+
+            // Target table column (users.name) should have higher score than non-target (orders.user_id)
+            assert!(
+                users_name.unwrap().score > orders_user_id.unwrap().score,
+                "Target table column should be prioritized"
+            );
+        }
+
+        #[test]
+        fn select_has_no_target_boost() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+
+            e.cache_table_detail("public.users".to_string(), users.clone());
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            // SELECT has no target, so no boost
+            let candidates =
+                e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
+
             let name_candidate = candidates.iter().find(|c| c.text == "name");
             assert!(name_candidate.is_some());
-            // Base score (100 for no prefix) + 200 (target boost) = 300
-            // Actually, with empty prefix it's 0, then +200 = 200
-            assert!(name_candidate.unwrap().score >= 200);
+            // No target boost, base score only (0 for empty prefix)
+            assert!(name_candidate.unwrap().score < 200);
         }
     }
 }
