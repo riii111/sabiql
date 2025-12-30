@@ -747,6 +747,9 @@ async fn handle_action(
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
+            if !state.prefetch_queue.is_empty() {
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
         }
 
         Action::TableDetailCacheFailed {
@@ -759,6 +762,9 @@ async fn handle_action(
             state
                 .failed_prefetch_tables
                 .insert(qualified_name, Instant::now());
+            if !state.prefetch_queue.is_empty() {
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
         }
 
         Action::StartPrefetchAll => {
@@ -780,7 +786,22 @@ async fn handle_action(
         }
 
         Action::ProcessPrefetchQueue => {
-            // Placeholder for Step 3
+            const MAX_CONCURRENT_PREFETCH: usize = 4;
+            let current_in_flight = state.prefetching_tables.len();
+            let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
+
+            for _ in 0..available_slots {
+                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                    if let Some((schema, table)) = qualified_name.split_once('.') {
+                        let _ = action_tx
+                            .send(Action::PrefetchTableDetail {
+                                schema: schema.to_string(),
+                                table: table.to_string(),
+                            })
+                            .await;
+                    }
+                }
+            }
         }
 
         Action::ExecutePreview {
