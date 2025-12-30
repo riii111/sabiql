@@ -755,6 +755,7 @@ async fn handle_action(
         } => {
             if let Some(dsn) = &state.dsn {
                 state.query_state = QueryState::Running;
+                state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -791,6 +792,7 @@ async fn handle_action(
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.dsn {
                 state.query_state = QueryState::Running;
+                state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -815,6 +817,7 @@ async fn handle_action(
             // For Adhoc (generation 0), always show results
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
+                state.query_start_time = None;
                 state.result_scroll_offset = 0;
                 state.result_horizontal_offset = 0;
                 state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
@@ -842,6 +845,7 @@ async fn handle_action(
             // For Adhoc (generation 0), always show errors
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
+                state.query_start_time = None;
                 state.last_error = Some(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {

@@ -1,13 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
+use ratatui::widgets::{Clear, List, ListItem};
 
 use crate::app::palette::PALETTE_COMMANDS;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::centered_rect;
+use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
 
 pub struct CommandPalette;
 
@@ -19,13 +19,13 @@ impl CommandPalette {
             Constraint::Percentage(50),
         );
 
+        render_scrim(frame);
         frame.render_widget(Clear, area);
 
-        let block = Block::default()
-            .title(" Command Palette (Ctrl+K) ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
-
+        let block = modal_block_with_hint(
+            " Command Palette ".to_string(),
+            " ↑↓ Navigate │ Enter Select │ Esc Close ".to_string(),
+        );
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -35,23 +35,18 @@ impl CommandPalette {
             .map(|(i, cmd)| {
                 let style = if i == state.picker_selected {
                     Style::default()
-                        .bg(Color::Blue)
+                        .bg(Theme::COMPLETION_SELECTED_BG)
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default()
+                    Style::default().fg(Color::Gray)
                 };
-                let content = format!("{:<20} {}", cmd.key, cmd.description);
+                let content = format!("  {:<18} {}", cmd.key, cmd.description);
                 ListItem::new(content).style(style)
             })
             .collect();
 
-        let list_block = Block::default()
-            .title(" Commands ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
-
-        let list = List::new(items).block(list_block);
+        let list = List::new(items);
         frame.render_widget(list, inner);
     }
 }

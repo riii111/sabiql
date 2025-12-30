@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
 use crate::ui::theme::Theme;
 
-use super::overlay::centered_rect;
+use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
 
 pub struct SqlModal;
 
@@ -19,13 +19,13 @@ impl SqlModal {
             Constraint::Percentage(60),
         );
 
+        render_scrim(frame);
         frame.render_widget(Clear, area);
 
-        let block = Block::default()
-            .title(" SQL Editor ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
-
+        let block = modal_block_with_hint(
+            " SQL Editor ".to_string(),
+            " Alt+Enter: Run │ Esc: Close ".to_string(),
+        );
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
@@ -52,20 +52,23 @@ impl SqlModal {
         // Convert cursor position to (row, col)
         let (cursor_row, cursor_col) = Self::cursor_to_position(content, cursor_pos);
 
-        // Build lines with cursor visualization
+        let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
+
+        // Build lines with cursor visualization and current line highlight
         let mut lines: Vec<Line> = if content.is_empty() {
-            // Show placeholder with cursor
+            // Show placeholder with cursor (highlighted)
             vec![Line::from(vec![
                 Span::styled("█", Style::default().fg(Color::White)),
                 Span::styled(" Enter SQL query...", Style::default().fg(Color::DarkGray)),
-            ])]
+            ])
+            .style(current_line_style)]
         } else {
             content
                 .lines()
                 .enumerate()
                 .map(|(row, line)| {
                     if row == cursor_row {
-                        Self::line_with_cursor(line, cursor_col)
+                        Self::line_with_cursor(line, cursor_col).style(current_line_style)
                     } else {
                         Line::from(line.to_string())
                     }
@@ -73,12 +76,12 @@ impl SqlModal {
                 .collect()
         };
 
-        // If content ends with newline, add cursor on new line
+        // If content ends with newline, add cursor on new line (highlighted)
         if content.ends_with('\n') && cursor_row == content.lines().count() {
-            lines.push(Line::from(vec![Span::styled(
-                "█",
-                Style::default().fg(Color::White),
-            )]));
+            lines.push(
+                Line::from(vec![Span::styled("█", Style::default().fg(Color::White))])
+                    .style(current_line_style),
+            );
         }
 
         let paragraph = Paragraph::new(lines)
@@ -117,30 +120,26 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
-        let status_text = match state.sql_modal_state {
-            SqlModalState::Editing => {
-                if state.query_state == QueryState::Running {
-                    "Running..."
-                } else {
-                    "Ready"
-                }
-            }
-            SqlModalState::Running => "Running...",
-            SqlModalState::Success => "OK",
-            SqlModalState::Error => "Error",
-        };
+        let is_running = state.query_state == QueryState::Running;
 
-        let status_style = match state.sql_modal_state {
-            SqlModalState::Editing => {
-                if state.query_state == QueryState::Running {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                }
+        let (status_text, status_style) = if is_running {
+            let spinner_frames = ["◐", "◓", "◑", "◒"];
+            let elapsed = state
+                .query_start_time
+                .map(|t| t.elapsed())
+                .unwrap_or_default();
+            let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
+            let spinner = spinner_frames[frame_idx];
+            let elapsed_secs = elapsed.as_secs_f32();
+            let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
+            (status, Style::default().fg(Color::Yellow))
+        } else {
+            match state.sql_modal_state {
+                SqlModalState::Editing => ("Ready".to_string(), Style::default().fg(Color::DarkGray)),
+                SqlModalState::Running => ("Running...".to_string(), Style::default().fg(Color::Yellow)),
+                SqlModalState::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
+                SqlModalState::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
             }
-            SqlModalState::Running => Style::default().fg(Color::Yellow),
-            SqlModalState::Success => Style::default().fg(Color::Green),
-            SqlModalState::Error => Style::default().fg(Color::Red),
         };
 
         let hints = " Alt+Enter: Run  Esc: Close";
@@ -148,7 +147,7 @@ impl SqlModal {
         let line = Line::from(vec![
             Span::styled(status_text, status_style),
             Span::raw(" │"),
-            Span::styled(hints, Style::default().fg(Color::DarkGray)),
+            Span::styled(hints, Style::default().fg(Theme::MODAL_HINT)),
         ]);
 
         let paragraph = Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
