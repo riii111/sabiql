@@ -20,8 +20,6 @@ pub enum Action {
     Tick,
     Render,
     Resize(u16, u16),
-    NextTab,
-    PreviousTab,
     SetFocusedPane(FocusedPane),
     Up,
     Down,
@@ -164,11 +162,7 @@ pub enum Action {
     // Focus mode
     ToggleFocus,
 
-    // ER Diagram
-    SetErCenter(String),
-    ErRecenter,
-    ErRefresh,
-    ErToggleDepth,
+    // ER Diagram (full database diagram)
     ErOpenDiagram,
     ErDiagramOpened(String),
     ErDiagramFailed(String),
