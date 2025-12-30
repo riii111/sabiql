@@ -93,6 +93,10 @@ pub enum Action {
         error: String,
     },
 
+    // Prefetch all tables for completion
+    StartPrefetchAll,
+    ProcessPrefetchQueue,
+
     // Cache operations
     InvalidateCache,
 
@@ -117,6 +121,7 @@ pub enum Action {
     SqlModalTab,
     SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
+    SqlModalClear,
 
     // SQL Modal completion
     CompletionTrigger,

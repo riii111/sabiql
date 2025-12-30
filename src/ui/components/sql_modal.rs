@@ -24,7 +24,7 @@ impl SqlModal {
 
         let block = modal_block_with_hint(
             " SQL Editor ".to_string(),
-            " Alt+Enter: Run │ Esc: Close ".to_string(),
+            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close".to_string(),
         );
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -57,11 +57,13 @@ impl SqlModal {
         // Build lines with cursor visualization and current line highlight
         let mut lines: Vec<Line> = if content.is_empty() {
             // Show placeholder with cursor (highlighted)
-            vec![Line::from(vec![
-                Span::styled("█", Style::default().fg(Color::White)),
-                Span::styled(" Enter SQL query...", Style::default().fg(Color::DarkGray)),
-            ])
-            .style(current_line_style)]
+            vec![
+                Line::from(vec![
+                    Span::styled("█", Style::default().fg(Color::White)),
+                    Span::styled(" Enter SQL query...", Style::default().fg(Color::DarkGray)),
+                ])
+                .style(current_line_style),
+            ]
         } else {
             content
                 .lines()
@@ -135,14 +137,18 @@ impl SqlModal {
             (status, Style::default().fg(Color::Yellow))
         } else {
             match state.sql_modal_state {
-                SqlModalState::Editing => ("Ready".to_string(), Style::default().fg(Color::DarkGray)),
-                SqlModalState::Running => ("Running...".to_string(), Style::default().fg(Color::Yellow)),
+                SqlModalState::Editing => {
+                    ("Ready".to_string(), Style::default().fg(Color::DarkGray))
+                }
+                SqlModalState::Running => {
+                    ("Running...".to_string(), Style::default().fg(Color::Yellow))
+                }
                 SqlModalState::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
                 SqlModalState::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
             }
         };
 
-        let hints = " Alt+Enter: Run  Esc: Close";
+        let hints = " Alt+Enter: Run  Ctrl+L: Clear  Esc: Close";
 
         let line = Line::from(vec![
             Span::styled(status_text, status_style),

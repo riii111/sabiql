@@ -120,7 +120,11 @@ impl CompletionEngine {
     }
 
     /// Returns qualified table names referenced in SQL but not cached (max 10)
-    pub fn missing_tables(&self, content: &str, metadata: Option<&DatabaseMetadata>) -> Vec<String> {
+    pub fn missing_tables(
+        &self,
+        content: &str,
+        metadata: Option<&DatabaseMetadata>,
+    ) -> Vec<String> {
         const MAX_MISSING_TABLES: usize = 10;
 
         let tokens = self.lexer.tokenize(content, content.len(), None);
@@ -142,7 +146,8 @@ impl CompletionEngine {
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            if seen.contains(&qualified_name) || self.table_detail_cache.contains_key(&qualified_name)
+            if seen.contains(&qualified_name)
+                || self.table_detail_cache.contains_key(&qualified_name)
             {
                 continue;
             }
@@ -184,6 +189,15 @@ impl CompletionEngine {
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
 
+                // Check if cursor is right after a comma (column list continuation)
+                let before_cursor: String = content.chars().take(cursor_pos).collect();
+                let before_token = before_cursor
+                    .trim_end()
+                    .strip_suffix(&current_token)
+                    .unwrap_or(&before_cursor)
+                    .trim_end();
+                let after_comma = before_token.ends_with(',');
+
                 let target_qualified = sql_context
                     .target_table
                     .as_ref()
@@ -214,13 +228,13 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                // Include columns only from SQL-referenced tables in cache
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
+                let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in &self.table_detail_cache {
-                    // Skip if same as selected table or not referenced in SQL
-                    if selected_qualified.as_ref() == Some(qualified_name)
-                        || !referenced_tables.contains(qualified_name)
-                    {
+                    if selected_qualified.as_ref() == Some(qualified_name) {
+                        continue;
+                    }
+                    if !use_all_cache && !referenced_tables.contains(qualified_name) {
                         continue;
                     }
                     let mut cached_columns = self.column_candidates_with_fk(
@@ -239,7 +253,6 @@ impl CompletionEngine {
 
                 let has_prefix = current_token.len() >= 2;
                 if has_prefix && !columns.is_empty() {
-                    // Boost only prefix-matched columns (score >= 100)
                     for col in &mut columns {
                         if col.score >= 100 {
                             col.score += 250;
@@ -247,8 +260,21 @@ impl CompletionEngine {
                     }
                 }
 
-                // Reduce keyword slots when user is typing
-                let max_keywords = if has_prefix { 5 } else { 15 }.min(keywords.len());
+                // After comma, strongly prefer columns over keywords
+                if after_comma {
+                    for col in &mut columns {
+                        col.score += 300;
+                    }
+                }
+
+                let max_keywords = if after_comma {
+                    3
+                } else if has_prefix {
+                    5
+                } else {
+                    15
+                }
+                .min(keywords.len());
                 let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
 
                 let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
@@ -1936,8 +1962,10 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            let missing =
-                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+            let missing = e.missing_tables(
+                "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                Some(&metadata),
+            );
 
             assert_eq!(missing.len(), 2);
             assert!(missing.contains(&"public.users".to_string()));
@@ -1975,8 +2003,10 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            let missing =
-                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+            let missing = e.missing_tables(
+                "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                Some(&metadata),
+            );
 
             // users is cached, so only orders should be missing
             assert_eq!(missing.len(), 1);
@@ -2286,7 +2316,8 @@ mod tests {
             let table = create_users_table();
 
             // After "ORDER ", BY should appear in candidates
-            let candidates = e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
+            let candidates =
+                e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
 
             assert!(
                 candidates.iter().any(|c| c.text == "BY"),
@@ -2481,13 +2512,99 @@ mod tests {
             )];
 
             // SELECT has no target, so no boost
-            let candidates =
-                e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
 
             let name_candidate = candidates.iter().find(|c| c.text == "name");
             assert!(name_candidate.is_some());
             // No target boost, base score only (0 for empty prefix)
             assert!(name_candidate.unwrap().score < 200);
+        }
+    }
+
+    mod all_cache_columns {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| Column {
+                        name: c.to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: (i + 1) as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn no_from_with_2char_prefix_returns_all_cached_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name", "email"]);
+            let orders = create_table("public", "orders", &["id", "user_id", "total"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let metadata = DatabaseMetadata::new("test".to_string());
+
+            let candidates = e.get_candidates("SELECT na", 9, Some(&metadata), None, &[]);
+
+            let name_candidate = candidates.iter().find(|c| c.text == "name");
+            assert!(name_candidate.is_some());
+        }
+
+        #[test]
+        fn no_from_with_empty_prefix_returns_all_cached_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+            let orders = create_table("public", "orders", &["order_id", "user_id"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let metadata = DatabaseMetadata::new("test".to_string());
+
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), None, &[]);
+
+            let column_count = candidates
+                .iter()
+                .filter(|c| c.kind == CompletionKind::Column)
+                .count();
+            assert!(column_count > 0);
+        }
+
+        #[test]
+        fn from_clause_present_returns_only_referenced_table_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+            let orders = create_table("public", "orders", &["order_id", "user_id"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let candidates =
+                e.get_candidates("SELECT na FROM users", 9, Some(&metadata), None, &[]);
+
+            let name = candidates.iter().find(|c| c.text == "name");
+            let user_id = candidates.iter().find(|c| c.text == "user_id");
+            assert!(name.is_some());
+            assert!(user_id.is_none());
         }
     }
 }

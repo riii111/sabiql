@@ -230,6 +230,7 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
         (KeyCode::Delete, _, _) => Action::SqlModalDelete,
         (KeyCode::Enter, _, _) => Action::SqlModalNewLine,
         (KeyCode::Tab, _, false) => Action::SqlModalTab,
+        (KeyCode::Char('l'), m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalClear,
         (KeyCode::Char(c), _, _) => Action::SqlModalInput(c),
         _ => Action::None,
     }
