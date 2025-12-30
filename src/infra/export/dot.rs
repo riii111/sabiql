@@ -8,14 +8,12 @@ use crate::domain::NeighborhoodGraph;
 pub struct DotExporter;
 
 impl DotExporter {
-    /// Escape special characters for DOT string literals
     fn escape_dot_string(s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
     }
 
-    /// Sanitize string for use in filenames
     fn sanitize_filename(s: &str) -> String {
         s.chars()
             .map(|c| match c {
@@ -80,7 +78,19 @@ impl DotExporter {
     }
 
     pub fn export_and_open(graph: &NeighborhoodGraph, cache_dir: &Path) -> Result<PathBuf> {
-        let dot_path = Self::export_to_file(graph, cache_dir)?;
+        let dot_content = Self::generate_dot(graph);
+        let safe_center = Self::sanitize_filename(&graph.center).replace('.', "_");
+        let filename = format!("er_{}.dot", safe_center);
+        Self::export_dot_and_open(&dot_content, &filename, cache_dir)
+    }
+
+    pub fn export_dot_and_open(
+        dot_content: &str,
+        filename: &str,
+        cache_dir: &Path,
+    ) -> Result<PathBuf> {
+        let dot_path = cache_dir.join(filename);
+        std::fs::write(&dot_path, dot_content)?;
 
         let svg_path = dot_path.with_extension("svg");
 

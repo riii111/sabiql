@@ -2,39 +2,46 @@
 //!
 //! Uses BFS traversal to find all tables within N hops of a center table.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::domain::{GraphEdge, GraphNode, NeighborhoodGraph, Table};
 
-/// Builds neighborhood graphs from table FK metadata.
 pub struct GraphBuilder;
 
 impl GraphBuilder {
-    /// Build a neighborhood graph centered on the given table.
-    ///
-    /// # Arguments
-    /// * `center_table` - Qualified name of center table (schema.table)
-    /// * `table_details` - Map of qualified table names to their details
-    /// * `max_depth` - Maximum hop distance (1 or 2)
-    ///
-    /// # Returns
-    /// A NeighborhoodGraph containing all tables within max_depth hops
     pub fn build<'a, I>(center_table: &str, table_details: I, max_depth: u8) -> NeighborhoodGraph
     where
-        I: IntoIterator<Item = (&'a String, &'a Table)> + Clone,
+        I: IntoIterator<Item = (&'a String, &'a Table)>,
     {
+        // Pre-index tables for O(1) lookup
+        let table_map: HashMap<&str, &Table> = table_details
+            .into_iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+
         let mut graph = NeighborhoodGraph::new(center_table.to_string(), max_depth);
-        let mut visited: HashSet<String> = HashSet::new();
+        let mut visited: HashSet<&str> = HashSet::new();
         let mut edge_keys: HashSet<(String, String, String)> = HashSet::new();
         let mut queue: VecDeque<(String, u8)> = VecDeque::new();
 
         queue.push_back((center_table.to_string(), 0));
 
         while let Some((current, depth)) = queue.pop_front() {
-            if visited.contains(&current) || depth > max_depth {
+            if visited.contains(current.as_str()) || depth > max_depth {
                 continue;
             }
-            visited.insert(current.clone());
+            let current_key = table_map.keys().find(|&&k| k == current.as_str()).copied();
+            if let Some(key) = current_key {
+                visited.insert(key);
+            } else {
+                // Table not in cache - still add node but can't traverse FKs
+                if let Some((schema, table)) = Self::split_qualified_name(&current) {
+                    graph
+                        .nodes
+                        .push(GraphNode::new(schema.to_string(), table.to_string(), depth));
+                }
+                continue;
+            }
 
             if let Some((schema, table)) = Self::split_qualified_name(&current) {
                 graph
@@ -43,35 +50,32 @@ impl GraphBuilder {
             }
 
             // Find outgoing FKs (this table references other tables)
-            for (qualified_name, table_detail) in table_details.clone() {
-                if *qualified_name == current {
-                    for fk in &table_detail.foreign_keys {
-                        let target = fk.referenced_table();
+            if let Some(table_detail) = table_map.get(current.as_str()) {
+                for fk in &table_detail.foreign_keys {
+                    let target = fk.referenced_table();
 
-                        let edge = GraphEdge::new(
-                            current.clone(),
-                            target.clone(),
-                            fk.name.clone(),
-                            fk.from_columns.clone(),
-                            fk.to_columns.clone(),
-                        );
+                    let edge = GraphEdge::new(
+                        current.clone(),
+                        target.clone(),
+                        fk.name.clone(),
+                        fk.from_columns.clone(),
+                        fk.to_columns.clone(),
+                    );
 
-                        // Deduplicate edges
-                        let key = edge.dedup_key();
-                        if !edge_keys.contains(&key) {
-                            edge_keys.insert(key);
-                            graph.edges.push(edge);
-                        }
+                    let key = edge.dedup_key();
+                    if !edge_keys.contains(&key) {
+                        edge_keys.insert(key);
+                        graph.edges.push(edge);
+                    }
 
-                        if !visited.contains(&target) && depth < max_depth {
-                            queue.push_back((target, depth + 1));
-                        }
+                    if !visited.contains(target.as_str()) && depth < max_depth {
+                        queue.push_back((target, depth + 1));
                     }
                 }
             }
 
             // Find incoming FKs (other tables reference this table)
-            for (qualified_name, table_detail) in table_details.clone() {
+            for (&qualified_name, table_detail) in &table_map {
                 if visited.contains(qualified_name) {
                     continue;
                 }
@@ -79,14 +83,13 @@ impl GraphBuilder {
                 for fk in &table_detail.foreign_keys {
                     if fk.referenced_table() == current {
                         let edge = GraphEdge::new(
-                            qualified_name.clone(),
+                            qualified_name.to_string(),
                             current.clone(),
                             fk.name.clone(),
                             fk.from_columns.clone(),
                             fk.to_columns.clone(),
                         );
 
-                        // Deduplicate edges
                         let key = edge.dedup_key();
                         if !edge_keys.contains(&key) {
                             edge_keys.insert(key);
@@ -94,7 +97,7 @@ impl GraphBuilder {
                         }
 
                         if depth < max_depth {
-                            queue.push_back((qualified_name.clone(), depth + 1));
+                            queue.push_back((qualified_name.to_string(), depth + 1));
                         }
                     }
                 }

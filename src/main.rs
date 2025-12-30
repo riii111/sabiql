@@ -1178,10 +1178,9 @@ async fn handle_action(
             let engine = completion_engine.borrow();
             let cache_count = engine.cached_table_count();
             let table_details: Vec<_> = engine.table_details_iter().collect();
-            let graph = GraphBuilder::build(&table, table_details.clone(), state.er_depth);
+            let graph = GraphBuilder::build(&table, table_details, state.er_depth);
             drop(engine);
 
-            // Warn if cache is sparse (graph may be incomplete)
             if graph.nodes.len() <= 1 && cache_count < state.tables().len() {
                 state.last_error = Some(
                     "FK metadata still loading - graph may be incomplete. Try again shortly."
@@ -1218,10 +1217,10 @@ async fn handle_action(
         Action::ErToggleDepth => {
             state.er_depth = if state.er_depth == 1 { 2 } else { 1 };
 
-            if let Some(center) = &state.er_center_table.clone() {
+            if let Some(center) = state.er_center_table.as_deref() {
                 let engine = completion_engine.borrow();
                 let table_details: Vec<_> = engine.table_details_iter().collect();
-                let graph = GraphBuilder::build(center, table_details.clone(), state.er_depth);
+                let graph = GraphBuilder::build(center, table_details, state.er_depth);
                 drop(engine);
                 state.er_graph = Some(graph);
                 state.er_selected_node = 0;
@@ -1253,13 +1252,16 @@ async fn handle_action(
             if state.mode != Mode::ER {
                 state.last_error = Some("Switch to ER tab first".to_string());
             } else if let Some(graph) = &state.er_graph {
-                let graph = graph.clone();
+                // Pre-generate DOT content to avoid cloning entire graph
+                let dot_content = DotExporter::generate_dot(graph);
+                let safe_center =
+                    graph.center.chars().map(|c| if c == '.' { '_' } else { c }).collect::<String>();
+                let filename = format!("er_{}.dot", safe_center);
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();
 
-                // Run export and open in background to avoid blocking UI
                 tokio::spawn(async move {
-                    match DotExporter::export_and_open(&graph, &cache_dir) {
+                    match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir) {
                         Ok(path) => {
                             let _ = tx
                                 .send(Action::ErExportCompleted(path.display().to_string()))
