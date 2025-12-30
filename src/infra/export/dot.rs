@@ -14,7 +14,7 @@ impl DotExporter {
             .replace('\n', "\\n")
     }
 
-    fn sanitize_filename(s: &str) -> String {
+    pub fn sanitize_filename(s: &str) -> String {
         s.chars()
             .map(|c| match c {
                 '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',

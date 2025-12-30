@@ -144,8 +144,10 @@ async fn handle_action(
             let was_browse = state.mode == Mode::Browse;
             state.change_tab(true);
             if was_browse && state.mode == Mode::ER {
-                if let Some(table) = state.tables().get(state.explorer_selected) {
-                    let center = table.qualified_name();
+                let center = state.current_table.clone().or_else(|| {
+                    state.tables().get(state.explorer_selected).map(|t| t.qualified_name())
+                });
+                if let Some(center) = center {
                     let _ = action_tx.send(Action::SetErCenter(center)).await;
                 }
             }
@@ -154,8 +156,10 @@ async fn handle_action(
             let was_browse = state.mode == Mode::Browse;
             state.change_tab(false);
             if was_browse && state.mode == Mode::ER {
-                if let Some(table) = state.tables().get(state.explorer_selected) {
-                    let center = table.qualified_name();
+                let center = state.current_table.clone().or_else(|| {
+                    state.tables().get(state.explorer_selected).map(|t| t.qualified_name())
+                });
+                if let Some(center) = center {
                     let _ = action_tx.send(Action::SetErCenter(center)).await;
                 }
             }
@@ -1239,8 +1243,7 @@ async fn handle_action(
             } else if let Some(graph) = &state.er_graph {
                 // Pre-generate DOT content to avoid cloning entire graph
                 let dot_content = DotExporter::generate_dot(graph);
-                let safe_center =
-                    graph.center.chars().map(|c| if c == '.' { '_' } else { c }).collect::<String>();
+                let safe_center = DotExporter::sanitize_filename(&graph.center).replace('.', "_");
                 let filename = format!("er_{}.dot", safe_center);
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();

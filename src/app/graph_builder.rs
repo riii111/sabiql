@@ -20,28 +20,17 @@ impl GraphBuilder {
             .collect();
 
         let mut graph = NeighborhoodGraph::new(center_table.to_string(), max_depth);
-        let mut visited: HashSet<&str> = HashSet::new();
+        let mut visited: HashSet<String> = HashSet::new();
         let mut edge_keys: HashSet<(String, String, String)> = HashSet::new();
         let mut queue: VecDeque<(String, u8)> = VecDeque::new();
 
         queue.push_back((center_table.to_string(), 0));
 
         while let Some((current, depth)) = queue.pop_front() {
-            if visited.contains(current.as_str()) || depth > max_depth {
+            if visited.contains(&current) || depth > max_depth {
                 continue;
             }
-            let current_key = table_map.keys().find(|&&k| k == current.as_str()).copied();
-            if let Some(key) = current_key {
-                visited.insert(key);
-            } else {
-                // Table not in cache - still add node but can't traverse FKs
-                if let Some((schema, table)) = Self::split_qualified_name(&current) {
-                    graph
-                        .nodes
-                        .push(GraphNode::new(schema.to_string(), table.to_string(), depth));
-                }
-                continue;
-            }
+            visited.insert(current.clone());
 
             if let Some((schema, table)) = Self::split_qualified_name(&current) {
                 graph
@@ -49,8 +38,12 @@ impl GraphBuilder {
                     .push(GraphNode::new(schema.to_string(), table.to_string(), depth));
             }
 
+            let Some(table_detail) = table_map.get(current.as_str()) else {
+                continue;
+            };
+
             // Find outgoing FKs (this table references other tables)
-            if let Some(table_detail) = table_map.get(current.as_str()) {
+            {
                 for fk in &table_detail.foreign_keys {
                     let target = fk.referenced_table();
 
