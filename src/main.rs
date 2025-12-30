@@ -201,6 +201,8 @@ async fn handle_action(
             state.completion_debounce = None;
             state.prefetch_started = false;
             state.prefetch_queue.clear();
+            state.prefetching_tables.clear();
+            state.failed_prefetch_tables.clear();
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
