@@ -133,9 +133,8 @@ async fn handle_action(
             tui.terminal()
                 .draw(|frame| MainLayout::render(frame, state))?;
         }
-        Action::Resize(w, h) => {
-            tui.terminal()
-                .resize(ratatui::layout::Rect::new(0, 0, w, h))?;
+        Action::Resize(_w, h) => {
+            // Ratatui auto-tracks size; explicit resize() restricts viewport
             state.terminal_height = h;
         }
         Action::NextTab => {

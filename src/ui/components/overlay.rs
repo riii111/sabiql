@@ -31,8 +31,13 @@ pub fn clear_area(frame: &mut Frame, area: Rect) {
 
 /// Dims the background to make the modal "float" visually.
 pub fn render_scrim(frame: &mut Frame) {
-    let scrim = Block::default().style(Style::default().bg(Theme::SCRIM_BG));
-    frame.render_widget(scrim, frame.area());
+    let buf = frame.buffer_mut();
+    let area = buf.area;
+    for y in area.y..(area.y + area.height) {
+        for x in area.x..(area.x + area.width) {
+            buf[(x, y)].set_bg(Theme::SCRIM_BG);
+        }
+    }
 }
 
 pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {
