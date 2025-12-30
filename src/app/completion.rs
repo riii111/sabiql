@@ -216,7 +216,12 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
                 let use_all_cache = referenced_tables.is_empty();
+                const MIN_PREFIX_FOR_ALL_COLUMNS: usize = 2;
+                let skip_all_cache = use_all_cache && current_token.len() < MIN_PREFIX_FOR_ALL_COLUMNS;
                 for (qualified_name, cached_table) in &self.table_detail_cache {
+                    if skip_all_cache {
+                        break;
+                    }
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
