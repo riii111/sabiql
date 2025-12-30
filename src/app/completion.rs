@@ -216,12 +216,7 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
                 let use_all_cache = referenced_tables.is_empty();
-                const MIN_PREFIX_FOR_ALL_COLUMNS: usize = 2;
-                let skip_all_cache = use_all_cache && current_token.len() < MIN_PREFIX_FOR_ALL_COLUMNS;
                 for (qualified_name, cached_table) in &self.table_detail_cache {
-                    if skip_all_cache {
-                        break;
-                    }
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
@@ -2543,7 +2538,7 @@ mod tests {
         }
 
         #[test]
-        fn no_from_with_1char_prefix_returns_no_columns() {
+        fn no_from_with_empty_prefix_returns_all_cached_columns() {
             let mut e = engine();
             let users = create_table("public", "users", &["id", "name"]);
             let orders = create_table("public", "orders", &["order_id", "user_id"]);
@@ -2551,13 +2546,13 @@ mod tests {
             e.cache_table_detail("public.orders".to_string(), orders);
             let metadata = DatabaseMetadata::new("test".to_string());
 
-            let candidates = e.get_candidates("SELECT n", 8, Some(&metadata), None, &[]);
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), None, &[]);
 
             let column_count = candidates
                 .iter()
                 .filter(|c| c.kind == CompletionKind::Column)
                 .count();
-            assert_eq!(column_count, 0);
+            assert!(column_count > 0);
         }
 
         #[test]
