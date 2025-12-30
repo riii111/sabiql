@@ -1,5 +1,6 @@
 pub mod action;
 pub mod command;
+pub mod completion;
 pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;
@@ -7,4 +8,5 @@ pub mod mode;
 pub mod palette;
 pub mod ports;
 pub mod result_history;
+pub mod sql_lexer;
 pub mod state;

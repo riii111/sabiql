@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 use super::overlay::centered_rect;
 
@@ -23,7 +24,7 @@ impl TablePicker {
         let block = Block::default()
             .title(" Table Picker (Ctrl+P) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -34,7 +35,7 @@ impl TablePicker {
         let filter_block = Block::default()
             .title(" Filter ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let filter_line = Line::from(vec![
             Span::styled("> ", Style::default().fg(Color::Yellow)),
@@ -55,7 +56,7 @@ impl TablePicker {
         let list_block = Block::default()
             .title(format!(" Tables ({}) ", filtered.len()))
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let list = List::new(items)
             .block(list_block)

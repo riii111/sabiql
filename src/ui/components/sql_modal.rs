@@ -2,9 +2,10 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::state::{AppState, QueryState, SqlModalState};
+use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
+use crate::ui::theme::Theme;
 
 use super::overlay::centered_rect;
 
@@ -23,7 +24,7 @@ impl SqlModal {
         let block = Block::default()
             .title(" SQL Editor ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -37,6 +38,11 @@ impl SqlModal {
 
         // Render status line
         Self::render_status(frame, status_area, state);
+
+        // Render completion popup if visible
+        if state.completion.visible && !state.completion.candidates.is_empty() {
+            Self::render_completion_popup(frame, area, editor_area, state);
+        }
     }
 
     fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -77,7 +83,7 @@ impl SqlModal {
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(paragraph, area);
     }
@@ -137,7 +143,7 @@ impl SqlModal {
             SqlModalState::Error => Style::default().fg(Color::Red),
         };
 
-        let hints = " Ctrl+Enter: Run  Esc: Close";
+        let hints = " Alt+Enter: Run  Esc: Close";
 
         let line = Line::from(vec![
             Span::styled(status_text, status_style),
@@ -145,10 +151,122 @@ impl SqlModal {
             Span::styled(hints, Style::default().fg(Color::DarkGray)),
         ]);
 
-        let paragraph =
-            Paragraph::new(line).style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+        let paragraph = Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(paragraph, area);
+    }
+
+    fn render_completion_popup(
+        frame: &mut Frame,
+        modal_area: Rect,
+        editor_area: Rect,
+        state: &AppState,
+    ) {
+        let (cursor_row, cursor_col) =
+            Self::cursor_to_position(&state.sql_modal_content, state.sql_modal_cursor);
+
+        // Popup dimensions
+        let max_items = 8;
+        let visible_count = state.completion.candidates.len().min(max_items);
+        let popup_height = (visible_count as u16) + 2; // +2 for borders
+        let popup_width = 45u16.min(modal_area.width);
+
+        // Position popup below cursor (global coordinates)
+        // Ensure popup fits within modal bounds
+        let popup_x = if modal_area.width < popup_width {
+            modal_area.x
+        } else {
+            (editor_area.x + cursor_col as u16).min(modal_area.right().saturating_sub(popup_width))
+        };
+        let cursor_screen_y = editor_area.y + cursor_row as u16;
+
+        // Show above cursor if not enough space below
+        let popup_y = if cursor_screen_y + 1 + popup_height > modal_area.bottom() {
+            cursor_screen_y.saturating_sub(popup_height)
+        } else {
+            cursor_screen_y + 1
+        };
+
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+        frame.render_widget(Clear, popup_area);
+
+        // Calculate scroll window to keep selected item visible
+        let selected = state.completion.selected_index;
+        let total = state.completion.candidates.len();
+        let scroll_offset = if total <= max_items {
+            0
+        } else {
+            // Keep selected item in middle of window when possible
+            let half = max_items / 2;
+            if selected < half {
+                0
+            } else if selected >= total - half {
+                total - max_items
+            } else {
+                selected - half
+            }
+        };
+
+        // Calculate max text width for alignment
+        let max_text_width = state
+            .completion
+            .candidates
+            .iter()
+            .skip(scroll_offset)
+            .take(max_items)
+            .map(|c| c.text.len())
+            .max()
+            .unwrap_or(0);
+
+        let items: Vec<ListItem> = state
+            .completion
+            .candidates
+            .iter()
+            .enumerate()
+            .skip(scroll_offset)
+            .take(max_items)
+            .map(|(i, candidate)| {
+                let is_selected = i == selected;
+
+                // Kind label (pgcli style)
+                let kind_label = match candidate.kind {
+                    CompletionKind::Keyword => "keyword",
+                    CompletionKind::Schema => "schema",
+                    CompletionKind::Table => "table",
+                    CompletionKind::Column => "column",
+                };
+
+                // Format: "text    kind" with padding for alignment
+                let padding = max_text_width.saturating_sub(candidate.text.len()) + 2;
+                let text = format!(
+                    " {}{:padding$}{}",
+                    candidate.text,
+                    "",
+                    kind_label,
+                    padding = padding
+                );
+
+                let style = if is_selected {
+                    Style::default()
+                        .bg(Theme::COMPLETION_SELECTED_BG)
+                        .fg(Color::White)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+
+                ListItem::new(text).style(style)
+            })
+            .collect();
+
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().bg(Theme::MODAL_BG)),
+        );
+
+        frame.render_widget(list, popup_area);
     }
 
     /// Convert a character index to (row, col) position

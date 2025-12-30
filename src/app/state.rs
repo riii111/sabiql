@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::Instant;
 
 use ratatui::widgets::ListState;
@@ -18,6 +19,69 @@ pub enum SqlModalState {
     Running,
     Success,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum CompletionKind {
+    Keyword,
+    Schema,
+    Table,
+    Column,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct CompletionCandidate {
+    pub text: String,
+    pub kind: CompletionKind,
+    pub detail: Option<String>,
+    pub score: i32,
+}
+
+const RECENT_TABLES_MAX: usize = 10;
+const RECENT_COLUMNS_MAX: usize = 20;
+
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+pub struct CompletionState {
+    pub visible: bool,
+    pub candidates: Vec<CompletionCandidate>,
+    pub selected_index: usize,
+    pub trigger_position: usize,
+    pub generation: u64,
+    pub recent_tables: VecDeque<String>,
+    pub recent_columns: VecDeque<String>,
+}
+
+impl CompletionState {
+    /// Record a table as recently used
+    #[allow(dead_code)]
+    pub fn record_table(&mut self, table: String) {
+        // Remove if already exists (to move to front)
+        self.recent_tables.retain(|t| t != &table);
+        self.recent_tables.push_front(table);
+        if self.recent_tables.len() > RECENT_TABLES_MAX {
+            self.recent_tables.pop_back();
+        }
+    }
+
+    /// Record a column as recently used
+    #[allow(dead_code)]
+    pub fn record_column(&mut self, column: String) {
+        // Remove if already exists (to move to front)
+        self.recent_columns.retain(|c| c != &column);
+        self.recent_columns.push_front(column);
+        if self.recent_columns.len() > RECENT_COLUMNS_MAX {
+            self.recent_columns.pop_back();
+        }
+    }
+
+    /// Get recent columns as a Vec for completion scoring
+    #[allow(dead_code)]
+    pub fn recent_columns_vec(&self) -> Vec<String> {
+        self.recent_columns.iter().cloned().collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -82,6 +146,10 @@ pub struct AppState {
     pub sql_modal_cursor: usize,
     pub sql_modal_state: SqlModalState,
 
+    // SQL Modal completion
+    pub completion: CompletionState,
+    pub completion_debounce: Option<Instant>,
+
     // Query execution state
     pub query_state: QueryState,
 
@@ -143,6 +211,8 @@ impl AppState {
             sql_modal_content: String::new(),
             sql_modal_cursor: 0,
             sql_modal_state: SqlModalState::default(),
+            completion: CompletionState::default(),
+            completion_debounce: None,
             // Query state
             query_state: QueryState::default(),
             // Last error
@@ -150,7 +220,7 @@ impl AppState {
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
-            terminal_height: 24,   // default minimum
+            terminal_height: 24,      // default minimum
             result_pane_height: 0,    // will be updated on render
             inspector_pane_height: 0, // will be updated on render
             // Focus mode
@@ -487,5 +557,90 @@ mod tests {
         state.toggle_focus();
 
         assert!(!state.can_enter_focus());
+    }
+
+    // CompletionState recent tracking tests
+
+    #[test]
+    fn record_table_adds_to_recent() {
+        let mut cs = CompletionState::default();
+
+        cs.record_table("users".to_string());
+
+        assert_eq!(cs.recent_tables.len(), 1);
+        assert_eq!(cs.recent_tables[0], "users");
+    }
+
+    #[test]
+    fn record_table_moves_existing_to_front() {
+        let mut cs = CompletionState::default();
+        cs.record_table("users".to_string());
+        cs.record_table("orders".to_string());
+
+        cs.record_table("users".to_string());
+
+        assert_eq!(cs.recent_tables.len(), 2);
+        assert_eq!(cs.recent_tables[0], "users");
+        assert_eq!(cs.recent_tables[1], "orders");
+    }
+
+    #[test]
+    fn record_table_limits_to_max_size() {
+        let mut cs = CompletionState::default();
+
+        for i in 0..15 {
+            cs.record_table(format!("table_{}", i));
+        }
+
+        assert_eq!(cs.recent_tables.len(), RECENT_TABLES_MAX);
+        assert_eq!(cs.recent_tables[0], "table_14");
+    }
+
+    #[test]
+    fn record_column_adds_to_recent() {
+        let mut cs = CompletionState::default();
+
+        cs.record_column("id".to_string());
+
+        assert_eq!(cs.recent_columns.len(), 1);
+        assert_eq!(cs.recent_columns[0], "id");
+    }
+
+    #[test]
+    fn record_column_moves_existing_to_front() {
+        let mut cs = CompletionState::default();
+        cs.record_column("id".to_string());
+        cs.record_column("name".to_string());
+
+        cs.record_column("id".to_string());
+
+        assert_eq!(cs.recent_columns.len(), 2);
+        assert_eq!(cs.recent_columns[0], "id");
+        assert_eq!(cs.recent_columns[1], "name");
+    }
+
+    #[test]
+    fn record_column_limits_to_max_size() {
+        let mut cs = CompletionState::default();
+
+        for i in 0..25 {
+            cs.record_column(format!("col_{}", i));
+        }
+
+        assert_eq!(cs.recent_columns.len(), RECENT_COLUMNS_MAX);
+        assert_eq!(cs.recent_columns[0], "col_24");
+    }
+
+    #[test]
+    fn recent_columns_vec_returns_vec() {
+        let mut cs = CompletionState::default();
+        cs.record_column("id".to_string());
+        cs.record_column("name".to_string());
+
+        let vec = cs.recent_columns_vec();
+
+        assert_eq!(vec.len(), 2);
+        assert_eq!(vec[0], "name");
+        assert_eq!(vec[1], "id");
     }
 }

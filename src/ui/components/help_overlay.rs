@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 use super::overlay::centered_rect;
 
@@ -23,7 +24,7 @@ impl HelpOverlay {
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -68,7 +69,7 @@ impl HelpOverlay {
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
-            Self::key_line("Ctrl+Enter", "Execute query"),
+            Self::key_line("Alt+Enter", "Execute query"),
             Self::key_line("Esc", "Close editor"),
             Self::key_line("↑↓←→", "Move cursor"),
             Line::from(""),
@@ -97,7 +98,7 @@ impl HelpOverlay {
 
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         frame.render_widget(help, inner);
     }

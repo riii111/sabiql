@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
 use crate::app::palette::PALETTE_COMMANDS;
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 use super::overlay::centered_rect;
 
@@ -23,7 +24,7 @@ impl CommandPalette {
         let block = Block::default()
             .title(" Command Palette (Ctrl+K) ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -48,7 +49,7 @@ impl CommandPalette {
         let list_block = Block::default()
             .title(" Commands ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Rgb(0x1e, 0x1e, 0x2e)));
+            .style(Style::default().bg(Theme::MODAL_BG));
 
         let list = List::new(items).block(list_block);
         frame.render_widget(list, inner);

@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
+use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{ClipboardWriter, MetadataProvider};
@@ -27,6 +28,7 @@ use infra::config::{
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
+use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
@@ -61,6 +63,7 @@ async fn main() -> Result<()> {
 
     let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
     let metadata_cache = TtlCache::new(300);
+    let completion_engine = RefCell::new(CompletionEngine::new());
 
     let mut state = AppState::new(project_name, args.profile);
     state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
@@ -82,7 +85,6 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
                 if !action.is_none() {
-                    // Use send().await for user input to ensure no key events are lost
                     let _ = action_tx.send(action).await;
                 }
             }
@@ -94,8 +96,17 @@ async fn main() -> Result<()> {
                     &action_tx,
                     &metadata_provider,
                     &metadata_cache,
+                    &completion_engine,
                 ).await?;
             }
+        }
+
+        match state.completion_debounce {
+            Some(debounce_until) if Instant::now() >= debounce_until => {
+                state.completion_debounce = None;
+                let _ = action_tx.send(Action::CompletionTrigger).await;
+            }
+            _ => (),
         }
 
         if state.should_quit {
@@ -114,6 +125,7 @@ async fn handle_action(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
+    completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match action {
         Action::Quit => state.should_quit = true,
@@ -176,15 +188,22 @@ async fn handle_action(
         Action::OpenSqlModal => {
             state.input_mode = InputMode::SqlModal;
             state.sql_modal_state = app::state::SqlModalState::Editing;
+            state.completion.visible = false;
+            state.completion.candidates.clear();
+            state.completion.selected_index = 0;
+            state.completion_debounce = None;
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
+            state.completion.visible = false;
+            state.completion_debounce = None;
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, c);
             state.sql_modal_cursor += 1;
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalBackspace => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -193,6 +212,7 @@ async fn handle_action(
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
                 state.sql_modal_content.remove(byte_idx);
             }
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalDelete => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -201,18 +221,21 @@ async fn handle_action(
                 let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
                 state.sql_modal_content.remove(byte_idx);
             }
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalNewLine => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert(byte_idx, '\n');
             state.sql_modal_cursor += 1;
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalTab => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
             state.sql_modal_content.insert_str(byte_idx, "    ");
             state.sql_modal_cursor += 4;
+            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalMoveCursor(movement) => {
             use app::action::CursorMove;
@@ -274,8 +297,70 @@ async fn handle_action(
             let query = state.sql_modal_content.trim().to_string();
             if !query.is_empty() {
                 state.sql_modal_state = app::state::SqlModalState::Running;
+                state.completion.visible = false;
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
+        }
+
+        Action::CompletionTrigger => {
+            let cursor = state.sql_modal_cursor;
+            let engine = completion_engine.borrow();
+            let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
+            let recent_cols = state.completion.recent_columns_vec();
+            let candidates = engine.get_candidates(
+                &state.sql_modal_content,
+                cursor,
+                state.metadata.as_ref(),
+                state.table_detail.as_ref(),
+                &recent_cols,
+            );
+            state.completion.candidates = candidates;
+            state.completion.selected_index = 0;
+            state.completion.visible = !state.completion.candidates.is_empty();
+            state.completion.trigger_position = cursor.saturating_sub(token_len);
+        }
+        Action::CompletionUpdate(candidates) => {
+            state.completion.candidates = candidates;
+            state.completion.selected_index = 0;
+            state.completion.visible = !state.completion.candidates.is_empty();
+        }
+        Action::CompletionAccept => {
+            if state.completion.visible && !state.completion.candidates.is_empty() {
+                if let Some(candidate) = state
+                    .completion
+                    .candidates
+                    .get(state.completion.selected_index)
+                {
+                    let insert_text = candidate.text.clone();
+                    let trigger_pos = state.completion.trigger_position;
+
+                    let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
+                    let end_byte =
+                        char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                    state.sql_modal_content.drain(start_byte..end_byte);
+
+                    state.sql_modal_content.insert_str(start_byte, &insert_text);
+                    state.sql_modal_cursor = trigger_pos + insert_text.chars().count();
+                }
+                state.completion.visible = false;
+                state.completion.candidates.clear();
+                state.completion_debounce = None;
+            }
+        }
+        Action::CompletionDismiss => {
+            state.completion.visible = false;
+            state.completion_debounce = None;
+        }
+        Action::CompletionNext => {
+            if !state.completion.candidates.is_empty() {
+                let max = state.completion.candidates.len() - 1;
+                if state.completion.selected_index < max {
+                    state.completion.selected_index += 1;
+                }
+            }
+        }
+        Action::CompletionPrev => {
+            state.completion.selected_index = state.completion.selected_index.saturating_sub(1);
         }
 
         Action::EnterCommandLine => {
@@ -559,6 +644,10 @@ async fn handle_action(
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
             if generation == state.selection_generation {
+                // Cache for alias column completion
+                completion_engine
+                    .borrow_mut()
+                    .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
             }
         }
