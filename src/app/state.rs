@@ -158,6 +158,7 @@ pub struct AppState {
 
     // Query execution state
     pub query_state: QueryState,
+    pub query_start_time: Option<Instant>,
 
     // Last error for copy functionality
     pub last_error: Option<String>,
@@ -223,6 +224,7 @@ impl AppState {
             failed_prefetch_tables: HashMap::new(),
             // Query state
             query_state: QueryState::default(),
+            query_start_time: None,
             // Last error
             last_error: None,
             // Generation counter
