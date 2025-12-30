@@ -77,6 +77,22 @@ pub enum Action {
     TableDetailLoaded(Box<Table>, u64),
     TableDetailFailed(String, u64),
 
+    // Completion prefetch (does NOT update state.table_detail)
+    PrefetchTableDetail {
+        schema: String,
+        table: String,
+    },
+    TableDetailCached {
+        schema: String,
+        table: String,
+        detail: Box<Table>,
+    },
+    TableDetailCacheFailed {
+        schema: String,
+        table: String,
+        error: String,
+    },
+
     // Cache operations
     InvalidateCache,
 
