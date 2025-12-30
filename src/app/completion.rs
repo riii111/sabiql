@@ -214,13 +214,13 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                // Include columns only from SQL-referenced tables in cache
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
+                let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in &self.table_detail_cache {
-                    // Skip if same as selected table or not referenced in SQL
-                    if selected_qualified.as_ref() == Some(qualified_name)
-                        || !referenced_tables.contains(qualified_name)
-                    {
+                    if selected_qualified.as_ref() == Some(qualified_name) {
+                        continue;
+                    }
+                    if !use_all_cache && !referenced_tables.contains(qualified_name) {
                         continue;
                     }
                     let mut cached_columns = self.column_candidates_with_fk(
