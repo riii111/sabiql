@@ -167,6 +167,7 @@ pub enum Action {
     // ER Diagram
     SetErCenter(String),
     ErRecenter,
+    ErRefresh,
     ErToggleDepth,
     ErExportDot,
     ErExportDotAndOpen,

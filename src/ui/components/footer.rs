@@ -18,6 +18,12 @@ impl Footer {
                 Style::default().fg(Color::Red),
             )]);
             frame.render_widget(Paragraph::new(line), area);
+        } else if let Some(success) = &state.last_success {
+            let line = Line::from(vec![Span::styled(
+                success.clone(),
+                Style::default().fg(Color::Green),
+            )]);
+            frame.render_widget(Paragraph::new(line), area);
         } else {
             let hints = Self::get_context_hints(state);
             let line = Self::build_hint_line(&hints);
