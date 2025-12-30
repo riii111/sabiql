@@ -21,8 +21,7 @@ impl Mode {
     pub fn default_pane(self) -> FocusedPane {
         match self {
             Mode::Browse => FocusedPane::Explorer,
-            // TODO: Change to Graph once ER view is implemented
-            Mode::ER => FocusedPane::Explorer,
+            Mode::ER => FocusedPane::Graph,
         }
     }
 }
@@ -41,7 +40,7 @@ mod tests {
 
     #[rstest]
     #[case(Mode::Browse, FocusedPane::Explorer)]
-    #[case(Mode::ER, FocusedPane::Explorer)] // TODO: Change to Graph once ER view is implemented
+    #[case(Mode::ER, FocusedPane::Graph)]
     fn default_pane_returns_correct_pane(#[case] mode: Mode, #[case] expected: FocusedPane) {
         assert_eq!(mode.default_pane(), expected);
     }
