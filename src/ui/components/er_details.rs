@@ -61,7 +61,6 @@ impl ErDetails {
             Line::from(""),
         ];
 
-        // Outgoing FKs (this table references other tables)
         let outgoing = graph.outgoing_edges(&qualified_name);
         if !outgoing.is_empty() {
             lines.push(Line::from(Span::styled(
@@ -82,7 +81,6 @@ impl ErDetails {
             lines.push(Line::from(""));
         }
 
-        // Incoming FKs (other tables reference this table)
         let incoming = graph.incoming_edges(&qualified_name);
         if !incoming.is_empty() {
             lines.push(Line::from(Span::styled(

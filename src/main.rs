@@ -1130,13 +1130,11 @@ async fn handle_action(
             }
         }
 
-        // ER Mode Actions
         Action::SetErCenter(table) => {
             state.er_center_table = Some(table.clone());
             state.er_selected_node = 0;
             state.er_node_list_state.select(Some(0));
 
-            // Build graph from cached table details
             let engine = completion_engine.borrow();
             let table_details: Vec<_> = engine.table_details_iter().collect();
             let graph = GraphBuilder::build(&table, table_details.clone(), state.er_depth);
@@ -1160,7 +1158,6 @@ async fn handle_action(
         }
 
         Action::ErRecenter => {
-            // Recenter on currently selected node
             if let Some(graph) = &state.er_graph {
                 if let Some(node) = graph.nodes.get(state.er_selected_node) {
                     let new_center = node.qualified_name();
@@ -1170,10 +1167,8 @@ async fn handle_action(
         }
 
         Action::ErToggleDepth => {
-            // Toggle between 1 and 2 hops
             state.er_depth = if state.er_depth == 1 { 2 } else { 1 };
 
-            // Rebuild graph with new depth
             if let Some(center) = &state.er_center_table.clone() {
                 let engine = completion_engine.borrow();
                 let table_details: Vec<_> = engine.table_details_iter().collect();

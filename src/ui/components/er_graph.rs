@@ -37,7 +37,6 @@ impl ErGraph {
                 .nodes
                 .iter()
                 .map(|node| {
-                    // Indentation based on hop distance
                     let prefix = match node.hop_distance {
                         0 => "★ ",
                         1 => "├─ ",

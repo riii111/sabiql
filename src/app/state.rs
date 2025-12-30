@@ -183,7 +183,6 @@ pub struct AppState {
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
 
-    // ER Mode state
     pub er_center_table: Option<String>,
     pub er_selected_node: usize,
     pub er_graph: Option<NeighborhoodGraph>,
@@ -253,7 +252,6 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
-            // ER Mode
             er_center_table: None,
             er_selected_node: 0,
             er_graph: None,

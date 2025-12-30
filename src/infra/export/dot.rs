@@ -8,7 +8,6 @@ use crate::domain::NeighborhoodGraph;
 pub struct DotExporter;
 
 impl DotExporter {
-    /// Generate DOT syntax from a neighborhood graph
     pub fn generate_dot(graph: &NeighborhoodGraph) -> String {
         let mut dot = String::new();
 
@@ -18,7 +17,6 @@ impl DotExporter {
         dot.push_str("    edge [fontname=\"Helvetica\", fontsize=10];\n");
         dot.push('\n');
 
-        // Nodes with styling based on hop distance
         for node in &graph.nodes {
             let full_name = node.qualified_name();
             let color = if node.is_center() {
@@ -38,7 +36,6 @@ impl DotExporter {
 
         dot.push('\n');
 
-        // Edges with FK names (all edges drawn solid, direction is implicit in from->to)
         for edge in &graph.edges {
             dot.push_str(&format!(
                 "    \"{}\" -> \"{}\" [label=\"{}\"];\n",
@@ -60,13 +57,11 @@ impl DotExporter {
         Ok(dot_path)
     }
 
-    /// Export to DOT, convert to SVG, and open in default viewer
     pub fn export_and_open(graph: &NeighborhoodGraph, cache_dir: &Path) -> Result<PathBuf> {
         let dot_path = Self::export_to_file(graph, cache_dir)?;
 
         let svg_path = dot_path.with_extension("svg");
 
-        // Convert DOT to SVG using graphviz
         let status = Command::new("dot")
             .args(["-Tsvg", "-o"])
             .arg(&svg_path)
@@ -81,7 +76,6 @@ impl DotExporter {
             ));
         }
 
-        // Open SVG in default viewer
         #[cfg(target_os = "macos")]
         {
             Command::new("open").arg(&svg_path).spawn()?;

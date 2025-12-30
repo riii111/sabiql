@@ -1,11 +1,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusedPane {
-    // Browse mode panes
     #[default]
     Explorer,
     Inspector,
     Result,
-    // ER mode panes
     Graph,
     Details,
 }

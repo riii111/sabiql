@@ -47,11 +47,8 @@ pub struct GraphEdge {
     pub from_node: String,
     /// Target table (schema.table) - the table being referenced
     pub to_node: String,
-    /// FK constraint name
     pub fk_name: String,
-    /// Columns in the source table
     pub from_columns: Vec<String>,
-    /// Columns in the target table
     pub to_columns: Vec<String>,
 }
 
@@ -89,7 +86,6 @@ impl GraphEdge {
         }
     }
 
-    /// Returns the direction of this edge relative to a given table
     pub fn direction_from(&self, table: &str) -> EdgeDirection {
         if self.from_node == table {
             EdgeDirection::Outgoing
@@ -104,13 +100,9 @@ impl GraphEdge {
 /// Contains all tables within max_depth hops via FK relationships.
 #[derive(Debug, Clone, Default)]
 pub struct NeighborhoodGraph {
-    /// The center table (schema.table)
     pub center: String,
-    /// All nodes in the graph (including center)
     pub nodes: Vec<GraphNode>,
-    /// All edges (FK relationships) in the graph
     pub edges: Vec<GraphEdge>,
-    /// Maximum traversal depth (1 or 2)
     pub max_depth: u8,
 }
 
@@ -124,19 +116,16 @@ impl NeighborhoodGraph {
         }
     }
 
-    /// Find a node by qualified name
     pub fn get_node(&self, qualified_name: &str) -> Option<&GraphNode> {
         self.nodes
             .iter()
             .find(|n| n.qualified_name() == qualified_name)
     }
 
-    /// Get the center node
     pub fn center_node(&self) -> Option<&GraphNode> {
         self.nodes.iter().find(|n| n.is_center())
     }
 
-    /// Get edges connected to a specific node
     pub fn edges_for_node(&self, qualified_name: &str) -> Vec<&GraphEdge> {
         self.edges
             .iter()

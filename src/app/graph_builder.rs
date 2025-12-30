@@ -36,7 +36,6 @@ impl GraphBuilder {
             }
             visited.insert(current.clone());
 
-            // Add node
             if let Some((schema, table)) = Self::split_qualified_name(&current) {
                 graph
                     .nodes
@@ -64,7 +63,6 @@ impl GraphBuilder {
                             graph.edges.push(edge);
                         }
 
-                        // Queue target for traversal
                         if !visited.contains(&target) && depth < max_depth {
                             queue.push_back((target, depth + 1));
                         }
@@ -95,7 +93,6 @@ impl GraphBuilder {
                             graph.edges.push(edge);
                         }
 
-                        // Queue source table for traversal
                         if depth < max_depth {
                             queue.push_back((qualified_name.clone(), depth + 1));
                         }
