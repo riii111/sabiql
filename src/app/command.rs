@@ -8,8 +8,7 @@ pub enum Command {
     Help,
     Sql,
     OpenConsole,
-    ErdExport,
-    ErdExportAndOpen,
+    Erd,
     Unknown(String),
 }
 
@@ -20,8 +19,7 @@ pub fn parse_command(input: &str) -> Command {
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
         "open-console" | "console" => Command::OpenConsole,
-        "erd" => Command::ErdExport,
-        "erd!" => Command::ErdExportAndOpen,
+        "erd" => Command::Erd,
         other => Command::Unknown(other.to_string()),
     }
 }
@@ -33,8 +31,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
         Command::OpenConsole => Action::OpenConsole,
-        Command::ErdExport => Action::ErExportDot,
-        Command::ErdExportAndOpen => Action::ErExportDotAndOpen,
+        Command::Erd => Action::ErOpenDiagram,
         Command::Unknown(_) => Action::None,
     }
 }
@@ -83,17 +80,10 @@ mod tests {
         }
 
         #[test]
-        fn erd_returns_erd_export() {
+        fn erd_returns_erd() {
             let result = parse_command("erd");
 
-            assert_eq!(result, Command::ErdExport);
-        }
-
-        #[test]
-        fn erd_bang_returns_erd_export_and_open() {
-            let result = parse_command("erd!");
-
-            assert_eq!(result, Command::ErdExportAndOpen);
+            assert_eq!(result, Command::Erd);
         }
 
         #[test]
@@ -150,17 +140,10 @@ mod tests {
         }
 
         #[test]
-        fn erd_export_returns_er_export_dot_action() {
-            let result = command_to_action(Command::ErdExport);
+        fn erd_returns_er_open_diagram_action() {
+            let result = command_to_action(Command::Erd);
 
-            assert!(matches!(result, Action::ErExportDot));
-        }
-
-        #[test]
-        fn erd_export_and_open_returns_er_export_dot_and_open_action() {
-            let result = command_to_action(Command::ErdExportAndOpen);
-
-            assert!(matches!(result, Action::ErExportDotAndOpen));
+            assert!(matches!(result, Action::ErOpenDiagram));
         }
 
         #[test]

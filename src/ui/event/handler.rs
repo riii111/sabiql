@@ -170,6 +170,7 @@ fn handle_er_mode_keys(key: KeyEvent, _state: &AppState) -> Action {
         KeyCode::Char('?') => Action::OpenHelp,
         KeyCode::Char(':') => Action::EnterCommandLine,
         KeyCode::Char('r') => Action::ErRefresh,
+        KeyCode::Char('e') => Action::ErOpenDiagram,
         KeyCode::Esc => Action::PreviousTab,
         KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
         KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,

@@ -49,7 +49,7 @@ impl Footer {
                         ("j/k", "Navigate"),
                         ("⏎", "Recenter"),
                         ("d", "Depth"),
-                        (":erd", "Export"),
+                        ("e", "View"),
                     ]
                 } else {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];

@@ -169,10 +169,9 @@ pub enum Action {
     ErRecenter,
     ErRefresh,
     ErToggleDepth,
-    ErExportDot,
-    ErExportDotAndOpen,
-    ErExportCompleted(String),
-    ErExportFailed(String),
+    ErOpenDiagram,
+    ErDiagramOpened(String),
+    ErDiagramFailed(String),
 }
 
 impl Action {
