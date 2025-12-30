@@ -115,20 +115,17 @@ impl CompletionEngine {
         self.table_detail_cache.insert(qualified_name, table);
     }
 
-    /// Check if a table is already cached
     pub fn has_cached_table(&self, qualified_name: &str) -> bool {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
-    /// Returns qualified table names that are referenced in SQL but not cached (max 10)
+    /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(&self, content: &str, metadata: Option<&DatabaseMetadata>) -> Vec<String> {
         const MAX_MISSING_TABLES: usize = 10;
 
-        // Parse SQL to get table references
         let tokens = self.lexer.tokenize(content, content.len(), None);
         let sql_context = self.lexer.build_context(&tokens, content.len());
 
-        // Collect CTE names to exclude
         let cte_names: std::collections::HashSet<String> = sql_context
             .ctes
             .iter()
@@ -139,14 +136,12 @@ impl CompletionEngine {
         let mut seen = std::collections::HashSet::new();
 
         for table_ref in &sql_context.tables {
-            // Skip CTEs
             if cte_names.contains(&table_ref.table.to_lowercase()) {
                 continue;
             }
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            // Skip if already seen or cached
             if seen.contains(&qualified_name) || self.table_detail_cache.contains_key(&qualified_name)
             {
                 continue;
@@ -1828,6 +1823,182 @@ mod tests {
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
+        }
+    }
+
+    mod missing_tables {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        #[test]
+        fn empty_sql_returns_empty() {
+            let e = engine();
+
+            let missing = e.missing_tables("", None);
+
+            assert!(missing.is_empty());
+        }
+
+        #[test]
+        fn simple_from_returns_table() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables("SELECT * FROM users", Some(&metadata));
+
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn schema_qualified_table_returns_qualified_name() {
+            let e = engine();
+
+            let missing = e.missing_tables("SELECT * FROM public.orders", None);
+
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.orders");
+        }
+
+        #[test]
+        fn multiple_tables_returns_all() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let missing =
+                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+
+            assert_eq!(missing.len(), 2);
+            assert!(missing.contains(&"public.users".to_string()));
+            assert!(missing.contains(&"public.orders".to_string()));
+        }
+
+        #[test]
+        fn cached_tables_are_excluded() {
+            let mut e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![Column {
+                    name: "id".to_string(),
+                    data_type: "int".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+            e.cache_table_detail("public.users".to_string(), table);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let missing =
+                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+
+            // users is cached, so only orders should be missing
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.orders");
+        }
+
+        #[test]
+        fn cte_tables_are_excluded() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables(
+                "WITH recent AS (SELECT * FROM users) SELECT * FROM recent",
+                Some(&metadata),
+            );
+
+            // "recent" is CTE, so only "users" should be returned
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn duplicate_tables_are_deduplicated() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables(
+                "SELECT * FROM users u1 JOIN users u2 ON u1.id = u2.id",
+                Some(&metadata),
+            );
+
+            // users appears twice but should be deduplicated
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn max_limit_is_respected() {
+            let e = engine();
+
+            // Use schema-qualified tables to avoid metadata lookup issues
+            // Build SQL with 15 JOINs to ensure parser recognizes all tables
+            let joins = (1..15)
+                .map(|i| format!("JOIN public.table_{} t{} ON t0.id = t{}.id", i, i, i))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let sql = format!("SELECT * FROM public.table_0 t0 {}", joins);
+            let missing = e.missing_tables(&sql, None);
+
+            // MAX_MISSING_TABLES = 10, so even with 15 tables, only 10 should be returned
+            assert_eq!(missing.len(), 10);
+        }
+
+        #[test]
+        fn has_cached_table_returns_true_for_cached() {
+            let mut e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+            e.cache_table_detail("public.users".to_string(), table);
+
+            assert!(e.has_cached_table("public.users"));
+            assert!(!e.has_cached_table("public.orders"));
         }
     }
 

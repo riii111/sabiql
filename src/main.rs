@@ -305,14 +305,13 @@ async fn handle_action(
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
 
-            // Detect missing tables and trigger prefetch (scoped borrow)
+            // Scoped borrow to release before async operations
             let missing = {
                 let engine = completion_engine.borrow();
                 engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
             };
 
             for qualified_name in missing {
-                // Parse schema.table from qualified name
                 if let Some((schema, table)) = qualified_name.split_once('.') {
                     let _ = action_tx
                         .send(Action::PrefetchTableDetail {
@@ -323,7 +322,6 @@ async fn handle_action(
                 }
             }
 
-            // Get completion candidates
             let engine = completion_engine.borrow();
             let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
             let recent_cols = state.completion.recent_columns_vec();
@@ -682,11 +680,14 @@ async fn handle_action(
         Action::PrefetchTableDetail { schema, table } => {
             let qualified_name = format!("{}.{}", schema, table);
 
-            // Skip if already prefetching or cached
+            // Why 2-stage duplicate check (here + missing_tables)?
+            // - missing_tables() filters cached tables to reduce Action sends
+            // - This handler guards against race conditions when multiple
+            //   CompletionTrigger events fire rapidly before first prefetch completes
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
             {
-                // Already in progress or cached, skip
+                // skip
             } else if let Some(dsn) = &state.dsn {
                 state.prefetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
@@ -731,7 +732,6 @@ async fn handle_action(
                 .borrow_mut()
                 .cache_table_detail(qualified_name, (*detail).clone());
 
-            // Clear debounce and trigger completion update if SQL modal is open
             if state.input_mode == InputMode::SqlModal {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
