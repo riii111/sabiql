@@ -75,7 +75,10 @@ impl DotExporter {
             .map_err(|e| eyre!("Failed to run 'dot' command: {}. Is Graphviz installed?", e))?;
 
         if !status.success() {
-            return Err(eyre!("dot command failed with exit code: {:?}", status.code()));
+            return Err(eyre!(
+                "dot command failed with exit code: {:?}",
+                status.code()
+            ));
         }
 
         // Open SVG in default viewer
@@ -89,7 +92,10 @@ impl DotExporter {
         }
         #[cfg(target_os = "windows")]
         {
-            Command::new("cmd").args(["/C", "start"]).arg(&svg_path).spawn()?;
+            Command::new("cmd")
+                .args(["/C", "start"])
+                .arg(&svg_path)
+                .spawn()?;
         }
 
         Ok(svg_path)

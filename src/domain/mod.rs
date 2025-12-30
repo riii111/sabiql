@@ -13,7 +13,7 @@ pub mod table;
 
 pub use column::Column;
 pub use foreign_key::{FkAction, ForeignKey};
-pub use graph::{EdgeDirection, GraphEdge, GraphNode, NeighborhoodGraph};
+pub use graph::{GraphEdge, GraphNode, NeighborhoodGraph};
 pub use index::{Index, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
 pub use query_result::{QueryResult, QuerySource};

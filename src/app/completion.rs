@@ -119,6 +119,11 @@ impl CompletionEngine {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
+    /// Returns an iterator over cached table details for graph building
+    pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
+        self.table_detail_cache.iter()
+    }
+
     /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(
         &self,

@@ -67,12 +67,15 @@ impl ErGraph {
                 )
                 .highlight_symbol("> ");
 
-            state.er_node_list_state.select(Some(state.er_selected_node));
+            state
+                .er_node_list_state
+                .select(Some(state.er_selected_node));
             frame.render_stateful_widget(list, area, &mut state.er_node_list_state);
         } else {
-            let content = Paragraph::new("Switch to Browse tab and select a table, then return to ER tab.")
-                .block(block)
-                .style(Style::default().fg(Color::DarkGray));
+            let content =
+                Paragraph::new("Switch to Browse tab and select a table, then return to ER tab.")
+                    .block(block)
+                    .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(content, area);
         }
     }
