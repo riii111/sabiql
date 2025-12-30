@@ -141,10 +141,24 @@ async fn handle_action(
             state.terminal_height = h;
         }
         Action::NextTab => {
+            let was_browse = state.mode == Mode::Browse;
             state.change_tab(true);
+            if was_browse && state.mode == Mode::ER {
+                if let Some(table) = state.tables().get(state.explorer_selected) {
+                    let center = table.qualified_name();
+                    let _ = action_tx.send(Action::SetErCenter(center)).await;
+                }
+            }
         }
         Action::PreviousTab => {
+            let was_browse = state.mode == Mode::Browse;
             state.change_tab(false);
+            if was_browse && state.mode == Mode::ER {
+                if let Some(table) = state.tables().get(state.explorer_selected) {
+                    let center = table.qualified_name();
+                    let _ = action_tx.send(Action::SetErCenter(center)).await;
+                }
+            }
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
         Action::ToggleFocus => {
@@ -436,6 +450,9 @@ async fn handle_action(
                 Action::OpenConsole => {
                     let _ = action_tx.send(Action::OpenConsole).await;
                 }
+                Action::ErExportDot | Action::ErExportDotAndOpen => {
+                    let _ = action_tx.send(follow_up).await;
+                }
                 _ => {}
             }
         }
@@ -467,7 +484,16 @@ async fn handle_action(
                 }
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.mode == Mode::ER
+                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
+                {
+                    if let Some(graph) = &state.er_graph {
+                        let max = graph.nodes.len().saturating_sub(1);
+                        if state.er_selected_node < max {
+                            state.er_selected_node += 1;
+                        }
+                    }
+                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     let max = state.tables().len().saturating_sub(1);
                     if state.explorer_selected < max {
                         state.explorer_selected += 1;
@@ -481,7 +507,11 @@ async fn handle_action(
                 state.picker_selected = state.picker_selected.saturating_sub(1);
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.mode == Mode::ER
+                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
+                {
+                    state.er_selected_node = state.er_selected_node.saturating_sub(1);
+                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = state.explorer_selected.saturating_sub(1);
                 }
             }
@@ -492,7 +522,11 @@ async fn handle_action(
                 state.picker_selected = 0;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.mode == Mode::ER
+                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
+                {
+                    state.er_selected_node = 0;
+                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = 0;
                 }
             }
@@ -507,7 +541,13 @@ async fn handle_action(
                 state.picker_selected = palette_command_count() - 1;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.mode == Mode::ER
+                    && state.focused_pane == app::focused_pane::FocusedPane::Graph
+                {
+                    if let Some(graph) = &state.er_graph {
+                        state.er_selected_node = graph.nodes.len().saturating_sub(1);
+                    }
+                } else if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     state.explorer_selected = state.tables().len().saturating_sub(1);
                 }
             }
