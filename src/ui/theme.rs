@@ -20,7 +20,7 @@ impl Theme {
     pub const MODAL_BG: Color = Palette::DUCKBONES;
 
     // Scrim (dimmed background behind modals)
-    pub const SCRIM_BG: Color = Color::Rgb(0x0a, 0x0a, 0x0f);
+    pub const SCRIM_BG: Color = Color::Rgb(0x10, 0x10, 0x18);
 
     // Modal border
     pub const MODAL_BORDER: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
