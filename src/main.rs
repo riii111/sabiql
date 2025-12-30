@@ -130,6 +130,11 @@ async fn handle_action(
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
+    // Clear error on user actions (not on Render/Resize)
+    if !matches!(action, Action::Render | Action::Resize(_, _)) {
+        state.last_error = None;
+    }
+
     match action {
         Action::Quit => state.should_quit = true,
         Action::Render => {

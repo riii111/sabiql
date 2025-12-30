@@ -12,9 +12,17 @@ pub struct Footer;
 
 impl Footer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-        let hints = Self::get_context_hints(state);
-        let line = Self::build_hint_line(&hints);
-        frame.render_widget(Paragraph::new(line), area);
+        if let Some(error) = &state.last_error {
+            let line = Line::from(vec![Span::styled(
+                error.clone(),
+                Style::default().fg(Color::Red),
+            )]);
+            frame.render_widget(Paragraph::new(line), area);
+        } else {
+            let hints = Self::get_context_hints(state);
+            let line = Self::build_hint_line(&hints);
+            frame.render_widget(Paragraph::new(line), area);
+        }
     }
 
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
