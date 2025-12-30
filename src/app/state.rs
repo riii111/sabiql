@@ -128,9 +128,10 @@ pub struct AppState {
     pub query_state: QueryState,
     pub query_start_time: Option<Instant>,
 
-    // Status messages (shown in footer)
+    // Status messages (shown in footer, auto-clear after timeout)
     pub last_error: Option<String>,
     pub last_success: Option<String>,
+    pub message_expires_at: Option<Instant>,
 
     // Generation counter for race condition prevention
     pub selection_generation: u64,
@@ -196,6 +197,7 @@ impl AppState {
             // Status messages
             last_error: None,
             last_success: None,
+            message_expires_at: None,
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
@@ -205,6 +207,32 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
+        }
+    }
+
+    const MESSAGE_TIMEOUT_SECS: u64 = 3;
+
+    pub fn set_error(&mut self, msg: String) {
+        self.last_error = Some(msg);
+        self.last_success = None;
+        self.message_expires_at =
+            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+    }
+
+    pub fn set_success(&mut self, msg: String) {
+        self.last_success = Some(msg);
+        self.last_error = None;
+        self.message_expires_at =
+            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+    }
+
+    pub fn clear_expired_messages(&mut self) {
+        if let Some(expires) = self.message_expires_at {
+            if expires <= Instant::now() {
+                self.last_error = None;
+                self.last_success = None;
+                self.message_expires_at = None;
+            }
         }
     }
 

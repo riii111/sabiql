@@ -127,15 +127,10 @@ async fn handle_action(
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
-    // Clear messages on user actions (not on Render/Resize)
-    if !matches!(action, Action::Render | Action::Resize(_, _)) {
-        state.last_error = None;
-        state.last_success = None;
-    }
-
     match action {
         Action::Quit => state.should_quit = true,
         Action::Render => {
+            state.clear_expired_messages();
             tui.terminal()
                 .draw(|frame| MainLayout::render(frame, state))?;
         }
@@ -687,7 +682,7 @@ async fn handle_action(
         Action::TableDetailFailed(error, generation) => {
             // Ignore stale errors from previous table selections
             if generation == state.selection_generation {
-                state.last_error = Some(error);
+                state.set_error(error);
             }
         }
 
@@ -909,7 +904,7 @@ async fn handle_action(
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
                 state.query_start_time = None;
-                state.last_error = Some(error.clone());
+                state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
                     state.sql_modal_state = app::state::SqlModalState::Error;
@@ -1015,23 +1010,23 @@ async fn handle_action(
 
                 match status {
                     Err(e) => {
-                        state.last_error = Some(format!("pgcli task failed: {}", e));
+                        state.set_error(format!("pgcli task failed: {}", e));
                     }
                     Ok(Err(e)) => {
-                        state.last_error = Some(format!("pgcli failed to start: {}", e));
+                        state.set_error(format!("pgcli failed to start: {}", e));
                     }
                     Ok(Ok(exit_status)) if !exit_status.success() => {
                         let code = exit_status
                             .code()
                             .map_or("unknown".to_string(), |c| c.to_string());
-                        state.last_error = Some(format!("pgcli exited with code {}", code));
+                        state.set_error(format!("pgcli exited with code {}", code));
                     }
                     Ok(Ok(_)) => {}
                 }
 
                 let _ = action_tx.send(Action::Render).await;
             } else {
-                state.last_error = Some("No DSN configured".to_string());
+                state.set_error("No DSN configured".to_string());
             }
         }
 
@@ -1071,16 +1066,16 @@ async fn handle_action(
                     }
                 });
             } else {
-                state.last_error = Some("No table data loaded yet".to_string());
+                state.set_error("No table data loaded yet".to_string());
             }
         }
 
         Action::ErDiagramOpened { path, table_count } => {
-            state.last_success = Some(format!("✓ Opened {} ({} tables)", path, table_count));
+            state.set_success(format!("✓ Opened {} ({} tables)", path, table_count));
         }
 
         Action::ErDiagramFailed(error) => {
-            state.last_error = Some(error);
+            state.set_error(error);
         }
 
         _ => {}
