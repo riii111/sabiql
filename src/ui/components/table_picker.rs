@@ -2,12 +2,12 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Clear, List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::centered_rect;
+use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
 
 pub struct TablePicker;
 
@@ -19,54 +19,45 @@ impl TablePicker {
             Constraint::Percentage(70),
         );
 
+        render_scrim(frame);
         frame.render_widget(Clear, area);
 
-        let block = Block::default()
-            .title(" Table Picker (Ctrl+P) ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
-
+        let filtered = state.filtered_tables();
+        let block = modal_block_with_hint(
+            " Table Picker ".to_string(),
+            format!(" {} tables │ ↑↓ Navigate │ Enter Select ", filtered.len()),
+        );
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         let [filter_area, list_area] =
-            Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(inner);
-
-        let filter_block = Block::default()
-            .title(" Filter ")
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
 
         let filter_line = Line::from(vec![
-            Span::styled("> ", Style::default().fg(Color::Yellow)),
+            Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
             Span::raw(&state.filter_input),
-            Span::styled("█", Style::default().add_modifier(Modifier::SLOW_BLINK)),
+            Span::styled("█", Style::default().fg(Color::White).add_modifier(Modifier::SLOW_BLINK)),
         ]);
 
-        let filter_widget = Paragraph::new(filter_line).block(filter_block);
+        let filter_widget = Paragraph::new(filter_line);
         frame.render_widget(filter_widget, filter_area);
-
-        let filtered = state.filtered_tables();
 
         let items: Vec<ListItem> = filtered
             .iter()
-            .map(|t| ListItem::new(t.qualified_name()))
+            .map(|t| {
+                let content = format!("  {}", t.qualified_name());
+                ListItem::new(content).style(Style::default().fg(Color::Gray))
+            })
             .collect();
 
-        let list_block = Block::default()
-            .title(format!(" Tables ({}) ", filtered.len()))
-            .borders(Borders::ALL)
-            .style(Style::default().bg(Theme::MODAL_BG));
-
         let list = List::new(items)
-            .block(list_block)
             .highlight_style(
                 Style::default()
-                    .bg(Color::Blue)
+                    .bg(Theme::COMPLETION_SELECTED_BG)
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol("> ");
+            .highlight_symbol("▸ ");
 
         if !filtered.is_empty() {
             state.picker_list_state.select(Some(state.picker_selected));

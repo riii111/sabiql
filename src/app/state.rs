@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::time::Instant;
 
 use ratatui::widgets::ListState;
@@ -150,8 +150,12 @@ pub struct AppState {
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
 
+    // Tables currently being prefetched for completion (schema.table)
+    pub prefetching_tables: HashSet<String>,
+
     // Query execution state
     pub query_state: QueryState,
+    pub query_start_time: Option<Instant>,
 
     // Last error for copy functionality
     pub last_error: Option<String>,
@@ -213,8 +217,10 @@ impl AppState {
             sql_modal_state: SqlModalState::default(),
             completion: CompletionState::default(),
             completion_debounce: None,
+            prefetching_tables: HashSet::new(),
             // Query state
             query_state: QueryState::default(),
+            query_start_time: None,
             // Last error
             last_error: None,
             // Generation counter

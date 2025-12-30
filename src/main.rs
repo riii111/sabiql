@@ -304,6 +304,26 @@ async fn handle_action(
 
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
+
+            // Detect missing tables and trigger prefetch (scoped borrow)
+            let missing = {
+                let engine = completion_engine.borrow();
+                engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
+            };
+
+            for qualified_name in missing {
+                // Parse schema.table from qualified name
+                if let Some((schema, table)) = qualified_name.split_once('.') {
+                    let _ = action_tx
+                        .send(Action::PrefetchTableDetail {
+                            schema: schema.to_string(),
+                            table: table.to_string(),
+                        })
+                        .await;
+                }
+            }
+
+            // Get completion candidates
             let engine = completion_engine.borrow();
             let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
             let recent_cols = state.completion.recent_columns_vec();
@@ -659,6 +679,75 @@ async fn handle_action(
             }
         }
 
+        Action::PrefetchTableDetail { schema, table } => {
+            let qualified_name = format!("{}.{}", schema, table);
+
+            // Skip if already prefetching or cached
+            if state.prefetching_tables.contains(&qualified_name)
+                || completion_engine.borrow().has_cached_table(&qualified_name)
+            {
+                // Already in progress or cached, skip
+            } else if let Some(dsn) = &state.dsn {
+                state.prefetching_tables.insert(qualified_name);
+                let dsn = dsn.clone();
+                let schema = schema.clone();
+                let table = table.clone();
+                let provider = Arc::clone(metadata_provider);
+                let tx = action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx
+                                .send(Action::TableDetailCached {
+                                    schema,
+                                    table,
+                                    detail: Box::new(detail),
+                                })
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::TableDetailCacheFailed {
+                                    schema,
+                                    table,
+                                    error: e.to_string(),
+                                })
+                                .await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::TableDetailCached {
+            schema,
+            table,
+            detail,
+        } => {
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            completion_engine
+                .borrow_mut()
+                .cache_table_detail(qualified_name, (*detail).clone());
+
+            // Clear debounce and trigger completion update if SQL modal is open
+            if state.input_mode == InputMode::SqlModal {
+                state.completion_debounce = None;
+                let _ = action_tx.send(Action::CompletionTrigger).await;
+            }
+        }
+
+        Action::TableDetailCacheFailed {
+            schema,
+            table,
+            error: _,
+        } => {
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            // No UI error display, just log (logging not implemented yet)
+        }
+
         Action::ExecutePreview {
             schema,
             table,
@@ -666,6 +755,7 @@ async fn handle_action(
         } => {
             if let Some(dsn) = &state.dsn {
                 state.query_state = QueryState::Running;
+                state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -702,6 +792,7 @@ async fn handle_action(
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.dsn {
                 state.query_state = QueryState::Running;
+                state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -726,6 +817,7 @@ async fn handle_action(
             // For Adhoc (generation 0), always show results
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
+                state.query_start_time = None;
                 state.result_scroll_offset = 0;
                 state.result_horizontal_offset = 0;
                 state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
@@ -753,6 +845,7 @@ async fn handle_action(
             // For Adhoc (generation 0), always show errors
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
+                state.query_start_time = None;
                 state.last_error = Some(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
