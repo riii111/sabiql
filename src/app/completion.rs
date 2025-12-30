@@ -2495,4 +2495,91 @@ mod tests {
             assert!(name_candidate.unwrap().score < 200);
         }
     }
+
+    mod all_cache_columns {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| Column {
+                        name: c.to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: (i + 1) as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn no_from_with_2char_prefix_returns_all_cached_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name", "email"]);
+            let orders = create_table("public", "orders", &["id", "user_id", "total"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let metadata = DatabaseMetadata::new("test".to_string());
+
+            let candidates = e.get_candidates("SELECT na", 9, Some(&metadata), None, &[]);
+
+            let name_candidate = candidates.iter().find(|c| c.text == "name");
+            assert!(name_candidate.is_some());
+        }
+
+        #[test]
+        fn no_from_with_1char_prefix_returns_no_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+            let orders = create_table("public", "orders", &["order_id", "user_id"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let metadata = DatabaseMetadata::new("test".to_string());
+
+            let candidates = e.get_candidates("SELECT n", 8, Some(&metadata), None, &[]);
+
+            let column_count = candidates
+                .iter()
+                .filter(|c| c.kind == CompletionKind::Column)
+                .count();
+            assert_eq!(column_count, 0);
+        }
+
+        #[test]
+        fn from_clause_present_returns_only_referenced_table_columns() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+            let orders = create_table("public", "orders", &["order_id", "user_id"]);
+            e.cache_table_detail("public.users".to_string(), users);
+            e.cache_table_detail("public.orders".to_string(), orders);
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let candidates =
+                e.get_candidates("SELECT na FROM users", 9, Some(&metadata), None, &[]);
+
+            let name = candidates.iter().find(|c| c.text == "name");
+            let user_id = candidates.iter().find(|c| c.text == "user_id");
+            assert!(name.is_some());
+            assert!(user_id.is_none());
+        }
+    }
 }
