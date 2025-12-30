@@ -689,9 +689,7 @@ async fn handle_action(
                 .unwrap_or(false);
 
             // Why 2-stage duplicate check (here + missing_tables)?
-            // - missing_tables() filters cached tables to reduce Action sends
-            // - This handler guards against race conditions when multiple
-            //   CompletionTrigger events fire rapidly before first prefetch completes
+            // Skip if already prefetching, cached, or recently failed (race condition guard)
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed

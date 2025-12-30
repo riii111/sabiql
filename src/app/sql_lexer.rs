@@ -167,6 +167,7 @@ const SQL_KEYWORDS: &[&str] = &[
     "UPDATE",
     "SET",
     "DELETE",
+    "ONLY",
     "CREATE",
     "DROP",
     "ALTER",
@@ -595,13 +596,21 @@ impl SqlLexer {
 
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
-                    // FROM or JOIN keywords
                     "FROM" | "JOIN" => {
                         in_for_clause = false;
                         prev_keyword = Some(kw.as_str());
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
+                        }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
@@ -646,6 +655,15 @@ impl SqlLexer {
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
                         }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
                             continue;
@@ -656,6 +674,15 @@ impl SqlLexer {
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
+                        }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
@@ -893,7 +920,9 @@ impl SqlLexer {
 
             match &token.kind {
                 TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
-                TokenKind::Punctuation(p) if *p == ')' => paren_depth = paren_depth.saturating_sub(1),
+                TokenKind::Punctuation(p) if *p == ')' => {
+                    paren_depth = paren_depth.saturating_sub(1)
+                }
                 // Reset state on statement terminator
                 TokenKind::Punctuation(p) if *p == ';' => {
                     in_for_clause = false;
@@ -915,6 +944,15 @@ impl SqlLexer {
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
                             return self.parse_table_reference(tokens, &mut i);
                         }
                         "DELETE" => {
@@ -931,6 +969,15 @@ impl SqlLexer {
                                     i += 1;
                                 }
                             }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
                             return self.parse_table_reference(tokens, &mut i);
                         }
                         "INSERT" => {
@@ -941,6 +988,15 @@ impl SqlLexer {
                             // Skip INTO if present
                             if i < tokens.len()
                                 && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
                             {
                                 i += 1;
                                 while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -1687,5 +1743,88 @@ mod tests {
             assert_eq!(refs[1].table, "orders");
         }
 
+        #[test]
+        fn update_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "UPDATE ONLY users SET name = 'foo'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn update_only_target_table() {
+            let l = lexer();
+            let sql = "UPDATE ONLY users SET name = 'foo'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn delete_from_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "DELETE FROM ONLY orders WHERE id = 1";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "orders");
+        }
+
+        #[test]
+        fn delete_from_only_target_table() {
+            let l = lexer();
+            let sql = "DELETE FROM ONLY orders WHERE id = 1";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn insert_into_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "posts");
+        }
+
+        #[test]
+        fn insert_into_only_target_table() {
+            let l = lexer();
+            let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "posts");
+        }
+
+        #[test]
+        fn select_from_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "SELECT * FROM ONLY users WHERE active = true";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
     }
 }
