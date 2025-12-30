@@ -22,7 +22,6 @@ pub enum SqlModalState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum CompletionKind {
     Keyword,
     Schema,
@@ -31,7 +30,6 @@ pub enum CompletionKind {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CompletionCandidate {
     pub text: String,
     pub kind: CompletionKind,
@@ -43,7 +41,6 @@ const RECENT_TABLES_MAX: usize = 10;
 const RECENT_COLUMNS_MAX: usize = 20;
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct CompletionState {
     pub visible: bool,
     pub candidates: Vec<CompletionCandidate>,
@@ -55,30 +52,7 @@ pub struct CompletionState {
 }
 
 impl CompletionState {
-    /// Record a table as recently used
-    #[allow(dead_code)]
-    pub fn record_table(&mut self, table: String) {
-        // Remove if already exists (to move to front)
-        self.recent_tables.retain(|t| t != &table);
-        self.recent_tables.push_front(table);
-        if self.recent_tables.len() > RECENT_TABLES_MAX {
-            self.recent_tables.pop_back();
-        }
-    }
-
-    /// Record a column as recently used
-    #[allow(dead_code)]
-    pub fn record_column(&mut self, column: String) {
-        // Remove if already exists (to move to front)
-        self.recent_columns.retain(|c| c != &column);
-        self.recent_columns.push_front(column);
-        if self.recent_columns.len() > RECENT_COLUMNS_MAX {
-            self.recent_columns.pop_back();
-        }
-    }
-
     /// Get recent columns as a Vec for completion scoring
-    #[allow(dead_code)]
     pub fn recent_columns_vec(&self) -> Vec<String> {
         self.recent_columns.iter().cloned().collect()
     }
@@ -91,7 +65,6 @@ pub enum QueryState {
     Running,
 }
 
-#[allow(dead_code)]
 pub struct AppState {
     pub mode: Mode,
     pub should_quit: bool,
@@ -273,11 +246,6 @@ impl AppState {
             .into_iter()
             .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
-    }
-
-    #[allow(dead_code)]
-    pub fn can_enter_focus(&self) -> bool {
-        !self.focus_mode
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -475,106 +443,6 @@ mod tests {
         assert!(result);
         assert!(!state.focus_mode);
         assert_eq!(state.focused_pane, FocusedPane::Inspector);
-    }
-
-    #[test]
-    fn can_enter_focus_true_when_not_in_focus() {
-        let state = AppState::new("test".to_string(), "default".to_string());
-
-        assert!(state.can_enter_focus());
-    }
-
-    #[test]
-    fn can_enter_focus_false_when_already_in_focus() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.toggle_focus();
-
-        assert!(!state.can_enter_focus());
-    }
-
-    // CompletionState recent tracking tests
-
-    #[test]
-    fn record_table_adds_to_recent() {
-        let mut cs = CompletionState::default();
-
-        cs.record_table("users".to_string());
-
-        assert_eq!(cs.recent_tables.len(), 1);
-        assert_eq!(cs.recent_tables[0], "users");
-    }
-
-    #[test]
-    fn record_table_moves_existing_to_front() {
-        let mut cs = CompletionState::default();
-        cs.record_table("users".to_string());
-        cs.record_table("orders".to_string());
-
-        cs.record_table("users".to_string());
-
-        assert_eq!(cs.recent_tables.len(), 2);
-        assert_eq!(cs.recent_tables[0], "users");
-        assert_eq!(cs.recent_tables[1], "orders");
-    }
-
-    #[test]
-    fn record_table_limits_to_max_size() {
-        let mut cs = CompletionState::default();
-
-        for i in 0..15 {
-            cs.record_table(format!("table_{}", i));
-        }
-
-        assert_eq!(cs.recent_tables.len(), RECENT_TABLES_MAX);
-        assert_eq!(cs.recent_tables[0], "table_14");
-    }
-
-    #[test]
-    fn record_column_adds_to_recent() {
-        let mut cs = CompletionState::default();
-
-        cs.record_column("id".to_string());
-
-        assert_eq!(cs.recent_columns.len(), 1);
-        assert_eq!(cs.recent_columns[0], "id");
-    }
-
-    #[test]
-    fn record_column_moves_existing_to_front() {
-        let mut cs = CompletionState::default();
-        cs.record_column("id".to_string());
-        cs.record_column("name".to_string());
-
-        cs.record_column("id".to_string());
-
-        assert_eq!(cs.recent_columns.len(), 2);
-        assert_eq!(cs.recent_columns[0], "id");
-        assert_eq!(cs.recent_columns[1], "name");
-    }
-
-    #[test]
-    fn record_column_limits_to_max_size() {
-        let mut cs = CompletionState::default();
-
-        for i in 0..25 {
-            cs.record_column(format!("col_{}", i));
-        }
-
-        assert_eq!(cs.recent_columns.len(), RECENT_COLUMNS_MAX);
-        assert_eq!(cs.recent_columns[0], "col_24");
-    }
-
-    #[test]
-    fn recent_columns_vec_returns_vec() {
-        let mut cs = CompletionState::default();
-        cs.record_column("id".to_string());
-        cs.record_column("name".to_string());
-
-        let vec = cs.recent_columns_vec();
-
-        assert_eq!(vec.len(), 2);
-        assert_eq!(vec[0], "name");
-        assert_eq!(vec[1], "id");
     }
 
     // Prefetch state tests

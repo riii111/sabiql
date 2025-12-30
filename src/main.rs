@@ -1134,16 +1134,16 @@ async fn handle_action(
         Action::ErOpenDiagram => {
             let (dot_content, table_count) = {
                 let engine = completion_engine.borrow();
-                let iter = engine.table_details_iter();
-                let count = iter.len();
+                let tables: Vec<_> = engine.table_details_iter().collect();
+                let count = tables.len();
                 if count == 0 {
                     (None, 0)
                 } else {
-                    (Some(DotExporter::generate_full_dot(iter)), count)
+                    (Some(DotExporter::generate_full_dot(tables.into_iter())), count)
                 }
             };
 
-            if let Some(ref dot_content) = dot_content {
+            if let Some(dot_content) = dot_content {
                 let filename = "er_full.dot".to_string();
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();

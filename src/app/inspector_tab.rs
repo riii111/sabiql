@@ -8,7 +8,6 @@ pub enum InspectorTab {
     Ddl,
 }
 
-#[allow(dead_code)]
 impl InspectorTab {
     pub fn next(self) -> Self {
         match self {

@@ -15,7 +15,6 @@ pub trait MetadataProvider: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum MetadataError {
     ConnectionFailed(String),
     QueryFailed(String),
