@@ -115,20 +115,17 @@ impl CompletionEngine {
         self.table_detail_cache.insert(qualified_name, table);
     }
 
-    /// Check if a table is already cached
     pub fn has_cached_table(&self, qualified_name: &str) -> bool {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
-    /// Returns qualified table names that are referenced in SQL but not cached (max 10)
+    /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(&self, content: &str, metadata: Option<&DatabaseMetadata>) -> Vec<String> {
         const MAX_MISSING_TABLES: usize = 10;
 
-        // Parse SQL to get table references
         let tokens = self.lexer.tokenize(content, content.len(), None);
         let sql_context = self.lexer.build_context(&tokens, content.len());
 
-        // Collect CTE names to exclude
         let cte_names: std::collections::HashSet<String> = sql_context
             .ctes
             .iter()
@@ -139,14 +136,12 @@ impl CompletionEngine {
         let mut seen = std::collections::HashSet::new();
 
         for table_ref in &sql_context.tables {
-            // Skip CTEs
             if cte_names.contains(&table_ref.table.to_lowercase()) {
                 continue;
             }
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            // Skip if already seen or cached
             if seen.contains(&qualified_name) || self.table_detail_cache.contains_key(&qualified_name)
             {
                 continue;
@@ -188,8 +183,59 @@ impl CompletionEngine {
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
+
+                let target_qualified = sql_context
+                    .target_table
+                    .as_ref()
+                    .map(|t| self.qualified_name_from_ref(t, metadata));
+
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
+
+                // UPDATE/DELETE/INSERT target table columns get priority
+                if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
+                    && detail.qualified_name() == *target
+                {
+                    for col in &mut columns {
+                        col.score += 200;
+                    }
+                }
+
+                // Build set of tables referenced in current SQL (excluding CTEs)
+                let cte_names: std::collections::HashSet<String> = sql_context
+                    .ctes
+                    .iter()
+                    .map(|cte| cte.name.to_lowercase())
+                    .collect();
+                let referenced_tables: std::collections::HashSet<String> = sql_context
+                    .tables
+                    .iter()
+                    .filter(|t| !cte_names.contains(&t.table.to_lowercase()))
+                    .map(|t| self.qualified_name_from_ref(t, metadata))
+                    .collect();
+
+                // Include columns only from SQL-referenced tables in cache
+                let selected_qualified = table_detail.map(|t| t.qualified_name());
+                for (qualified_name, cached_table) in &self.table_detail_cache {
+                    // Skip if same as selected table or not referenced in SQL
+                    if selected_qualified.as_ref() == Some(qualified_name)
+                        || !referenced_tables.contains(qualified_name)
+                    {
+                        continue;
+                    }
+                    let mut cached_columns = self.column_candidates_with_fk(
+                        Some(cached_table),
+                        &current_token,
+                        recent_columns,
+                    );
+
+                    if target_qualified.as_ref() == Some(qualified_name) {
+                        for col in &mut cached_columns {
+                            col.score += 200;
+                        }
+                    }
+                    columns.extend(cached_columns);
+                }
 
                 let has_prefix = current_token.len() >= 2;
                 if has_prefix && !columns.is_empty() {
@@ -1224,6 +1270,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 9, &sql_context, &tokens);
@@ -1246,6 +1293,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 11, &sql_context, &tokens);
@@ -1268,6 +1316,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 13, &sql_context, &tokens);
@@ -1290,6 +1339,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 14, &sql_context, &tokens);
@@ -1320,6 +1370,7 @@ mod tests {
                     position: 5,
                 }],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 46, &sql_context, &tokens);
@@ -1338,6 +1389,7 @@ mod tests {
                     position: 5,
                 }],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1373,6 +1425,7 @@ mod tests {
                     },
                 ],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let candidates = e.cte_or_table_candidates(&sql_context, None, "act");
@@ -1435,6 +1488,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1465,6 +1519,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let candidates = e.alias_column_candidates("u", &sql_context, None, "");
@@ -1530,6 +1585,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1828,6 +1884,182 @@ mod tests {
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
+        }
+    }
+
+    mod missing_tables {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        #[test]
+        fn empty_sql_returns_empty() {
+            let e = engine();
+
+            let missing = e.missing_tables("", None);
+
+            assert!(missing.is_empty());
+        }
+
+        #[test]
+        fn simple_from_returns_table() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables("SELECT * FROM users", Some(&metadata));
+
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn schema_qualified_table_returns_qualified_name() {
+            let e = engine();
+
+            let missing = e.missing_tables("SELECT * FROM public.orders", None);
+
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.orders");
+        }
+
+        #[test]
+        fn multiple_tables_returns_all() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let missing =
+                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+
+            assert_eq!(missing.len(), 2);
+            assert!(missing.contains(&"public.users".to_string()));
+            assert!(missing.contains(&"public.orders".to_string()));
+        }
+
+        #[test]
+        fn cached_tables_are_excluded() {
+            let mut e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![Column {
+                    name: "id".to_string(),
+                    data_type: "int".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+            e.cache_table_detail("public.users".to_string(), table);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            let missing =
+                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+
+            // users is cached, so only orders should be missing
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.orders");
+        }
+
+        #[test]
+        fn cte_tables_are_excluded() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables(
+                "WITH recent AS (SELECT * FROM users) SELECT * FROM recent",
+                Some(&metadata),
+            );
+
+            // "recent" is CTE, so only "users" should be returned
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn duplicate_tables_are_deduplicated() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables(
+                "SELECT * FROM users u1 JOIN users u2 ON u1.id = u2.id",
+                Some(&metadata),
+            );
+
+            // users appears twice but should be deduplicated
+            assert_eq!(missing.len(), 1);
+            assert_eq!(missing[0], "public.users");
+        }
+
+        #[test]
+        fn max_limit_is_respected() {
+            let e = engine();
+
+            // Use schema-qualified tables to avoid metadata lookup issues
+            // Build SQL with 15 JOINs to ensure parser recognizes all tables
+            let joins = (1..15)
+                .map(|i| format!("JOIN public.table_{} t{} ON t0.id = t{}.id", i, i, i))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let sql = format!("SELECT * FROM public.table_0 t0 {}", joins);
+            let missing = e.missing_tables(&sql, None);
+
+            // MAX_MISSING_TABLES = 10, so even with 15 tables, only 10 should be returned
+            assert_eq!(missing.len(), 10);
+        }
+
+        #[test]
+        fn has_cached_table_returns_true_for_cached() {
+            let mut e = engine();
+            let table = Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            };
+            e.cache_table_detail("public.users".to_string(), table);
+
+            assert!(e.has_cached_table("public.users"));
+            assert!(!e.has_cached_table("public.orders"));
         }
     }
 
@@ -2156,6 +2388,106 @@ mod tests {
 
             assert_eq!(candidates[0].text, "name");
             assert_eq!(candidates[0].kind, CompletionKind::Column);
+        }
+    }
+
+    mod target_table_boost {
+        use super::*;
+        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, col)| Column {
+                        name: (*col).to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: (i + 1) as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn update_target_columns_get_boost() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name", "email"]);
+            let orders = create_table("public", "orders", &["id", "user_id", "total"]);
+
+            // Cache both tables
+            e.cache_table_detail("public.users".to_string(), users.clone());
+            e.cache_table_detail("public.orders".to_string(), orders.clone());
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+            ];
+
+            // UPDATE users with subquery referencing orders
+            // Both tables are in SQL, but users is the target
+            let candidates = e.get_candidates(
+                "UPDATE users SET name = (SELECT user_id FROM orders) WHERE ",
+                59,
+                Some(&metadata),
+                Some(&users),
+                &[],
+            );
+
+            // Find columns from both tables
+            let users_name = candidates.iter().find(|c| c.text == "name");
+            let orders_user_id = candidates.iter().find(|c| c.text == "user_id");
+
+            assert!(users_name.is_some(), "users.name should be in candidates");
+            assert!(
+                orders_user_id.is_some(),
+                "orders.user_id should be in candidates"
+            );
+
+            // Target table column (users.name) should have higher score than non-target (orders.user_id)
+            assert!(
+                users_name.unwrap().score > orders_user_id.unwrap().score,
+                "Target table column should be prioritized"
+            );
+        }
+
+        #[test]
+        fn select_has_no_target_boost() {
+            let mut e = engine();
+            let users = create_table("public", "users", &["id", "name"]);
+
+            e.cache_table_detail("public.users".to_string(), users.clone());
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+
+            // SELECT has no target, so no boost
+            let candidates =
+                e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
+
+            let name_candidate = candidates.iter().find(|c| c.text == "name");
+            assert!(name_candidate.is_some());
+            // No target boost, base score only (0 for empty prefix)
+            assert!(name_candidate.unwrap().score < 200);
         }
     }
 }

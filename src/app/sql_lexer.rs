@@ -70,6 +70,8 @@ pub struct SqlContext {
     pub ctes: Vec<CteDefinition>,
     #[allow(dead_code)] // Phase 4: clause-based completion logic
     pub current_clause: ClauseKind,
+    /// Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
+    pub target_table: Option<TableReference>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -165,6 +167,7 @@ const SQL_KEYWORDS: &[&str] = &[
     "UPDATE",
     "SET",
     "DELETE",
+    "ONLY",
     "CREATE",
     "DROP",
     "ALTER",
@@ -576,41 +579,120 @@ impl SqlLexer {
     pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
         let mut refs = Vec::new();
         let mut i = 0;
+        let mut prev_keyword: Option<&str> = None;
+        // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
+        let mut in_for_clause = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
 
-            // Look for FROM or JOIN keywords
-            if let TokenKind::Keyword(kw) = &token.kind
-                && matches!(
-                    kw.as_str(),
-                    "FROM" | "JOIN" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS"
-                )
-            {
-                // Skip to actual JOIN if this is a join modifier
-                if matches!(kw.as_str(), "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS") {
-                    i += 1;
-                    // Skip whitespace and find JOIN
-                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                        i += 1;
-                    }
-                    if i < tokens.len()
-                        && let TokenKind::Keyword(k) = &tokens[i].kind
-                        && k != "JOIN"
-                    {
-                        continue;
-                    }
-                }
-
+            // Reset state on statement terminator
+            if token.kind == TokenKind::Punctuation(';') {
+                in_for_clause = false;
+                prev_keyword = None;
                 i += 1;
-                // Skip whitespace after FROM/JOIN
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
+                continue;
+            }
 
-                if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
-                    refs.push(table_ref);
-                    continue;
+            if let TokenKind::Keyword(kw) = &token.kind {
+                match kw.as_str() {
+                    "FROM" | "JOIN" => {
+                        in_for_clause = false;
+                        prev_keyword = Some(kw.as_str());
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    // JOIN modifiers - skip to find JOIN, then parse table
+                    "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
+                        in_for_clause = false;
+                        prev_keyword = Some(kw.as_str());
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        // Check for JOIN keyword
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "JOIN")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                                refs.push(table_ref);
+                                continue;
+                            }
+                        }
+                    }
+                    // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
+                    "FOR" => {
+                        in_for_clause = true;
+                        prev_keyword = Some("FOR");
+                    }
+                    // NO, KEY, SHARE are part of FOR locking clause
+                    "NO" | "KEY" | "SHARE" if in_for_clause => {
+                        prev_keyword = Some(kw.as_str());
+                    }
+                    // UPDATE: skip if in FOR locking clause
+                    "UPDATE" if !in_for_clause => {
+                        prev_keyword = Some("UPDATE");
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    // INSERT INTO table_name ... (only after INSERT, not SELECT INTO)
+                    "INTO" if prev_keyword == Some("INSERT") => {
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        // Skip ONLY keyword (PostgreSQL inheritance)
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    other => {
+                        in_for_clause = false;
+                        prev_keyword = Some(other);
+                    }
                 }
             }
             i += 1;
@@ -815,12 +897,173 @@ impl SqlLexer {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
         let current_clause = self.detect_clause_at_cursor(tokens, cursor_pos);
+        let target_table = self.extract_target_table(tokens, cursor_pos);
 
         SqlContext {
             tables,
             ctes,
             current_clause,
+            target_table,
         }
+    }
+
+    /// Finds semicolon positions in the token stream
+    /// Returns a list of indices where semicolons appear
+    fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
+        tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| {
+                if t.kind == TokenKind::Punctuation(';') {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Determines which statement (delimited by semicolons) the cursor belongs to
+    /// Returns (start_token_index, end_token_index) of the statement
+    fn find_statement_range(&self, tokens: &[Token], cursor_pos: usize) -> (usize, usize) {
+        let semicolons = self.find_semicolon_positions(tokens);
+
+        if semicolons.is_empty() {
+            // Single statement - entire token stream
+            return (0, tokens.len());
+        }
+
+        // Find which statement the cursor belongs to
+        let mut start = 0;
+        for &semi_idx in &semicolons {
+            if semi_idx >= tokens.len() {
+                break;
+            }
+            let semi_pos = tokens[semi_idx].end;
+            if cursor_pos <= semi_pos {
+                // Cursor is before or at this semicolon
+                return (start, semi_idx + 1);
+            }
+            start = semi_idx + 1;
+        }
+
+        // Cursor is after the last semicolon
+        (start, tokens.len())
+    }
+
+    /// Extracts the target table for UPDATE/DELETE/INSERT statements
+    /// Handles WITH clauses by scanning for statement-level mutation keywords
+    /// Now scans only the statement where cursor_pos is located
+    fn extract_target_table(&self, tokens: &[Token], cursor_pos: usize) -> Option<TableReference> {
+        // Find the range of tokens for the statement containing the cursor
+        let (start_idx, end_idx) = self.find_statement_range(tokens, cursor_pos);
+
+        let mut i = start_idx;
+        let mut paren_depth: i32 = 0;
+        // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
+        let mut in_for_clause = false;
+
+        while i < end_idx {
+            let token = &tokens[i];
+
+            match &token.kind {
+                TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
+                TokenKind::Punctuation(p) if *p == ')' => {
+                    paren_depth = paren_depth.saturating_sub(1)
+                }
+                // Reset state on statement terminator
+                TokenKind::Punctuation(p) if *p == ';' => {
+                    in_for_clause = false;
+                }
+                TokenKind::Keyword(kw) if paren_depth == 0 => {
+                    match kw.as_str() {
+                        // FOR starts a locking clause
+                        "FOR" => {
+                            in_for_clause = true;
+                        }
+                        // NO, KEY, SHARE are part of FOR locking clause
+                        "NO" | "KEY" | "SHARE" if in_for_clause => {}
+                        // UPDATE: skip if in FOR locking clause
+                        "UPDATE" if in_for_clause => {
+                            in_for_clause = false;
+                        }
+                        "UPDATE" => {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        "DELETE" => {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            // Skip FROM if present
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "FROM")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        "INSERT" => {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            // Skip INTO if present
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            // Skip ONLY keyword (PostgreSQL inheritance)
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        _ => {
+                            in_for_clause = false;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        None
     }
 
     fn detect_clause_at_cursor(&self, tokens: &[Token], cursor_pos: usize) -> ClauseKind {
@@ -1402,6 +1645,332 @@ mod tests {
             assert_eq!(ctx.ctes.len(), 1);
             assert_eq!(ctx.tables.len(), 2);
             assert_eq!(ctx.current_clause, ClauseKind::Where);
+        }
+    }
+
+    mod target_table {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("UPDATE users SET name = 'foo'", Some("users"))]
+        #[case("DELETE FROM orders WHERE id = 1", Some("orders"))]
+        #[case("INSERT INTO posts (title) VALUES ('test')", Some("posts"))]
+        #[case("SELECT * FROM users", None)]
+        fn extract_target_returns_expected(#[case] sql: &str, #[case] expected: Option<&str>) {
+            let l = lexer();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert_eq!(target.as_ref().map(|t| t.table.as_str()), expected);
+        }
+
+        #[rstest]
+        #[case("UPDATE users SET name = 'foo'", "users")]
+        #[case("INSERT INTO posts (title) VALUES ('test')", "posts")]
+        #[case("DELETE FROM orders WHERE id = 1", "orders")]
+        fn mutation_table_in_references(#[case] sql: &str, #[case] expected: &str) {
+            let l = lexer();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, expected);
+        }
+
+        #[test]
+        fn with_clause_update_extracts_target() {
+            let l = lexer();
+            let sql = "WITH active AS (SELECT id FROM users WHERE active) UPDATE users SET status = 'inactive'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn for_update_is_not_target() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_none());
+        }
+
+        #[test]
+        fn select_into_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * INTO new_table FROM users";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            // Only "users" should be included, not "new_table"
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_update_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            // Only "users" should be included, FOR UPDATE should not add a reference
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_no_key_update_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_no_key_update_is_not_target() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_none());
+        }
+
+        #[test]
+        fn multi_statement_for_share_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_for_update_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_for_no_key_update_then_update_extracts_both_tables() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[1].table, "orders");
+        }
+
+        #[test]
+        fn update_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "UPDATE ONLY users SET name = 'foo'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn update_only_target_table() {
+            let l = lexer();
+            let sql = "UPDATE ONLY users SET name = 'foo'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn delete_from_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "DELETE FROM ONLY orders WHERE id = 1";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "orders");
+        }
+
+        #[test]
+        fn delete_from_only_target_table() {
+            let l = lexer();
+            let sql = "DELETE FROM ONLY orders WHERE id = 1";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn insert_into_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "posts");
+        }
+
+        #[test]
+        fn insert_into_only_target_table() {
+            let l = lexer();
+            let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, sql.len());
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "posts");
+        }
+
+        #[test]
+        fn select_from_only_skips_only_keyword() {
+            let l = lexer();
+            let sql = "SELECT * FROM ONLY users WHERE active = true";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn multi_statement_cursor_in_first_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at position 10 (in "users")
+            let cursor_pos = 10;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn multi_statement_cursor_in_second_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at position 35 (in "orders")
+            let cursor_pos = 35;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_cursor_at_end_of_second_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at end of SQL
+            let cursor_pos = sql.len();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_select_then_update_cursor_in_select() {
+            let l = lexer();
+            let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
+            // Cursor at position 10 (in SELECT statement)
+            let cursor_pos = 10;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            // SELECT has no target table
+            assert!(target.is_none());
+        }
+
+        #[test]
+        fn multi_statement_select_then_update_cursor_in_update() {
+            let l = lexer();
+            let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
+            // Cursor at position 30 (in UPDATE statement)
+            let cursor_pos = 30;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_three_statements_cursor_in_middle() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
+            // Cursor at position 40 (in DELETE statement)
+            let cursor_pos = 40;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "posts");
+        }
+
+        #[test]
+        fn multi_statement_three_statements_cursor_in_last() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
+            // Cursor at position 80 (in INSERT statement)
+            let cursor_pos = 80;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
         }
     }
 }

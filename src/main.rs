@@ -304,14 +304,14 @@ async fn handle_action(
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
 
-            // Detect missing tables and trigger prefetch (scoped borrow)
+            // Scoped borrow to release before async operations
             let missing = {
                 let engine = completion_engine.borrow();
                 engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
             };
 
             for qualified_name in missing {
-                // Parse schema.table from qualified name
+                // Only prefetch if schema is known (resolved from metadata)
                 if let Some((schema, table)) = qualified_name.split_once('.') {
                     let _ = action_tx
                         .send(Action::PrefetchTableDetail {
@@ -322,7 +322,6 @@ async fn handle_action(
                 }
             }
 
-            // Get completion candidates
             let engine = completion_engine.borrow();
             let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
             let recent_cols = state.completion.recent_columns_vec();
@@ -663,7 +662,7 @@ async fn handle_action(
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
             if generation == state.selection_generation {
-                // Cache for alias column completion
+                // Cache for completion to avoid redundant prefetch for the selected table
                 completion_engine
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
@@ -679,13 +678,23 @@ async fn handle_action(
         }
 
         Action::PrefetchTableDetail { schema, table } => {
+            const PREFETCH_BACKOFF_SECS: u64 = 30;
             let qualified_name = format!("{}.{}", schema, table);
 
-            // Skip if already prefetching or cached
+            // Check if recently failed (backoff to avoid repeated failures)
+            let recently_failed = state
+                .failed_prefetch_tables
+                .get(&qualified_name)
+                .map(|t| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
+                .unwrap_or(false);
+
+            // Why 2-stage duplicate check (here + missing_tables)?
+            // Skip if already prefetching, cached, or recently failed (race condition guard)
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
+                || recently_failed
             {
-                // Already in progress or cached, skip
+                // skip
             } else if let Some(dsn) = &state.dsn {
                 state.prefetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
@@ -726,11 +735,11 @@ async fn handle_action(
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
+            state.failed_prefetch_tables.remove(&qualified_name);
             completion_engine
                 .borrow_mut()
-                .cache_table_detail(qualified_name, (*detail).clone());
+                .cache_table_detail(qualified_name, *detail);
 
-            // Clear debounce and trigger completion update if SQL modal is open
             if state.input_mode == InputMode::SqlModal {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
@@ -744,7 +753,9 @@ async fn handle_action(
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
-            // No UI error display, just log (logging not implemented yet)
+            state
+                .failed_prefetch_tables
+                .insert(qualified_name, Instant::now());
         }
 
         Action::ExecutePreview {
