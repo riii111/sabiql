@@ -1047,6 +1047,15 @@ async fn handle_action(
         }
 
         Action::ErOpenDiagram => {
+            // Guard: ignore if already rendering or waiting
+            if state.er_status == ErStatus::Rendering {
+                return Ok(());
+            }
+            if state.er_status == ErStatus::Waiting {
+                // Already waiting - no action needed
+                return Ok(());
+            }
+
             // Check if prefetch is complete
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
