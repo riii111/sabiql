@@ -199,6 +199,7 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
             state.completion_debounce = None;
+            // In-flight fetches continue to populate cache for next session
             state.prefetch_started = false;
             state.prefetch_queue.clear();
             state.prefetching_tables.clear();
@@ -634,6 +635,11 @@ async fn handle_action(
         Action::MetadataLoaded(metadata) => {
             state.metadata = Some(*metadata);
             state.metadata_state = MetadataState::Loaded;
+
+            // If SQL modal is open and prefetch hasn't started, trigger it now
+            if state.input_mode == InputMode::SqlModal && !state.prefetch_started {
+                let _ = action_tx.send(Action::StartPrefetchAll).await;
+            }
         }
 
         Action::MetadataFailed(error) => {
