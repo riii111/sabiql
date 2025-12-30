@@ -10,7 +10,9 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::mode::Mode;
 use super::result_history::ResultHistory;
-use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+use crate::domain::{
+    DatabaseMetadata, MetadataState, NeighborhoodGraph, QueryResult, Table, TableSummary,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalState {
@@ -180,6 +182,13 @@ pub struct AppState {
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
+
+    // ER Mode state
+    pub er_center_table: Option<String>,
+    pub er_selected_node: usize,
+    pub er_graph: Option<NeighborhoodGraph>,
+    pub er_node_list_state: ListState,
+    pub er_depth: u8,
 }
 
 impl AppState {
@@ -244,6 +253,12 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
+            // ER Mode
+            er_center_table: None,
+            er_selected_node: 0,
+            er_graph: None,
+            er_node_list_state: ListState::default(),
+            er_depth: 1,
         }
     }
 
