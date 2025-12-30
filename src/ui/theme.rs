@@ -19,6 +19,26 @@ impl Theme {
     // Modal/Overlay backgrounds
     pub const MODAL_BG: Color = Palette::DUCKBONES;
 
+    // Scrim (dimmed background behind modals)
+    pub const SCRIM_BG: Color = Color::Rgb(0x0a, 0x0a, 0x0f);
+
+    // Modal border
+    pub const MODAL_BORDER: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
+    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0x5a, 0x5a, 0x7a);
+
+    // Modal title (emphasized)
+    pub const MODAL_TITLE: Color = Color::Rgb(0xcc, 0xcc, 0xdd);
+
+    // Modal hint text (de-emphasized)
+    pub const MODAL_HINT: Color = Color::Rgb(0x55, 0x55, 0x66);
+
+    // Key chip (for important keys in Help)
+    pub const KEY_CHIP_BG: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
+    pub const KEY_CHIP_FG: Color = Color::Rgb(0xee, 0xcc, 0x66);
+
+    // SQL Editor current line highlight
+    pub const EDITOR_CURRENT_LINE_BG: Color = Color::Rgb(0x22, 0x26, 0x33);
+
     // Completion popup
     pub const COMPLETION_SELECTED_BG: Color = Color::Rgb(0x45, 0x47, 0x5a);
 
