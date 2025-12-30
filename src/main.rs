@@ -387,13 +387,22 @@ async fn handle_action(
         Action::CompletionNext => {
             if !state.completion.candidates.is_empty() {
                 let max = state.completion.candidates.len() - 1;
-                if state.completion.selected_index < max {
-                    state.completion.selected_index += 1;
-                }
+                state.completion.selected_index = if state.completion.selected_index >= max {
+                    0
+                } else {
+                    state.completion.selected_index + 1
+                };
             }
         }
         Action::CompletionPrev => {
-            state.completion.selected_index = state.completion.selected_index.saturating_sub(1);
+            if !state.completion.candidates.is_empty() {
+                let max = state.completion.candidates.len() - 1;
+                state.completion.selected_index = if state.completion.selected_index == 0 {
+                    max
+                } else {
+                    state.completion.selected_index - 1
+                };
+            }
         }
 
         Action::EnterCommandLine => {
