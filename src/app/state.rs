@@ -188,6 +188,7 @@ pub struct AppState {
     pub er_graph: Option<NeighborhoodGraph>,
     pub er_node_list_state: ListState,
     pub er_depth: u8,
+    pub er_cache_sparse: bool,
 }
 
 impl AppState {
@@ -257,6 +258,7 @@ impl AppState {
             er_graph: None,
             er_node_list_state: ListState::default(),
             er_depth: 1,
+            er_cache_sparse: false,
         }
     }
 
