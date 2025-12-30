@@ -663,10 +663,6 @@ async fn handle_action(
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
             if generation == state.selection_generation {
-                // Cache for alias column completion
-                completion_engine
-                    .borrow_mut()
-                    .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
             }
         }
@@ -741,7 +737,7 @@ async fn handle_action(
             state.failed_prefetch_tables.remove(&qualified_name);
             completion_engine
                 .borrow_mut()
-                .cache_table_detail(qualified_name, (*detail).clone());
+                .cache_table_detail(qualified_name, *detail);
 
             if state.input_mode == InputMode::SqlModal {
                 state.completion_debounce = None;
