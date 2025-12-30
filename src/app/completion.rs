@@ -120,7 +120,11 @@ impl CompletionEngine {
     }
 
     /// Returns qualified table names referenced in SQL but not cached (max 10)
-    pub fn missing_tables(&self, content: &str, metadata: Option<&DatabaseMetadata>) -> Vec<String> {
+    pub fn missing_tables(
+        &self,
+        content: &str,
+        metadata: Option<&DatabaseMetadata>,
+    ) -> Vec<String> {
         const MAX_MISSING_TABLES: usize = 10;
 
         let tokens = self.lexer.tokenize(content, content.len(), None);
@@ -142,7 +146,8 @@ impl CompletionEngine {
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            if seen.contains(&qualified_name) || self.table_detail_cache.contains_key(&qualified_name)
+            if seen.contains(&qualified_name)
+                || self.table_detail_cache.contains_key(&qualified_name)
             {
                 continue;
             }
@@ -183,6 +188,15 @@ impl CompletionEngine {
             CompletionContext::Table => self.table_candidates(metadata, &current_token),
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
+
+                // Check if cursor is right after a comma (column list continuation)
+                let before_cursor: String = content.chars().take(cursor_pos).collect();
+                let before_token = before_cursor
+                    .trim_end()
+                    .strip_suffix(&current_token)
+                    .unwrap_or(&before_cursor)
+                    .trim_end();
+                let after_comma = before_token.ends_with(',');
 
                 let target_qualified = sql_context
                     .target_table
@@ -239,7 +253,6 @@ impl CompletionEngine {
 
                 let has_prefix = current_token.len() >= 2;
                 if has_prefix && !columns.is_empty() {
-                    // Boost only prefix-matched columns (score >= 100)
                     for col in &mut columns {
                         if col.score >= 100 {
                             col.score += 250;
@@ -247,8 +260,21 @@ impl CompletionEngine {
                     }
                 }
 
-                // Reduce keyword slots when user is typing
-                let max_keywords = if has_prefix { 5 } else { 15 }.min(keywords.len());
+                // After comma, strongly prefer columns over keywords
+                if after_comma {
+                    for col in &mut columns {
+                        col.score += 300;
+                    }
+                }
+
+                let max_keywords = if after_comma {
+                    3
+                } else if has_prefix {
+                    5
+                } else {
+                    15
+                }
+                .min(keywords.len());
                 let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
 
                 let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
@@ -1936,8 +1962,10 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            let missing =
-                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+            let missing = e.missing_tables(
+                "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                Some(&metadata),
+            );
 
             assert_eq!(missing.len(), 2);
             assert!(missing.contains(&"public.users".to_string()));
@@ -1975,8 +2003,10 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            let missing =
-                e.missing_tables("SELECT * FROM users u JOIN orders o ON u.id = o.user_id", Some(&metadata));
+            let missing = e.missing_tables(
+                "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                Some(&metadata),
+            );
 
             // users is cached, so only orders should be missing
             assert_eq!(missing.len(), 1);
@@ -2286,7 +2316,8 @@ mod tests {
             let table = create_users_table();
 
             // After "ORDER ", BY should appear in candidates
-            let candidates = e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
+            let candidates =
+                e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
 
             assert!(
                 candidates.iter().any(|c| c.text == "BY"),
@@ -2481,8 +2512,7 @@ mod tests {
             )];
 
             // SELECT has no target, so no boost
-            let candidates =
-                e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
 
             let name_candidate = candidates.iter().find(|c| c.text == "name");
             assert!(name_candidate.is_some());

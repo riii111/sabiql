@@ -307,6 +307,12 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
         }
+        Action::SqlModalClear => {
+            state.sql_modal_content.clear();
+            state.sql_modal_cursor = 0;
+            state.completion.visible = false;
+            state.completion.candidates.clear();
+        }
 
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
@@ -341,7 +347,8 @@ async fn handle_action(
             );
             state.completion.candidates = candidates;
             state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty();
+            state.completion.visible = !state.completion.candidates.is_empty()
+                && !state.sql_modal_content.trim().is_empty();
             state.completion.trigger_position = cursor.saturating_sub(token_len);
         }
         Action::CompletionUpdate(candidates) => {
@@ -772,7 +779,9 @@ async fn handle_action(
         }
 
         Action::StartPrefetchAll => {
-            if !state.prefetch_started && let Some(metadata) = &state.metadata {
+            if !state.prefetch_started
+                && let Some(metadata) = &state.metadata
+            {
                 state.prefetch_started = true;
                 state.prefetch_queue.clear();
                 {

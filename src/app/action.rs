@@ -121,6 +121,7 @@ pub enum Action {
     SqlModalTab,
     SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
+    SqlModalClear,
 
     // SQL Modal completion
     CompletionTrigger,
