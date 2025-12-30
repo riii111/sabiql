@@ -14,16 +14,6 @@ impl DotExporter {
             .replace('\n', "\\n")
     }
 
-    #[allow(dead_code)]
-    pub fn sanitize_filename(s: &str) -> String {
-        s.chars()
-            .map(|c| match c {
-                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-                _ => c,
-            })
-            .collect()
-    }
-
     /// Generate DOT for full database ER diagram (all tables and FKs)
     pub fn generate_full_dot<'a, I>(tables: I) -> String
     where
