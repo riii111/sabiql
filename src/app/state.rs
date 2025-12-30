@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use ratatui::widgets::ListState;
@@ -153,6 +153,9 @@ pub struct AppState {
     // Tables currently being prefetched for completion (schema.table)
     pub prefetching_tables: HashSet<String>,
 
+    // Tables that failed to prefetch (schema.table -> failure time) for backoff
+    pub failed_prefetch_tables: HashMap<String, Instant>,
+
     // Query execution state
     pub query_state: QueryState,
 
@@ -217,6 +220,7 @@ impl AppState {
             completion: CompletionState::default(),
             completion_debounce: None,
             prefetching_tables: HashSet::new(),
+            failed_prefetch_tables: HashMap::new(),
             // Query state
             query_state: QueryState::default(),
             // Last error

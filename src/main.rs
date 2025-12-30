@@ -679,7 +679,15 @@ async fn handle_action(
         }
 
         Action::PrefetchTableDetail { schema, table } => {
+            const PREFETCH_BACKOFF_SECS: u64 = 30;
             let qualified_name = format!("{}.{}", schema, table);
+
+            // Check if recently failed (backoff to avoid repeated failures)
+            let recently_failed = state
+                .failed_prefetch_tables
+                .get(&qualified_name)
+                .map(|t| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
+                .unwrap_or(false);
 
             // Why 2-stage duplicate check (here + missing_tables)?
             // - missing_tables() filters cached tables to reduce Action sends
@@ -687,6 +695,7 @@ async fn handle_action(
             //   CompletionTrigger events fire rapidly before first prefetch completes
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
+                || recently_failed
             {
                 // skip
             } else if let Some(dsn) = &state.dsn {
@@ -729,6 +738,7 @@ async fn handle_action(
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
+            state.failed_prefetch_tables.remove(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, (*detail).clone());
@@ -746,7 +756,9 @@ async fn handle_action(
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
-            // No UI error display, just log (logging not implemented yet)
+            state
+                .failed_prefetch_tables
+                .insert(qualified_name, Instant::now());
         }
 
         Action::ExecutePreview {
