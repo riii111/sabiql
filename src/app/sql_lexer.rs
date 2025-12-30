@@ -582,37 +582,63 @@ impl SqlLexer {
         while i < tokens.len() {
             let token = &tokens[i];
 
-            // Look for FROM or JOIN keywords
-            if let TokenKind::Keyword(kw) = &token.kind
-                && matches!(
-                    kw.as_str(),
-                    "FROM" | "JOIN" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS"
-                )
-            {
-                // Skip to actual JOIN if this is a join modifier
-                if matches!(kw.as_str(), "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS") {
-                    i += 1;
-                    // Skip whitespace and find JOIN
-                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+            if let TokenKind::Keyword(kw) = &token.kind {
+                match kw.as_str() {
+                    // FROM or JOIN keywords
+                    "FROM" | "JOIN" => {
                         i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
                     }
-                    if i < tokens.len()
-                        && let TokenKind::Keyword(k) = &tokens[i].kind
-                        && k != "JOIN"
-                    {
-                        continue;
+                    // JOIN modifiers - skip to find JOIN, then parse table
+                    "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        // Check for JOIN keyword
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "JOIN")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                                refs.push(table_ref);
+                                continue;
+                            }
+                        }
                     }
-                }
-
-                i += 1;
-                // Skip whitespace after FROM/JOIN
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
-
-                if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
-                    refs.push(table_ref);
-                    continue;
+                    // UPDATE table_name SET ...
+                    "UPDATE" => {
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    // INSERT INTO table_name ...
+                    "INTO" => {
+                        i += 1;
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    // DELETE FROM is handled by FROM above
+                    _ => {}
                 }
             }
             i += 1;
@@ -828,69 +854,74 @@ impl SqlLexer {
     }
 
     /// Extracts the target table for UPDATE/DELETE/INSERT statements
+    /// Handles WITH clauses by scanning for statement-level mutation keywords
     fn extract_target_table(&self, tokens: &[Token]) -> Option<TableReference> {
         let mut i = 0;
+        let mut paren_depth: i32 = 0;
+        let mut prev_keyword: Option<&str> = None;
 
-        // Skip leading whitespace
-        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+        while i < tokens.len() {
+            let token = &tokens[i];
+
+            match &token.kind {
+                TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
+                TokenKind::Punctuation(p) if *p == ')' => paren_depth = paren_depth.saturating_sub(1),
+                TokenKind::Keyword(kw) if paren_depth == 0 => {
+                    match kw.as_str() {
+                        "UPDATE" => {
+                            // Skip "FOR UPDATE" (SELECT ... FOR UPDATE)
+                            if prev_keyword == Some("FOR") {
+                                prev_keyword = Some("UPDATE");
+                                i += 1;
+                                continue;
+                            }
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        "DELETE" => {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            // Skip FROM if present
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "FROM")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        "INSERT" => {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                            // Skip INTO if present
+                            if i < tokens.len()
+                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
+                            {
+                                i += 1;
+                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                    i += 1;
+                                }
+                            }
+                            return self.parse_table_reference(tokens, &mut i);
+                        }
+                        other => prev_keyword = Some(other),
+                    }
+                }
+                _ => {}
+            }
             i += 1;
         }
 
-        if i >= tokens.len() {
-            return None;
-        }
-
-        // Check first keyword
-        let first_keyword = match &tokens[i].kind {
-            TokenKind::Keyword(kw) => kw.as_str(),
-            _ => return None,
-        };
-
-        match first_keyword {
-            "UPDATE" => {
-                // UPDATE table_name SET ...
-                i += 1;
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
-                self.parse_table_reference(tokens, &mut i)
-            }
-            "DELETE" => {
-                // DELETE FROM table_name ...
-                i += 1;
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
-                // Skip FROM if present
-                if i < tokens.len()
-                    && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "FROM")
-                {
-                    i += 1;
-                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                        i += 1;
-                    }
-                }
-                self.parse_table_reference(tokens, &mut i)
-            }
-            "INSERT" => {
-                // INSERT INTO table_name ...
-                i += 1;
-                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                    i += 1;
-                }
-                // Skip INTO if present
-                if i < tokens.len()
-                    && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
-                {
-                    i += 1;
-                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                        i += 1;
-                    }
-                }
-                self.parse_table_reference(tokens, &mut i)
-            }
-            _ => None,
-        }
+        None
     }
 
     fn detect_clause_at_cursor(&self, tokens: &[Token], cursor_pos: usize) -> ClauseKind {
@@ -1472,6 +1503,62 @@ mod tests {
             assert_eq!(ctx.ctes.len(), 1);
             assert_eq!(ctx.tables.len(), 2);
             assert_eq!(ctx.current_clause, ClauseKind::Where);
+        }
+    }
+
+    mod target_table {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("UPDATE users SET name = 'foo'", Some("users"))]
+        #[case("DELETE FROM orders WHERE id = 1", Some("orders"))]
+        #[case("INSERT INTO posts (title) VALUES ('test')", Some("posts"))]
+        #[case("SELECT * FROM users", None)]
+        fn extract_target_returns_expected(#[case] sql: &str, #[case] expected: Option<&str>) {
+            let l = lexer();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert_eq!(target.as_ref().map(|t| t.table.as_str()), expected);
+        }
+
+        #[rstest]
+        #[case("UPDATE users SET name = 'foo'", "users")]
+        #[case("INSERT INTO posts (title) VALUES ('test')", "posts")]
+        #[case("DELETE FROM orders WHERE id = 1", "orders")]
+        fn mutation_table_in_references(#[case] sql: &str, #[case] expected: &str) {
+            let l = lexer();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, expected);
+        }
+
+        #[test]
+        fn with_clause_update_extracts_target() {
+            let l = lexer();
+            let sql = "WITH active AS (SELECT id FROM users WHERE active) UPDATE users SET status = 'inactive'";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn for_update_is_not_target() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_none());
         }
     }
 }
