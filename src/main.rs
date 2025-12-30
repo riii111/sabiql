@@ -202,7 +202,7 @@ async fn handle_action(
             // In-flight fetches continue to populate cache for next session
             state.prefetch_started = false;
             state.prefetch_queue.clear();
-            state.prefetching_tables.clear();
+            // Keep prefetching_tables to prevent double fetch on reopen
             state.failed_prefetch_tables.clear();
         }
         Action::SqlModalInput(c) => {
@@ -809,15 +809,17 @@ async fn handle_action(
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
             for _ in 0..available_slots {
-                if let Some(qualified_name) = state.prefetch_queue.pop_front()
-                    && let Some((schema, table)) = qualified_name.split_once('.')
-                {
-                    let _ = action_tx
-                        .send(Action::PrefetchTableDetail {
-                            schema: schema.to_string(),
-                            table: table.to_string(),
-                        })
-                        .await;
+                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                    if let Some((schema, table)) = qualified_name.split_once('.') {
+                        let _ = action_tx
+                            .send(Action::PrefetchTableDetail {
+                                schema: schema.to_string(),
+                                table: table.to_string(),
+                            })
+                            .await;
+                    } else {
+                        debug_assert!(false, "Invalid qualified_name format: {}", qualified_name);
+                    }
                 }
             }
         }
