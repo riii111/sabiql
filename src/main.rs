@@ -704,8 +704,8 @@ async fn handle_action(
             state.metadata = Some(*metadata);
             state.metadata_state = MetadataState::Loaded;
 
-            // If SQL modal is open and prefetch hasn't started, trigger it now
-            if state.input_mode == InputMode::SqlModal && !state.prefetch_started {
+            // Start prefetching table details for completion and ER diagrams
+            if !state.prefetch_started {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
@@ -1238,13 +1238,17 @@ async fn handle_action(
         }
 
         Action::ErOpenDiagram => {
-            let engine = completion_engine.borrow();
-            let tables: Vec<_> = engine.table_details_iter().collect();
+            let dot_content = {
+                let engine = completion_engine.borrow();
+                let tables: Vec<_> = engine.table_details_iter().collect();
+                if tables.is_empty() {
+                    None
+                } else {
+                    Some(DotExporter::generate_full_dot(tables))
+                }
+            };
 
-            if tables.is_empty() {
-                state.last_error = Some("No table data loaded yet".to_string());
-            } else {
-                let dot_content = DotExporter::generate_full_dot(tables);
+            if let Some(dot_content) = dot_content {
                 let filename = "er_full.dot".to_string();
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();
@@ -1261,6 +1265,8 @@ async fn handle_action(
                         }
                     }
                 });
+            } else {
+                state.last_error = Some("No table data loaded yet".to_string());
             }
         }
 
