@@ -32,11 +32,19 @@ impl Footer {
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
+                } else if state.mode == Mode::ER {
+                    vec![
+                        ("q", "Quit"),
+                        ("?", "Help"),
+                        ("1/2", "Pane"),
+                        ("j/k", "Navigate"),
+                        ("⏎", "Recenter"),
+                        ("d", "Depth"),
+                        (":erd", "Export"),
+                    ]
                 } else {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
-                    if state.mode == Mode::Browse {
-                        hints.push(("f", "Focus"));
-                    }
+                    hints.push(("f", "Focus"));
                     // Show scroll hint when Result pane is focused
                     if state.focused_pane == FocusedPane::Result {
                         hints.push(("j/k/g/G", "Scroll"));
