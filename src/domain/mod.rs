@@ -3,7 +3,6 @@
 
 pub mod column;
 pub mod foreign_key;
-pub mod graph;
 pub mod index;
 pub mod metadata;
 pub mod query_result;
@@ -13,7 +12,6 @@ pub mod table;
 
 pub use column::Column;
 pub use foreign_key::{FkAction, ForeignKey};
-pub use graph::{GraphEdge, GraphNode, NeighborhoodGraph};
 pub use index::{Index, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
 pub use query_result::{QueryResult, QuerySource};
