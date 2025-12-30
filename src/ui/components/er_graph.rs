@@ -82,11 +82,20 @@ impl ErGraph {
                 state.er_node_list_state.select(Some(state.er_selected_node));
                 frame.render_stateful_widget(list, chunks[0], &mut state.er_node_list_state);
 
-                let hint = Paragraph::new(Line::from(vec![
-                    Span::styled("No FK relations. ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(":erd!", Style::default().fg(Color::Yellow)),
-                    Span::styled(" for full DB diagram", Style::default().fg(Color::DarkGray)),
-                ]));
+                let hint = if state.er_cache_sparse {
+                    Paragraph::new(Line::from(vec![
+                        Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+                        Span::styled("FK metadata loading... ", Style::default().fg(Color::DarkGray)),
+                        Span::styled("Tab", Style::default().fg(Color::Yellow)),
+                        Span::styled(" to refresh", Style::default().fg(Color::DarkGray)),
+                    ]))
+                } else {
+                    Paragraph::new(Line::from(vec![
+                        Span::styled("No FK relations. ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(":erd!", Style::default().fg(Color::Yellow)),
+                        Span::styled(" for full DB diagram", Style::default().fg(Color::DarkGray)),
+                    ]))
+                };
                 frame.render_widget(hint, chunks[1]);
             } else {
                 let list = List::new(items)

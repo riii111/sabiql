@@ -1190,12 +1190,7 @@ async fn handle_action(
             let graph = GraphBuilder::build(&table, table_details, state.er_depth);
             drop(engine);
 
-            if graph.nodes.len() <= 1 && cache_count < state.tables().len() {
-                state.last_error = Some(
-                    "FK metadata still loading - graph may be incomplete. Try again shortly."
-                        .to_string(),
-                );
-            }
+            state.er_cache_sparse = cache_count < state.tables().len();
             state.er_graph = Some(graph);
         }
 
