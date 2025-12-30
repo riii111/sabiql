@@ -897,7 +897,7 @@ impl SqlLexer {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
         let current_clause = self.detect_clause_at_cursor(tokens, cursor_pos);
-        let target_table = self.extract_target_table(tokens);
+        let target_table = self.extract_target_table(tokens, cursor_pos);
 
         SqlContext {
             tables,
@@ -907,15 +907,63 @@ impl SqlLexer {
         }
     }
 
+    /// Finds semicolon positions in the token stream
+    /// Returns a list of indices where semicolons appear
+    fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
+        tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| {
+                if t.kind == TokenKind::Punctuation(';') {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Determines which statement (delimited by semicolons) the cursor belongs to
+    /// Returns (start_token_index, end_token_index) of the statement
+    fn find_statement_range(&self, tokens: &[Token], cursor_pos: usize) -> (usize, usize) {
+        let semicolons = self.find_semicolon_positions(tokens);
+
+        if semicolons.is_empty() {
+            // Single statement - entire token stream
+            return (0, tokens.len());
+        }
+
+        // Find which statement the cursor belongs to
+        let mut start = 0;
+        for &semi_idx in &semicolons {
+            if semi_idx >= tokens.len() {
+                break;
+            }
+            let semi_pos = tokens[semi_idx].end;
+            if cursor_pos <= semi_pos {
+                // Cursor is before or at this semicolon
+                return (start, semi_idx + 1);
+            }
+            start = semi_idx + 1;
+        }
+
+        // Cursor is after the last semicolon
+        (start, tokens.len())
+    }
+
     /// Extracts the target table for UPDATE/DELETE/INSERT statements
     /// Handles WITH clauses by scanning for statement-level mutation keywords
-    fn extract_target_table(&self, tokens: &[Token]) -> Option<TableReference> {
-        let mut i = 0;
+    /// Now scans only the statement where cursor_pos is located
+    fn extract_target_table(&self, tokens: &[Token], cursor_pos: usize) -> Option<TableReference> {
+        // Find the range of tokens for the statement containing the cursor
+        let (start_idx, end_idx) = self.find_statement_range(tokens, cursor_pos);
+
+        let mut i = start_idx;
         let mut paren_depth: i32 = 0;
         // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
         let mut in_for_clause = false;
 
-        while i < tokens.len() {
+        while i < end_idx {
             let token = &tokens[i];
 
             match &token.kind {
@@ -1613,7 +1661,7 @@ mod tests {
             let l = lexer();
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert_eq!(target.as_ref().map(|t| t.table.as_str()), expected);
         }
@@ -1638,7 +1686,7 @@ mod tests {
             let sql = "WITH active AS (SELECT id FROM users WHERE active) UPDATE users SET status = 'inactive'";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_some());
             assert_eq!(target.unwrap().table, "users");
@@ -1650,7 +1698,7 @@ mod tests {
             let sql = "SELECT * FROM users FOR UPDATE";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_none());
         }
@@ -1699,7 +1747,7 @@ mod tests {
             let sql = "SELECT * FROM users FOR NO KEY UPDATE";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_none());
         }
@@ -1761,7 +1809,7 @@ mod tests {
             let sql = "UPDATE ONLY users SET name = 'foo'";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_some());
             assert_eq!(target.unwrap().table, "users");
@@ -1785,7 +1833,7 @@ mod tests {
             let sql = "DELETE FROM ONLY orders WHERE id = 1";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_some());
             assert_eq!(target.unwrap().table, "orders");
@@ -1809,7 +1857,7 @@ mod tests {
             let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
             let tokens = l.tokenize(sql, sql.len(), None);
 
-            let target = l.extract_target_table(&tokens);
+            let target = l.extract_target_table(&tokens, sql.len());
 
             assert!(target.is_some());
             assert_eq!(target.unwrap().table, "posts");
@@ -1825,6 +1873,104 @@ mod tests {
 
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn multi_statement_cursor_in_first_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at position 10 (in "users")
+            let cursor_pos = 10;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "users");
+        }
+
+        #[test]
+        fn multi_statement_cursor_in_second_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at position 35 (in "orders")
+            let cursor_pos = 35;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_cursor_at_end_of_second_update() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+            // Cursor at end of SQL
+            let cursor_pos = sql.len();
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_select_then_update_cursor_in_select() {
+            let l = lexer();
+            let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
+            // Cursor at position 10 (in SELECT statement)
+            let cursor_pos = 10;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            // SELECT has no target table
+            assert!(target.is_none());
+        }
+
+        #[test]
+        fn multi_statement_select_then_update_cursor_in_update() {
+            let l = lexer();
+            let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
+            // Cursor at position 30 (in UPDATE statement)
+            let cursor_pos = 30;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
+        }
+
+        #[test]
+        fn multi_statement_three_statements_cursor_in_middle() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
+            // Cursor at position 40 (in DELETE statement)
+            let cursor_pos = 40;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "posts");
+        }
+
+        #[test]
+        fn multi_statement_three_statements_cursor_in_last() {
+            let l = lexer();
+            let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
+            // Cursor at position 80 (in INSERT statement)
+            let cursor_pos = 80;
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens, cursor_pos);
+
+            assert!(target.is_some());
+            assert_eq!(target.unwrap().table, "orders");
         }
     }
 }
