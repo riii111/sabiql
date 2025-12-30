@@ -1238,12 +1238,14 @@ async fn handle_action(
         }
 
         Action::ErOpenDiagram => {
-            if state.mode != Mode::ER {
-                state.last_error = Some("Switch to ER tab first".to_string());
-            } else if let Some(graph) = &state.er_graph {
-                let dot_content = DotExporter::generate_dot(graph);
-                let safe_center = DotExporter::sanitize_filename(&graph.center).replace('.', "_");
-                let filename = format!("er_{}.dot", safe_center);
+            let engine = completion_engine.borrow();
+            let tables: Vec<_> = engine.table_details_iter().collect();
+
+            if tables.is_empty() {
+                state.last_error = Some("No table data loaded yet".to_string());
+            } else {
+                let dot_content = DotExporter::generate_full_dot(tables);
+                let filename = "er_full.dot".to_string();
                 let cache_dir = get_cache_dir(&state.project_name)?;
                 let tx = action_tx.clone();
 
@@ -1259,8 +1261,6 @@ async fn handle_action(
                         }
                     }
                 });
-            } else {
-                state.last_error = Some("No graph to view".to_string());
             }
         }
 
