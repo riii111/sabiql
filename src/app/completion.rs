@@ -188,10 +188,26 @@ impl CompletionEngine {
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
 
-                // Also collect columns from SQL-detected tables (prefetch cache)
-                for cached_table in self.table_detail_cache.values() {
-                    // Skip if same as selected table to avoid duplicates
-                    if table_detail.map(|t| t.qualified_name()) == Some(cached_table.qualified_name()) {
+                // Build set of tables referenced in current SQL (excluding CTEs)
+                let cte_names: std::collections::HashSet<String> = sql_context
+                    .ctes
+                    .iter()
+                    .map(|cte| cte.name.to_lowercase())
+                    .collect();
+                let referenced_tables: std::collections::HashSet<String> = sql_context
+                    .tables
+                    .iter()
+                    .filter(|t| !cte_names.contains(&t.table.to_lowercase()))
+                    .map(|t| self.qualified_name_from_ref(t, metadata))
+                    .collect();
+
+                // Include columns only from SQL-referenced tables in cache
+                let selected_qualified = table_detail.map(|t| t.qualified_name());
+                for (qualified_name, cached_table) in &self.table_detail_cache {
+                    // Skip if same as selected table or not referenced in SQL
+                    if selected_qualified.as_ref() == Some(qualified_name)
+                        || !referenced_tables.contains(qualified_name)
+                    {
                         continue;
                     }
                     columns.extend(self.column_candidates_with_fk(

@@ -312,15 +312,15 @@ async fn handle_action(
             };
 
             for qualified_name in missing {
-                let (schema, table) = if let Some((s, t)) = qualified_name.split_once('.') {
-                    (s.to_string(), t.to_string())
-                } else {
-                    // Unqualified table name - assume "public" schema (PostgreSQL default)
-                    ("public".to_string(), qualified_name)
-                };
-                let _ = action_tx
-                    .send(Action::PrefetchTableDetail { schema, table })
-                    .await;
+                // Only prefetch if schema is known (resolved from metadata)
+                if let Some((schema, table)) = qualified_name.split_once('.') {
+                    let _ = action_tx
+                        .send(Action::PrefetchTableDetail {
+                            schema: schema.to_string(),
+                            table: table.to_string(),
+                        })
+                        .await;
+                }
             }
 
             let engine = completion_engine.borrow();
@@ -663,6 +663,10 @@ async fn handle_action(
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
             if generation == state.selection_generation {
+                // Cache for completion to avoid redundant prefetch for the selected table
+                completion_engine
+                    .borrow_mut()
+                    .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
             }
         }
