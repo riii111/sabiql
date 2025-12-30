@@ -579,6 +579,8 @@ impl SqlLexer {
         let mut refs = Vec::new();
         let mut i = 0;
         let mut prev_keyword: Option<&str> = None;
+        // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
+        let mut in_for_clause = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -587,6 +589,7 @@ impl SqlLexer {
                 match kw.as_str() {
                     // FROM or JOIN keywords
                     "FROM" | "JOIN" => {
+                        in_for_clause = false;
                         prev_keyword = Some(kw.as_str());
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -599,6 +602,7 @@ impl SqlLexer {
                     }
                     // JOIN modifiers - skip to find JOIN, then parse table
                     "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
+                        in_for_clause = false;
                         prev_keyword = Some(kw.as_str());
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -618,8 +622,17 @@ impl SqlLexer {
                             }
                         }
                     }
-                    // UPDATE table_name SET ... (skip FOR UPDATE)
-                    "UPDATE" if prev_keyword != Some("FOR") => {
+                    // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
+                    "FOR" => {
+                        in_for_clause = true;
+                        prev_keyword = Some("FOR");
+                    }
+                    // NO, KEY, SHARE are part of FOR locking clause
+                    "NO" | "KEY" | "SHARE" if in_for_clause => {
+                        prev_keyword = Some(kw.as_str());
+                    }
+                    // UPDATE: skip if in FOR locking clause
+                    "UPDATE" if !in_for_clause => {
                         prev_keyword = Some("UPDATE");
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -642,6 +655,7 @@ impl SqlLexer {
                         }
                     }
                     other => {
+                        in_for_clause = false;
                         prev_keyword = Some(other);
                     }
                 }
@@ -863,7 +877,8 @@ impl SqlLexer {
     fn extract_target_table(&self, tokens: &[Token]) -> Option<TableReference> {
         let mut i = 0;
         let mut paren_depth: i32 = 0;
-        let mut prev_keyword: Option<&str> = None;
+        // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
+        let mut in_for_clause = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -873,13 +888,17 @@ impl SqlLexer {
                 TokenKind::Punctuation(p) if *p == ')' => paren_depth = paren_depth.saturating_sub(1),
                 TokenKind::Keyword(kw) if paren_depth == 0 => {
                     match kw.as_str() {
+                        // FOR starts a locking clause
+                        "FOR" => {
+                            in_for_clause = true;
+                        }
+                        // NO, KEY, SHARE are part of FOR locking clause
+                        "NO" | "KEY" | "SHARE" if in_for_clause => {}
+                        // UPDATE: skip if in FOR locking clause
+                        "UPDATE" if in_for_clause => {
+                            in_for_clause = false;
+                        }
                         "UPDATE" => {
-                            // Skip "FOR UPDATE" (SELECT ... FOR UPDATE)
-                            if prev_keyword == Some("FOR") {
-                                prev_keyword = Some("UPDATE");
-                                i += 1;
-                                continue;
-                            }
                             i += 1;
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
@@ -918,7 +937,9 @@ impl SqlLexer {
                             }
                             return self.parse_table_reference(tokens, &mut i);
                         }
-                        other => prev_keyword = Some(other),
+                        _ => {
+                            in_for_clause = false;
+                        }
                     }
                 }
                 _ => {}
@@ -1590,6 +1611,29 @@ mod tests {
             // Only "users" should be included, FOR UPDATE should not add a reference
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_no_key_update_not_in_references() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+        }
+
+        #[test]
+        fn for_no_key_update_is_not_target() {
+            let l = lexer();
+            let sql = "SELECT * FROM users FOR NO KEY UPDATE";
+            let tokens = l.tokenize(sql, sql.len(), None);
+
+            let target = l.extract_target_table(&tokens);
+
+            assert!(target.is_none());
         }
     }
 }
