@@ -164,6 +164,7 @@ pub enum Action {
     // Focus mode
     ToggleFocus,
 
+    // ER Diagram
     SetErCenter(String),
     ErGraphBuilt(Box<NeighborhoodGraph>),
     ErSelectNode(usize),
