@@ -304,6 +304,26 @@ async fn handle_action(
 
         Action::CompletionTrigger => {
             let cursor = state.sql_modal_cursor;
+
+            // Detect missing tables and trigger prefetch (scoped borrow)
+            let missing = {
+                let engine = completion_engine.borrow();
+                engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
+            };
+
+            for qualified_name in missing {
+                // Parse schema.table from qualified name
+                if let Some((schema, table)) = qualified_name.split_once('.') {
+                    let _ = action_tx
+                        .send(Action::PrefetchTableDetail {
+                            schema: schema.to_string(),
+                            table: table.to_string(),
+                        })
+                        .await;
+                }
+            }
+
+            // Get completion candidates
             let engine = completion_engine.borrow();
             let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
             let recent_cols = state.completion.recent_columns_vec();
