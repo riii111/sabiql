@@ -57,6 +57,14 @@ pub enum QueryState {
     Running,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ErStatus {
+    #[default]
+    Idle,
+    Waiting,   // User pressed 'e' but prefetch not complete
+    Rendering, // DOT generation in progress
+}
+
 pub struct AppState {
     pub should_quit: bool,
     pub project_name: String,
@@ -144,6 +152,9 @@ pub struct AppState {
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
+
+    // ER diagram status
+    pub er_status: ErStatus,
 }
 
 impl AppState {
@@ -207,6 +218,8 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
+            // ER diagram status
+            er_status: ErStatus::default(),
         }
     }
 

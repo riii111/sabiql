@@ -119,6 +119,11 @@ impl CompletionEngine {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
+    /// Returns the number of cached tables
+    pub fn table_count(&self) -> usize {
+        self.table_detail_cache.len()
+    }
+
     /// Returns an iterator over cached table details for graph building
     pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
         self.table_detail_cache.iter()

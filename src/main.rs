@@ -17,7 +17,7 @@ use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
-use app::state::{AppState, QueryState};
+use app::state::{AppState, ErStatus, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
@@ -753,6 +753,13 @@ async fn handle_action(
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
+
+            // Auto-trigger ER diagram when prefetch completes while in Waiting state
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                let _ = action_tx.send(Action::ErOpenDiagram).await;
+            }
         }
 
         Action::TableDetailCacheFailed { schema, table } => {
@@ -763,6 +770,13 @@ async fn handle_action(
                 .insert(qualified_name, Instant::now());
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
+
+            // Auto-trigger ER diagram when prefetch completes while in Waiting state
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                let _ = action_tx.send(Action::ErOpenDiagram).await;
             }
         }
 
@@ -1031,50 +1045,68 @@ async fn handle_action(
         }
 
         Action::ErOpenDiagram => {
-            let (dot_content, table_count) = {
-                let engine = completion_engine.borrow();
-                let tables: Vec<_> = engine.table_details_iter().collect();
-                let count = tables.len();
-                if count == 0 {
-                    (None, 0)
-                } else {
-                    (
-                        Some(DotExporter::generate_full_dot(tables.into_iter())),
-                        count,
-                    )
-                }
-            };
+            // Check if prefetch is complete
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
 
-            if let Some(dot_content) = dot_content {
-                let filename = "er_full.dot".to_string();
-                let cache_dir = get_cache_dir(&state.project_name)?;
-                let tx = action_tx.clone();
-
-                tokio::spawn(async move {
-                    match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir) {
-                        Ok(path) => {
-                            let _ = tx
-                                .send(Action::ErDiagramOpened {
-                                    path: path.display().to_string(),
-                                    table_count,
-                                })
-                                .await;
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
-                        }
-                    }
-                });
+            if !prefetch_complete {
+                // Set Waiting state - will auto-trigger when prefetch completes
+                state.er_status = ErStatus::Waiting;
+                let cached = completion_engine.borrow().table_count();
+                let total = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+                state.set_success(format!("Preparing ER... ({}/{})", cached, total));
             } else {
-                state.set_error("No table data loaded yet".to_string());
+                // Prefetch complete - generate ER diagram immediately
+                state.er_status = ErStatus::Rendering;
+                let (dot_content, table_count) = {
+                    let engine = completion_engine.borrow();
+                    let tables: Vec<_> = engine.table_details_iter().collect();
+                    let count = tables.len();
+                    if count == 0 {
+                        (None, 0)
+                    } else {
+                        (
+                            Some(DotExporter::generate_full_dot(tables.into_iter())),
+                            count,
+                        )
+                    }
+                };
+
+                if let Some(dot_content) = dot_content {
+                    let filename = "er_full.dot".to_string();
+                    let cache_dir = get_cache_dir(&state.project_name)?;
+                    let tx = action_tx.clone();
+
+                    tokio::spawn(async move {
+                        match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir)
+                        {
+                            Ok(path) => {
+                                let _ = tx
+                                    .send(Action::ErDiagramOpened {
+                                        path: path.display().to_string(),
+                                        table_count,
+                                    })
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
+                            }
+                        }
+                    });
+                } else {
+                    state.er_status = ErStatus::Idle;
+                    state.set_error("No table data loaded yet".to_string());
+                }
             }
         }
 
         Action::ErDiagramOpened { path, table_count } => {
+            state.er_status = ErStatus::Idle;
             state.set_success(format!("✓ Opened {} ({} tables)", path, table_count));
         }
 
         Action::ErDiagramFailed(error) => {
+            state.er_status = ErStatus::Idle;
             state.set_error(error);
         }
 
