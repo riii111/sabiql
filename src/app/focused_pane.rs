@@ -5,10 +5,8 @@ pub enum FocusedPane {
     Explorer,
     Inspector,
     Result,
-    // ER mode panes (used when ER view is implemented)
-    #[allow(dead_code)]
+    // ER mode panes
     Graph,
-    #[allow(dead_code)]
     Details,
 }
 
