@@ -1,6 +1,6 @@
 pub mod handler;
 
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::KeyEvent;
 
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -8,7 +8,5 @@ pub enum Event {
     Tick,
     Render,
     Key(KeyEvent),
-    Mouse(MouseEvent),
     Resize(u16, u16),
-    Quit,
 }

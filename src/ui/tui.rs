@@ -109,7 +109,6 @@ impl TuiRunner {
                                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
                                     Event::Key(key)
                                 }
-                                CrosstermEvent::Mouse(mouse) => Event::Mouse(mouse),
                                 CrosstermEvent::Resize(x, y) => Event::Resize(x, y),
                                 _ => continue,
                             },

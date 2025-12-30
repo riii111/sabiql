@@ -8,7 +8,6 @@ use super::action::Action;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
-use super::mode::Mode;
 use super::result_history::ResultHistory;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
 
@@ -24,7 +23,6 @@ pub enum SqlModalState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionKind {
     Keyword,
-    Schema,
     Table,
     Column,
 }
@@ -33,12 +31,8 @@ pub enum CompletionKind {
 pub struct CompletionCandidate {
     pub text: String,
     pub kind: CompletionKind,
-    pub detail: Option<String>,
     pub score: i32,
 }
-
-const RECENT_TABLES_MAX: usize = 10;
-const RECENT_COLUMNS_MAX: usize = 20;
 
 #[derive(Debug, Clone, Default)]
 pub struct CompletionState {
@@ -46,8 +40,6 @@ pub struct CompletionState {
     pub candidates: Vec<CompletionCandidate>,
     pub selected_index: usize,
     pub trigger_position: usize,
-    pub generation: u64,
-    pub recent_tables: VecDeque<String>,
     pub recent_columns: VecDeque<String>,
 }
 
@@ -66,7 +58,6 @@ pub enum QueryState {
 }
 
 pub struct AppState {
-    pub mode: Mode,
     pub should_quit: bool,
     pub project_name: String,
     pub profile_name: String,
@@ -91,7 +82,6 @@ pub struct AppState {
 
     // Selected table detail
     pub table_detail: Option<Table>,
-    pub table_detail_state: MetadataState,
 
     // Action channel for async tasks
     pub action_tx: Option<Sender<Action>>,
@@ -158,7 +148,6 @@ pub struct AppState {
 impl AppState {
     pub fn new(project_name: String, profile_name: String) -> Self {
         Self {
-            mode: Mode::default(),
             should_quit: false,
             project_name,
             profile_name,
@@ -176,7 +165,6 @@ impl AppState {
             metadata_state: MetadataState::default(),
             metadata: None,
             table_detail: None,
-            table_detail_state: MetadataState::default(),
             action_tx: None,
             // Inspector
             inspector_tab: InspectorTab::default(),

@@ -9,11 +9,10 @@ use super::Event;
 pub fn handle_event(event: Event, state: &AppState) -> Action {
     match event {
         Event::Init => Action::Render,
-        Event::Quit => Action::Quit,
+        Event::Tick => Action::None,
         Event::Render => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
         Event::Key(key) => handle_key_event(key, state),
-        _ => Action::None,
     }
 }
 

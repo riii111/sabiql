@@ -16,12 +16,11 @@ use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
-use app::ports::{ClipboardWriter, MetadataProvider};
+use app::ports::MetadataProvider;
 use app::state::{AppState, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
-use infra::clipboard::PbcopyAdapter;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
@@ -154,9 +153,6 @@ async fn handle_action(
         }
         Action::InspectorPrevTab => {
             state.inspector_tab = state.inspector_tab.prev();
-        }
-        Action::InspectorSelectTab(tab) => {
-            state.inspector_tab = tab;
         }
 
         Action::OpenTablePicker => {
@@ -353,11 +349,6 @@ async fn handle_action(
                 && !state.sql_modal_content.trim().is_empty();
             state.completion.trigger_position = cursor.saturating_sub(token_len);
         }
-        Action::CompletionUpdate(candidates) => {
-            state.completion.candidates = candidates;
-            state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty();
-        }
         Action::CompletionAccept => {
             if state.completion.visible && !state.completion.candidates.is_empty() {
                 if let Some(candidate) = state
@@ -447,10 +438,6 @@ async fn handle_action(
         }
         Action::FilterBackspace => {
             state.filter_input.pop();
-            state.picker_selected = 0;
-        }
-        Action::FilterClear => {
-            state.filter_input.clear();
             state.picker_selected = 0;
         }
 
@@ -659,12 +646,6 @@ async fn handle_action(
             state.metadata_state = MetadataState::Error(error);
         }
 
-        Action::InvalidateCache => {
-            if let Some(dsn) = &state.dsn {
-                metadata_cache.invalidate(dsn).await;
-            }
-        }
-
         Action::LoadTableDetail {
             schema,
             table,
@@ -747,13 +728,9 @@ async fn handle_action(
                                 })
                                 .await;
                         }
-                        Err(e) => {
+                        Err(_) => {
                             let _ = tx
-                                .send(Action::TableDetailCacheFailed {
-                                    schema,
-                                    table,
-                                    error: e.to_string(),
-                                })
+                                .send(Action::TableDetailCacheFailed { schema, table })
                                 .await;
                         }
                     }
@@ -783,11 +760,7 @@ async fn handle_action(
             }
         }
 
-        Action::TableDetailCacheFailed {
-            schema,
-            table,
-            error: _,
-        } => {
+        Action::TableDetailCacheFailed { schema, table } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state
@@ -952,39 +925,6 @@ async fn handle_action(
             }
         }
 
-        // Result history navigation
-        Action::HistoryPrev => {
-            let history_len = state.result_history.len();
-            if history_len > 0 {
-                match state.history_index {
-                    None => {
-                        // Start browsing history from the most recent
-                        state.history_index = Some(history_len - 1);
-                    }
-                    Some(idx) if idx > 0 => {
-                        state.history_index = Some(idx - 1);
-                    }
-                    _ => {}
-                }
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
-            }
-        }
-
-        Action::HistoryNext => {
-            let history_len = state.result_history.len();
-            if let Some(idx) = state.history_index {
-                if idx + 1 < history_len {
-                    state.history_index = Some(idx + 1);
-                } else {
-                    // Return to current result
-                    state.history_index = None;
-                }
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
-            }
-        }
-
         // Result scroll
         Action::ResultScrollUp => {
             state.result_scroll_offset = state.result_scroll_offset.saturating_sub(1);
@@ -1054,42 +994,6 @@ async fn handle_action(
             }
         }
 
-        // Clipboard operations
-        Action::CopySelection => {
-            // Context-dependent copy
-            let content = state.current_table.clone();
-
-            if let Some(content) = content {
-                let _ = action_tx.send(Action::CopyToClipboard(content)).await;
-            }
-        }
-
-        Action::CopyLastError => {
-            if let Some(error) = &state.last_error {
-                let _ = action_tx.send(Action::CopyToClipboard(error.clone())).await;
-            }
-        }
-
-        Action::CopyToClipboard(content) => {
-            let clipboard = PbcopyAdapter::new();
-            match clipboard.write(&content) {
-                Ok(()) => {
-                    let _ = action_tx.send(Action::ClipboardSuccess).await;
-                }
-                Err(e) => {
-                    let _ = action_tx.send(Action::ClipboardFailed(e.to_string())).await;
-                }
-            }
-        }
-
-        Action::ClipboardSuccess => {
-            state.last_success = Some("✓ Copied to clipboard".to_string());
-        }
-
-        Action::ClipboardFailed(error) => {
-            state.last_error = Some(format!("Clipboard error: {}", error));
-        }
-
         Action::OpenConsole => {
             if let Some(dsn) = &state.dsn {
                 let cache_dir = get_cache_dir(&state.project_name)?;
@@ -1139,7 +1043,10 @@ async fn handle_action(
                 if count == 0 {
                     (None, 0)
                 } else {
-                    (Some(DotExporter::generate_full_dot(tables.into_iter())), count)
+                    (
+                        Some(DotExporter::generate_full_dot(tables.into_iter())),
+                        count,
+                    )
                 }
             };
 
