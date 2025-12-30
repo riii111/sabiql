@@ -5,39 +5,21 @@ A Rust-based TUI (Terminal User Interface) application for database browsing and
 ## Features
 
 - **Browse Mode**: Navigate database schemas, tables, and view table details
-- **ER Mode**: Visualize table relationships in a neighborhood graph
+- **ER Diagram**: Visualize all table relationships via Graphviz export
 - **SQL Modal**: Execute ad-hoc SQL queries
 - **Console Integration**: Seamless integration with pgcli
 
-## ER Tab
+## ER Diagram
 
-The ER (Entity-Relationship) tab shows foreign key relationships between tables as a neighborhood graph.
+The ER (Entity-Relationship) diagram visualizes foreign key relationships between all tables in the database.
 
 ### How to Use
 
-1. Switch to the ER tab using `Tab` or `Shift+Tab`
-2. The graph shows tables within 1-2 hops via FK relationships
-3. Navigate and explore relationships using the keybindings below
+1. Press `e` in Browse mode or use `:erd` command
+2. The diagram shows all tables and FK relationships loaded in the cache
+3. The diagram is exported as DOT format and converted to SVG for viewing
 
-### ER Mode Keybindings
-
-| Key | Action |
-|-----|--------|
-| `j`/`k` | Navigate up/down in node list |
-| `Enter` | Recenter graph on selected node |
-| `d` | Toggle depth (1 ↔ 2 hops) |
-| `1` | Focus Graph pane |
-| `2` | Focus Details pane |
-| `Esc` | Return to Browse tab |
-
-### Export Commands
-
-| Command | Description |
-|---------|-------------|
-| `:erd` | Export current graph to DOT file in cache directory |
-| `:erd!` | Export to DOT, convert to SVG using Graphviz, and open in viewer |
-
-**Note**: `:erd!` requires Graphviz to be installed (`brew install graphviz` on macOS)
+**Note**: Requires Graphviz to be installed (`brew install graphviz` on macOS)
 
 ## Browse Mode Keybindings
 
@@ -52,6 +34,7 @@ The ER (Entity-Relationship) tab shows foreign key relationships between tables 
 | `r` | Reload metadata |
 | `c` | Open pgcli console |
 | `s` | Open SQL modal |
+| `e` | Open ER diagram (via Graphviz) |
 | `Ctrl+P` | Open table picker |
 | `Ctrl+K` | Open command palette |
 | `?` | Show help |
