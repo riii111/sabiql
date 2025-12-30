@@ -312,14 +312,15 @@ async fn handle_action(
             };
 
             for qualified_name in missing {
-                if let Some((schema, table)) = qualified_name.split_once('.') {
-                    let _ = action_tx
-                        .send(Action::PrefetchTableDetail {
-                            schema: schema.to_string(),
-                            table: table.to_string(),
-                        })
-                        .await;
-                }
+                let (schema, table) = if let Some((s, t)) = qualified_name.split_once('.') {
+                    (s.to_string(), t.to_string())
+                } else {
+                    // Unqualified table name - assume "public" schema (PostgreSQL default)
+                    ("public".to_string(), qualified_name)
+                };
+                let _ = action_tx
+                    .send(Action::PrefetchTableDetail { schema, table })
+                    .await;
             }
 
             let engine = completion_engine.borrow();
