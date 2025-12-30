@@ -760,7 +760,8 @@ async fn handle_action(
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.input_mode == InputMode::SqlModal {
+            // Only trigger completion when queue is empty to avoid repeated recalculation
+            if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
