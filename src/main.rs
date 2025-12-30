@@ -191,6 +191,9 @@ async fn handle_action(
             state.completion.candidates.clear();
             state.completion.selected_index = 0;
             state.completion_debounce = None;
+            if !state.prefetch_started && state.metadata.is_some() {
+                let _ = action_tx.send(Action::StartPrefetchAll).await;
+            }
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
@@ -756,6 +759,28 @@ async fn handle_action(
             state
                 .failed_prefetch_tables
                 .insert(qualified_name, Instant::now());
+        }
+
+        Action::StartPrefetchAll => {
+            if !state.prefetch_started {
+                if let Some(metadata) = &state.metadata {
+                    state.prefetch_started = true;
+                    state.prefetch_queue.clear();
+                    let engine = completion_engine.borrow();
+                    for table_summary in &metadata.tables {
+                        let qualified_name = table_summary.qualified_name();
+                        if !engine.has_cached_table(&qualified_name) {
+                            state.prefetch_queue.push_back(qualified_name);
+                        }
+                    }
+                    drop(engine);
+                    let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+                }
+            }
+        }
+
+        Action::ProcessPrefetchQueue => {
+            // Placeholder for Step 3
         }
 
         Action::ExecutePreview {
