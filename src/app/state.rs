@@ -156,6 +156,12 @@ pub struct AppState {
     // Tables that failed to prefetch (schema.table -> failure time) for backoff
     pub failed_prefetch_tables: HashMap<String, Instant>,
 
+    // Prefetch queue for all tables (schema.table qualified names)
+    pub prefetch_queue: VecDeque<String>,
+
+    // Whether prefetch-all has been started for this SQL modal session
+    pub prefetch_started: bool,
+
     // Query execution state
     pub query_state: QueryState,
     pub query_start_time: Option<Instant>,
@@ -222,6 +228,8 @@ impl AppState {
             completion_debounce: None,
             prefetching_tables: HashSet::new(),
             failed_prefetch_tables: HashMap::new(),
+            prefetch_queue: VecDeque::new(),
+            prefetch_started: false,
             // Query state
             query_state: QueryState::default(),
             query_start_time: None,

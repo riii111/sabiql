@@ -93,6 +93,10 @@ pub enum Action {
         error: String,
     },
 
+    // Prefetch all tables for completion
+    StartPrefetchAll,
+    ProcessPrefetchQueue,
+
     // Cache operations
     InvalidateCache,
 
