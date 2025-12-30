@@ -1,5 +1,5 @@
 use ratatui::Frame;
-use ratatui::layout::{Layout, Constraint, Direction, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
@@ -79,14 +79,19 @@ impl ErGraph {
                     .highlight_symbol("> ");
 
                 frame.render_widget(block, area);
-                state.er_node_list_state.select(Some(state.er_selected_node));
+                state
+                    .er_node_list_state
+                    .select(Some(state.er_selected_node));
                 frame.render_stateful_widget(list, chunks[0], &mut state.er_node_list_state);
 
                 let hint = if state.er_cache_sparse {
                     Paragraph::new(Line::from(vec![
                         Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
-                        Span::styled("FK metadata loading... ", Style::default().fg(Color::DarkGray)),
-                        Span::styled("Tab", Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            "FK metadata loading... ",
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                        Span::styled("r", Style::default().fg(Color::Yellow)),
                         Span::styled(" to refresh", Style::default().fg(Color::DarkGray)),
                     ]))
                 } else {
@@ -107,7 +112,9 @@ impl ErGraph {
                     )
                     .highlight_symbol("> ");
 
-                state.er_node_list_state.select(Some(state.er_selected_node));
+                state
+                    .er_node_list_state
+                    .select(Some(state.er_selected_node));
                 frame.render_stateful_widget(list, area, &mut state.er_node_list_state);
             }
         } else {

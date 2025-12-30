@@ -130,9 +130,10 @@ async fn handle_action(
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
-    // Clear error on user actions (not on Render/Resize)
+    // Clear messages on user actions (not on Render/Resize)
     if !matches!(action, Action::Render | Action::Resize(_, _)) {
         state.last_error = None;
+        state.last_success = None;
     }
 
     match action {
@@ -150,7 +151,10 @@ async fn handle_action(
             state.change_tab(true);
             if was_browse && state.mode == Mode::ER {
                 let center = state.current_table.clone().or_else(|| {
-                    state.tables().get(state.explorer_selected).map(|t| t.qualified_name())
+                    state
+                        .tables()
+                        .get(state.explorer_selected)
+                        .map(|t| t.qualified_name())
                 });
                 if let Some(center) = center {
                     let _ = action_tx.send(Action::SetErCenter(center)).await;
@@ -162,7 +166,10 @@ async fn handle_action(
             state.change_tab(false);
             if was_browse && state.mode == Mode::ER {
                 let center = state.current_table.clone().or_else(|| {
-                    state.tables().get(state.explorer_selected).map(|t| t.qualified_name())
+                    state
+                        .tables()
+                        .get(state.explorer_selected)
+                        .map(|t| t.qualified_name())
                 });
                 if let Some(center) = center {
                     let _ = action_tx.send(Action::SetErCenter(center)).await;
@@ -1131,7 +1138,7 @@ async fn handle_action(
         }
 
         Action::ClipboardSuccess => {
-            // Could show a notification, for now just log or do nothing
+            state.last_success = Some("✓ Copied to clipboard".to_string());
         }
 
         Action::ClipboardFailed(error) => {
@@ -1203,6 +1210,12 @@ async fn handle_action(
             }
         }
 
+        Action::ErRefresh => {
+            if let Some(center) = state.er_center_table.clone() {
+                let _ = action_tx.send(Action::SetErCenter(center)).await;
+            }
+        }
+
         Action::ErToggleDepth => {
             state.er_depth = if state.er_depth == 1 { 2 } else { 1 };
 
@@ -1266,7 +1279,7 @@ async fn handle_action(
         }
 
         Action::ErExportCompleted(path) => {
-            state.last_error = Some(format!("Exported to {}", path));
+            state.last_success = Some(format!("✓ Exported to {}", path));
         }
 
         Action::ErExportFailed(error) => {

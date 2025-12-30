@@ -168,8 +168,9 @@ pub struct AppState {
     pub query_state: QueryState,
     pub query_start_time: Option<Instant>,
 
-    // Last error for copy functionality
+    // Status messages (shown in footer)
     pub last_error: Option<String>,
+    pub last_success: Option<String>,
 
     // Generation counter for race condition prevention
     pub selection_generation: u64,
@@ -242,8 +243,9 @@ impl AppState {
             // Query state
             query_state: QueryState::default(),
             query_start_time: None,
-            // Last error
+            // Status messages
             last_error: None,
+            last_success: None,
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
