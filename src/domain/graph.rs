@@ -166,118 +166,151 @@ impl NeighborhoodGraph {
 mod tests {
     use super::*;
 
-    #[test]
-    fn graph_node_qualified_name() {
-        let node = GraphNode::new("public".to_string(), "users".to_string(), 0);
-        assert_eq!(node.qualified_name(), "public.users");
+    mod graph_node {
+        use super::*;
+
+        #[test]
+        fn qualified_name_returns_schema_dot_table() {
+            let node = GraphNode::new("public".to_string(), "users".to_string(), 0);
+
+            assert_eq!(node.qualified_name(), "public.users");
+        }
+
+        #[test]
+        fn is_center_returns_true_when_hop_distance_zero() {
+            let node = GraphNode::new("public".to_string(), "users".to_string(), 0);
+
+            assert!(node.is_center());
+        }
+
+        #[test]
+        fn is_center_returns_false_when_hop_distance_nonzero() {
+            let node = GraphNode::new("public".to_string(), "orders".to_string(), 1);
+
+            assert!(!node.is_center());
+        }
     }
 
-    #[test]
-    fn graph_node_is_center() {
-        let center = GraphNode::new("public".to_string(), "users".to_string(), 0);
-        let neighbor = GraphNode::new("public".to_string(), "orders".to_string(), 1);
+    mod graph_edge {
+        use super::*;
 
-        assert!(center.is_center());
-        assert!(!neighbor.is_center());
+        #[test]
+        fn dedup_key_normalizes_endpoint_order() {
+            let edge1 = GraphEdge::new(
+                "public.users".to_string(),
+                "public.orders".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            );
+            let edge2 = GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["id".to_string()],
+                vec!["user_id".to_string()],
+            );
+
+            assert_eq!(edge1.dedup_key(), edge2.dedup_key());
+        }
+
+        #[test]
+        fn direction_from_returns_outgoing_for_from_node() {
+            let edge = GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            );
+
+            assert_eq!(
+                edge.direction_from("public.orders"),
+                EdgeDirection::Outgoing
+            );
+        }
+
+        #[test]
+        fn direction_from_returns_incoming_for_to_node() {
+            let edge = GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            );
+
+            assert_eq!(edge.direction_from("public.users"), EdgeDirection::Incoming);
+        }
     }
 
-    #[test]
-    fn graph_edge_dedup_key_is_normalized() {
-        let edge1 = GraphEdge::new(
-            "public.users".to_string(),
-            "public.orders".to_string(),
-            "fk_user".to_string(),
-            vec!["user_id".to_string()],
-            vec!["id".to_string()],
-        );
-        let edge2 = GraphEdge::new(
-            "public.orders".to_string(),
-            "public.users".to_string(),
-            "fk_user".to_string(),
-            vec!["id".to_string()],
-            vec!["user_id".to_string()],
-        );
+    mod neighborhood_graph {
+        use super::*;
 
-        assert_eq!(edge1.dedup_key(), edge2.dedup_key());
-    }
+        #[test]
+        fn get_node_returns_some_when_exists() {
+            let mut graph = NeighborhoodGraph::new("public.users".to_string(), 1);
+            graph
+                .nodes
+                .push(GraphNode::new("public".to_string(), "users".to_string(), 0));
 
-    #[test]
-    fn graph_edge_direction() {
-        let edge = GraphEdge::new(
-            "public.orders".to_string(),
-            "public.users".to_string(),
-            "fk_user".to_string(),
-            vec!["user_id".to_string()],
-            vec!["id".to_string()],
-        );
+            assert!(graph.get_node("public.users").is_some());
+        }
 
-        assert_eq!(
-            edge.direction_from("public.orders"),
-            EdgeDirection::Outgoing
-        );
-        assert_eq!(edge.direction_from("public.users"), EdgeDirection::Incoming);
-    }
+        #[test]
+        fn get_node_returns_none_when_not_found() {
+            let graph = NeighborhoodGraph::new("public.users".to_string(), 1);
 
-    #[test]
-    fn neighborhood_graph_get_node() {
-        let mut graph = NeighborhoodGraph::new("public.users".to_string(), 1);
-        graph
-            .nodes
-            .push(GraphNode::new("public".to_string(), "users".to_string(), 0));
-        graph.nodes.push(GraphNode::new(
-            "public".to_string(),
-            "orders".to_string(),
-            1,
-        ));
+            assert!(graph.get_node("public.products").is_none());
+        }
 
-        assert!(graph.get_node("public.users").is_some());
-        assert!(graph.get_node("public.orders").is_some());
-        assert!(graph.get_node("public.products").is_none());
-    }
+        #[test]
+        fn edges_for_node_returns_all_connected_edges() {
+            let mut graph = NeighborhoodGraph::new("public.orders".to_string(), 1);
+            graph.edges.push(GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            ));
+            graph.edges.push(GraphEdge::new(
+                "public.orders".to_string(),
+                "public.products".to_string(),
+                "fk_product".to_string(),
+                vec!["product_id".to_string()],
+                vec!["id".to_string()],
+            ));
 
-    #[test]
-    fn neighborhood_graph_edges_for_node() {
-        let mut graph = NeighborhoodGraph::new("public.users".to_string(), 1);
-        graph.edges.push(GraphEdge::new(
-            "public.orders".to_string(),
-            "public.users".to_string(),
-            "fk_user".to_string(),
-            vec!["user_id".to_string()],
-            vec!["id".to_string()],
-        ));
-        graph.edges.push(GraphEdge::new(
-            "public.orders".to_string(),
-            "public.products".to_string(),
-            "fk_product".to_string(),
-            vec!["product_id".to_string()],
-            vec!["id".to_string()],
-        ));
+            assert_eq!(graph.edges_for_node("public.orders").len(), 2);
+        }
 
-        let user_edges = graph.edges_for_node("public.users");
-        assert_eq!(user_edges.len(), 1);
+        #[test]
+        fn outgoing_edges_returns_edges_from_node() {
+            let mut graph = NeighborhoodGraph::new("public.orders".to_string(), 1);
+            graph.edges.push(GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            ));
 
-        let order_edges = graph.edges_for_node("public.orders");
-        assert_eq!(order_edges.len(), 2);
-    }
+            assert_eq!(graph.outgoing_edges("public.orders").len(), 1);
+        }
 
-    #[test]
-    fn neighborhood_graph_outgoing_incoming_edges() {
-        let mut graph = NeighborhoodGraph::new("public.orders".to_string(), 1);
-        graph.edges.push(GraphEdge::new(
-            "public.orders".to_string(),
-            "public.users".to_string(),
-            "fk_user".to_string(),
-            vec!["user_id".to_string()],
-            vec!["id".to_string()],
-        ));
+        #[test]
+        fn incoming_edges_returns_edges_to_node() {
+            let mut graph = NeighborhoodGraph::new("public.orders".to_string(), 1);
+            graph.edges.push(GraphEdge::new(
+                "public.orders".to_string(),
+                "public.users".to_string(),
+                "fk_user".to_string(),
+                vec!["user_id".to_string()],
+                vec!["id".to_string()],
+            ));
 
-        let outgoing = graph.outgoing_edges("public.orders");
-        let incoming = graph.incoming_edges("public.orders");
-
-        assert_eq!(outgoing.len(), 1);
-        assert_eq!(incoming.len(), 0);
-
-        let user_incoming = graph.incoming_edges("public.users");
-        assert_eq!(user_incoming.len(), 1);
+            assert_eq!(graph.incoming_edges("public.users").len(), 1);
+        }
     }
 }

@@ -167,244 +167,326 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_graph_single_table_no_fks() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
+    mod build {
+        use super::*;
 
-        let graph = GraphBuilder::build("public.users", &tables, 1);
+        #[test]
+        fn single_table_without_fks_returns_only_center_node() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
 
-        assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.edges.len(), 0);
-        assert!(graph.center_node().unwrap().is_center());
-    }
+            let graph = GraphBuilder::build("public.users", &tables, 1);
 
-    #[test]
-    fn build_graph_with_outgoing_fk() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
+            assert_eq!(graph.nodes.len(), 1);
+            assert!(graph.center_node().unwrap().is_center());
+        }
 
-        // orders references users (orders.user_id -> users.id)
-        tables.insert(
-            "public.orders".to_string(),
-            make_table(
-                "public",
-                "orders",
-                vec![make_fk(
-                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
-                )],
-            ),
-        );
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
+        #[test]
+        fn single_table_without_fks_returns_no_edges() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
 
-        let graph = GraphBuilder::build("public.orders", &tables, 1);
+            let graph = GraphBuilder::build("public.users", &tables, 1);
 
-        assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.edges.len(), 1);
+            assert_eq!(graph.edges.len(), 0);
+        }
 
-        let center = graph.center_node().unwrap();
-        assert_eq!(center.qualified_name(), "public.orders");
-
-        let edge = &graph.edges[0];
-        assert_eq!(edge.from_node, "public.orders");
-        assert_eq!(edge.to_node, "public.users");
-    }
-
-    #[test]
-    fn build_graph_with_incoming_fk() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-
-        // orders references users (orders.user_id -> users.id)
-        tables.insert(
-            "public.orders".to_string(),
-            make_table(
-                "public",
-                "orders",
-                vec![make_fk(
-                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
-                )],
-            ),
-        );
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
-
-        // Center on users - should find orders as incoming
-        let graph = GraphBuilder::build("public.users", &tables, 1);
-
-        assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.edges.len(), 1);
-
-        let center = graph.center_node().unwrap();
-        assert_eq!(center.qualified_name(), "public.users");
-    }
-
-    #[test]
-    fn build_graph_respects_max_depth() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-
-        // Chain: users -> orders -> order_items
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
-        tables.insert(
-            "public.orders".to_string(),
-            make_table(
-                "public",
-                "orders",
-                vec![make_fk(
-                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
-                )],
-            ),
-        );
-        tables.insert(
-            "public.order_items".to_string(),
-            make_table(
-                "public",
-                "order_items",
-                vec![make_fk(
-                    "fk_order",
-                    "public",
-                    "order_items",
-                    "order_id",
+        #[test]
+        fn outgoing_fk_includes_referenced_table_as_neighbor() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
                     "public",
                     "orders",
-                    "id",
-                )],
-            ),
-        );
-
-        // Depth 1: users + orders
-        let graph1 = GraphBuilder::build("public.users", &tables, 1);
-        assert_eq!(graph1.nodes.len(), 2);
-
-        // Depth 2: users + orders + order_items
-        let graph2 = GraphBuilder::build("public.users", &tables, 2);
-        assert_eq!(graph2.nodes.len(), 3);
-    }
-
-    #[test]
-    fn build_graph_handles_cycles() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-
-        // Circular: a -> b -> c -> a
-        tables.insert(
-            "public.a".to_string(),
-            make_table(
-                "public",
-                "a",
-                vec![make_fk("fk_b", "public", "a", "b_id", "public", "b", "id")],
-            ),
-        );
-        tables.insert(
-            "public.b".to_string(),
-            make_table(
-                "public",
-                "b",
-                vec![make_fk("fk_c", "public", "b", "c_id", "public", "c", "id")],
-            ),
-        );
-        tables.insert(
-            "public.c".to_string(),
-            make_table(
-                "public",
-                "c",
-                vec![make_fk("fk_a", "public", "c", "a_id", "public", "a", "id")],
-            ),
-        );
-
-        let graph = GraphBuilder::build("public.a", &tables, 2);
-
-        // Should visit all 3 nodes without infinite loop
-        assert_eq!(graph.nodes.len(), 3);
-        // Should have 3 edges (one for each FK)
-        assert_eq!(graph.edges.len(), 3);
-    }
-
-    #[test]
-    fn build_graph_deduplicates_edges() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-
-        // Two FKs from orders to users (unusual but possible)
-        tables.insert(
-            "public.orders".to_string(),
-            make_table(
-                "public",
-                "orders",
-                vec![
-                    make_fk(
+                    vec![make_fk(
                         "fk_user", "public", "orders", "user_id", "public", "users", "id",
-                    ),
-                    make_fk(
-                        "fk_created_by",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+
+            let graph = GraphBuilder::build("public.orders", &tables, 1);
+
+            assert_eq!(graph.nodes.len(), 2);
+            assert_eq!(graph.center_node().unwrap().qualified_name(), "public.orders");
+        }
+
+        #[test]
+        fn outgoing_fk_creates_edge_from_source_to_target() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![make_fk(
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+
+            let graph = GraphBuilder::build("public.orders", &tables, 1);
+
+            assert_eq!(graph.edges.len(), 1);
+            assert_eq!(graph.edges[0].from_node, "public.orders");
+            assert_eq!(graph.edges[0].to_node, "public.users");
+        }
+
+        #[test]
+        fn incoming_fk_includes_referencing_table_as_neighbor() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![make_fk(
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+
+            let graph = GraphBuilder::build("public.users", &tables, 1);
+
+            assert_eq!(graph.nodes.len(), 2);
+            assert_eq!(graph.center_node().unwrap().qualified_name(), "public.users");
+        }
+
+        #[test]
+        fn depth_one_excludes_two_hop_neighbors() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![make_fk(
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.order_items".to_string(),
+                make_table(
+                    "public",
+                    "order_items",
+                    vec![make_fk(
+                        "fk_order",
+                        "public",
+                        "order_items",
+                        "order_id",
                         "public",
                         "orders",
-                        "created_by",
+                        "id",
+                    )],
+                ),
+            );
+
+            let graph = GraphBuilder::build("public.users", &tables, 1);
+
+            assert_eq!(graph.nodes.len(), 2);
+        }
+
+        #[test]
+        fn depth_two_includes_two_hop_neighbors() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![make_fk(
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.order_items".to_string(),
+                make_table(
+                    "public",
+                    "order_items",
+                    vec![make_fk(
+                        "fk_order",
+                        "public",
+                        "order_items",
+                        "order_id",
+                        "public",
+                        "orders",
+                        "id",
+                    )],
+                ),
+            );
+
+            let graph = GraphBuilder::build("public.users", &tables, 2);
+
+            assert_eq!(graph.nodes.len(), 3);
+        }
+
+        #[test]
+        fn cyclic_references_visit_all_nodes_without_infinite_loop() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.a".to_string(),
+                make_table(
+                    "public",
+                    "a",
+                    vec![make_fk("fk_b", "public", "a", "b_id", "public", "b", "id")],
+                ),
+            );
+            tables.insert(
+                "public.b".to_string(),
+                make_table(
+                    "public",
+                    "b",
+                    vec![make_fk("fk_c", "public", "b", "c_id", "public", "c", "id")],
+                ),
+            );
+            tables.insert(
+                "public.c".to_string(),
+                make_table(
+                    "public",
+                    "c",
+                    vec![make_fk("fk_a", "public", "c", "a_id", "public", "a", "id")],
+                ),
+            );
+
+            let graph = GraphBuilder::build("public.a", &tables, 2);
+
+            assert_eq!(graph.nodes.len(), 3);
+        }
+
+        #[test]
+        fn cyclic_references_include_all_fk_edges() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.a".to_string(),
+                make_table(
+                    "public",
+                    "a",
+                    vec![make_fk("fk_b", "public", "a", "b_id", "public", "b", "id")],
+                ),
+            );
+            tables.insert(
+                "public.b".to_string(),
+                make_table(
+                    "public",
+                    "b",
+                    vec![make_fk("fk_c", "public", "b", "c_id", "public", "c", "id")],
+                ),
+            );
+            tables.insert(
+                "public.c".to_string(),
+                make_table(
+                    "public",
+                    "c",
+                    vec![make_fk("fk_a", "public", "c", "a_id", "public", "a", "id")],
+                ),
+            );
+
+            let graph = GraphBuilder::build("public.a", &tables, 2);
+
+            assert_eq!(graph.edges.len(), 3);
+        }
+
+        #[test]
+        fn multiple_fks_to_same_table_preserves_distinct_edges() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![
+                        make_fk(
+                            "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                        ),
+                        make_fk(
+                            "fk_created_by",
+                            "public",
+                            "orders",
+                            "created_by",
+                            "public",
+                            "users",
+                            "id",
+                        ),
+                    ],
+                ),
+            );
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+
+            let graph = GraphBuilder::build("public.orders", &tables, 1);
+
+            assert_eq!(graph.edges.len(), 2);
+        }
+
+        #[test]
+        fn nodes_are_sorted_by_hop_distance_then_name() {
+            let mut tables: HashMap<String, Table> = HashMap::new();
+            tables.insert(
+                "public.users".to_string(),
+                make_table("public", "users", vec![]),
+            );
+            tables.insert(
+                "public.orders".to_string(),
+                make_table(
+                    "public",
+                    "orders",
+                    vec![make_fk(
+                        "fk_user", "public", "orders", "user_id", "public", "users", "id",
+                    )],
+                ),
+            );
+            tables.insert(
+                "public.addresses".to_string(),
+                make_table(
+                    "public",
+                    "addresses",
+                    vec![make_fk(
+                        "fk_user",
+                        "public",
+                        "addresses",
+                        "user_id",
                         "public",
                         "users",
                         "id",
-                    ),
-                ],
-            ),
-        );
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
+                    )],
+                ),
+            );
 
-        let graph = GraphBuilder::build("public.orders", &tables, 1);
+            let graph = GraphBuilder::build("public.users", &tables, 1);
 
-        // Both FKs should be present (different names = different edges)
-        assert_eq!(graph.edges.len(), 2);
-    }
-
-    #[test]
-    fn nodes_sorted_by_hop_then_name() {
-        let mut tables: HashMap<String, Table> = HashMap::new();
-
-        tables.insert(
-            "public.users".to_string(),
-            make_table("public", "users", vec![]),
-        );
-        tables.insert(
-            "public.orders".to_string(),
-            make_table(
-                "public",
-                "orders",
-                vec![make_fk(
-                    "fk_user", "public", "orders", "user_id", "public", "users", "id",
-                )],
-            ),
-        );
-        tables.insert(
-            "public.addresses".to_string(),
-            make_table(
-                "public",
-                "addresses",
-                vec![make_fk(
-                    "fk_user",
-                    "public",
-                    "addresses",
-                    "user_id",
-                    "public",
-                    "users",
-                    "id",
-                )],
-            ),
-        );
-
-        let graph = GraphBuilder::build("public.users", &tables, 1);
-
-        // First should be center (hop 0), then hop 1 sorted alphabetically
-        assert_eq!(graph.nodes[0].qualified_name(), "public.users");
-        assert_eq!(graph.nodes[1].qualified_name(), "public.addresses");
-        assert_eq!(graph.nodes[2].qualified_name(), "public.orders");
+            assert_eq!(graph.nodes[0].qualified_name(), "public.users");
+            assert_eq!(graph.nodes[1].qualified_name(), "public.addresses");
+            assert_eq!(graph.nodes[2].qualified_name(), "public.orders");
+        }
     }
 }

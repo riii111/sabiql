@@ -120,56 +120,72 @@ mod tests {
         graph
     }
 
-    #[test]
-    fn generate_dot_includes_header() {
-        let graph = create_test_graph();
+    mod generate_dot {
+        use super::*;
 
-        let dot = DotExporter::generate_dot(&graph);
+        #[test]
+        fn output_contains_digraph_header() {
+            let graph = create_test_graph();
 
-        assert!(dot.contains("digraph neighborhood {"));
-        assert!(dot.contains("rankdir=LR"));
+            let dot = DotExporter::generate_dot(&graph);
+
+            assert!(dot.contains("digraph neighborhood {"));
+        }
+
+        #[test]
+        fn output_uses_left_to_right_direction() {
+            let graph = create_test_graph();
+
+            let dot = DotExporter::generate_dot(&graph);
+
+            assert!(dot.contains("rankdir=LR"));
+        }
+
+        #[test]
+        fn center_node_has_gold_fill_color() {
+            let graph = create_test_graph();
+
+            let dot = DotExporter::generate_dot(&graph);
+
+            assert!(dot.contains("\"public.users\""));
+            assert!(dot.contains("fillcolor=gold"));
+        }
+
+        #[test]
+        fn one_hop_neighbor_has_lightblue_fill_color() {
+            let graph = create_test_graph();
+
+            let dot = DotExporter::generate_dot(&graph);
+
+            assert!(dot.contains("\"public.orders\""));
+            assert!(dot.contains("fillcolor=lightblue"));
+        }
+
+        #[test]
+        fn edges_include_fk_name_as_label() {
+            let graph = create_test_graph();
+
+            let dot = DotExporter::generate_dot(&graph);
+
+            assert!(dot.contains("\"public.orders\" -> \"public.users\""));
+            assert!(dot.contains("label=\"fk_orders_user\""));
+        }
     }
 
-    #[test]
-    fn generate_dot_includes_center_node() {
-        let graph = create_test_graph();
+    mod export_to_file {
+        use super::*;
 
-        let dot = DotExporter::generate_dot(&graph);
+        #[test]
+        fn creates_file_with_dot_extension() {
+            let graph = create_test_graph();
+            let temp_dir = tempfile::tempdir().unwrap();
 
-        assert!(dot.contains("\"public.users\""));
-        assert!(dot.contains("fillcolor=gold"));
-    }
+            let result = DotExporter::export_to_file(&graph, temp_dir.path());
 
-    #[test]
-    fn generate_dot_includes_related_nodes() {
-        let graph = create_test_graph();
-
-        let dot = DotExporter::generate_dot(&graph);
-
-        assert!(dot.contains("\"public.orders\""));
-        assert!(dot.contains("fillcolor=lightblue"));
-    }
-
-    #[test]
-    fn generate_dot_includes_edges() {
-        let graph = create_test_graph();
-
-        let dot = DotExporter::generate_dot(&graph);
-
-        assert!(dot.contains("\"public.orders\" -> \"public.users\""));
-        assert!(dot.contains("label=\"fk_orders_user\""));
-    }
-
-    #[test]
-    fn export_to_file_creates_dot_file() {
-        let graph = create_test_graph();
-        let temp_dir = tempfile::tempdir().unwrap();
-
-        let result = DotExporter::export_to_file(&graph, temp_dir.path());
-
-        assert!(result.is_ok());
-        let dot_path = result.unwrap();
-        assert!(dot_path.exists());
-        assert!(dot_path.extension().map_or(false, |ext| ext == "dot"));
+            assert!(result.is_ok());
+            let dot_path = result.unwrap();
+            assert!(dot_path.exists());
+            assert!(dot_path.extension().map_or(false, |ext| ext == "dot"));
+        }
     }
 }
