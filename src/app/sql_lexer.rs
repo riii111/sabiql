@@ -70,6 +70,8 @@ pub struct SqlContext {
     pub ctes: Vec<CteDefinition>,
     #[allow(dead_code)] // Phase 4: clause-based completion logic
     pub current_clause: ClauseKind,
+    /// Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
+    pub target_table: Option<TableReference>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -815,11 +817,79 @@ impl SqlLexer {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
         let current_clause = self.detect_clause_at_cursor(tokens, cursor_pos);
+        let target_table = self.extract_target_table(tokens);
 
         SqlContext {
             tables,
             ctes,
             current_clause,
+            target_table,
+        }
+    }
+
+    /// Extracts the target table for UPDATE/DELETE/INSERT statements
+    fn extract_target_table(&self, tokens: &[Token]) -> Option<TableReference> {
+        let mut i = 0;
+
+        // Skip leading whitespace
+        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+            i += 1;
+        }
+
+        if i >= tokens.len() {
+            return None;
+        }
+
+        // Check first keyword
+        let first_keyword = match &tokens[i].kind {
+            TokenKind::Keyword(kw) => kw.as_str(),
+            _ => return None,
+        };
+
+        match first_keyword {
+            "UPDATE" => {
+                // UPDATE table_name SET ...
+                i += 1;
+                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                    i += 1;
+                }
+                self.parse_table_reference(tokens, &mut i)
+            }
+            "DELETE" => {
+                // DELETE FROM table_name ...
+                i += 1;
+                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                    i += 1;
+                }
+                // Skip FROM if present
+                if i < tokens.len()
+                    && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "FROM")
+                {
+                    i += 1;
+                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                        i += 1;
+                    }
+                }
+                self.parse_table_reference(tokens, &mut i)
+            }
+            "INSERT" => {
+                // INSERT INTO table_name ...
+                i += 1;
+                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                    i += 1;
+                }
+                // Skip INTO if present
+                if i < tokens.len()
+                    && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
+                {
+                    i += 1;
+                    while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                        i += 1;
+                    }
+                }
+                self.parse_table_reference(tokens, &mut i)
+            }
+            _ => None,
         }
     }
 

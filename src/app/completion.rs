@@ -184,9 +184,22 @@ impl CompletionEngine {
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
 
-                // Collect columns from selected table
+                let target_qualified = sql_context
+                    .target_table
+                    .as_ref()
+                    .map(|t| self.qualified_name_from_ref(t, metadata));
+
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
+
+                // UPDATE/DELETE/INSERT target table columns get priority
+                if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
+                    && detail.qualified_name() == *target
+                {
+                    for col in &mut columns {
+                        col.score += 200;
+                    }
+                }
 
                 // Build set of tables referenced in current SQL (excluding CTEs)
                 let cte_names: std::collections::HashSet<String> = sql_context
@@ -210,11 +223,18 @@ impl CompletionEngine {
                     {
                         continue;
                     }
-                    columns.extend(self.column_candidates_with_fk(
+                    let mut cached_columns = self.column_candidates_with_fk(
                         Some(cached_table),
                         &current_token,
                         recent_columns,
-                    ));
+                    );
+
+                    if target_qualified.as_ref() == Some(qualified_name) {
+                        for col in &mut cached_columns {
+                            col.score += 200;
+                        }
+                    }
+                    columns.extend(cached_columns);
                 }
 
                 let has_prefix = current_token.len() >= 2;
@@ -1250,6 +1270,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 9, &sql_context, &tokens);
@@ -1272,6 +1293,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 11, &sql_context, &tokens);
@@ -1294,6 +1316,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 13, &sql_context, &tokens);
@@ -1316,6 +1339,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 14, &sql_context, &tokens);
@@ -1346,6 +1370,7 @@ mod tests {
                     position: 5,
                 }],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 46, &sql_context, &tokens);
@@ -1364,6 +1389,7 @@ mod tests {
                     position: 5,
                 }],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1399,6 +1425,7 @@ mod tests {
                     },
                 ],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let candidates = e.cte_or_table_candidates(&sql_context, None, "act");
@@ -1461,6 +1488,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1491,6 +1519,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let candidates = e.alias_column_candidates("u", &sql_context, None, "");
@@ -1556,6 +1585,7 @@ mod tests {
                 }],
                 ctes: vec![],
                 current_clause: Default::default(),
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
