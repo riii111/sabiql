@@ -659,6 +659,75 @@ async fn handle_action(
             }
         }
 
+        Action::PrefetchTableDetail { schema, table } => {
+            let qualified_name = format!("{}.{}", schema, table);
+
+            // Skip if already prefetching or cached
+            if state.prefetching_tables.contains(&qualified_name)
+                || completion_engine.borrow().has_cached_table(&qualified_name)
+            {
+                // Already in progress or cached, skip
+            } else if let Some(dsn) = &state.dsn {
+                state.prefetching_tables.insert(qualified_name);
+                let dsn = dsn.clone();
+                let schema = schema.clone();
+                let table = table.clone();
+                let provider = Arc::clone(metadata_provider);
+                let tx = action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx
+                                .send(Action::TableDetailCached {
+                                    schema,
+                                    table,
+                                    detail: Box::new(detail),
+                                })
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::TableDetailCacheFailed {
+                                    schema,
+                                    table,
+                                    error: e.to_string(),
+                                })
+                                .await;
+                        }
+                    }
+                });
+            }
+        }
+
+        Action::TableDetailCached {
+            schema,
+            table,
+            detail,
+        } => {
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            completion_engine
+                .borrow_mut()
+                .cache_table_detail(qualified_name, (*detail).clone());
+
+            // Clear debounce and trigger completion update if SQL modal is open
+            if state.input_mode == InputMode::SqlModal {
+                state.completion_debounce = None;
+                let _ = action_tx.send(Action::CompletionTrigger).await;
+            }
+        }
+
+        Action::TableDetailCacheFailed {
+            schema,
+            table,
+            error: _,
+        } => {
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            // No UI error display, just log (logging not implemented yet)
+        }
+
         Action::ExecutePreview {
             schema,
             table,
