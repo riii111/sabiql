@@ -4,35 +4,14 @@ pub enum FocusedPane {
     Explorer,
     Inspector,
     Result,
-    Graph,
-    Details,
 }
 
 impl FocusedPane {
-    #[allow(dead_code)]
-    pub fn browse_default() -> Self {
-        Self::Explorer
-    }
-
-    #[allow(dead_code)]
-    pub fn er_default() -> Self {
-        Self::Graph
-    }
-
     pub fn from_browse_key(key: char) -> Option<Self> {
         match key {
             '1' => Some(Self::Explorer),
             '2' => Some(Self::Inspector),
             '3' => Some(Self::Result),
-            _ => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn from_er_key(key: char) -> Option<Self> {
-        match key {
-            '1' => Some(Self::Graph),
-            '2' => Some(Self::Details),
             _ => None,
         }
     }
@@ -62,19 +41,5 @@ mod tests {
     #[case('a')]
     fn from_browse_key_returns_none_for_invalid(#[case] key: char) {
         assert_eq!(FocusedPane::from_browse_key(key), None);
-    }
-
-    #[rstest]
-    #[case('1', FocusedPane::Graph)]
-    #[case('2', FocusedPane::Details)]
-    fn from_er_key_returns_correct_pane(#[case] key: char, #[case] expected: FocusedPane) {
-        assert_eq!(FocusedPane::from_er_key(key), Some(expected));
-    }
-
-    #[rstest]
-    #[case('3')]
-    #[case('0')]
-    fn from_er_key_returns_none_for_invalid(#[case] key: char) {
-        assert_eq!(FocusedPane::from_er_key(key), None);
     }
 }
