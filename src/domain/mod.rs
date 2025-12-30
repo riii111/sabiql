@@ -1,4 +1,4 @@
-// Domain models - some fields/methods are defined for future use
+// Domain models - fields/methods defined to match DB schema
 #![allow(dead_code)]
 
 pub mod column;

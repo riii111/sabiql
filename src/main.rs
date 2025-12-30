@@ -1052,11 +1052,8 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
 
             if !prefetch_complete {
-                // Set Waiting state - will auto-trigger when prefetch completes
+                // Set Waiting state - footer will show persistent spinner
                 state.er_status = ErStatus::Waiting;
-                let cached = completion_engine.borrow().table_count();
-                let total = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
-                state.set_success(format!("Preparing ER... ({}/{})", cached, total));
             } else {
                 // Prefetch complete - generate ER diagram immediately
                 state.er_status = ErStatus::Rendering;

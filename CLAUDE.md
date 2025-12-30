@@ -82,9 +82,6 @@ src/
 │   │   ├── mod.rs
 │   │   ├── postgres.rs         # PostgresAdapter (uses psql CLI)
 │   │   └── mysql.rs            # MysqlAdapter (stub)
-│   ├── clipboard/
-│   │   ├── mod.rs
-│   │   └── pbcopy.rs           # macOS clipboard
 │   ├── cache/
 │   │   ├── mod.rs
 │   │   └── ttl_cache.rs        # TTL-based metadata cache
