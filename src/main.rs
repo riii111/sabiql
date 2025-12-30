@@ -466,7 +466,7 @@ async fn handle_action(
                 Action::OpenConsole => {
                     let _ = action_tx.send(Action::OpenConsole).await;
                 }
-                Action::ErExportDot | Action::ErExportDotAndOpen => {
+                Action::ErOpenDiagram => {
                     let _ = action_tx.send(follow_up).await;
                 }
                 _ => {}
@@ -1237,31 +1237,10 @@ async fn handle_action(
             }
         }
 
-        Action::ErExportDot => {
+        Action::ErOpenDiagram => {
             if state.mode != Mode::ER {
                 state.last_error = Some("Switch to ER tab first".to_string());
             } else if let Some(graph) = &state.er_graph {
-                let cache_dir = get_cache_dir(&state.project_name)?;
-                match DotExporter::export_to_file(graph, &cache_dir) {
-                    Ok(path) => {
-                        let _ = action_tx
-                            .send(Action::ErExportCompleted(path.display().to_string()))
-                            .await;
-                    }
-                    Err(e) => {
-                        let _ = action_tx.send(Action::ErExportFailed(e.to_string())).await;
-                    }
-                }
-            } else {
-                state.last_error = Some("No graph to export".to_string());
-            }
-        }
-
-        Action::ErExportDotAndOpen => {
-            if state.mode != Mode::ER {
-                state.last_error = Some("Switch to ER tab first".to_string());
-            } else if let Some(graph) = &state.er_graph {
-                // Pre-generate DOT content to avoid cloning entire graph
                 let dot_content = DotExporter::generate_dot(graph);
                 let safe_center = DotExporter::sanitize_filename(&graph.center).replace('.', "_");
                 let filename = format!("er_{}.dot", safe_center);
@@ -1272,25 +1251,25 @@ async fn handle_action(
                     match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir) {
                         Ok(path) => {
                             let _ = tx
-                                .send(Action::ErExportCompleted(path.display().to_string()))
+                                .send(Action::ErDiagramOpened(path.display().to_string()))
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::ErExportFailed(e.to_string())).await;
+                            let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
                         }
                     }
                 });
             } else {
-                state.last_error = Some("No graph to export".to_string());
+                state.last_error = Some("No graph to view".to_string());
             }
         }
 
-        Action::ErExportCompleted(path) => {
-            state.last_success = Some(format!("✓ Exported to {}", path));
+        Action::ErDiagramOpened(path) => {
+            state.last_success = Some(format!("✓ Opened {}", path));
         }
 
-        Action::ErExportFailed(error) => {
-            state.last_error = Some(format!("Export failed: {}", error));
+        Action::ErDiagramFailed(error) => {
+            state.last_error = Some(error);
         }
 
         _ => {}
