@@ -26,7 +26,9 @@ impl DotExporter {
         dot.push_str("    edge [fontname=\"Helvetica\", fontsize=10];\n");
         dot.push('\n');
 
-        let tables: Vec<_> = tables.into_iter().collect();
+        // Sort by qualified name for stable output
+        let mut tables: Vec<_> = tables.into_iter().collect();
+        tables.sort_by(|(a, _), (b, _)| a.cmp(b));
 
         // Add all tables as nodes
         for (qualified_name, table) in &tables {
