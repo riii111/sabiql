@@ -92,6 +92,15 @@ impl PostgresAdapter {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind = 'r'
               AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND (
+                  has_table_privilege(c.oid, 'SELECT')
+                  OR has_table_privilege(c.oid, 'INSERT')
+                  OR has_table_privilege(c.oid, 'UPDATE')
+                  OR has_table_privilege(c.oid, 'DELETE')
+                  OR has_table_privilege(c.oid, 'TRUNCATE')
+                  OR has_table_privilege(c.oid, 'REFERENCES')
+                  OR has_table_privilege(c.oid, 'TRIGGER')
+              )
             ORDER BY n.nspname, c.relname
         ) t
         "#

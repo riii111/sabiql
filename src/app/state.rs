@@ -123,8 +123,8 @@ pub struct AppState {
     // Tables currently being prefetched for completion (schema.table)
     pub prefetching_tables: HashSet<String>,
 
-    // Tables that failed to prefetch (schema.table -> failure time) for backoff
-    pub failed_prefetch_tables: HashMap<String, Instant>,
+    // Tables that failed to prefetch (schema.table -> (failure time, error message))
+    pub failed_prefetch_tables: HashMap<String, (Instant, String)>,
 
     // Prefetch queue for all tables (schema.table qualified names)
     pub prefetch_queue: VecDeque<String>,
@@ -240,12 +240,12 @@ impl AppState {
     }
 
     pub fn clear_expired_messages(&mut self) {
-        if let Some(expires) = self.message_expires_at {
-            if expires <= Instant::now() {
-                self.last_error = None;
-                self.last_success = None;
-                self.message_expires_at = None;
-            }
+        if let Some(expires) = self.message_expires_at
+            && expires <= Instant::now()
+        {
+            self.last_error = None;
+            self.last_success = None;
+            self.message_expires_at = None;
         }
     }
 
@@ -508,24 +508,19 @@ mod tests {
     }
 
     #[test]
-    fn failed_prefetch_tables_tracks_failure_time() {
+    fn failed_prefetch_tables_tracks_failure_time_and_error() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
         let now = Instant::now();
 
-        state
-            .failed_prefetch_tables
-            .insert("public.users".to_string(), now);
+        state.failed_prefetch_tables.insert(
+            "public.users".to_string(),
+            (now, "connection timeout".to_string()),
+        );
 
         assert!(state.failed_prefetch_tables.contains_key("public.users"));
-        assert!(
-            state
-                .failed_prefetch_tables
-                .get("public.users")
-                .unwrap()
-                .elapsed()
-                .as_secs()
-                < 1
-        );
+        let (instant, error) = state.failed_prefetch_tables.get("public.users").unwrap();
+        assert!(instant.elapsed().as_secs() < 1);
+        assert_eq!(error, "connection timeout");
     }
 
     mod er_status {
@@ -612,6 +607,59 @@ mod tests {
 
             assert!(!prefetch_complete);
             assert_eq!(state.er_status, ErStatus::Waiting);
+        }
+    }
+
+    mod reload_metadata_reset {
+        use super::*;
+
+        #[test]
+        fn clears_prefetch_state() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.prefetch_started = true;
+            state.prefetch_queue.push_back("public.users".to_string());
+            state.prefetching_tables.insert("public.orders".to_string());
+            state.failed_prefetch_tables.insert(
+                "public.failed".to_string(),
+                (Instant::now(), "timeout".to_string()),
+            );
+
+            // Simulate ReloadMetadata reset
+            state.prefetch_started = false;
+            state.prefetch_queue.clear();
+            state.prefetching_tables.clear();
+            state.failed_prefetch_tables.clear();
+
+            assert!(!state.prefetch_started);
+            assert!(state.prefetch_queue.is_empty());
+            assert!(state.prefetching_tables.is_empty());
+            assert!(state.failed_prefetch_tables.is_empty());
+        }
+
+        #[test]
+        fn resets_er_status_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+
+            // Simulate ReloadMetadata reset
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn clears_stale_messages() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.set_error("Old error".to_string());
+
+            // Simulate ReloadMetadata reset
+            state.last_error = None;
+            state.last_success = None;
+            state.message_expires_at = None;
+
+            assert!(state.last_error.is_none());
+            assert!(state.last_success.is_none());
+            assert!(state.message_expires_at.is_none());
         }
     }
 }
