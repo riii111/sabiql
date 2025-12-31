@@ -627,6 +627,12 @@ async fn handle_action(
                 state.failed_prefetch_tables.clear();
                 completion_engine.borrow_mut().clear_table_cache();
 
+                // Reset ER status and clear stale messages
+                state.er_status = ErStatus::Idle;
+                state.last_error = None;
+                state.last_success = None;
+                state.message_expires_at = None;
+
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
