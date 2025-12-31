@@ -62,12 +62,13 @@ src/
 │       ├── footer.rs
 │       ├── explorer.rs
 │       ├── inspector.rs
-│       └── result.rs
+│       ├── result.rs
+│       └── status_message.rs
 │
 ├── app/                        # ── Application Layer ──
 │   ├── mod.rs
 │   ├── state.rs                # AppState (UI state + domain state)
-│   ├── mode.rs                 # BrowseMode / ConsoleMode / ERDMode
+│   ├── mode.rs                 # Browse mode (single-tab)
 │   ├── action.rs               # Action enum (state update triggers)
 │   └── ports/                  # Port definitions (traits)
 │       ├── mod.rs
@@ -81,12 +82,12 @@ src/
 │   │   ├── mod.rs
 │   │   ├── postgres.rs         # PostgresAdapter (uses psql CLI)
 │   │   └── mysql.rs            # MysqlAdapter (stub)
-│   ├── clipboard/
-│   │   ├── mod.rs
-│   │   └── pbcopy.rs           # macOS clipboard
 │   ├── cache/
 │   │   ├── mod.rs
 │   │   └── ttl_cache.rs        # TTL-based metadata cache
+│   ├── export/
+│   │   ├── mod.rs
+│   │   └── dot.rs              # Graphviz DOT export
 │   └── config/
 │       ├── mod.rs
 │       ├── dbx_toml.rs         # .dbx.toml parser
@@ -173,6 +174,15 @@ All DB operations use CLI tools instead of Rust drivers:
 
 This minimizes dependencies and leverages users' existing DB tools.
 
+### 5. ER Diagram Export (Graphviz)
+
+The ER diagram is generated as DOT from cached table details and exported
+to SVG via Graphviz. The SVG is opened in the system viewer.
+
+- Keybinding: `e`
+- Command: `:erd`
+- Requires Graphviz (`brew install graphviz` on macOS)
+
 ## Build Commands
 
 ```bash
@@ -197,7 +207,7 @@ mise run test               # Run tests
 | PR3 | Data layer: metadata + TTL cache + adapters |
 | PR4 | Browse polish + SQL Modal + Result history + Copy |
 | PR5 | Console integration |
-| PR6 | ER tab + Graphviz export + docs |
+| PR6 | ER diagram export (single-tab) + docs |
 
 ## References
 

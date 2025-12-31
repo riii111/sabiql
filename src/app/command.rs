@@ -8,6 +8,7 @@ pub enum Command {
     Help,
     Sql,
     OpenConsole,
+    Erd,
     Unknown(String),
 }
 
@@ -18,6 +19,7 @@ pub fn parse_command(input: &str) -> Command {
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
         "open-console" | "console" => Command::OpenConsole,
+        "erd" => Command::Erd,
         other => Command::Unknown(other.to_string()),
     }
 }
@@ -29,6 +31,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
         Command::OpenConsole => Action::OpenConsole,
+        Command::Erd => Action::ErOpenDiagram,
         Command::Unknown(_) => Action::None,
     }
 }
@@ -74,6 +77,13 @@ mod tests {
             let result = parse_command(input);
 
             assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn erd_returns_erd() {
+            let result = parse_command("erd");
+
+            assert_eq!(result, Command::Erd);
         }
 
         #[test]
@@ -127,6 +137,13 @@ mod tests {
             let result = command_to_action(Command::OpenConsole);
 
             assert!(matches!(result, Action::OpenConsole));
+        }
+
+        #[test]
+        fn erd_returns_er_open_diagram_action() {
+            let result = command_to_action(Command::Erd);
+
+            assert!(matches!(result, Action::ErOpenDiagram));
         }
 
         #[test]

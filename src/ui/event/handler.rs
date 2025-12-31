@@ -9,11 +9,10 @@ use super::Event;
 pub fn handle_event(event: Event, state: &AppState) -> Action {
     match event {
         Event::Init => Action::Render,
-        Event::Quit => Action::Quit,
+        Event::Tick => Action::None,
         Event::Render => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
         Event::Key(key) => handle_key_event(key, state),
-        _ => Action::None,
     }
 }
 
@@ -43,18 +42,6 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         // Ctrl+K: Open Command Palette
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
-        }
-        // Shift+Tab: Previous tab
-        (KeyCode::Tab, m) if m.contains(KeyModifiers::SHIFT) => {
-            return Action::PreviousTab;
-        }
-        // BackTab (some terminals send this for Shift+Tab)
-        (KeyCode::BackTab, _) => {
-            return Action::PreviousTab;
-        }
-        // Tab: Next tab
-        (KeyCode::Tab, _) => {
-            return Action::NextTab;
         }
         _ => {}
     }
@@ -143,6 +130,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('c') => Action::OpenConsole,
         // SQL Modal: open adhoc query editor
         KeyCode::Char('s') => Action::OpenSqlModal,
+        // ER Diagram: open full database diagram in browser
+        KeyCode::Char('e') => Action::ErOpenDiagram,
 
         // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
@@ -251,19 +240,10 @@ mod tests {
     mod normal_mode {
         use super::*;
         use crate::app::focused_pane::FocusedPane;
-        use crate::app::mode::Mode;
         use rstest::rstest;
 
         fn browse_state() -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.mode = Mode::Browse;
-            state
-        }
-
-        fn er_state() -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.mode = Mode::ER;
-            state
+            AppState::new("test".to_string(), "default".to_string())
         }
 
         // Important keys with special handling: keep individual tests
@@ -339,34 +319,6 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Esc), &state);
 
             assert!(matches!(result, Action::Escape));
-        }
-
-        #[test]
-        fn tab_returns_next_tab() {
-            let state = browse_state();
-
-            let result = handle_normal_mode(key(KeyCode::Tab), &state);
-
-            assert!(matches!(result, Action::NextTab));
-        }
-
-        #[test]
-        fn shift_tab_returns_previous_tab() {
-            let key = key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT);
-            let state = browse_state();
-
-            let result = handle_normal_mode(key, &state);
-
-            assert!(matches!(result, Action::PreviousTab));
-        }
-
-        #[test]
-        fn backtab_returns_previous_tab() {
-            let state = browse_state();
-
-            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
-
-            assert!(matches!(result, Action::PreviousTab));
         }
 
         // Navigation keys: equivalent actions
@@ -451,19 +403,6 @@ mod tests {
         #[case('3', FocusedPane::Result)]
         fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
             let state = browse_state();
-
-            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
-
-            assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
-        }
-
-        // ER mode uses Browse layout until ER view is implemented
-        #[rstest]
-        #[case('1', FocusedPane::Explorer)]
-        #[case('2', FocusedPane::Inspector)]
-        #[case('3', FocusedPane::Result)]
-        fn er_mode_uses_browse_layout(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
-            let state = er_state();
 
             let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
 
@@ -607,6 +546,15 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn e_key_opens_er_diagram() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+
+            assert!(matches!(result, Action::ErOpenDiagram));
         }
     }
 

@@ -15,11 +15,9 @@ pub trait MetadataProvider: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum MetadataError {
     ConnectionFailed(String),
     QueryFailed(String),
-    ParseError(String),
     InvalidJson(String),
     CommandNotFound(String),
     Timeout,
@@ -30,7 +28,6 @@ impl std::fmt::Display for MetadataError {
         match self {
             Self::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
             Self::QueryFailed(msg) => write!(f, "Query failed: {}", msg),
-            Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
             Self::InvalidJson(msg) => write!(f, "Invalid JSON: {}", msg),
             Self::CommandNotFound(cmd) => write!(f, "Command not found: {}", cmd),
             Self::Timeout => write!(f, "Operation timed out"),

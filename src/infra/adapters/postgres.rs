@@ -22,10 +22,6 @@ impl PostgresAdapter {
         Self { timeout_secs: 30 }
     }
 
-    pub fn with_timeout(timeout_secs: u64) -> Self {
-        Self { timeout_secs }
-    }
-
     async fn execute_query(&self, dsn: &str, query: &str) -> Result<String, MetadataError> {
         let mut child = Command::new("psql")
             .arg(dsn)

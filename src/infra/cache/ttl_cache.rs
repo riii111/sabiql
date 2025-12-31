@@ -21,10 +21,6 @@ impl<V> CacheEntry<V> {
     fn is_expired(&self, ttl: Duration) -> bool {
         self.created_at.elapsed() > ttl
     }
-
-    fn age(&self) -> Duration {
-        self.created_at.elapsed()
-    }
 }
 
 pub struct TtlCache<K, V> {
@@ -63,20 +59,6 @@ where
     pub async fn invalidate(&self, key: &K) {
         let mut cache = self.inner.write().await;
         cache.remove(key);
-    }
-
-    pub async fn clear(&self) {
-        let mut cache = self.inner.write().await;
-        cache.clear();
-    }
-
-    pub async fn age(&self, key: &K) -> Option<Duration> {
-        let cache = self.inner.read().await;
-        cache.get(key).map(|entry| entry.age())
-    }
-
-    pub fn ttl(&self) -> Duration {
-        self.ttl
     }
 }
 

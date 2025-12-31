@@ -237,7 +237,6 @@ impl SqlModal {
                 // Kind label (pgcli style)
                 let kind_label = match candidate.kind {
                     CompletionKind::Keyword => "keyword",
-                    CompletionKind::Schema => "schema",
                     CompletionKind::Table => "table",
                     CompletionKind::Column => "column",
                 };

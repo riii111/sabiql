@@ -28,6 +28,11 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         action: Action::OpenConsole,
     },
     PaletteCommand {
+        key: "e / :erd",
+        description: "Open ER Diagram",
+        action: Action::ErOpenDiagram,
+    },
+    PaletteCommand {
         key: "Ctrl+P",
         description: "Open Table Picker",
         action: Action::OpenTablePicker,

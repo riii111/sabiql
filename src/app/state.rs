@@ -8,7 +8,6 @@ use super::action::Action;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
-use super::mode::Mode;
 use super::result_history::ResultHistory;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
 
@@ -22,63 +21,30 @@ pub enum SqlModalState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum CompletionKind {
     Keyword,
-    Schema,
     Table,
     Column,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CompletionCandidate {
     pub text: String,
     pub kind: CompletionKind,
-    pub detail: Option<String>,
     pub score: i32,
 }
 
-const RECENT_TABLES_MAX: usize = 10;
-const RECENT_COLUMNS_MAX: usize = 20;
-
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct CompletionState {
     pub visible: bool,
     pub candidates: Vec<CompletionCandidate>,
     pub selected_index: usize,
     pub trigger_position: usize,
-    pub generation: u64,
-    pub recent_tables: VecDeque<String>,
     pub recent_columns: VecDeque<String>,
 }
 
 impl CompletionState {
-    /// Record a table as recently used
-    #[allow(dead_code)]
-    pub fn record_table(&mut self, table: String) {
-        // Remove if already exists (to move to front)
-        self.recent_tables.retain(|t| t != &table);
-        self.recent_tables.push_front(table);
-        if self.recent_tables.len() > RECENT_TABLES_MAX {
-            self.recent_tables.pop_back();
-        }
-    }
-
-    /// Record a column as recently used
-    #[allow(dead_code)]
-    pub fn record_column(&mut self, column: String) {
-        // Remove if already exists (to move to front)
-        self.recent_columns.retain(|c| c != &column);
-        self.recent_columns.push_front(column);
-        if self.recent_columns.len() > RECENT_COLUMNS_MAX {
-            self.recent_columns.pop_back();
-        }
-    }
-
     /// Get recent columns as a Vec for completion scoring
-    #[allow(dead_code)]
     pub fn recent_columns_vec(&self) -> Vec<String> {
         self.recent_columns.iter().cloned().collect()
     }
@@ -91,16 +57,21 @@ pub enum QueryState {
     Running,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ErStatus {
+    #[default]
+    Idle,
+    Waiting,   // User pressed 'e' but prefetch not complete
+    Rendering, // DOT generation in progress
+}
+
 pub struct AppState {
-    pub mode: Mode,
     pub should_quit: bool,
     pub project_name: String,
     pub profile_name: String,
     pub database_name: Option<String>,
     pub current_table: Option<String>,
     pub focused_pane: FocusedPane,
-    pub active_tab: usize,
     pub input_mode: InputMode,
     pub command_line_input: String,
     pub filter_input: String,
@@ -119,7 +90,6 @@ pub struct AppState {
 
     // Selected table detail
     pub table_detail: Option<Table>,
-    pub table_detail_state: MetadataState,
 
     // Action channel for async tasks
     pub action_tx: Option<Sender<Action>>,
@@ -166,8 +136,10 @@ pub struct AppState {
     pub query_state: QueryState,
     pub query_start_time: Option<Instant>,
 
-    // Last error for copy functionality
+    // Status messages (shown in footer, auto-clear after timeout)
     pub last_error: Option<String>,
+    pub last_success: Option<String>,
+    pub message_expires_at: Option<Instant>,
 
     // Generation counter for race condition prevention
     pub selection_generation: u64,
@@ -180,19 +152,20 @@ pub struct AppState {
     // Focus mode (Result full-screen)
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
+
+    // ER diagram status
+    pub er_status: ErStatus,
 }
 
 impl AppState {
     pub fn new(project_name: String, profile_name: String) -> Self {
         Self {
-            mode: Mode::default(),
             should_quit: false,
             project_name,
             profile_name,
             database_name: None,
             current_table: None,
             focused_pane: FocusedPane::default(),
-            active_tab: 0,
             input_mode: InputMode::default(),
             command_line_input: String::new(),
             filter_input: String::new(),
@@ -204,7 +177,6 @@ impl AppState {
             metadata_state: MetadataState::default(),
             metadata: None,
             table_detail: None,
-            table_detail_state: MetadataState::default(),
             action_tx: None,
             // Inspector
             inspector_tab: InspectorTab::default(),
@@ -233,8 +205,10 @@ impl AppState {
             // Query state
             query_state: QueryState::default(),
             query_start_time: None,
-            // Last error
+            // Status messages
             last_error: None,
+            last_success: None,
+            message_expires_at: None,
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
@@ -244,6 +218,34 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
+            // ER diagram status
+            er_status: ErStatus::default(),
+        }
+    }
+
+    const MESSAGE_TIMEOUT_SECS: u64 = 3;
+
+    pub fn set_error(&mut self, msg: String) {
+        self.last_error = Some(msg);
+        self.last_success = None;
+        self.message_expires_at =
+            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+    }
+
+    pub fn set_success(&mut self, msg: String) {
+        self.last_success = Some(msg);
+        self.last_error = None;
+        self.message_expires_at =
+            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+    }
+
+    pub fn clear_expired_messages(&mut self) {
+        if let Some(expires) = self.message_expires_at {
+            if expires <= Instant::now() {
+                self.last_error = None;
+                self.last_success = None;
+                self.message_expires_at = None;
+            }
         }
     }
 
@@ -275,30 +277,7 @@ impl AppState {
             .collect()
     }
 
-    pub fn change_tab(&mut self, next: bool) {
-        const TAB_COUNT: usize = 2;
-        self.active_tab = if next {
-            (self.active_tab + 1) % TAB_COUNT
-        } else {
-            (self.active_tab + TAB_COUNT - 1) % TAB_COUNT
-        };
-        self.mode = Mode::from_tab_index(self.active_tab);
-        self.focused_pane = self.mode.default_pane();
-        self.focus_mode = false;
-        self.focus_mode_prev_pane = None;
-        self.result_scroll_offset = 0;
-        self.result_horizontal_offset = 0;
-    }
-
-    #[allow(dead_code)]
-    pub fn can_enter_focus(&self) -> bool {
-        self.mode == Mode::Browse && !self.focus_mode
-    }
-
     pub fn toggle_focus(&mut self) -> bool {
-        if self.mode != Mode::Browse {
-            return false;
-        }
         if self.focus_mode {
             if let Some(prev) = self.focus_mode_prev_pane.take() {
                 self.focused_pane = prev;
@@ -467,58 +446,10 @@ mod tests {
         assert!(initial_gen < current_gen);
     }
 
-    // Tab change tests
-
-    #[test]
-    fn change_tab_next_updates_mode_and_pane() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        assert_eq!(state.mode, Mode::Browse);
-
-        state.change_tab(true);
-
-        assert_eq!(state.mode, Mode::ER);
-        assert_eq!(state.focused_pane, Mode::ER.default_pane());
-    }
-
-    #[test]
-    fn change_tab_prev_updates_mode_and_pane() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.active_tab = 1;
-        state.mode = Mode::ER;
-
-        state.change_tab(false);
-
-        assert_eq!(state.mode, Mode::Browse);
-        assert_eq!(state.focused_pane, Mode::Browse.default_pane());
-    }
-
-    #[test]
-    fn change_tab_resets_focus_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.focus_mode = true;
-        state.focus_mode_prev_pane = Some(FocusedPane::Explorer);
-
-        state.change_tab(true);
-
-        assert!(!state.focus_mode);
-    }
-
-    #[test]
-    fn change_tab_while_in_focus_mode_exits_safely() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.toggle_focus();
-        assert!(state.focus_mode);
-
-        state.change_tab(true);
-
-        assert!(!state.focus_mode);
-        assert_eq!(state.mode, Mode::ER);
-    }
-
     // Focus mode tests
 
     #[test]
-    fn toggle_focus_enters_focus_mode_in_browse() {
+    fn toggle_focus_enters_focus_mode() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
         state.focused_pane = FocusedPane::Explorer;
 
@@ -541,125 +472,6 @@ mod tests {
         assert!(result);
         assert!(!state.focus_mode);
         assert_eq!(state.focused_pane, FocusedPane::Inspector);
-    }
-
-    #[test]
-    fn toggle_focus_is_blocked_in_er_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.mode = Mode::ER;
-
-        let result = state.toggle_focus();
-
-        assert!(!result);
-        assert!(!state.focus_mode);
-    }
-
-    #[test]
-    fn can_enter_focus_true_in_browse_mode() {
-        let state = AppState::new("test".to_string(), "default".to_string());
-
-        assert!(state.can_enter_focus());
-    }
-
-    #[test]
-    fn can_enter_focus_false_in_er_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.mode = Mode::ER;
-
-        assert!(!state.can_enter_focus());
-    }
-
-    #[test]
-    fn can_enter_focus_false_when_already_in_focus() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.toggle_focus();
-
-        assert!(!state.can_enter_focus());
-    }
-
-    // CompletionState recent tracking tests
-
-    #[test]
-    fn record_table_adds_to_recent() {
-        let mut cs = CompletionState::default();
-
-        cs.record_table("users".to_string());
-
-        assert_eq!(cs.recent_tables.len(), 1);
-        assert_eq!(cs.recent_tables[0], "users");
-    }
-
-    #[test]
-    fn record_table_moves_existing_to_front() {
-        let mut cs = CompletionState::default();
-        cs.record_table("users".to_string());
-        cs.record_table("orders".to_string());
-
-        cs.record_table("users".to_string());
-
-        assert_eq!(cs.recent_tables.len(), 2);
-        assert_eq!(cs.recent_tables[0], "users");
-        assert_eq!(cs.recent_tables[1], "orders");
-    }
-
-    #[test]
-    fn record_table_limits_to_max_size() {
-        let mut cs = CompletionState::default();
-
-        for i in 0..15 {
-            cs.record_table(format!("table_{}", i));
-        }
-
-        assert_eq!(cs.recent_tables.len(), RECENT_TABLES_MAX);
-        assert_eq!(cs.recent_tables[0], "table_14");
-    }
-
-    #[test]
-    fn record_column_adds_to_recent() {
-        let mut cs = CompletionState::default();
-
-        cs.record_column("id".to_string());
-
-        assert_eq!(cs.recent_columns.len(), 1);
-        assert_eq!(cs.recent_columns[0], "id");
-    }
-
-    #[test]
-    fn record_column_moves_existing_to_front() {
-        let mut cs = CompletionState::default();
-        cs.record_column("id".to_string());
-        cs.record_column("name".to_string());
-
-        cs.record_column("id".to_string());
-
-        assert_eq!(cs.recent_columns.len(), 2);
-        assert_eq!(cs.recent_columns[0], "id");
-        assert_eq!(cs.recent_columns[1], "name");
-    }
-
-    #[test]
-    fn record_column_limits_to_max_size() {
-        let mut cs = CompletionState::default();
-
-        for i in 0..25 {
-            cs.record_column(format!("col_{}", i));
-        }
-
-        assert_eq!(cs.recent_columns.len(), RECENT_COLUMNS_MAX);
-        assert_eq!(cs.recent_columns[0], "col_24");
-    }
-
-    #[test]
-    fn recent_columns_vec_returns_vec() {
-        let mut cs = CompletionState::default();
-        cs.record_column("id".to_string());
-        cs.record_column("name".to_string());
-
-        let vec = cs.recent_columns_vec();
-
-        assert_eq!(vec.len(), 2);
-        assert_eq!(vec[0], "name");
-        assert_eq!(vec[1], "id");
     }
 
     // Prefetch state tests
@@ -714,5 +526,92 @@ mod tests {
                 .as_secs()
                 < 1
         );
+    }
+
+    mod er_status {
+        use super::*;
+
+        #[test]
+        fn new_state_defaults_to_idle() {
+            let state = AppState::new("test".to_string(), "default".to_string());
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn idle_with_incomplete_prefetch_transitions_to_waiting() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.prefetch_queue.push_back("public.users".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if !prefetch_complete {
+                state.er_status = ErStatus::Waiting;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Waiting);
+        }
+
+        #[test]
+        fn idle_with_complete_prefetch_transitions_to_rendering() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if prefetch_complete {
+                state.er_status = ErStatus::Rendering;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Rendering);
+        }
+
+        #[test]
+        fn waiting_with_prefetch_complete_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+            state.prefetch_queue.push_back("public.users".to_string());
+
+            state.prefetch_queue.pop_front();
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                state.er_status = ErStatus::Idle;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn rendering_on_diagram_opened_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Rendering;
+
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn rendering_on_diagram_failed_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Rendering;
+
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn waiting_with_in_flight_tables_remains_waiting() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+            state.prefetching_tables.insert("public.orders".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+
+            assert!(!prefetch_complete);
+            assert_eq!(state.er_status, ErStatus::Waiting);
+        }
     }
 }

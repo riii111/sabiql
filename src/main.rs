@@ -16,18 +16,18 @@ use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
 use app::palette::{palette_action_for_index, palette_command_count};
-use app::ports::{ClipboardWriter, MetadataProvider};
-use app::state::{AppState, QueryState};
+use app::ports::MetadataProvider;
+use app::state::{AppState, ErStatus, QueryState};
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
-use infra::clipboard::PbcopyAdapter;
 use infra::config::{
     cache::get_cache_dir,
     dbx_toml::DbxConfig,
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
+use infra::export::{DotExporter, ErTableInfo};
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
@@ -130,18 +130,13 @@ async fn handle_action(
     match action {
         Action::Quit => state.should_quit = true,
         Action::Render => {
+            state.clear_expired_messages();
             tui.terminal()
                 .draw(|frame| MainLayout::render(frame, state))?;
         }
         Action::Resize(_w, h) => {
             // Ratatui auto-tracks size; explicit resize() restricts viewport
             state.terminal_height = h;
-        }
-        Action::NextTab => {
-            state.change_tab(true);
-        }
-        Action::PreviousTab => {
-            state.change_tab(false);
         }
         Action::SetFocusedPane(pane) => state.focused_pane = pane,
         Action::ToggleFocus => {
@@ -153,9 +148,6 @@ async fn handle_action(
         }
         Action::InspectorPrevTab => {
             state.inspector_tab = state.inspector_tab.prev();
-        }
-        Action::InspectorSelectTab(tab) => {
-            state.inspector_tab = tab;
         }
 
         Action::OpenTablePicker => {
@@ -199,11 +191,7 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
             state.completion_debounce = None;
-            // In-flight fetches continue to populate cache for next session
-            state.prefetch_started = false;
-            state.prefetch_queue.clear();
-            // Keep prefetching_tables to prevent double fetch on reopen
-            state.failed_prefetch_tables.clear();
+            // Keep prefetch running for ER diagram usage
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -352,11 +340,6 @@ async fn handle_action(
                 && !state.sql_modal_content.trim().is_empty();
             state.completion.trigger_position = cursor.saturating_sub(token_len);
         }
-        Action::CompletionUpdate(candidates) => {
-            state.completion.candidates = candidates;
-            state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty();
-        }
         Action::CompletionAccept => {
             if state.completion.visible && !state.completion.candidates.is_empty() {
                 if let Some(candidate) = state
@@ -433,6 +416,9 @@ async fn handle_action(
                 Action::OpenConsole => {
                     let _ = action_tx.send(Action::OpenConsole).await;
                 }
+                Action::ErOpenDiagram => {
+                    let _ = action_tx.send(follow_up).await;
+                }
                 _ => {}
             }
         }
@@ -443,10 +429,6 @@ async fn handle_action(
         }
         Action::FilterBackspace => {
             state.filter_input.pop();
-            state.picker_selected = 0;
-        }
-        Action::FilterClear => {
-            state.filter_input.clear();
             state.picker_selected = 0;
         }
 
@@ -637,6 +619,14 @@ async fn handle_action(
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.dsn {
                 metadata_cache.invalidate(dsn).await;
+
+                // Reset prefetch state for fresh reload
+                state.prefetch_started = false;
+                state.prefetch_queue.clear();
+                state.prefetching_tables.clear();
+                state.failed_prefetch_tables.clear();
+                completion_engine.borrow_mut().clear_table_cache();
+
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
@@ -645,20 +635,14 @@ async fn handle_action(
             state.metadata = Some(*metadata);
             state.metadata_state = MetadataState::Loaded;
 
-            // If SQL modal is open and prefetch hasn't started, trigger it now
-            if state.input_mode == InputMode::SqlModal && !state.prefetch_started {
+            // Start prefetching table details for completion and ER diagrams
+            if !state.prefetch_started {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
 
         Action::MetadataFailed(error) => {
             state.metadata_state = MetadataState::Error(error);
-        }
-
-        Action::InvalidateCache => {
-            if let Some(dsn) = &state.dsn {
-                metadata_cache.invalidate(dsn).await;
-            }
         }
 
         Action::LoadTableDetail {
@@ -702,7 +686,7 @@ async fn handle_action(
         Action::TableDetailFailed(error, generation) => {
             // Ignore stale errors from previous table selections
             if generation == state.selection_generation {
-                state.last_error = Some(error);
+                state.set_error(error);
             }
         }
 
@@ -743,13 +727,9 @@ async fn handle_action(
                                 })
                                 .await;
                         }
-                        Err(e) => {
+                        Err(_) => {
                             let _ = tx
-                                .send(Action::TableDetailCacheFailed {
-                                    schema,
-                                    table,
-                                    error: e.to_string(),
-                                })
+                                .send(Action::TableDetailCacheFailed { schema, table })
                                 .await;
                         }
                     }
@@ -777,13 +757,17 @@ async fn handle_action(
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
+
+            // Notify user when prefetch completes while in Waiting state
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                state.er_status = ErStatus::Idle;
+                state.set_success("ER ready. Press 'e' to open.".to_string());
+            }
         }
 
-        Action::TableDetailCacheFailed {
-            schema,
-            table,
-            error: _,
-        } => {
+        Action::TableDetailCacheFailed { schema, table } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state
@@ -791,6 +775,14 @@ async fn handle_action(
                 .insert(qualified_name, Instant::now());
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+            }
+
+            // Notify user when prefetch completes while in Waiting state
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                state.er_status = ErStatus::Idle;
+                state.set_success("ER ready. Press 'e' to open.".to_string());
             }
         }
 
@@ -932,7 +924,7 @@ async fn handle_action(
             if generation == 0 || generation == state.selection_generation {
                 state.query_state = QueryState::Idle;
                 state.query_start_time = None;
-                state.last_error = Some(error.clone());
+                state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
                     state.sql_modal_state = app::state::SqlModalState::Error;
@@ -945,39 +937,6 @@ async fn handle_action(
                     );
                     state.current_result = Some(error_result);
                 }
-            }
-        }
-
-        // Result history navigation
-        Action::HistoryPrev => {
-            let history_len = state.result_history.len();
-            if history_len > 0 {
-                match state.history_index {
-                    None => {
-                        // Start browsing history from the most recent
-                        state.history_index = Some(history_len - 1);
-                    }
-                    Some(idx) if idx > 0 => {
-                        state.history_index = Some(idx - 1);
-                    }
-                    _ => {}
-                }
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
-            }
-        }
-
-        Action::HistoryNext => {
-            let history_len = state.result_history.len();
-            if let Some(idx) = state.history_index {
-                if idx + 1 < history_len {
-                    state.history_index = Some(idx + 1);
-                } else {
-                    // Return to current result
-                    state.history_index = None;
-                }
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
             }
         }
 
@@ -1050,42 +1009,6 @@ async fn handle_action(
             }
         }
 
-        // Clipboard operations
-        Action::CopySelection => {
-            // Context-dependent copy
-            let content = state.current_table.clone();
-
-            if let Some(content) = content {
-                let _ = action_tx.send(Action::CopyToClipboard(content)).await;
-            }
-        }
-
-        Action::CopyLastError => {
-            if let Some(error) = &state.last_error {
-                let _ = action_tx.send(Action::CopyToClipboard(error.clone())).await;
-            }
-        }
-
-        Action::CopyToClipboard(content) => {
-            let clipboard = PbcopyAdapter::new();
-            match clipboard.write(&content) {
-                Ok(()) => {
-                    let _ = action_tx.send(Action::ClipboardSuccess).await;
-                }
-                Err(e) => {
-                    let _ = action_tx.send(Action::ClipboardFailed(e.to_string())).await;
-                }
-            }
-        }
-
-        Action::ClipboardSuccess => {
-            // Could show a notification, for now just log or do nothing
-        }
-
-        Action::ClipboardFailed(error) => {
-            state.last_error = Some(format!("Clipboard error: {}", error));
-        }
-
         Action::OpenConsole => {
             if let Some(dsn) = &state.dsn {
                 let cache_dir = get_cache_dir(&state.project_name)?;
@@ -1107,24 +1030,77 @@ async fn handle_action(
 
                 match status {
                     Err(e) => {
-                        state.last_error = Some(format!("pgcli task failed: {}", e));
+                        state.set_error(format!("pgcli task failed: {}", e));
                     }
                     Ok(Err(e)) => {
-                        state.last_error = Some(format!("pgcli failed to start: {}", e));
+                        state.set_error(format!("pgcli failed to start: {}", e));
                     }
                     Ok(Ok(exit_status)) if !exit_status.success() => {
                         let code = exit_status
                             .code()
                             .map_or("unknown".to_string(), |c| c.to_string());
-                        state.last_error = Some(format!("pgcli exited with code {}", code));
+                        state.set_error(format!("pgcli exited with code {}", code));
                     }
                     Ok(Ok(_)) => {}
                 }
 
                 let _ = action_tx.send(Action::Render).await;
             } else {
-                state.last_error = Some("No DSN configured".to_string());
+                state.set_error("No DSN configured".to_string());
             }
+        }
+
+        Action::ErOpenDiagram => {
+            // Guard: ignore if already rendering or waiting
+            if matches!(state.er_status, ErStatus::Rendering | ErStatus::Waiting) {
+                return Ok(());
+            }
+
+            // Check if prefetch is complete
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+
+            if !prefetch_complete {
+                state.er_status = ErStatus::Waiting;
+                return Ok(());
+            }
+
+            // Collect lightweight snapshots for DOT generation
+            let tables: Vec<ErTableInfo> = {
+                let engine = completion_engine.borrow();
+                engine
+                    .table_details_iter()
+                    .map(|(k, v)| ErTableInfo::from_table(k, v))
+                    .collect()
+            };
+
+            if tables.is_empty() {
+                state.set_error("No table data loaded yet".to_string());
+                return Ok(());
+            }
+
+            state.er_status = ErStatus::Rendering;
+            let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+            let cache_dir = get_cache_dir(&state.project_name)?;
+
+            spawn_er_diagram_task(tables, total_tables, cache_dir, action_tx.clone());
+        }
+
+        Action::ErDiagramOpened {
+            path,
+            table_count,
+            total_tables,
+        } => {
+            state.er_status = ErStatus::Idle;
+            state.set_success(format!(
+                "✓ Opened {} ({}/{} tables)",
+                path, table_count, total_tables
+            ));
+        }
+
+        Action::ErDiagramFailed(error) => {
+            state.er_status = ErStatus::Idle;
+            state.set_error(error);
         }
 
         _ => {}
@@ -1147,4 +1123,40 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 
 fn char_count(s: &str) -> usize {
     s.chars().count()
+}
+
+fn spawn_er_diagram_task(
+    tables: Vec<ErTableInfo>,
+    total_tables: usize,
+    cache_dir: std::path::PathBuf,
+    tx: mpsc::Sender<Action>,
+) {
+    let table_count = tables.len();
+    tokio::spawn(async move {
+        let result = tokio::task::spawn_blocking(move || {
+            let dot_content = DotExporter::generate_full_dot(&tables);
+            DotExporter::export_dot_and_open(&dot_content, "er_full.dot", &cache_dir)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(path)) => {
+                let _ = tx
+                    .send(Action::ErDiagramOpened {
+                        path: path.display().to_string(),
+                        table_count,
+                        total_tables,
+                    })
+                    .await;
+            }
+            Ok(Err(e)) => {
+                let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
+            }
+            Err(e) => {
+                let _ = tx
+                    .send(Action::ErDiagramFailed(format!("Task panicked: {}", e)))
+                    .await;
+            }
+        }
+    });
 }

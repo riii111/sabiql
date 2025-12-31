@@ -119,6 +119,15 @@ impl CompletionEngine {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
+    pub fn clear_table_cache(&mut self) {
+        self.table_detail_cache.clear();
+    }
+
+    /// Returns an iterator over cached table details for graph building
+    pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
+        self.table_detail_cache.iter()
+    }
+
     /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(
         &self,
@@ -469,7 +478,6 @@ impl CompletionEngine {
                 CompletionCandidate {
                     text: (*kw).to_string(),
                     kind: CompletionKind::Keyword,
-                    detail: None,
                     score: if is_prefix_match { 100 } else { 10 },
                 }
             })
@@ -534,7 +542,6 @@ impl CompletionEngine {
             .map(|kw| CompletionCandidate {
                 text: (*kw).to_string(),
                 kind: CompletionKind::Keyword,
-                detail: None,
                 score: 200, // Higher than column scores (max ~170)
             })
             .collect()
@@ -573,7 +580,6 @@ impl CompletionEngine {
                 CompletionCandidate {
                     text: t.qualified_name(),
                     kind: CompletionKind::Table,
-                    detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
                     score,
                 }
             })
@@ -659,7 +665,6 @@ impl CompletionEngine {
                 CompletionCandidate {
                     text: c.name.clone(),
                     kind: CompletionKind::Column,
-                    detail: Some(c.type_display()),
                     score,
                 }
             })
@@ -702,7 +707,6 @@ impl CompletionEngine {
                 CompletionCandidate {
                     text: t.name.clone(),
                     kind: CompletionKind::Table,
-                    detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
                     score: if is_prefix_match { 100 } else { 10 },
                 }
             })
@@ -768,7 +772,6 @@ impl CompletionEngine {
                 candidates.push(CompletionCandidate {
                     text: cte.name.clone(),
                     kind: CompletionKind::Table,
-                    detail: Some("CTE".to_string()),
                     score: 110, // CTEs slightly above prefix-matched tables
                 });
             }
@@ -785,7 +788,6 @@ impl CompletionEngine {
                     candidates.push(CompletionCandidate {
                         text: t.qualified_name(),
                         kind: CompletionKind::Table,
-                        detail: t.row_count_estimate.map(|c| format!("~{} rows", c)),
                         score: if is_name_prefix { 100 } else { 50 },
                     });
                 }
@@ -1431,7 +1433,6 @@ mod tests {
             // CTE should come first with highest score
             assert!(!candidates.is_empty());
             assert_eq!(candidates[0].text, "active_users");
-            assert_eq!(candidates[0].detail, Some("CTE".to_string()));
             assert!(candidates[0].score > candidates[1].score);
         }
 

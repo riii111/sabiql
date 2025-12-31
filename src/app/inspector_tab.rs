@@ -8,7 +8,6 @@ pub enum InspectorTab {
     Ddl,
 }
 
-#[allow(dead_code)]
 impl InspectorTab {
     pub fn next(self) -> Self {
         match self {
@@ -48,28 +47,5 @@ impl InspectorTab {
             Self::Rls,
             Self::Ddl,
         ]
-    }
-
-    /// 0-based index
-    pub fn index(self) -> usize {
-        match self {
-            Self::Columns => 0,
-            Self::Indexes => 1,
-            Self::ForeignKeys => 2,
-            Self::Rls => 3,
-            Self::Ddl => 4,
-        }
-    }
-
-    /// 1-based key (for keyboard shortcuts)
-    pub fn from_key(key: char) -> Option<Self> {
-        match key {
-            '1' => Some(Self::Columns),
-            '2' => Some(Self::Indexes),
-            '3' => Some(Self::ForeignKeys),
-            '4' => Some(Self::Rls),
-            '5' => Some(Self::Ddl),
-            _ => None,
-        }
     }
 }
