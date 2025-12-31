@@ -78,6 +78,7 @@ pub enum Action {
     TableDetailCacheFailed {
         schema: String,
         table: String,
+        error: String,
     },
 
     // Prefetch all tables for completion
