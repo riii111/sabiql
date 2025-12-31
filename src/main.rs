@@ -767,7 +767,19 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                state.set_success("ER ready. Press 'e' to open.".to_string());
+                if state.failed_prefetch_tables.is_empty() {
+                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                } else {
+                    // Write failure log
+                    if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                        let _ = write_er_failure_log(&state.failed_prefetch_tables, &cache_dir);
+                    }
+                    let failed_count = state.failed_prefetch_tables.len();
+                    state.set_error(format!(
+                        "ER incomplete: {} table(s) failed. Press 'e' to retry or 'r' to reload.",
+                        failed_count
+                    ));
+                }
             }
         }
 
@@ -790,7 +802,15 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                state.set_success("ER ready. Press 'e' to open.".to_string());
+                // Write failure log (we know there's at least one failure)
+                if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                    let _ = write_er_failure_log(&state.failed_prefetch_tables, &cache_dir);
+                }
+                let failed_count = state.failed_prefetch_tables.len();
+                state.set_error(format!(
+                    "ER incomplete: {} table(s) failed. Press 'e' to retry or 'r' to reload.",
+                    failed_count
+                ));
             }
         }
 
