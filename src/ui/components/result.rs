@@ -194,10 +194,18 @@ impl ResultPane {
         let total_cols = result.columns.len();
 
         use super::scroll_indicator::{
-            HorizontalScrollParams, render_horizontal_scroll_indicator,
-            render_vertical_scroll_indicator,
+            HorizontalScrollParams, VerticalScrollParams,
+            render_horizontal_scroll_indicator, render_vertical_scroll_indicator_bar,
         };
-        render_vertical_scroll_indicator(frame, inner, scroll_offset, visible_rows, total_rows);
+        render_vertical_scroll_indicator_bar(
+            frame,
+            inner,
+            VerticalScrollParams {
+                position: scroll_offset,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
         render_horizontal_scroll_indicator(
             frame,
             inner,

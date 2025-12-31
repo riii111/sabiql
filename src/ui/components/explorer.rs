@@ -65,6 +65,9 @@ impl Explorer {
             }
         };
 
+        // Calculate inner area before moving block
+        let inner = block.inner(area);
+
         let list = List::new(items)
             .block(block)
             .highlight_style(
@@ -83,5 +86,26 @@ impl Explorer {
         }
 
         frame.render_stateful_widget(list, area, &mut state.explorer_list_state);
+
+        // Render vertical scrollbar
+        if has_cached_data {
+            let total_items = state.tables().len();
+            let viewport_size = inner.height as usize;
+
+            if total_items > viewport_size {
+                let scroll_offset = state.explorer_list_state.offset();
+
+                use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+                render_vertical_scroll_indicator_bar(
+                    frame,
+                    inner,
+                    VerticalScrollParams {
+                        position: scroll_offset,
+                        viewport_size,
+                        total_items,
+                    },
+                );
+            }
+        }
     }
 }
