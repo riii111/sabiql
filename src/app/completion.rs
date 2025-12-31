@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenCache, TokenKind};
+use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::app::state::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
@@ -26,8 +26,6 @@ pub enum CompletionContext {
 pub struct CompletionEngine {
     keywords: Vec<&'static str>,
     lexer: SqlLexer,
-    #[allow(dead_code)] // Phase 3: differential tokenization
-    token_cache: TokenCache,
     table_detail_cache: HashMap<String, Table>,
 }
 
@@ -106,7 +104,6 @@ impl CompletionEngine {
                 "USING",
             ],
             lexer: SqlLexer::new(),
-            token_cache: TokenCache::new(),
             table_detail_cache: HashMap::new(),
         }
     }
@@ -136,7 +133,7 @@ impl CompletionEngine {
     ) -> Vec<String> {
         const MAX_MISSING_TABLES: usize = 10;
 
-        let tokens = self.lexer.tokenize(content, content.len(), None);
+        let tokens = self.lexer.tokenize(content, content.len());
         let sql_context = self.lexer.build_context(&tokens, content.len());
 
         let cte_names: std::collections::HashSet<String> = sql_context
@@ -186,7 +183,7 @@ impl CompletionEngine {
         }
 
         // Build SQL context for alias resolution
-        let tokens = self.lexer.tokenize(content, content.len(), None);
+        let tokens = self.lexer.tokenize(content, content.len());
         let sql_context = self.lexer.build_context(&tokens, cursor_pos);
 
         let (current_token, context) =
@@ -324,7 +321,7 @@ impl CompletionEngine {
 
     #[allow(dead_code)] // Keep for backwards compatibility in tests
     fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
-        let tokens = self.lexer.tokenize(content, cursor_pos, None);
+        let tokens = self.lexer.tokenize(content, cursor_pos);
         let sql_context = SqlContext::default();
         self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
     }
@@ -1288,7 +1285,7 @@ mod tests {
         fn alias_dot_returns_alias_column_context() {
             let e = engine();
             let sql = "SELECT u.";
-            let tokens = e.lexer.tokenize(sql, sql.len(), None);
+            let tokens = e.lexer.tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1297,8 +1294,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 9, &sql_context, &tokens);
@@ -1311,7 +1307,7 @@ mod tests {
         fn alias_dot_partial_column_returns_alias_column_context() {
             let e = engine();
             let sql = "SELECT u.na";
-            let tokens = e.lexer.tokenize(sql, sql.len(), None);
+            let tokens = e.lexer.tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1320,8 +1316,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 11, &sql_context, &tokens);
@@ -1334,7 +1329,7 @@ mod tests {
         fn table_name_dot_returns_alias_column_context() {
             let e = engine();
             let sql = "SELECT users.";
-            let tokens = e.lexer.tokenize(sql, sql.len(), None);
+            let tokens = e.lexer.tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1343,8 +1338,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 13, &sql_context, &tokens);
@@ -1357,7 +1351,7 @@ mod tests {
         fn unknown_alias_dot_returns_schema_qualified() {
             let e = engine();
             let sql = "SELECT public.";
-            let tokens = e.lexer.tokenize(sql, sql.len(), None);
+            let tokens = e.lexer.tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![TableReference {
                     schema: None,
@@ -1366,8 +1360,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 14, &sql_context, &tokens);
@@ -1390,15 +1383,14 @@ mod tests {
         fn from_clause_with_cte_returns_cte_or_table() {
             let e = engine();
             let sql = "WITH active_users AS (SELECT 1) SELECT * FROM ";
-            let tokens = e.lexer.tokenize(sql, sql.len(), None);
+            let tokens = e.lexer.tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![],
                 ctes: vec![CteDefinition {
                     name: "active_users".to_string(),
                     position: 5,
                 }],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 46, &sql_context, &tokens);
@@ -1416,8 +1408,7 @@ mod tests {
                     name: "active_users".to_string(),
                     position: 5,
                 }],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1451,8 +1442,7 @@ mod tests {
                         position: 50,
                     },
                 ],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let candidates = e.cte_or_table_candidates(&sql_context, None, "act");
@@ -1514,8 +1504,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1545,8 +1534,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let candidates = e.alias_column_candidates("u", &sql_context, None, "");
@@ -1611,8 +1599,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                current_clause: Default::default(),
-                target_table: None,
+                                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
