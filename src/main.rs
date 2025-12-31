@@ -776,7 +776,7 @@ async fn handle_action(
                     }
                     let failed_count = state.failed_prefetch_tables.len();
                     state.set_error(format!(
-                        "ER incomplete: {} table(s) failed. Press 'e' to retry or 'r' to reload.",
+                        "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
                         failed_count
                     ));
                 }
@@ -808,7 +808,7 @@ async fn handle_action(
                 }
                 let failed_count = state.failed_prefetch_tables.len();
                 state.set_error(format!(
-                    "ER incomplete: {} table(s) failed. Press 'e' to retry or 'r' to reload.",
+                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
                     failed_count
                 ));
             }
