@@ -627,6 +627,12 @@ async fn handle_action(
                 state.failed_prefetch_tables.clear();
                 completion_engine.borrow_mut().clear_table_cache();
 
+                // Reset ER status and clear stale messages
+                state.er_status = ErStatus::Idle;
+                state.last_error = None;
+                state.last_success = None;
+                state.message_expires_at = None;
+
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
@@ -698,7 +704,7 @@ async fn handle_action(
             let recently_failed = state
                 .failed_prefetch_tables
                 .get(&qualified_name)
-                .map(|t| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
+                .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
             // Why 2-stage duplicate check (here + missing_tables)?
@@ -727,9 +733,13 @@ async fn handle_action(
                                 })
                                 .await;
                         }
-                        Err(_) => {
+                        Err(e) => {
                             let _ = tx
-                                .send(Action::TableDetailCacheFailed { schema, table })
+                                .send(Action::TableDetailCacheFailed {
+                                    schema,
+                                    table,
+                                    error: e.to_string(),
+                                })
                                 .await;
                         }
                     }
@@ -763,16 +773,39 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                state.set_success("ER ready. Press 'e' to open.".to_string());
+                if state.failed_prefetch_tables.is_empty() {
+                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                } else {
+                    // Write failure log in background thread
+                    if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                        let failed_data: Vec<(String, String)> = state
+                            .failed_prefetch_tables
+                            .iter()
+                            .map(|(k, (_, v))| (k.clone(), v.clone()))
+                            .collect();
+                        tokio::task::spawn_blocking(move || {
+                            write_er_failure_log_blocking(failed_data, cache_dir);
+                        });
+                    }
+                    let failed_count = state.failed_prefetch_tables.len();
+                    state.set_error(format!(
+                        "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                        failed_count
+                    ));
+                }
             }
         }
 
-        Action::TableDetailCacheFailed { schema, table } => {
+        Action::TableDetailCacheFailed {
+            schema,
+            table,
+            error,
+        } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state
                 .failed_prefetch_tables
-                .insert(qualified_name, Instant::now());
+                .insert(qualified_name, (Instant::now(), error));
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
@@ -782,7 +815,22 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                state.set_success("ER ready. Press 'e' to open.".to_string());
+                // Write failure log in background thread
+                if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                    let failed_data: Vec<(String, String)> = state
+                        .failed_prefetch_tables
+                        .iter()
+                        .map(|(k, (_, v))| (k.clone(), v.clone()))
+                        .collect();
+                    tokio::task::spawn_blocking(move || {
+                        write_er_failure_log_blocking(failed_data, cache_dir);
+                    });
+                }
+                let failed_count = state.failed_prefetch_tables.len();
+                state.set_error(format!(
+                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                    failed_count
+                ));
             }
         }
 
@@ -1056,6 +1104,21 @@ async fn handle_action(
                 return Ok(());
             }
 
+            // Retry failed tables if any
+            if !state.failed_prefetch_tables.is_empty() {
+                let failed_tables: Vec<String> =
+                    state.failed_prefetch_tables.keys().cloned().collect();
+                state.failed_prefetch_tables.clear();
+
+                for qualified_name in failed_tables {
+                    state.prefetch_queue.push_back(qualified_name);
+                }
+
+                state.er_status = ErStatus::Waiting;
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+                return Ok(());
+            }
+
             // Check if prefetch is complete
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
@@ -1159,4 +1222,81 @@ fn spawn_er_diagram_task(
             }
         }
     });
+}
+
+// Write ER diagram failure details to log file.
+fn write_er_failure_log_blocking(
+    failed_tables: Vec<(String, String)>,
+    cache_dir: std::path::PathBuf,
+) {
+    use std::io::Write;
+
+    let log_path = cache_dir.join("er_diagram.log");
+    let file = std::fs::File::create(&log_path);
+
+    if let Ok(mut file) = file {
+        let _ = writeln!(file, "ER Diagram Generation Failed");
+        let _ = writeln!(file, "Timestamp: {:?}", std::time::SystemTime::now());
+        let _ = writeln!(file);
+        let _ = writeln!(file, "Failed tables ({}):", failed_tables.len());
+
+        for (table, error) in &failed_tables {
+            let _ = writeln!(file, "  - {}: {}", table, error);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod write_er_failure_log {
+        use super::*;
+
+        #[test]
+        fn writes_failure_details_to_log_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables = vec![
+                ("public.users".to_string(), "connection timeout".to_string()),
+                ("public.orders".to_string(), "permission denied".to_string()),
+            ];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            assert!(log_path.exists());
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("ER Diagram Generation Failed"));
+            assert!(content.contains("Failed tables (2):"));
+            assert!(content.contains("public.users: connection timeout"));
+            assert!(content.contains("public.orders: permission denied"));
+        }
+
+        #[test]
+        fn writes_empty_list_when_no_failures() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables: Vec<(String, String)> = vec![];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            assert!(log_path.exists());
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("Failed tables (0):"));
+        }
+
+        #[test]
+        fn includes_timestamp_in_log() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables = vec![("public.test".to_string(), "error".to_string())];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("Timestamp:"));
+        }
+    }
 }
