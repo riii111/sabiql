@@ -88,9 +88,12 @@ pub fn render_horizontal_scroll_indicator(
             arrow_inactive
         });
 
+    // Workaround for Ratatui scrollbar bug (issue #1681):
+    // content_length should be the scrollable range, not total items
+    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(params.total_items)
-        .viewport_content_length(params.viewport_size)
+        .content_length(scrollable_range)
+        .viewport_content_length(0) // Use default (track size)
         .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
@@ -179,9 +182,12 @@ pub fn render_vertical_scroll_indicator_bar(
             arrow_inactive
         });
 
+    // Workaround for Ratatui scrollbar bug (issue #1681):
+    // content_length should be the scrollable range, not total items
+    let scrollable_range = params.total_items.saturating_sub(params.viewport_size);
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(params.total_items)
-        .viewport_content_length(params.viewport_size)
+        .content_length(scrollable_range)
+        .viewport_content_length(0) // Use default (track size)
         .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
