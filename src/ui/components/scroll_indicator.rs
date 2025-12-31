@@ -89,9 +89,9 @@ pub fn render_horizontal_scroll_indicator(
         });
 
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(scrollable_range.saturating_add(1))
+        .content_length(params.total_items)
         .viewport_content_length(params.viewport_size)
-        .position(params.position.min(scrollable_range));
+        .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
@@ -180,9 +180,9 @@ pub fn render_vertical_scroll_indicator_bar(
         });
 
     let mut scrollbar_state = ScrollbarState::default()
-        .content_length(scrollable_range.saturating_add(1))
+        .content_length(params.total_items)
         .viewport_content_length(params.viewport_size)
-        .position(params.position.min(scrollable_range));
+        .position(params.position);
 
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
