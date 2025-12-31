@@ -1168,3 +1168,25 @@ fn spawn_er_diagram_task(
         }
     });
 }
+
+/// Write ER diagram generation failure details to a log file.
+fn write_er_failure_log(
+    failed_tables: &std::collections::HashMap<String, (std::time::Instant, String)>,
+    cache_dir: &std::path::Path,
+) -> Result<()> {
+    use std::io::Write;
+
+    let log_path = cache_dir.join("er_diagram.log");
+    let mut file = std::fs::File::create(&log_path)?;
+
+    writeln!(file, "ER Diagram Generation Failed")?;
+    writeln!(file, "Timestamp: {:?}", std::time::SystemTime::now())?;
+    writeln!(file)?;
+    writeln!(file, "Failed tables ({}):", failed_tables.len())?;
+
+    for (table, (_, error)) in failed_tables {
+        writeln!(file, "  - {}: {}", table, error)?;
+    }
+
+    Ok(())
+}
