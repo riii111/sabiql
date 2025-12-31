@@ -119,6 +119,10 @@ impl CompletionEngine {
         self.table_detail_cache.contains_key(qualified_name)
     }
 
+    pub fn clear_table_cache(&mut self) {
+        self.table_detail_cache.clear();
+    }
+
     /// Returns an iterator over cached table details for graph building
     pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
         self.table_detail_cache.iter()

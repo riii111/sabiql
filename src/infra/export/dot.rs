@@ -5,6 +5,42 @@ use color_eyre::eyre::{Result, eyre};
 
 use crate::domain::Table;
 
+/// Lightweight FK info for ER diagram generation (avoids cloning full ForeignKey)
+#[derive(Debug, Clone)]
+pub struct ErFkInfo {
+    pub name: String,
+    pub from_qualified: String,
+    pub to_qualified: String,
+}
+
+/// Lightweight table info for ER diagram generation (avoids cloning full Table)
+#[derive(Debug, Clone)]
+pub struct ErTableInfo {
+    pub qualified_name: String,
+    pub name: String,
+    pub schema: String,
+    pub foreign_keys: Vec<ErFkInfo>,
+}
+
+impl ErTableInfo {
+    pub fn from_table(qualified_name: &str, table: &Table) -> Self {
+        Self {
+            qualified_name: qualified_name.to_string(),
+            name: table.name.clone(),
+            schema: table.schema.clone(),
+            foreign_keys: table
+                .foreign_keys
+                .iter()
+                .map(|fk| ErFkInfo {
+                    name: fk.name.clone(),
+                    from_qualified: format!("{}.{}", fk.from_schema, fk.from_table),
+                    to_qualified: fk.referenced_table(),
+                })
+                .collect(),
+        }
+    }
+}
+
 pub struct DotExporter;
 
 impl DotExporter {
@@ -15,10 +51,7 @@ impl DotExporter {
     }
 
     /// Generate DOT for full database ER diagram (all tables and FKs)
-    pub fn generate_full_dot<'a, I>(tables: I) -> String
-    where
-        I: IntoIterator<Item = (&'a String, &'a Table)>,
-    {
+    pub fn generate_full_dot(tables: &[ErTableInfo]) -> String {
         let mut dot = String::new();
         dot.push_str("digraph full_er {\n");
         dot.push_str("    rankdir=LR;\n");
@@ -27,12 +60,12 @@ impl DotExporter {
         dot.push('\n');
 
         // Sort by qualified name for stable output
-        let mut tables: Vec<_> = tables.into_iter().collect();
-        tables.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let mut sorted_tables: Vec<_> = tables.iter().collect();
+        sorted_tables.sort_by(|a, b| a.qualified_name.cmp(&b.qualified_name));
 
         // Add all tables as nodes
-        for (qualified_name, table) in &tables {
-            let full_name = Self::escape_dot_string(qualified_name);
+        for table in &sorted_tables {
+            let full_name = Self::escape_dot_string(&table.qualified_name);
             let table_name = Self::escape_dot_string(&table.name);
             let schema_name = Self::escape_dot_string(&table.schema);
 
@@ -45,13 +78,15 @@ impl DotExporter {
         dot.push('\n');
 
         // Collect and sort all FK relationships for stable output
-        let mut edges: Vec<_> = tables
+        let mut edges: Vec<_> = sorted_tables
             .iter()
-            .flat_map(|(_, table)| {
+            .flat_map(|table| {
                 table.foreign_keys.iter().map(|fk| {
-                    let from = format!("{}.{}", fk.from_schema, fk.from_table);
-                    let to = fk.referenced_table();
-                    (from, to, fk.name.clone())
+                    (
+                        fk.from_qualified.clone(),
+                        fk.to_qualified.clone(),
+                        fk.name.clone(),
+                    )
                 })
             })
             .collect();
@@ -120,77 +155,32 @@ impl DotExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, FkAction, ForeignKey};
-    use std::collections::HashMap;
 
-    fn create_test_tables() -> HashMap<String, Table> {
-        let mut tables = HashMap::new();
-
-        tables.insert(
-            "public.users".to_string(),
-            Table {
-                schema: "public".to_string(),
+    fn create_test_tables() -> Vec<ErTableInfo> {
+        vec![
+            ErTableInfo {
+                qualified_name: "public.users".to_string(),
                 name: "users".to_string(),
-                columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    nullable: false,
-                    default: None,
-                    is_primary_key: true,
-                    is_unique: false,
-                    comment: None,
-                    ordinal_position: 1,
-                }],
-                primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                row_count_estimate: Some(100),
-                comment: None,
-            },
-        );
-
-        tables.insert(
-            "public.orders".to_string(),
-            Table {
                 schema: "public".to_string(),
+                foreign_keys: vec![],
+            },
+            ErTableInfo {
+                qualified_name: "public.orders".to_string(),
                 name: "orders".to_string(),
-                columns: vec![],
-                primary_key: None,
-                foreign_keys: vec![ForeignKey {
-                    name: "fk_user".to_string(),
-                    from_schema: "public".to_string(),
-                    from_table: "orders".to_string(),
-                    from_columns: vec!["user_id".to_string()],
-                    to_schema: "public".to_string(),
-                    to_table: "users".to_string(),
-                    to_columns: vec!["id".to_string()],
-                    on_delete: FkAction::NoAction,
-                    on_update: FkAction::NoAction,
-                }],
-                indexes: vec![],
-                rls: None,
-                row_count_estimate: Some(500),
-                comment: None,
-            },
-        );
-
-        tables.insert(
-            "public.products".to_string(),
-            Table {
                 schema: "public".to_string(),
-                name: "products".to_string(),
-                columns: vec![],
-                primary_key: None,
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                row_count_estimate: Some(50),
-                comment: None,
+                foreign_keys: vec![ErFkInfo {
+                    name: "fk_user".to_string(),
+                    from_qualified: "public.orders".to_string(),
+                    to_qualified: "public.users".to_string(),
+                }],
             },
-        );
-
-        tables
+            ErTableInfo {
+                qualified_name: "public.products".to_string(),
+                name: "products".to_string(),
+                schema: "public".to_string(),
+                foreign_keys: vec![],
+            },
+        ]
     }
 
     #[test]

@@ -27,7 +27,7 @@ use infra::config::{
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
-use infra::export::DotExporter;
+use infra::export::{DotExporter, ErTableInfo};
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::event::handler::handle_event;
@@ -619,6 +619,13 @@ async fn handle_action(
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.dsn {
                 metadata_cache.invalidate(dsn).await;
+
+                // Reset prefetch state for fresh reload
+                state.prefetch_started = false;
+                state.prefetch_queue.clear();
+                state.prefetching_tables.clear();
+                completion_engine.borrow_mut().clear_table_cache();
+
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
@@ -1057,12 +1064,12 @@ async fn handle_action(
                 return Ok(());
             }
 
-            // Collect cached table data for DOT generation
-            let tables: Vec<(String, domain::Table)> = {
+            // Collect lightweight snapshots for DOT generation
+            let tables: Vec<ErTableInfo> = {
                 let engine = completion_engine.borrow();
                 engine
                     .table_details_iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .map(|(k, v)| ErTableInfo::from_table(k, v))
                     .collect()
             };
 
@@ -1072,11 +1079,7 @@ async fn handle_action(
             }
 
             state.er_status = ErStatus::Rendering;
-            let total_tables = state
-                .metadata
-                .as_ref()
-                .map(|m| m.tables.len())
-                .unwrap_or(0);
+            let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.project_name)?;
 
             spawn_er_diagram_task(tables, total_tables, cache_dir, action_tx.clone());
@@ -1122,7 +1125,7 @@ fn char_count(s: &str) -> usize {
 }
 
 fn spawn_er_diagram_task(
-    tables: Vec<(String, domain::Table)>,
+    tables: Vec<ErTableInfo>,
     total_tables: usize,
     cache_dir: std::path::PathBuf,
     tx: mpsc::Sender<Action>,
@@ -1130,8 +1133,7 @@ fn spawn_er_diagram_task(
     let table_count = tables.len();
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            let dot_content =
-                DotExporter::generate_full_dot(tables.iter().map(|(k, v)| (k, v)));
+            let dot_content = DotExporter::generate_full_dot(&tables);
             DotExporter::export_dot_and_open(&dot_content, "er_full.dot", &cache_dir)
         })
         .await;
