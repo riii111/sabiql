@@ -240,12 +240,12 @@ impl AppState {
     }
 
     pub fn clear_expired_messages(&mut self) {
-        if let Some(expires) = self.message_expires_at {
-            if expires <= Instant::now() {
-                self.last_error = None;
-                self.last_success = None;
-                self.message_expires_at = None;
-            }
+        if let Some(expires) = self.message_expires_at
+            && expires <= Instant::now()
+        {
+            self.last_error = None;
+            self.last_success = None;
+            self.message_expires_at = None;
         }
     }
 
