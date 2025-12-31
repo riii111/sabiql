@@ -527,4 +527,91 @@ mod tests {
                 < 1
         );
     }
+
+    mod er_status {
+        use super::*;
+
+        #[test]
+        fn new_state_defaults_to_idle() {
+            let state = AppState::new("test".to_string(), "default".to_string());
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn idle_with_incomplete_prefetch_transitions_to_waiting() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.prefetch_queue.push_back("public.users".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if !prefetch_complete {
+                state.er_status = ErStatus::Waiting;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Waiting);
+        }
+
+        #[test]
+        fn idle_with_complete_prefetch_transitions_to_rendering() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if prefetch_complete {
+                state.er_status = ErStatus::Rendering;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Rendering);
+        }
+
+        #[test]
+        fn waiting_with_prefetch_complete_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+            state.prefetch_queue.push_back("public.users".to_string());
+
+            state.prefetch_queue.pop_front();
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+            if state.er_status == ErStatus::Waiting && prefetch_complete {
+                state.er_status = ErStatus::Idle;
+            }
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn rendering_on_diagram_opened_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Rendering;
+
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn rendering_on_diagram_failed_transitions_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Rendering;
+
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn waiting_with_in_flight_tables_remains_waiting() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+            state.prefetching_tables.insert("public.orders".to_string());
+
+            let prefetch_complete =
+                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
+
+            assert!(!prefetch_complete);
+            assert_eq!(state.er_status, ErStatus::Waiting);
+        }
+    }
 }

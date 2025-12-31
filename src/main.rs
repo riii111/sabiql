@@ -191,11 +191,7 @@ async fn handle_action(
             state.input_mode = InputMode::Normal;
             state.completion.visible = false;
             state.completion_debounce = None;
-            // In-flight fetches continue to populate cache for next session
-            state.prefetch_started = false;
-            state.prefetch_queue.clear();
-            // Keep prefetching_tables to prevent double fetch on reopen
-            state.failed_prefetch_tables.clear();
+            // Keep prefetch running for ER diagram usage
         }
         Action::SqlModalInput(c) => {
             state.sql_modal_state = app::state::SqlModalState::Editing;
@@ -1048,11 +1044,7 @@ async fn handle_action(
 
         Action::ErOpenDiagram => {
             // Guard: ignore if already rendering or waiting
-            if state.er_status == ErStatus::Rendering {
-                return Ok(());
-            }
-            if state.er_status == ErStatus::Waiting {
-                // Already waiting - no action needed
+            if matches!(state.er_status, ErStatus::Rendering | ErStatus::Waiting) {
                 return Ok(());
             }
 
@@ -1061,56 +1053,45 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
 
             if !prefetch_complete {
-                // Set Waiting state - footer will show persistent spinner
                 state.er_status = ErStatus::Waiting;
-            } else {
-                // Prefetch complete - generate ER diagram immediately
-                state.er_status = ErStatus::Rendering;
-                let (dot_content, table_count) = {
-                    let engine = completion_engine.borrow();
-                    let tables: Vec<_> = engine.table_details_iter().collect();
-                    let count = tables.len();
-                    if count == 0 {
-                        (None, 0)
-                    } else {
-                        (
-                            Some(DotExporter::generate_full_dot(tables.into_iter())),
-                            count,
-                        )
-                    }
-                };
-
-                if let Some(dot_content) = dot_content {
-                    let filename = "er_full.dot".to_string();
-                    let cache_dir = get_cache_dir(&state.project_name)?;
-                    let tx = action_tx.clone();
-
-                    tokio::spawn(async move {
-                        match DotExporter::export_dot_and_open(&dot_content, &filename, &cache_dir)
-                        {
-                            Ok(path) => {
-                                let _ = tx
-                                    .send(Action::ErDiagramOpened {
-                                        path: path.display().to_string(),
-                                        table_count,
-                                    })
-                                    .await;
-                            }
-                            Err(e) => {
-                                let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
-                            }
-                        }
-                    });
-                } else {
-                    state.er_status = ErStatus::Idle;
-                    state.set_error("No table data loaded yet".to_string());
-                }
+                return Ok(());
             }
+
+            // Collect cached table data for DOT generation
+            let tables: Vec<(String, domain::Table)> = {
+                let engine = completion_engine.borrow();
+                engine
+                    .table_details_iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            };
+
+            if tables.is_empty() {
+                state.set_error("No table data loaded yet".to_string());
+                return Ok(());
+            }
+
+            state.er_status = ErStatus::Rendering;
+            let total_tables = state
+                .metadata
+                .as_ref()
+                .map(|m| m.tables.len())
+                .unwrap_or(0);
+            let cache_dir = get_cache_dir(&state.project_name)?;
+
+            spawn_er_diagram_task(tables, total_tables, cache_dir, action_tx.clone());
         }
 
-        Action::ErDiagramOpened { path, table_count } => {
+        Action::ErDiagramOpened {
+            path,
+            table_count,
+            total_tables,
+        } => {
             state.er_status = ErStatus::Idle;
-            state.set_success(format!("✓ Opened {} ({} tables)", path, table_count));
+            state.set_success(format!(
+                "✓ Opened {} ({}/{} tables)",
+                path, table_count, total_tables
+            ));
         }
 
         Action::ErDiagramFailed(error) => {
@@ -1138,4 +1119,41 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 
 fn char_count(s: &str) -> usize {
     s.chars().count()
+}
+
+fn spawn_er_diagram_task(
+    tables: Vec<(String, domain::Table)>,
+    total_tables: usize,
+    cache_dir: std::path::PathBuf,
+    tx: mpsc::Sender<Action>,
+) {
+    let table_count = tables.len();
+    tokio::spawn(async move {
+        let result = tokio::task::spawn_blocking(move || {
+            let dot_content =
+                DotExporter::generate_full_dot(tables.iter().map(|(k, v)| (k, v)));
+            DotExporter::export_dot_and_open(&dot_content, "er_full.dot", &cache_dir)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(path)) => {
+                let _ = tx
+                    .send(Action::ErDiagramOpened {
+                        path: path.display().to_string(),
+                        table_count,
+                        total_tables,
+                    })
+                    .await;
+            }
+            Ok(Err(e)) => {
+                let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
+            }
+            Err(e) => {
+                let _ = tx
+                    .send(Action::ErDiagramFailed(format!("Task panicked: {}", e)))
+                    .await;
+            }
+        }
+    });
 }

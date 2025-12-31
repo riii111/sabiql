@@ -142,6 +142,7 @@ pub enum Action {
     ErDiagramOpened {
         path: String,
         table_count: usize,
+        total_tables: usize,
     },
     ErDiagramFailed(String),
 }
