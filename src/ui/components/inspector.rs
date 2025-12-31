@@ -164,7 +164,12 @@ impl Inspector {
             let text = headers.get(idx).copied().unwrap_or("");
             Cell::from(text)
         }))
-        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
+        .style(
+            Style::default()
+                .add_modifier(Modifier::UNDERLINED)
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        )
         .height(1);
 
         // -2: Table header (1) + scroll indicator row at bottom (1)
@@ -249,10 +254,16 @@ impl Inspector {
             Cell::from("Type"),
             Cell::from("Unique"),
         ])
-        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
+        .style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED)
+                .fg(Color::White),
+        )
         .height(1);
 
-        let visible_rows = area.height.saturating_sub(1) as usize;
+        // -2: header (1) + scroll indicator (1)
+        let visible_rows = area.height.saturating_sub(2) as usize;
         let total_rows = table.indexes.len();
 
         let rows: Vec<Row> = table
@@ -313,10 +324,16 @@ impl Inspector {
             Cell::from("Columns"),
             Cell::from("References"),
         ])
-        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
+        .style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED)
+                .fg(Color::White),
+        )
         .height(1);
 
-        let visible_rows = area.height.saturating_sub(1) as usize;
+        // -2: header (1) + scroll indicator (1)
+        let visible_rows = area.height.saturating_sub(2) as usize;
         let total_rows = table.foreign_keys.len();
 
         let rows: Vec<Row> = table

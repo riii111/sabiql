@@ -158,7 +158,12 @@ impl ResultPane {
             let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
             Cell::from(col_name.to_string())
         }))
-        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
+        .style(
+            Style::default()
+                .add_modifier(Modifier::UNDERLINED)
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        )
         .height(1);
 
         // -3: header (1) + scroll indicators (2)
