@@ -208,10 +208,18 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         use super::scroll_indicator::{
-            HorizontalScrollParams, render_horizontal_scroll_indicator,
-            render_vertical_scroll_indicator,
+            HorizontalScrollParams, VerticalScrollParams,
+            render_horizontal_scroll_indicator, render_vertical_scroll_indicator_bar,
         };
-        render_vertical_scroll_indicator(frame, area, scroll_offset, visible_rows, total_rows);
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: scroll_offset,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
         render_horizontal_scroll_indicator(
             frame,
             area,
@@ -277,8 +285,16 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         // Vertical scroll indicator
-        use super::scroll_indicator::render_vertical_scroll_indicator;
-        render_vertical_scroll_indicator(frame, area, 0, visible_rows, total_rows);
+        use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: 0,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
     }
 
     fn render_foreign_keys(frame: &mut Frame, area: Rect, table: &TableDetail) {
@@ -334,8 +350,16 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         // Vertical scroll indicator
-        use super::scroll_indicator::render_vertical_scroll_indicator;
-        render_vertical_scroll_indicator(frame, area, 0, visible_rows, total_rows);
+        use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: 0,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
     }
 
     fn render_rls(frame: &mut Frame, area: Rect, table: &TableDetail) {
