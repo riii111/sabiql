@@ -166,15 +166,17 @@ impl Inspector {
         }))
         .height(1);
 
-        // Visible data rows with scroll offset
-        let visible_rows = area.height.saturating_sub(2) as usize; // -1 header, -1 indicator
+        // -2: Table header (1) + scroll indicator row at bottom (1)
+        // Note: area is already inner (excluding border and tab bar)
+        let data_rows_visible = area.height.saturating_sub(2) as usize;
+        let scroll_viewport_size = data_rows_visible;
         let total_rows = data_rows.len();
 
         let rows: Vec<Row> = data_rows
             .iter()
             .enumerate()
             .skip(scroll_offset)
-            .take(visible_rows)
+            .take(data_rows_visible)
             .map(|(row_idx, row)| {
                 let is_striped = (row_idx - scroll_offset) % 2 == 1;
 
@@ -216,7 +218,7 @@ impl Inspector {
             area,
             VerticalScrollParams {
                 position: scroll_offset,
-                viewport_size: visible_rows,
+                viewport_size: scroll_viewport_size,
                 total_items: total_rows,
             },
         );
@@ -248,7 +250,7 @@ impl Inspector {
         ])
         .height(1);
 
-        let visible_rows = area.height.saturating_sub(2) as usize;
+        let visible_rows = area.height.saturating_sub(1) as usize;
         let total_rows = table.indexes.len();
 
         let rows: Vec<Row> = table
@@ -311,7 +313,7 @@ impl Inspector {
         ])
         .height(1);
 
-        let visible_rows = area.height.saturating_sub(2) as usize;
+        let visible_rows = area.height.saturating_sub(1) as usize;
         let total_rows = table.foreign_keys.len();
 
         let rows: Vec<Row> = table

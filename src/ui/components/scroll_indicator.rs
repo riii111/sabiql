@@ -165,7 +165,7 @@ pub fn render_vertical_scroll_indicator_bar(
     let arrow_inactive = Style::default().fg(Color::DarkGray);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-        .thumb_symbol("█")
+        .thumb_symbol("┃")
         .track_symbol(Some("│"))
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"))

@@ -257,9 +257,9 @@ impl AppState {
     }
 
     /// Calculate the number of visible rows in the inspector pane.
-    /// Inspector content = height - 2 (border) - 1 (header row) - 1 (scroll indicator) = height - 4
+    /// Inspector content = height - 2 (border) - 1 (tab bar) - 1 (header row) - 1 (scroll indicator) = height - 5
     pub fn inspector_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(4) as usize
+        self.inspector_pane_height.saturating_sub(5) as usize
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
