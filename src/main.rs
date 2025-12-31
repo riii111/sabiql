@@ -698,7 +698,7 @@ async fn handle_action(
             let recently_failed = state
                 .failed_prefetch_tables
                 .get(&qualified_name)
-                .map(|t| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
+                .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
             // Why 2-stage duplicate check (here + missing_tables)?
@@ -727,9 +727,13 @@ async fn handle_action(
                                 })
                                 .await;
                         }
-                        Err(_) => {
+                        Err(e) => {
                             let _ = tx
-                                .send(Action::TableDetailCacheFailed { schema, table })
+                                .send(Action::TableDetailCacheFailed {
+                                    schema,
+                                    table,
+                                    error: e.to_string(),
+                                })
                                 .await;
                         }
                     }
@@ -767,12 +771,16 @@ async fn handle_action(
             }
         }
 
-        Action::TableDetailCacheFailed { schema, table } => {
+        Action::TableDetailCacheFailed {
+            schema,
+            table,
+            error,
+        } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state
                 .failed_prefetch_tables
-                .insert(qualified_name, Instant::now());
+                .insert(qualified_name, (Instant::now(), error));
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }

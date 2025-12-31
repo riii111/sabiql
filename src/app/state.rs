@@ -123,8 +123,8 @@ pub struct AppState {
     // Tables currently being prefetched for completion (schema.table)
     pub prefetching_tables: HashSet<String>,
 
-    // Tables that failed to prefetch (schema.table -> failure time) for backoff
-    pub failed_prefetch_tables: HashMap<String, Instant>,
+    // Tables that failed to prefetch (schema.table -> (failure time, error message))
+    pub failed_prefetch_tables: HashMap<String, (Instant, String)>,
 
     // Prefetch queue for all tables (schema.table qualified names)
     pub prefetch_queue: VecDeque<String>,
@@ -508,24 +508,19 @@ mod tests {
     }
 
     #[test]
-    fn failed_prefetch_tables_tracks_failure_time() {
+    fn failed_prefetch_tables_tracks_failure_time_and_error() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
         let now = Instant::now();
 
-        state
-            .failed_prefetch_tables
-            .insert("public.users".to_string(), now);
+        state.failed_prefetch_tables.insert(
+            "public.users".to_string(),
+            (now, "connection timeout".to_string()),
+        );
 
         assert!(state.failed_prefetch_tables.contains_key("public.users"));
-        assert!(
-            state
-                .failed_prefetch_tables
-                .get("public.users")
-                .unwrap()
-                .elapsed()
-                .as_secs()
-                < 1
-        );
+        let (instant, error) = state.failed_prefetch_tables.get("public.users").unwrap();
+        assert!(instant.elapsed().as_secs() < 1);
+        assert_eq!(error, "connection timeout");
     }
 
     mod er_status {
