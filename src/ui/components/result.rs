@@ -5,6 +5,7 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
+use super::viewport_columns::{calculate_max_offset, select_viewport_columns};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
@@ -255,64 +256,6 @@ fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> 
         .collect()
 }
 
-/// Select columns that fit within available width (viewport-based).
-/// Returns (column_indices, column_widths) for columns that fit.
-fn select_viewport_columns(
-    all_widths: &[u16],
-    horizontal_offset: usize,
-    available_width: u16,
-) -> (Vec<usize>, Vec<u16>) {
-    let mut indices = Vec::new();
-    let mut widths = Vec::new();
-    let mut used_width: u16 = 0;
-
-    for (i, &width) in all_widths.iter().enumerate().skip(horizontal_offset) {
-        // Account for column separator (1 char) except for first column
-        let separator = if indices.is_empty() { 0 } else { 1 };
-        let needed = width + separator;
-
-        if used_width + needed <= available_width {
-            used_width += needed;
-            indices.push(i);
-            widths.push(width);
-        } else {
-            break;
-        }
-    }
-
-    // Ensure at least one column is shown (even if it doesn't fully fit)
-    if indices.is_empty() && horizontal_offset < all_widths.len() {
-        indices.push(horizontal_offset);
-        widths.push(all_widths[horizontal_offset].min(available_width));
-    }
-
-    (indices, widths)
-}
-
-fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
-    if all_widths.is_empty() {
-        return 0;
-    }
-
-    let mut sum: u16 = 0;
-    let mut cols_from_right = 0;
-
-    for (i, &width) in all_widths.iter().rev().enumerate() {
-        let separator = if i == 0 { 0 } else { 1 };
-        let needed = width + separator;
-
-        if sum + needed <= available_width {
-            sum += needed;
-            cols_from_right += 1;
-        } else {
-            break;
-        }
-    }
-
-    let cols_from_right = cols_from_right.max(1);
-    all_widths.len().saturating_sub(cols_from_right)
-}
-
 fn truncate_cell(s: &str, max_chars: usize) -> String {
     let first_line = s.lines().next().unwrap_or(s);
     let char_count = first_line.chars().count();
@@ -439,75 +382,6 @@ mod tests {
             assert_eq!(result[1], 15);
             // email: max(5, 17) + 2 = 19
             assert_eq!(result[2], 19);
-        }
-    }
-
-    mod select_viewport_columns_tests {
-        use super::*;
-
-        #[test]
-        fn selects_columns_that_fit() {
-            let widths = vec![10, 10, 10, 10]; // 4 columns, each 10 wide
-            let available = 35; // Room for 3 columns (10 + 1 + 10 + 1 + 10 = 32)
-
-            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
-
-            assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected_widths, vec![10, 10, 10]);
-        }
-
-        #[test]
-        fn respects_horizontal_offset() {
-            let widths = vec![10, 10, 10, 10];
-            let available = 25; // Room for 2 columns from offset
-
-            let (indices, selected_widths) = select_viewport_columns(&widths, 1, available);
-
-            assert_eq!(indices, vec![1, 2]);
-            assert_eq!(selected_widths, vec![10, 10]);
-        }
-
-        #[test]
-        fn ensures_at_least_one_column() {
-            let widths = vec![100]; // One very wide column
-            let available = 20; // Not enough space
-
-            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
-
-            assert_eq!(indices, vec![0]);
-            assert_eq!(selected_widths, vec![20]); // Capped to available
-        }
-
-        #[test]
-        fn handles_empty_widths() {
-            let widths: Vec<u16> = vec![];
-            let available = 100;
-
-            let (indices, selected_widths) = select_viewport_columns(&widths, 0, available);
-
-            assert!(indices.is_empty());
-            assert!(selected_widths.is_empty());
-        }
-
-        #[test]
-        fn offset_beyond_columns_returns_empty() {
-            let widths = vec![10, 10];
-            let available = 100;
-
-            let (indices, selected_widths) = select_viewport_columns(&widths, 5, available);
-
-            assert!(indices.is_empty());
-            assert!(selected_widths.is_empty());
-        }
-
-        #[test]
-        fn accounts_for_separators() {
-            let widths = vec![10, 10, 10];
-            let available = 31; // 10 + 1 + 10 + 1 + 10 = 32, so only 2 fit
-
-            let (indices, _) = select_viewport_columns(&widths, 0, available);
-
-            assert_eq!(indices.len(), 2);
         }
     }
 
