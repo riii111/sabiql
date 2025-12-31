@@ -88,7 +88,7 @@ impl DotExporter {
             .arg(&svg_path)
             .arg(&dot_path)
             .status()
-            .map_err(|_| eyre!("Graphviz not found. Install with: brew install graphviz"))?;
+            .map_err(|_| eyre!("Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"))?;
 
         if !status.success() {
             return Err(eyre!(

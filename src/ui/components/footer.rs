@@ -40,14 +40,15 @@ impl Footer {
         let frame_idx = (now_ms / 300) as usize % SPINNER_FRAMES.len();
         let spinner = SPINNER_FRAMES[frame_idx];
 
-        // Calculate progress from state
+        // Calculate progress from state (exclude failed tables from "cached" count)
         let total = state
             .metadata
             .as_ref()
             .map(|m| m.tables.len())
             .unwrap_or(0);
+        let failed = state.failed_prefetch_tables.len();
         let remaining = state.prefetch_queue.len() + state.prefetching_tables.len();
-        let cached = total.saturating_sub(remaining);
+        let cached = total.saturating_sub(remaining + failed);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
         Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
