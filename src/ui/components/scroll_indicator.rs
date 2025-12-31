@@ -73,8 +73,8 @@ pub fn render_horizontal_scroll_indicator(
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
         .thumb_symbol("═")
         .track_symbol(Some("─"))
-        .begin_symbol(Some("<"))
-        .end_symbol(Some(">"))
+        .begin_symbol(Some("◀︎"))
+        .end_symbol(Some("▶︎"))
         .thumb_style(Style::default().fg(Color::Yellow))
         .track_style(Style::default().fg(Color::DarkGray))
         .begin_style(if can_scroll_left {

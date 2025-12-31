@@ -156,8 +156,9 @@ impl ResultPane {
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
             let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
-            Cell::from(col_name.to_string()).style(Style::default().add_modifier(Modifier::BOLD))
+            Cell::from(col_name.to_string())
         }))
+        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
         .height(1);
 
         // -3: header (1) + scroll indicators (2)
