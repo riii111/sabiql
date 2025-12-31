@@ -1084,6 +1084,21 @@ async fn handle_action(
                 return Ok(());
             }
 
+            // Retry failed tables if any
+            if !state.failed_prefetch_tables.is_empty() {
+                let failed_tables: Vec<String> =
+                    state.failed_prefetch_tables.keys().cloned().collect();
+                state.failed_prefetch_tables.clear();
+
+                for qualified_name in failed_tables {
+                    state.prefetch_queue.push_back(qualified_name);
+                }
+
+                state.er_status = ErStatus::Waiting;
+                let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
+                return Ok(());
+            }
+
             // Check if prefetch is complete
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
