@@ -770,9 +770,16 @@ async fn handle_action(
                 if state.failed_prefetch_tables.is_empty() {
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
-                    // Write failure log
+                    // Write failure log in background thread
                     if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
-                        let _ = write_er_failure_log(&state.failed_prefetch_tables, &cache_dir);
+                        let failed_data: Vec<(String, String)> = state
+                            .failed_prefetch_tables
+                            .iter()
+                            .map(|(k, (_, v))| (k.clone(), v.clone()))
+                            .collect();
+                        tokio::task::spawn_blocking(move || {
+                            write_er_failure_log_blocking(failed_data, cache_dir);
+                        });
                     }
                     let failed_count = state.failed_prefetch_tables.len();
                     state.set_error(format!(
@@ -802,9 +809,16 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                // Write failure log (we know there's at least one failure)
+                // Write failure log in background thread
                 if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
-                    let _ = write_er_failure_log(&state.failed_prefetch_tables, &cache_dir);
+                    let failed_data: Vec<(String, String)> = state
+                        .failed_prefetch_tables
+                        .iter()
+                        .map(|(k, (_, v))| (k.clone(), v.clone()))
+                        .collect();
+                    tokio::task::spawn_blocking(move || {
+                        write_er_failure_log_blocking(failed_data, cache_dir);
+                    });
                 }
                 let failed_count = state.failed_prefetch_tables.len();
                 state.set_error(format!(
@@ -1204,24 +1218,24 @@ fn spawn_er_diagram_task(
     });
 }
 
-/// Write ER diagram generation failure details to a log file.
-fn write_er_failure_log(
-    failed_tables: &std::collections::HashMap<String, (std::time::Instant, String)>,
-    cache_dir: &std::path::Path,
-) -> Result<()> {
+// Write ER diagram failure details to log file.
+fn write_er_failure_log_blocking(
+    failed_tables: Vec<(String, String)>,
+    cache_dir: std::path::PathBuf,
+) {
     use std::io::Write;
 
     let log_path = cache_dir.join("er_diagram.log");
-    let mut file = std::fs::File::create(&log_path)?;
+    let file = std::fs::File::create(&log_path);
 
-    writeln!(file, "ER Diagram Generation Failed")?;
-    writeln!(file, "Timestamp: {:?}", std::time::SystemTime::now())?;
-    writeln!(file)?;
-    writeln!(file, "Failed tables ({}):", failed_tables.len())?;
+    if let Ok(mut file) = file {
+        let _ = writeln!(file, "ER Diagram Generation Failed");
+        let _ = writeln!(file, "Timestamp: {:?}", std::time::SystemTime::now());
+        let _ = writeln!(file);
+        let _ = writeln!(file, "Failed tables ({}):", failed_tables.len());
 
-    for (table, (_, error)) in failed_tables {
-        writeln!(file, "  - {}: {}", table, error)?;
+        for (table, error) in &failed_tables {
+            let _ = writeln!(file, "  - {}: {}", table, error);
+        }
     }
-
-    Ok(())
 }
