@@ -624,6 +624,7 @@ async fn handle_action(
                 state.prefetch_started = false;
                 state.prefetch_queue.clear();
                 state.prefetching_tables.clear();
+                state.failed_prefetch_tables.clear();
                 completion_engine.borrow_mut().clear_table_cache();
 
                 let _ = action_tx.send(Action::LoadMetadata).await;
