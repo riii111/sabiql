@@ -37,13 +37,13 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let max_offset = if let Some(result) = result {
+        let (max_offset, column_widths, available_width) = if let Some(result) = result {
             if result.is_error() {
                 Self::render_error(frame, area, result, block);
-                0
+                (0, Vec::new(), 0)
             } else if result.rows.is_empty() {
                 Self::render_empty(frame, area, block);
-                0
+                (0, Vec::new(), 0)
             } else {
                 Self::render_table(
                     frame,
@@ -56,9 +56,11 @@ impl ResultPane {
             }
         } else {
             Self::render_placeholder(frame, area, block);
-            0
+            (0, Vec::new(), 0)
         };
         state.result_max_horizontal_offset = max_offset;
+        state.result_column_widths = column_widths;
+        state.result_available_width = available_width;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
@@ -131,12 +133,12 @@ impl ResultPane {
         block: Block,
         scroll_offset: usize,
         horizontal_offset: usize,
-    ) -> usize {
+    ) -> (usize, Vec<u16>, u16) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return 0;
+            return (0, Vec::new(), inner.width);
         }
 
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
@@ -147,7 +149,7 @@ impl ResultPane {
             select_viewport_columns(&all_ideal_widths, clamped_offset, inner.width);
 
         if viewport_indices.is_empty() {
-            return max_offset;
+            return (max_offset, all_ideal_widths, inner.width);
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -225,7 +227,7 @@ impl ResultPane {
             },
         );
 
-        max_offset
+        (max_offset, all_ideal_widths, inner.width)
     }
 }
 

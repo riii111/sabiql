@@ -99,6 +99,8 @@ pub struct AppState {
     pub inspector_scroll_offset: usize,
     pub inspector_horizontal_offset: usize,
     pub inspector_max_horizontal_offset: usize,
+    pub inspector_column_widths: Vec<u16>,
+    pub inspector_available_width: u16,
 
     // Result pane
     pub current_result: Option<QueryResult>,
@@ -106,6 +108,8 @@ pub struct AppState {
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
     pub result_max_horizontal_offset: usize,
+    pub result_column_widths: Vec<u16>,
+    pub result_available_width: u16,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -183,12 +187,16 @@ impl AppState {
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
             inspector_max_horizontal_offset: 0,
+            inspector_column_widths: Vec::new(),
+            inspector_available_width: 0,
             // Result pane
             current_result: None,
             result_highlight_until: None,
             result_scroll_offset: 0,
             result_horizontal_offset: 0,
             result_max_horizontal_offset: 0,
+            result_column_widths: Vec::new(),
+            result_available_width: 0,
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,
