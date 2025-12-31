@@ -160,12 +160,14 @@ impl ResultPane {
         }))
         .height(1);
 
-        let visible_rows = inner.height.saturating_sub(2) as usize;
+        // -3: header (1) + scroll indicators (2)
+        let data_rows_visible = inner.height.saturating_sub(3) as usize;
+        let scroll_viewport_size = data_rows_visible;
         let rows: Vec<Row> = result
             .rows
             .iter()
             .skip(scroll_offset)
-            .take(visible_rows)
+            .take(data_rows_visible)
             .enumerate()
             .map(|(i, row)| {
                 let style = if i % 2 == 0 {
@@ -202,7 +204,7 @@ impl ResultPane {
             inner,
             VerticalScrollParams {
                 position: scroll_offset,
-                viewport_size: visible_rows,
+                viewport_size: scroll_viewport_size,
                 total_items: total_rows,
             },
         );

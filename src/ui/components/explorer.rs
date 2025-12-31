@@ -90,7 +90,8 @@ impl Explorer {
         // Render vertical scrollbar
         if has_cached_data {
             let total_items = state.tables().len();
-            let viewport_size = inner.height as usize;
+            // Subtract 1 for highlight symbol space in List widget
+            let viewport_size = inner.height.saturating_sub(1) as usize;
 
             if total_items > viewport_size {
                 let scroll_offset = state.explorer_list_state.offset();
