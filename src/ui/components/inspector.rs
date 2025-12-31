@@ -162,8 +162,9 @@ impl Inspector {
         // Header row
         let header = Row::new(viewport_indices.iter().map(|&idx| {
             let text = headers.get(idx).copied().unwrap_or("");
-            Cell::from(text).style(Style::default().add_modifier(Modifier::BOLD))
+            Cell::from(text)
         }))
+        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
         .height(1);
 
         // -2: Table header (1) + scroll indicator row at bottom (1)
@@ -243,11 +244,12 @@ impl Inspector {
         }
 
         let header = Row::new(vec![
-            Cell::from("Name").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Columns").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Type").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Unique").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("Name"),
+            Cell::from("Columns"),
+            Cell::from("Type"),
+            Cell::from("Unique"),
         ])
+        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
         .height(1);
 
         let visible_rows = area.height.saturating_sub(1) as usize;
@@ -307,10 +309,11 @@ impl Inspector {
         }
 
         let header = Row::new(vec![
-            Cell::from("Name").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("Columns").style(Style::default().add_modifier(Modifier::BOLD)),
-            Cell::from("References").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("Name"),
+            Cell::from("Columns"),
+            Cell::from("References"),
         ])
+        .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::White))
         .height(1);
 
         let visible_rows = area.height.saturating_sub(1) as usize;
