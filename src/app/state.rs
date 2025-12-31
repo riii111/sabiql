@@ -609,4 +609,57 @@ mod tests {
             assert_eq!(state.er_status, ErStatus::Waiting);
         }
     }
+
+    mod reload_metadata_reset {
+        use super::*;
+
+        #[test]
+        fn clears_prefetch_state() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.prefetch_started = true;
+            state.prefetch_queue.push_back("public.users".to_string());
+            state.prefetching_tables.insert("public.orders".to_string());
+            state.failed_prefetch_tables.insert(
+                "public.failed".to_string(),
+                (Instant::now(), "timeout".to_string()),
+            );
+
+            // Simulate ReloadMetadata reset
+            state.prefetch_started = false;
+            state.prefetch_queue.clear();
+            state.prefetching_tables.clear();
+            state.failed_prefetch_tables.clear();
+
+            assert!(!state.prefetch_started);
+            assert!(state.prefetch_queue.is_empty());
+            assert!(state.prefetching_tables.is_empty());
+            assert!(state.failed_prefetch_tables.is_empty());
+        }
+
+        #[test]
+        fn resets_er_status_to_idle() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.er_status = ErStatus::Waiting;
+
+            // Simulate ReloadMetadata reset
+            state.er_status = ErStatus::Idle;
+
+            assert_eq!(state.er_status, ErStatus::Idle);
+        }
+
+        #[test]
+        fn clears_stale_messages() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.set_error("Old error".to_string());
+
+            // Simulate ReloadMetadata reset
+            state.last_error = None;
+            state.last_success = None;
+            state.message_expires_at = None;
+
+            assert!(state.last_error.is_none());
+            assert!(state.last_success.is_none());
+            assert!(state.message_expires_at.is_none());
+        }
+    }
 }

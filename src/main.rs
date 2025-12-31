@@ -1245,3 +1245,58 @@ fn write_er_failure_log_blocking(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod write_er_failure_log {
+        use super::*;
+
+        #[test]
+        fn writes_failure_details_to_log_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables = vec![
+                ("public.users".to_string(), "connection timeout".to_string()),
+                ("public.orders".to_string(), "permission denied".to_string()),
+            ];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            assert!(log_path.exists());
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("ER Diagram Generation Failed"));
+            assert!(content.contains("Failed tables (2):"));
+            assert!(content.contains("public.users: connection timeout"));
+            assert!(content.contains("public.orders: permission denied"));
+        }
+
+        #[test]
+        fn writes_empty_list_when_no_failures() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables: Vec<(String, String)> = vec![];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            assert!(log_path.exists());
+
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("Failed tables (0):"));
+        }
+
+        #[test]
+        fn includes_timestamp_in_log() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let failed_tables = vec![("public.test".to_string(), "error".to_string())];
+
+            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf());
+
+            let log_path = temp_dir.path().join("er_diagram.log");
+            let content = std::fs::read_to_string(&log_path).unwrap();
+            assert!(content.contains("Timestamp:"));
+        }
+    }
+}
