@@ -4,6 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
+use super::viewport_columns::{calculate_max_offset, select_viewport_columns};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
@@ -518,60 +519,6 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>,
         .collect();
 
     (clamped, true_total)
-}
-
-fn select_viewport_columns(
-    all_widths: &[u16],
-    horizontal_offset: usize,
-    available_width: u16,
-) -> (Vec<usize>, Vec<u16>) {
-    let mut indices = Vec::new();
-    let mut widths = Vec::new();
-    let mut used_width: u16 = 0;
-
-    for (i, &width) in all_widths.iter().enumerate().skip(horizontal_offset) {
-        let separator = if indices.is_empty() { 0 } else { 1 };
-        let needed = width + separator;
-
-        if used_width + needed <= available_width {
-            used_width += needed;
-            indices.push(i);
-            widths.push(width);
-        } else {
-            break;
-        }
-    }
-
-    if indices.is_empty() && horizontal_offset < all_widths.len() {
-        indices.push(horizontal_offset);
-        widths.push(all_widths[horizontal_offset].min(available_width));
-    }
-
-    (indices, widths)
-}
-
-fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
-    if all_widths.is_empty() {
-        return 0;
-    }
-
-    let mut sum: u16 = 0;
-    let mut cols_from_right = 0;
-
-    for (i, &width) in all_widths.iter().rev().enumerate() {
-        let separator = if i == 0 { 0 } else { 1 };
-        let needed = width + separator;
-
-        if sum + needed <= available_width {
-            sum += needed;
-            cols_from_right += 1;
-        } else {
-            break;
-        }
-    }
-
-    let cols_from_right = cols_from_right.max(1);
-    all_widths.len().saturating_sub(cols_from_right)
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
