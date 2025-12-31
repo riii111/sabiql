@@ -1294,7 +1294,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 9, &sql_context, &tokens);
@@ -1316,7 +1316,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 11, &sql_context, &tokens);
@@ -1338,7 +1338,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 13, &sql_context, &tokens);
@@ -1360,7 +1360,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 14, &sql_context, &tokens);
@@ -1390,7 +1390,7 @@ mod tests {
                     name: "active_users".to_string(),
                     position: 5,
                 }],
-                                target_table: None,
+                target_table: None,
             };
 
             let (token, ctx) = e.analyze_with_context(sql, 46, &sql_context, &tokens);
@@ -1408,7 +1408,7 @@ mod tests {
                     name: "active_users".to_string(),
                     position: 5,
                 }],
-                                target_table: None,
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1442,7 +1442,7 @@ mod tests {
                         position: 50,
                     },
                 ],
-                                target_table: None,
+                target_table: None,
             };
 
             let candidates = e.cte_or_table_candidates(&sql_context, None, "act");
@@ -1504,7 +1504,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -1534,7 +1534,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let candidates = e.alias_column_candidates("u", &sql_context, None, "");
@@ -1599,7 +1599,7 @@ mod tests {
                     position: 0,
                 }],
                 ctes: vec![],
-                                target_table: None,
+                target_table: None,
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());

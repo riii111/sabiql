@@ -1335,10 +1335,7 @@ mod tests {
         #[test]
         fn join_returns_multiple_references() {
             let l = lexer();
-            let tokens = l.tokenize(
-                "SELECT * FROM users u JOIN posts p ON u.id = p.user_id",
-                54,
-            );
+            let tokens = l.tokenize("SELECT * FROM users u JOIN posts p ON u.id = p.user_id", 54);
 
             let refs = l.extract_table_references(&tokens);
 

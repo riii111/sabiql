@@ -95,7 +95,9 @@ impl Explorer {
             if total_items > viewport_size {
                 let scroll_offset = state.explorer_list_state.offset();
 
-                use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+                use super::scroll_indicator::{
+                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
+                };
                 render_vertical_scroll_indicator_bar(
                     frame,
                     inner,

@@ -208,8 +208,8 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         use super::scroll_indicator::{
-            HorizontalScrollParams, VerticalScrollParams,
-            render_horizontal_scroll_indicator, render_vertical_scroll_indicator_bar,
+            HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator_bar,
         };
         render_vertical_scroll_indicator_bar(
             frame,
