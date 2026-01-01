@@ -10,7 +10,7 @@ sources = ["Cargo.toml", "src/**/*.rs"]
 description = "Format code"
 run = "cargo fmt"
 
-[tasks.lint]
+[tasks.clippy]
 description = "Run lints"
 run = "cargo clippy -- -D warnings"
 
