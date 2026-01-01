@@ -14,12 +14,12 @@ use tokio::sync::mpsc;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
+use app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
 use app::state::{AppState, ErStatus, QueryState};
-use app::tasks::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
@@ -790,7 +790,11 @@ async fn handle_action(
                             .iter()
                             .map(|(k, (_, v))| (k.clone(), v.clone()))
                             .collect();
-                        write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                        tokio::task::spawn_blocking(move || {
+                            write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                        })
+                        .await
+                        .unwrap_or(false)
                     } else {
                         false
                     };
@@ -833,7 +837,11 @@ async fn handle_action(
                         .iter()
                         .map(|(k, (_, v))| (k.clone(), v.clone()))
                         .collect();
-                    write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                    tokio::task::spawn_blocking(move || {
+                        write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                    })
+                    .await
+                    .unwrap_or(false)
                 } else {
                     false
                 };
