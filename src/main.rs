@@ -1071,6 +1071,22 @@ async fn handle_action(
             );
         }
 
+        Action::ExplorerScrollLeft => {
+            state.explorer_horizontal_offset = state.explorer_horizontal_offset.saturating_sub(1);
+        }
+
+        Action::ExplorerScrollRight => {
+            let max_name_width = state
+                .tables()
+                .iter()
+                .map(|t| t.qualified_name().len())
+                .max()
+                .unwrap_or(0);
+            if state.explorer_horizontal_offset < max_name_width {
+                state.explorer_horizontal_offset += 1;
+            }
+        }
+
         Action::OpenConsole => {
             if let Some(dsn) = &state.dsn {
                 let cache_dir = get_cache_dir(&state.project_name)?;

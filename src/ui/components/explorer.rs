@@ -38,14 +38,30 @@ impl Explorer {
             .borders(Borders::ALL)
             .border_style(border_style);
 
+        // Calculate inner area first
+        let inner = block.inner(area);
+
+        // Calculate content width (reserve space for highlight symbol and scrollbar)
+        let highlight_symbol_width: u16 = 2; // "> "
+        let scrollbar_reserved: u16 = 1;
+        let content_width = inner
+            .width
+            .saturating_sub(highlight_symbol_width + scrollbar_reserved) as usize;
+
+        let table_names: Vec<String> = if has_cached_data {
+            state.tables().iter().map(|t| t.qualified_name()).collect()
+        } else {
+            Vec::new()
+        };
+        let max_name_width = table_names.iter().map(|n| n.len()).max().unwrap_or(0);
+        let h_offset = state.explorer_horizontal_offset;
+
         let items: Vec<ListItem> = if has_cached_data {
-            // Show existing tables (even during loading or after error)
-            state
-                .tables()
+            table_names
                 .iter()
-                .map(|t| {
-                    let text = t.qualified_name();
-                    ListItem::new(text)
+                .map(|name| {
+                    let displayed = truncate_with_offset(name, h_offset, content_width);
+                    ListItem::new(displayed)
                 })
                 .collect()
         } else {
@@ -64,9 +80,6 @@ impl Explorer {
                 }
             }
         };
-
-        // Calculate inner area before moving block
-        let inner = block.inner(area);
 
         let list = List::new(items)
             .block(block)
@@ -87,11 +100,10 @@ impl Explorer {
 
         frame.render_stateful_widget(list, area, &mut state.explorer_list_state);
 
-        // Render vertical scrollbar
+        // Render scrollbars
         if has_cached_data {
             let total_items = state.tables().len();
-            // Subtract 1 for highlight symbol space in List widget
-            let viewport_size = inner.height.saturating_sub(1) as usize;
+            let viewport_size = inner.height.saturating_sub(2) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
                 let scroll_offset = state.explorer_list_state.offset();
@@ -109,6 +121,35 @@ impl Explorer {
                     },
                 );
             }
+
+            // Render horizontal scrollbar
+            if max_name_width > content_width {
+                use super::scroll_indicator::{
+                    HorizontalScrollParams, render_horizontal_scroll_indicator,
+                };
+                render_horizontal_scroll_indicator(
+                    frame,
+                    inner,
+                    HorizontalScrollParams {
+                        position: h_offset,
+                        viewport_size: content_width,
+                        total_items: max_name_width,
+                    },
+                );
+            }
         }
     }
+}
+
+fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
+    let total_len = s.len();
+
+    if offset >= total_len {
+        return String::new();
+    }
+
+    let start = offset;
+    let end = (offset + max_width).min(total_len);
+
+    s[start..end].to_string()
 }

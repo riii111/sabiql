@@ -96,6 +96,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollLeft
             } else if inspector_navigation {
                 Action::InspectorScrollLeft
+            } else if state.focused_pane == FocusedPane::Explorer {
+                Action::ExplorerScrollLeft
             } else {
                 Action::None
             }
@@ -105,6 +107,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollRight
             } else if inspector_navigation {
                 Action::InspectorScrollRight
+            } else if state.focused_pane == FocusedPane::Explorer {
+                Action::ExplorerScrollRight
             } else {
                 Action::None
             }
@@ -563,21 +567,21 @@ mod tests {
         }
 
         #[test]
-        fn h_key_does_nothing_when_explorer_focused() {
+        fn h_key_scrolls_left_when_explorer_focused() {
             let state = browse_state();
 
             let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::ExplorerScrollLeft));
         }
 
         #[test]
-        fn l_key_does_nothing_when_explorer_focused() {
+        fn l_key_scrolls_right_when_explorer_focused() {
             let state = browse_state();
 
             let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::ExplorerScrollRight));
         }
 
         #[test]

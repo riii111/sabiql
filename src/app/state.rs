@@ -77,6 +77,7 @@ pub struct AppState {
     pub command_line_input: String,
     pub filter_input: String,
     pub explorer_selected: usize,
+    pub explorer_horizontal_offset: usize,
     pub picker_selected: usize,
 
     pub explorer_list_state: ListState,
@@ -171,6 +172,7 @@ impl AppState {
             command_line_input: String::new(),
             filter_input: String::new(),
             explorer_selected: 0,
+            explorer_horizontal_offset: 0,
             picker_selected: 0,
             explorer_list_state: ListState::default(),
             picker_list_state: ListState::default(),
