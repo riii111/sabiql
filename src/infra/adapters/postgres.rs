@@ -15,22 +15,41 @@ use crate::infra::utils::{quote_ident, quote_literal};
 
 /// PostgreSQL allows DML inside CTEs (e.g., `WITH ... UPDATE`), so we can't
 /// just check if query starts with SELECT/WITH. We need to find the first
-/// top-level SQL verb outside of parentheses and string literals.
+/// top-level SQL verb outside of parentheses, string literals, and comments.
 fn is_select_query(query: &str) -> bool {
     let lower = query.trim().to_lowercase();
-    let bytes = lower.as_bytes();
-    let len = bytes.len();
+    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    let len = chars.len();
 
     let mut i = 0;
     let mut depth = 0;
     let mut in_string = false;
 
     while i < len {
-        let c = bytes[i];
+        let (byte_pos, c) = chars[i];
 
-        if c == b'\'' {
+        // Skip -- line comments
+        if c == '-' && i + 1 < len && chars[i + 1].1 == '-' {
+            while i < len && chars[i].1 != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Skip /* block comments */
+        if c == '/' && i + 1 < len && chars[i + 1].1 == '*' {
+            i += 2;
+            while i + 1 < len && !(chars[i].1 == '*' && chars[i + 1].1 == '/') {
+                i += 1;
+            }
+            i += 2; // skip */
+            continue;
+        }
+
+        // Handle string literals
+        if c == '\'' {
             if in_string {
-                if i + 1 < len && bytes[i + 1] == b'\'' {
+                if i + 1 < len && chars[i + 1].1 == '\'' {
                     i += 2; // escaped quote ''
                     continue;
                 }
@@ -47,19 +66,21 @@ fn is_select_query(query: &str) -> bool {
             continue;
         }
 
-        if c == b'(' {
+        if c == '(' {
             depth += 1;
-        } else if c == b')' {
+        } else if c == ')' {
             depth -= 1;
         }
 
-        if depth == 0 {
-            if starts_with_keyword(&lower[i..], "select") {
+        // At top level and word boundary, check for SQL keywords
+        if depth == 0 && is_word_start(&chars, i) {
+            let rest = &lower[byte_pos..];
+            if is_keyword(rest, "select") {
                 return true;
             }
-            if starts_with_keyword(&lower[i..], "insert")
-                || starts_with_keyword(&lower[i..], "update")
-                || starts_with_keyword(&lower[i..], "delete")
+            if is_keyword(rest, "insert")
+                || is_keyword(rest, "update")
+                || is_keyword(rest, "delete")
             {
                 return false;
             }
@@ -71,7 +92,15 @@ fn is_select_query(query: &str) -> bool {
     false
 }
 
-fn starts_with_keyword(s: &str, keyword: &str) -> bool {
+fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
+    if i == 0 {
+        return true;
+    }
+    let prev = chars[i - 1].1;
+    !prev.is_alphanumeric() && prev != '_'
+}
+
+fn is_keyword(s: &str, keyword: &str) -> bool {
     if !s.starts_with(keyword) {
         return false;
     }
@@ -1107,6 +1136,20 @@ mod tests {
         // SQL keywords inside string literals
         #[case("SELECT * FROM t WHERE action = 'delete'", true)]
         #[case("SELECT * FROM t WHERE cmd = 'INSERT INTO'", true)]
+        // Identifiers containing keywords (word boundary test)
+        #[case("SELECT mydelete FROM t", true)]
+        #[case("SELECT delete_flag FROM t", true)]
+        #[case("WITH mydelete AS (SELECT 1) SELECT * FROM mydelete", true)]
+        #[case("SELECT * FROM users_to_delete", true)]
+        // SQL comments containing keywords
+        #[case("-- delete old records\nSELECT * FROM t", true)]
+        #[case("/* update cache */ SELECT * FROM t", true)]
+        #[case("SELECT * FROM t -- insert comment", true)]
+        #[case("SELECT /* delete */ * FROM t", true)]
+        // Non-ASCII characters (UTF-8 safety test)
+        #[case("SELECT * FROM \"ユーザー\"", true)]
+        #[case("SELECT name FROM users WHERE name = '日本語'", true)]
+        #[case("WITH cte AS (SELECT '中文') SELECT * FROM cte", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
