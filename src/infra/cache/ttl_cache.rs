@@ -61,6 +61,11 @@ where
         let mut cache = self.inner.write().await;
         cache.remove(key);
     }
+
+    pub async fn cleanup_expired(&self) {
+        let mut cache = self.inner.write().await;
+        cache.retain(|_, entry| !entry.is_expired(self.ttl));
+    }
 }
 
 impl<K, V> Clone for TtlCache<K, V> {
@@ -120,5 +125,57 @@ mod tests {
 
         // Value should be expired
         assert_eq!(cache.get(&"key".to_string()).await, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cleanup_expired_removes_stale_entries() {
+        use tokio::time::advance;
+
+        let cache = TtlCache::new(60);
+        cache.set("key1".to_string(), "value1".to_string()).await;
+        cache.set("key2".to_string(), "value2".to_string()).await;
+
+        // Advance time past TTL
+        advance(Duration::from_secs(61)).await;
+
+        // Entries are expired but still in HashMap
+        {
+            let inner = cache.inner.read().await;
+            assert_eq!(inner.len(), 2);
+        }
+
+        // Cleanup removes expired entries
+        cache.cleanup_expired().await;
+
+        // HashMap is now empty
+        {
+            let inner = cache.inner.read().await;
+            assert_eq!(inner.len(), 0);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cleanup_expired_preserves_valid_entries() {
+        use tokio::time::advance;
+
+        let cache = TtlCache::new(60);
+        cache.set("old".to_string(), "old_value".to_string()).await;
+
+        // Advance time but not past TTL
+        advance(Duration::from_secs(30)).await;
+
+        cache.set("new".to_string(), "new_value".to_string()).await;
+
+        // Advance time so "old" is expired but "new" is not
+        advance(Duration::from_secs(35)).await;
+
+        cache.cleanup_expired().await;
+
+        // "old" is removed, "new" is preserved
+        {
+            let inner = cache.inner.read().await;
+            assert_eq!(inner.len(), 1);
+            assert!(inner.contains_key(&"new".to_string()));
+        }
     }
 }
