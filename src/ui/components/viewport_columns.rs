@@ -239,7 +239,8 @@ pub struct ViewportPlan {
 
 impl ViewportPlan {
     pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
-        let column_count = calculate_viewport_column_count(ideal_widths, min_widths, available_width);
+        let column_count =
+            calculate_viewport_column_count(ideal_widths, min_widths, available_width);
         let max_offset = calculate_max_offset(ideal_widths.len(), column_count);
         let min_widths_sum = min_widths.iter().sum();
         let slack_policy = if max_offset == 0 {
