@@ -174,7 +174,7 @@ impl Inspector {
             || stored_min_widths_sum != current_min_widths_sum;
 
         let viewport_column_count = if needs_recalc {
-            calculate_viewport_column_count(&header_min_widths, available_width)
+            calculate_viewport_column_count(&all_ideal_widths, &header_min_widths, available_width)
         } else {
             stored_column_count
         };

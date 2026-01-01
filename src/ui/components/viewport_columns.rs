@@ -161,12 +161,29 @@ fn select_dynamic_columns(
     (indices, widths)
 }
 
-/// Finds max N where ALL consecutive N-column windows fit (worst-case basis).
-pub fn calculate_viewport_column_count(min_widths: &[u16], available_width: u16) -> usize {
-    if min_widths.is_empty() {
+/// Finds max N where ALL consecutive N-column windows fit using sliding window.
+/// Uses ideal_widths primarily so scrolling is enabled when content exceeds viewport,
+/// even if headers (min_widths) would fit.
+pub fn calculate_viewport_column_count(
+    ideal_widths: &[u16],
+    min_widths: &[u16],
+    available_width: u16,
+) -> usize {
+    if ideal_widths.is_empty() {
         return 0;
     }
 
+    for n in (1..=ideal_widths.len()).rev() {
+        let all_windows_fit = (0..=ideal_widths.len() - n).all(|start| {
+            let window = &ideal_widths[start..start + n];
+            total_width_with_separators(window) <= available_width
+        });
+        if all_windows_fit {
+            return n;
+        }
+    }
+
+    // When ideal widths are too wide, fall back to min_widths to show something
     for n in (1..=min_widths.len()).rev() {
         let all_windows_fit = (0..=min_widths.len() - n).all(|start| {
             let window = &min_widths[start..start + n];
@@ -177,7 +194,42 @@ pub fn calculate_viewport_column_count(min_widths: &[u16], available_width: u16)
         }
     }
 
-    1 // At least 1 column
+    1
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ViewportPlan {
+    pub column_count: usize,
+    pub max_offset: usize,
+    pub available_width: u16,
+    pub min_widths_sum: u16,
+}
+
+impl ViewportPlan {
+    pub fn calculate(ideal_widths: &[u16], min_widths: &[u16], available_width: u16) -> Self {
+        let column_count = calculate_viewport_column_count(ideal_widths, min_widths, available_width);
+        let max_offset = calculate_max_offset(ideal_widths.len(), column_count);
+        let min_widths_sum = min_widths.iter().sum();
+
+        Self {
+            column_count,
+            max_offset,
+            available_width,
+            min_widths_sum,
+        }
+    }
+
+    pub fn needs_recalculation(
+        &self,
+        new_widths_len: usize,
+        new_available_width: u16,
+        new_min_widths_sum: u16,
+    ) -> bool {
+        self.column_count == 0
+            || self.available_width != new_available_width
+            || self.max_offset + self.column_count != new_widths_len
+            || self.min_widths_sum != new_min_widths_sum
+    }
 }
 
 pub fn calculate_max_offset(all_widths_len: usize, viewport_column_count: usize) -> usize {
@@ -241,49 +293,123 @@ mod tests {
         use super::*;
 
         #[test]
-        fn calculates_from_min_widths() {
-            let min_widths = vec![10, 10, 10, 10];
-            // 3 cols + 2 sep = 32 <= 35
-            let count = calculate_viewport_column_count(&min_widths, 35);
+        fn uses_ideal_widths_primarily() {
+            let ideal = vec![15, 15, 15, 15];
+            let min = vec![10, 10, 10, 10];
+            // 3 ideal cols + 2 sep = 47 <= 50
+            let count = calculate_viewport_column_count(&ideal, &min, 50);
             assert_eq!(count, 3);
         }
 
         #[test]
-        fn handles_varying_header_widths() {
-            // Headers: short, short, VERY_LONG, short, short
-            let min_widths = vec![6, 6, 25, 6, 6];
+        fn scroll_enabled_when_ideal_exceeds_available() {
+            let ideal = vec![30, 30, 30, 30, 30];
+            let min = vec![10, 10, 10, 10, 10];
+            let available = 80;
+
+            let count = calculate_viewport_column_count(&ideal, &min, available);
+            let max_offset = calculate_max_offset(5, count);
+
+            // 30+30+1sep = 61 <= 80 → 2 columns fit
+            assert_eq!(count, 2);
+            assert_eq!(max_offset, 3);
+        }
+
+        #[test]
+        fn falls_back_to_min_when_ideal_too_wide() {
+            let ideal = vec![100, 100, 100];
+            let min = vec![10, 10, 10];
+            let available = 50;
+
+            // Ideal: no fit, Min: 3 cols + 2 sep = 32 <= 50
+            let count = calculate_viewport_column_count(&ideal, &min, available);
+            assert_eq!(count, 3);
+        }
+
+        #[test]
+        fn handles_varying_widths() {
+            let ideal = vec![6, 6, 25, 6, 6];
+            let min = vec![6, 6, 25, 6, 6];
             let available = 40;
 
-            let count = calculate_viewport_column_count(&min_widths, available);
+            let count = calculate_viewport_column_count(&ideal, &min, available);
 
             // Window [1,2,3] = 6 + 25 + 6 + 2 sep = 39 <= 40 OK
-            // Window [0,1,2] = 6 + 6 + 25 + 2 sep = 39 <= 40 OK
             assert_eq!(count, 3);
         }
 
         #[test]
-        fn reduces_count_when_long_header_in_middle() {
-            let min_widths = vec![10, 10, 50, 10, 10];
+        fn reduces_count_when_long_column_in_middle() {
+            let ideal = vec![10, 10, 50, 10, 10];
+            let min = vec![10, 10, 50, 10, 10];
             let available = 60;
 
-            let count = calculate_viewport_column_count(&min_widths, available);
+            let count = calculate_viewport_column_count(&ideal, &min, available);
 
             // Window [1,2] = 10 + 50 + 1 sep = 61 > 60, so n=2 fails
-            // Only n=1 works for all positions
             assert_eq!(count, 1);
         }
 
         #[test]
         fn at_least_one_column() {
-            let min_widths = vec![100, 100];
-            let count = calculate_viewport_column_count(&min_widths, 50);
+            let ideal = vec![100, 100];
+            let min = vec![100, 100];
+            let count = calculate_viewport_column_count(&ideal, &min, 50);
             assert_eq!(count, 1);
         }
 
         #[test]
         fn empty_returns_zero() {
-            let count = calculate_viewport_column_count(&[], 100);
+            let count = calculate_viewport_column_count(&[], &[], 100);
             assert_eq!(count, 0);
+        }
+    }
+
+    mod viewport_plan {
+        use super::*;
+
+        #[test]
+        fn calculate_creates_valid_plan() {
+            let ideal = vec![30, 30, 30, 30, 30];
+            let min = vec![10, 10, 10, 10, 10];
+
+            let plan = ViewportPlan::calculate(&ideal, &min, 80);
+
+            assert_eq!(plan.column_count, 2);
+            assert_eq!(plan.max_offset, 3);
+            assert_eq!(plan.available_width, 80);
+            assert_eq!(plan.min_widths_sum, 50);
+        }
+
+        #[test]
+        fn needs_recalc_when_width_changes() {
+            let plan = ViewportPlan {
+                column_count: 2,
+                max_offset: 3,
+                available_width: 80,
+                min_widths_sum: 50,
+            };
+
+            assert!(plan.needs_recalculation(5, 100, 50));
+            assert!(!plan.needs_recalculation(5, 80, 50));
+        }
+
+        #[test]
+        fn needs_recalc_when_column_count_zero() {
+            let plan = ViewportPlan::default();
+            assert!(plan.needs_recalculation(5, 80, 50));
+        }
+
+        #[test]
+        fn needs_recalc_when_widths_len_changes() {
+            let plan = ViewportPlan {
+                column_count: 2,
+                max_offset: 3,
+                available_width: 80,
+                min_widths_sum: 50,
+            };
+
+            assert!(plan.needs_recalculation(10, 80, 50));
         }
     }
 
@@ -531,10 +657,10 @@ mod tests {
         #[test]
         fn headers_never_truncated_at_any_offset() {
             let ideal = vec![20, 20, 40, 20, 20];
-            let min = vec![8, 8, 20, 8, 8]; // col 2 has long header
+            let min = vec![8, 8, 20, 8, 8];
             let available = 50;
 
-            let count = calculate_viewport_column_count(&min, available);
+            let count = calculate_viewport_column_count(&ideal, &min, available);
             let max_offset = calculate_max_offset(ideal.len(), count);
 
             for offset in 0..=max_offset {
