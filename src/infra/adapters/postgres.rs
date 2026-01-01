@@ -13,6 +13,43 @@ use crate::domain::{
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
+/// Check if query is a read-only SELECT (or SELECT-returning CTE).
+/// Rejects WITH ... UPDATE/DELETE/INSERT since PostgreSQL allows DML in CTEs.
+fn is_select_query(query: &str) -> bool {
+    let lower = query.trim().to_lowercase();
+
+    if lower.starts_with("select") {
+        return true;
+    }
+
+    if lower.starts_with("with") {
+        // Track parenthesis depth to find where CTEs end
+        let mut depth = 0;
+        let mut last_close_at_depth_zero = None;
+
+        for (i, c) in lower.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        last_close_at_depth_zero = Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // After the last ')' at depth 0, check if final statement is SELECT
+        if let Some(pos) = last_close_at_depth_zero {
+            let after_cte = lower[pos + 1..].trim_start();
+            return after_cte.starts_with("select");
+        }
+    }
+
+    false
+}
+
 pub struct PostgresAdapter {
     timeout_secs: u64,
 }
@@ -691,11 +728,7 @@ impl MetadataProvider for PostgresAdapter {
     }
 
     async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
-        let trimmed = query.trim();
-        let is_select = trimmed.to_lowercase().starts_with("select")
-            || trimmed.to_lowercase().starts_with("with");
-
-        if !is_select {
+        if !is_select_query(query) {
             return Err(MetadataError::QueryFailed(
                 "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
             ));
@@ -998,30 +1031,36 @@ mod tests {
     }
 
     mod select_validation {
+        use super::is_select_query;
         use rstest::rstest;
 
-        fn is_select_query(query: &str) -> bool {
-            let trimmed = query.trim();
-            trimmed.to_lowercase().starts_with("select")
-                || trimmed.to_lowercase().starts_with("with")
-        }
-
         #[rstest]
+        // Basic SELECT
         #[case("SELECT * FROM users", true)]
         #[case("select id from users", true)]
         #[case("  SELECT id FROM users  ", true)]
+        // CTE with SELECT (allowed)
         #[case("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
         #[case("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
+        #[case("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b", true)]
+        // CTE with DML (rejected - PostgreSQL allows this but we don't)
+        #[case("WITH cte AS (SELECT 1) UPDATE users SET name = 'x'", false)]
+        #[case("WITH cte AS (SELECT 1) DELETE FROM users", false)]
+        #[case("WITH cte AS (SELECT 1) INSERT INTO users VALUES (1)", false)]
+        #[case("with cte as (select 1) update users set name = 'x'", false)]
+        // Plain DML (rejected)
         #[case("INSERT INTO users VALUES (1)", false)]
         #[case("  insert into users (id) values (1)", false)]
         #[case("UPDATE users SET name = 'new'", false)]
         #[case("  update users set active = true", false)]
         #[case("DELETE FROM users WHERE id = 1", false)]
         #[case("  delete from users", false)]
+        // DDL (rejected)
         #[case("CREATE TABLE foo (id INT)", false)]
         #[case("DROP TABLE users", false)]
         #[case("ALTER TABLE users ADD COLUMN foo INT", false)]
         #[case("TRUNCATE users", false)]
+        // Edge cases
         #[case("", false)]
         #[case("   ", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
