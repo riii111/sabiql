@@ -73,7 +73,10 @@ impl Footer {
                         hints.push(("j/k/g/G", "Scroll"));
                         hints.push(("h/l", "H-Scroll"));
                     }
-                    hints.push(("[/]", "InsTabs"));
+                    // Show Inspector tab switching hint when Inspector is focused
+                    if state.focused_pane == FocusedPane::Inspector {
+                        hints.push(("Tab/⇧Tab", "InsTabs"));
+                    }
                     hints.push(("r", "Reload"));
                     hints.push(("c", "Console"));
                     hints.push(("s", "SQL"));

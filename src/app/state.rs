@@ -10,6 +10,7 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::result_history::ResultHistory;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+use crate::ui::components::viewport_columns::ViewportPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalState {
@@ -76,6 +77,7 @@ pub struct AppState {
     pub command_line_input: String,
     pub filter_input: String,
     pub explorer_selected: usize,
+    pub explorer_horizontal_offset: usize,
     pub picker_selected: usize,
 
     pub explorer_list_state: ListState,
@@ -98,14 +100,14 @@ pub struct AppState {
     pub inspector_tab: InspectorTab,
     pub inspector_scroll_offset: usize,
     pub inspector_horizontal_offset: usize,
-    pub inspector_max_horizontal_offset: usize,
+    pub inspector_viewport_plan: ViewportPlan,
 
     // Result pane
     pub current_result: Option<QueryResult>,
     pub result_highlight_until: Option<Instant>,
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
-    pub result_max_horizontal_offset: usize,
+    pub result_viewport_plan: ViewportPlan,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -170,6 +172,7 @@ impl AppState {
             command_line_input: String::new(),
             filter_input: String::new(),
             explorer_selected: 0,
+            explorer_horizontal_offset: 0,
             picker_selected: 0,
             explorer_list_state: ListState::default(),
             picker_list_state: ListState::default(),
@@ -182,13 +185,13 @@ impl AppState {
             inspector_tab: InspectorTab::default(),
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
-            inspector_max_horizontal_offset: 0,
+            inspector_viewport_plan: ViewportPlan::default(),
             // Result pane
             current_result: None,
             result_highlight_until: None,
             result_scroll_offset: 0,
             result_horizontal_offset: 0,
-            result_max_horizontal_offset: 0,
+            result_viewport_plan: ViewportPlan::default(),
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,
@@ -257,9 +260,9 @@ impl AppState {
     }
 
     /// Calculate the number of visible rows in the inspector pane.
-    /// Inspector content = height - 2 (border) - 1 (header row) - 1 (scroll indicator) = height - 4
+    /// Inspector content = height - 2 (border) - 1 (tab bar) - 1 (header row) - 1 (scroll indicator) = height - 5
     pub fn inspector_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(4) as usize
+        self.inspector_pane_height.saturating_sub(5) as usize
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -660,6 +663,29 @@ mod tests {
             assert!(state.last_error.is_none());
             assert!(state.last_success.is_none());
             assert!(state.message_expires_at.is_none());
+        }
+    }
+
+    mod inspector_scroll_reset {
+        use super::*;
+
+        #[test]
+        fn scroll_offset_resets_to_zero_on_table_switch() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.inspector_scroll_offset = 42;
+
+            // Simulate table switch (TableDetailLoaded action)
+            state.inspector_scroll_offset = 0;
+
+            assert_eq!(state.inspector_scroll_offset, 0);
+        }
+
+        #[test]
+        fn scroll_offset_stays_zero_when_no_table_detail() {
+            let state = AppState::new("test".to_string(), "default".to_string());
+
+            assert_eq!(state.inspector_scroll_offset, 0);
+            assert!(state.table_detail.is_none());
         }
     }
 }

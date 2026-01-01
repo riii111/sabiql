@@ -15,6 +15,7 @@ use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
+use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
 use app::state::{AppState, ErStatus, QueryState};
@@ -30,6 +31,9 @@ use infra::config::{
 use infra::export::{DotExporter, ErTableInfo};
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
+use ui::components::viewport_columns::{
+    calculate_next_column_offset, calculate_prev_column_offset,
+};
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
 
@@ -686,6 +690,7 @@ async fn handle_action(
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
+                state.inspector_scroll_offset = 0;
             }
         }
 
@@ -1021,39 +1026,90 @@ async fn handle_action(
         }
 
         Action::ResultScrollLeft => {
-            state.result_horizontal_offset = state.result_horizontal_offset.saturating_sub(1);
+            state.result_horizontal_offset =
+                calculate_prev_column_offset(state.result_horizontal_offset);
         }
 
         Action::ResultScrollRight => {
-            if state.result_horizontal_offset < state.result_max_horizontal_offset {
-                state.result_horizontal_offset += 1;
-            }
+            let plan = &state.result_viewport_plan;
+            let all_widths_len = plan.max_offset + plan.column_count;
+            state.result_horizontal_offset = calculate_next_column_offset(
+                all_widths_len,
+                state.result_horizontal_offset,
+                plan.column_count,
+            );
         }
 
-        // Inspector scroll (Columns tab only)
+        // Inspector scroll (all tabs)
         Action::InspectorScrollUp => {
             state.inspector_scroll_offset = state.inspector_scroll_offset.saturating_sub(1);
         }
 
         Action::InspectorScrollDown => {
             let visible = state.inspector_visible_rows();
-            let max_offset = state
+            let total_items = state
                 .table_detail
                 .as_ref()
-                .map(|t| t.columns.len().saturating_sub(visible))
+                .map(|t| match state.inspector_tab {
+                    InspectorTab::Columns => t.columns.len(),
+                    InspectorTab::Indexes => t.indexes.len(),
+                    InspectorTab::ForeignKeys => t.foreign_keys.len(),
+                    InspectorTab::Rls => {
+                        // RLS: status line + blank + header + policies (each 1-2 lines)
+                        t.rls.as_ref().map_or(1, |rls| {
+                            let mut lines = 1; // Status line
+                            if !rls.policies.is_empty() {
+                                lines += 2; // blank + "Policies:" header
+                                for policy in &rls.policies {
+                                    lines += 1; // policy line
+                                    if policy.qual.is_some() {
+                                        lines += 1; // USING line
+                                    }
+                                }
+                            }
+                            lines
+                        })
+                    }
+                    InspectorTab::Ddl => {
+                        // DDL: CREATE TABLE + columns + optional PK + closing
+                        2 + t.columns.len() + if t.primary_key.is_some() { 1 } else { 0 }
+                    }
+                })
                 .unwrap_or(0);
+            let max_offset = total_items.saturating_sub(visible);
             if state.inspector_scroll_offset < max_offset {
                 state.inspector_scroll_offset += 1;
             }
         }
 
         Action::InspectorScrollLeft => {
-            state.inspector_horizontal_offset = state.inspector_horizontal_offset.saturating_sub(1);
+            state.inspector_horizontal_offset =
+                calculate_prev_column_offset(state.inspector_horizontal_offset);
         }
 
         Action::InspectorScrollRight => {
-            if state.inspector_horizontal_offset < state.inspector_max_horizontal_offset {
-                state.inspector_horizontal_offset += 1;
+            let plan = &state.inspector_viewport_plan;
+            let all_widths_len = plan.max_offset + plan.column_count;
+            state.inspector_horizontal_offset = calculate_next_column_offset(
+                all_widths_len,
+                state.inspector_horizontal_offset,
+                plan.column_count,
+            );
+        }
+
+        Action::ExplorerScrollLeft => {
+            state.explorer_horizontal_offset = state.explorer_horizontal_offset.saturating_sub(1);
+        }
+
+        Action::ExplorerScrollRight => {
+            let max_name_width = state
+                .tables()
+                .iter()
+                .map(|t| t.qualified_name().len())
+                .max()
+                .unwrap_or(0);
+            if state.explorer_horizontal_offset < max_name_width {
+                state.explorer_horizontal_offset += 1;
             }
         }
 

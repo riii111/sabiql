@@ -187,7 +187,6 @@ to SVG via Graphviz. The SVG is opened in the system viewer.
 
 ```bash
 mise run build              # Build
-mise run check              # Type check
 mise run clippy             # Lint
 mise run fmt                # Format
 mise run test               # Run tests

@@ -8,9 +8,6 @@
 //! - Cast operator (::)
 //! - Array access ([])
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Keyword(String),
@@ -27,7 +24,7 @@ pub enum TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    #[allow(dead_code)] // Phase 4: used for detailed token analysis
+    #[allow(dead_code)] // Used in tests for token verification
     pub text: String,
     pub start: usize,
     pub end: usize,
@@ -47,55 +44,12 @@ pub struct CteDefinition {
     pub position: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum ClauseKind {
-    #[default]
-    Unknown,
-    Select,
-    From,
-    Join,
-    Where,
-    On,
-    GroupBy,
-    OrderBy,
-    Having,
-    InsertInto,
-    UpdateSet,
-    With,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct SqlContext {
     pub tables: Vec<TableReference>,
     pub ctes: Vec<CteDefinition>,
-    #[allow(dead_code)] // Phase 4: clause-based completion logic
-    pub current_clause: ClauseKind,
     /// Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
     pub target_table: Option<TableReference>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct TokenCache {
-    pub tokens: Vec<Token>,
-    pub last_content_hash: u64,
-    pub last_cursor_pos: usize,
-}
-
-impl TokenCache {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    fn content_hash(content: &str) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    pub fn is_valid(&self, content: &str, cursor_pos: usize) -> bool {
-        let hash = Self::content_hash(content);
-        self.last_content_hash == hash && self.last_cursor_pos == cursor_pos
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,19 +150,7 @@ impl SqlLexer {
         Self
     }
 
-    pub fn tokenize(
-        &self,
-        text: &str,
-        cursor_pos: usize,
-        cache: Option<&TokenCache>,
-    ) -> Vec<Token> {
-        // Check cache validity
-        if let Some(cache) = cache
-            && cache.is_valid(text, cursor_pos)
-        {
-            return cache.tokens.clone();
-        }
-
+    pub fn tokenize(&self, text: &str, cursor_pos: usize) -> Vec<Token> {
         let chars: Vec<char> = text.chars().collect();
         let end_pos = cursor_pos.min(chars.len());
         let mut tokens = Vec::new();
@@ -541,7 +483,7 @@ impl SqlLexer {
     }
 
     pub fn is_in_string_or_comment(&self, text: &str, cursor_pos: usize) -> bool {
-        let tokens = self.tokenize(text, cursor_pos, None);
+        let tokens = self.tokenize(text, cursor_pos);
 
         if let Some(last) = tokens.last() {
             // If cursor is at the end of the last token
@@ -889,13 +831,11 @@ impl SqlLexer {
     pub fn build_context(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
-        let current_clause = self.detect_clause_at_cursor(tokens, cursor_pos);
         let target_table = self.extract_target_table(tokens, cursor_pos);
 
         SqlContext {
             tables,
             ctes,
-            current_clause,
             target_table,
         }
     }
@@ -1058,37 +998,6 @@ impl SqlLexer {
 
         None
     }
-
-    fn detect_clause_at_cursor(&self, tokens: &[Token], cursor_pos: usize) -> ClauseKind {
-        let mut last_clause = ClauseKind::Unknown;
-
-        for token in tokens {
-            if token.start > cursor_pos {
-                break;
-            }
-
-            if let TokenKind::Keyword(kw) = &token.kind {
-                last_clause = match kw.as_str() {
-                    "SELECT" => ClauseKind::Select,
-                    "FROM" => ClauseKind::From,
-                    "JOIN" | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "CROSS" | "FULL" => {
-                        ClauseKind::Join
-                    }
-                    "WHERE" => ClauseKind::Where,
-                    "ON" => ClauseKind::On,
-                    "GROUP" => ClauseKind::GroupBy,
-                    "ORDER" => ClauseKind::OrderBy,
-                    "HAVING" => ClauseKind::Having,
-                    "INSERT" | "INTO" => ClauseKind::InsertInto,
-                    "UPDATE" | "SET" => ClauseKind::UpdateSet,
-                    "WITH" => ClauseKind::With,
-                    _ => last_clause,
-                };
-            }
-        }
-
-        last_clause
-    }
 }
 
 impl Default for SqlLexer {
@@ -1112,7 +1021,7 @@ mod tests {
         fn simple_select_extracts_keywords() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+            let tokens = l.tokenize("SELECT * FROM users", 19);
 
             let keywords: Vec<_> = tokens
                 .iter()
@@ -1128,7 +1037,7 @@ mod tests {
         fn non_keyword_returns_identifier() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT username FROM users", 26, None);
+            let tokens = l.tokenize("SELECT username FROM users", 26);
 
             let identifiers: Vec<_> = tokens
                 .iter()
@@ -1145,7 +1054,7 @@ mod tests {
         fn cast_operator_returns_operator_token() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT col::integer", 19, None);
+            let tokens = l.tokenize("SELECT col::integer", 19);
 
             let has_cast = tokens
                 .iter()
@@ -1157,7 +1066,7 @@ mod tests {
         fn array_access_returns_punctuation_tokens() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT arr[0]", 13, None);
+            let tokens = l.tokenize("SELECT arr[0]", 13);
 
             let punctuations: Vec<_> = tokens
                 .iter()
@@ -1178,7 +1087,7 @@ mod tests {
         fn single_quoted_string_returns_string_literal() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT 'hello'", 14, None);
+            let tokens = l.tokenize("SELECT 'hello'", 14);
 
             let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
             assert!(has_string);
@@ -1188,7 +1097,7 @@ mod tests {
         fn keyword_in_string_returns_only_outer_keyword() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT 'SELECT'", 15, None);
+            let tokens = l.tokenize("SELECT 'SELECT'", 15);
 
             let keywords: Vec<_> = tokens
                 .iter()
@@ -1205,7 +1114,7 @@ mod tests {
         fn escaped_single_quote_returns_single_literal() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT 'O''Brien'", 17, None);
+            let tokens = l.tokenize("SELECT 'O''Brien'", 17);
 
             let string_tokens: Vec<_> = tokens
                 .iter()
@@ -1219,7 +1128,7 @@ mod tests {
         fn dollar_quoted_string_returns_string_literal() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT $$hello$$", 16, None);
+            let tokens = l.tokenize("SELECT $$hello$$", 16);
 
             let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
             assert!(has_string);
@@ -1229,7 +1138,7 @@ mod tests {
         fn keyword_in_dollar_quote_returns_only_outer_keyword() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT $$SELECT$$", 17, None);
+            let tokens = l.tokenize("SELECT $$SELECT$$", 17);
 
             let keywords: Vec<_> = tokens
                 .iter()
@@ -1245,7 +1154,7 @@ mod tests {
         fn tagged_dollar_quote_returns_string_literal() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT $tag$SELECT$tag$", 23, None);
+            let tokens = l.tokenize("SELECT $tag$SELECT$tag$", 23);
 
             let string_tokens: Vec<_> = tokens
                 .iter()
@@ -1259,7 +1168,7 @@ mod tests {
         fn escape_string_returns_string_literal() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT E'hello\\nworld'", 22, None);
+            let tokens = l.tokenize("SELECT E'hello\\nworld'", 22);
 
             let has_string = tokens.iter().any(|t| t.kind == TokenKind::StringLiteral);
             assert!(has_string);
@@ -1273,7 +1182,7 @@ mod tests {
         fn line_comment_returns_comment_token() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT -- comment\n* FROM", 24, None);
+            let tokens = l.tokenize("SELECT -- comment\n* FROM", 24);
 
             let has_comment = tokens.iter().any(|t| t.kind == TokenKind::Comment);
             assert!(has_comment);
@@ -1283,7 +1192,7 @@ mod tests {
         fn keyword_in_line_comment_returns_only_outer_keyword() {
             let l = lexer();
 
-            let tokens = l.tokenize("-- SELECT\nFROM", 14, None);
+            let tokens = l.tokenize("-- SELECT\nFROM", 14);
 
             let keywords: Vec<_> = tokens
                 .iter()
@@ -1299,7 +1208,7 @@ mod tests {
         fn block_comment_returns_comment_token() {
             let l = lexer();
 
-            let tokens = l.tokenize("SELECT /* comment */ * FROM", 27, None);
+            let tokens = l.tokenize("SELECT /* comment */ * FROM", 27);
 
             let has_comment = tokens.iter().any(|t| t.kind == TokenKind::Comment);
             assert!(has_comment);
@@ -1309,7 +1218,7 @@ mod tests {
         fn keyword_in_block_comment_returns_only_outer_keyword() {
             let l = lexer();
 
-            let tokens = l.tokenize("/* SELECT */ FROM", 17, None);
+            let tokens = l.tokenize("/* SELECT */ FROM", 17);
 
             let keywords: Vec<_> = tokens
                 .iter()
@@ -1377,7 +1286,7 @@ mod tests {
         #[test]
         fn simple_from_returns_single_reference() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+            let tokens = l.tokenize("SELECT * FROM users", 19);
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1390,7 +1299,7 @@ mod tests {
         #[test]
         fn from_with_alias_returns_alias() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users u", 21, None);
+            let tokens = l.tokenize("SELECT * FROM users u", 21);
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1402,7 +1311,7 @@ mod tests {
         #[test]
         fn from_with_as_keyword_returns_alias() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users AS u", 24, None);
+            let tokens = l.tokenize("SELECT * FROM users AS u", 24);
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1414,7 +1323,7 @@ mod tests {
         #[test]
         fn schema_qualified_table_returns_schema() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM public.users", 26, None);
+            let tokens = l.tokenize("SELECT * FROM public.users", 26);
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1426,11 +1335,7 @@ mod tests {
         #[test]
         fn join_returns_multiple_references() {
             let l = lexer();
-            let tokens = l.tokenize(
-                "SELECT * FROM users u JOIN posts p ON u.id = p.user_id",
-                54,
-                None,
-            );
+            let tokens = l.tokenize("SELECT * FROM users u JOIN posts p ON u.id = p.user_id", 54);
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1447,7 +1352,6 @@ mod tests {
             let tokens = l.tokenize(
                 "SELECT * FROM users LEFT JOIN posts ON users.id = posts.user_id",
                 63,
-                None,
             );
 
             let refs = l.extract_table_references(&tokens);
@@ -1461,7 +1365,7 @@ mod tests {
         fn multiple_joins_returns_all_references() {
             let l = lexer();
             let sql = "SELECT * FROM users u JOIN posts p ON u.id = p.user_id JOIN comments c ON p.id = c.post_id";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1479,7 +1383,7 @@ mod tests {
         fn simple_cte_returns_definition() {
             let l = lexer();
             let sql = "WITH active_users AS (SELECT * FROM users WHERE active) SELECT * FROM active_users";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let ctes = l.extract_cte_definitions(&tokens);
 
@@ -1491,7 +1395,7 @@ mod tests {
         fn recursive_cte_returns_definition() {
             let l = lexer();
             let sql = "WITH RECURSIVE tree AS (SELECT 1) SELECT * FROM tree";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let ctes = l.extract_cte_definitions(&tokens);
 
@@ -1503,7 +1407,7 @@ mod tests {
         fn multiple_ctes_returns_all_definitions() {
             let l = lexer();
             let sql = "WITH cte1 AS (SELECT 1), cte2 AS (SELECT 2) SELECT * FROM cte1, cte2";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let ctes = l.extract_cte_definitions(&tokens);
 
@@ -1515,70 +1419,11 @@ mod tests {
         #[test]
         fn no_cte_returns_empty() {
             let l = lexer();
-            let tokens = l.tokenize("SELECT * FROM users", 19, None);
+            let tokens = l.tokenize("SELECT * FROM users", 19);
 
             let ctes = l.extract_cte_definitions(&tokens);
 
             assert!(ctes.is_empty());
-        }
-    }
-
-    mod clause_detection {
-        use super::*;
-
-        #[test]
-        fn cursor_after_select_returns_select_clause() {
-            let l = lexer();
-            let sql = "SELECT ";
-            let tokens = l.tokenize(sql, sql.len(), None);
-
-            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
-
-            assert_eq!(clause, ClauseKind::Select);
-        }
-
-        #[test]
-        fn cursor_after_from_returns_from_clause() {
-            let l = lexer();
-            let sql = "SELECT * FROM ";
-            let tokens = l.tokenize(sql, sql.len(), None);
-
-            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
-
-            assert_eq!(clause, ClauseKind::From);
-        }
-
-        #[test]
-        fn cursor_after_where_returns_where_clause() {
-            let l = lexer();
-            let sql = "SELECT * FROM users WHERE ";
-            let tokens = l.tokenize(sql, sql.len(), None);
-
-            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
-
-            assert_eq!(clause, ClauseKind::Where);
-        }
-
-        #[test]
-        fn cursor_after_join_returns_join_clause() {
-            let l = lexer();
-            let sql = "SELECT * FROM users JOIN ";
-            let tokens = l.tokenize(sql, sql.len(), None);
-
-            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
-
-            assert_eq!(clause, ClauseKind::Join);
-        }
-
-        #[test]
-        fn cursor_after_with_returns_with_clause() {
-            let l = lexer();
-            let sql = "WITH ";
-            let tokens = l.tokenize(sql, sql.len(), None);
-
-            let clause = l.detect_clause_at_cursor(&tokens, sql.len());
-
-            assert_eq!(clause, ClauseKind::With);
         }
     }
 
@@ -1589,13 +1434,12 @@ mod tests {
         fn full_query_returns_complete_context() {
             let l = lexer();
             let sql = "WITH cte AS (SELECT 1) SELECT * FROM users u JOIN posts p ON u.id = p.user_id WHERE ";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let ctx = l.build_context(&tokens, sql.len());
 
             assert_eq!(ctx.ctes.len(), 1);
             assert_eq!(ctx.tables.len(), 2);
-            assert_eq!(ctx.current_clause, ClauseKind::Where);
         }
     }
 
@@ -1610,7 +1454,7 @@ mod tests {
         #[case("SELECT * FROM users", None)]
         fn extract_target_returns_expected(#[case] sql: &str, #[case] expected: Option<&str>) {
             let l = lexer();
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1623,7 +1467,7 @@ mod tests {
         #[case("DELETE FROM orders WHERE id = 1", "orders")]
         fn mutation_table_in_references(#[case] sql: &str, #[case] expected: &str) {
             let l = lexer();
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1635,7 +1479,7 @@ mod tests {
         fn with_clause_update_extracts_target() {
             let l = lexer();
             let sql = "WITH active AS (SELECT id FROM users WHERE active) UPDATE users SET status = 'inactive'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1647,7 +1491,7 @@ mod tests {
         fn for_update_is_not_target() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR UPDATE";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1658,7 +1502,7 @@ mod tests {
         fn select_into_not_in_references() {
             let l = lexer();
             let sql = "SELECT * INTO new_table FROM users";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1671,7 +1515,7 @@ mod tests {
         fn for_update_not_in_references() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR UPDATE";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1684,7 +1528,7 @@ mod tests {
         fn for_no_key_update_not_in_references() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR NO KEY UPDATE";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1696,7 +1540,7 @@ mod tests {
         fn for_no_key_update_is_not_target() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR NO KEY UPDATE";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1707,7 +1551,7 @@ mod tests {
         fn multi_statement_for_share_then_update_extracts_both_tables() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1720,7 +1564,7 @@ mod tests {
         fn multi_statement_for_update_then_update_extracts_both_tables() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1733,7 +1577,7 @@ mod tests {
         fn multi_statement_for_no_key_update_then_update_extracts_both_tables() {
             let l = lexer();
             let sql = "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1746,7 +1590,7 @@ mod tests {
         fn update_only_skips_only_keyword() {
             let l = lexer();
             let sql = "UPDATE ONLY users SET name = 'foo'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1758,7 +1602,7 @@ mod tests {
         fn update_only_target_table() {
             let l = lexer();
             let sql = "UPDATE ONLY users SET name = 'foo'";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1770,7 +1614,7 @@ mod tests {
         fn delete_from_only_skips_only_keyword() {
             let l = lexer();
             let sql = "DELETE FROM ONLY orders WHERE id = 1";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1782,7 +1626,7 @@ mod tests {
         fn delete_from_only_target_table() {
             let l = lexer();
             let sql = "DELETE FROM ONLY orders WHERE id = 1";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1794,7 +1638,7 @@ mod tests {
         fn insert_into_only_skips_only_keyword() {
             let l = lexer();
             let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1806,7 +1650,7 @@ mod tests {
         fn insert_into_only_target_table() {
             let l = lexer();
             let sql = "INSERT INTO ONLY posts (title) VALUES ('test')";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, sql.len());
 
@@ -1818,7 +1662,7 @@ mod tests {
         fn select_from_only_skips_only_keyword() {
             let l = lexer();
             let sql = "SELECT * FROM ONLY users WHERE active = true";
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let refs = l.extract_table_references(&tokens);
 
@@ -1832,7 +1676,7 @@ mod tests {
             let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
             // Cursor at position 10 (in "users")
             let cursor_pos = 10;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1846,7 +1690,7 @@ mod tests {
             let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
             // Cursor at position 35 (in "orders")
             let cursor_pos = 35;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1860,7 +1704,7 @@ mod tests {
             let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
             // Cursor at end of SQL
             let cursor_pos = sql.len();
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1874,7 +1718,7 @@ mod tests {
             let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
             // Cursor at position 10 (in SELECT statement)
             let cursor_pos = 10;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1888,7 +1732,7 @@ mod tests {
             let sql = "SELECT * FROM users; UPDATE orders SET status = 'done'";
             // Cursor at position 30 (in UPDATE statement)
             let cursor_pos = 30;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1902,7 +1746,7 @@ mod tests {
             let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
             // Cursor at position 40 (in DELETE statement)
             let cursor_pos = 40;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
@@ -1916,7 +1760,7 @@ mod tests {
             let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
             // Cursor at position 80 (in INSERT statement)
             let cursor_pos = 80;
-            let tokens = l.tokenize(sql, sql.len(), None);
+            let tokens = l.tokenize(sql, sql.len());
 
             let target = l.extract_target_table(&tokens, cursor_pos);
 
