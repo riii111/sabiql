@@ -4,9 +4,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
+use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use super::viewport_columns::{
-    ColumnWidthConfig, MAX_COL_WIDTH, MIN_COL_WIDTH, PADDING, SelectionContext, ViewportPlan,
-    select_viewport_columns,
+    ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
@@ -480,8 +480,10 @@ impl Inspector {
                             }
                         )));
                         if let Some(qual) = &policy.qual {
-                            lines
-                                .push(Line::from(format!("    USING: {}", truncate_cell(qual, 50))));
+                            lines.push(Line::from(format!(
+                                "    USING: {}",
+                                truncate_cell(qual, 50)
+                            )));
                         }
                     }
                 }
@@ -574,13 +576,6 @@ impl Inspector {
             },
         );
     }
-}
-
-fn calculate_header_min_widths(headers: &[&str]) -> Vec<u16> {
-    headers
-        .iter()
-        .map(|h| (h.chars().count() as u16 + PADDING).max(MIN_COL_WIDTH))
-        .collect()
 }
 
 /// Returns (clamped_widths, true_total_width)

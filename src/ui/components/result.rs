@@ -5,9 +5,9 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
+use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use super::viewport_columns::{
-    ColumnWidthConfig, MAX_COL_WIDTH, MIN_COL_WIDTH, PADDING, SelectionContext, ViewportPlan,
-    select_viewport_columns,
+    ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -258,13 +258,6 @@ impl ResultPane {
 
         plan
     }
-}
-
-fn calculate_header_min_widths(headers: &[String]) -> Vec<u16> {
-    headers
-        .iter()
-        .map(|h| (h.chars().count() as u16 + PADDING).max(MIN_COL_WIDTH))
-        .collect()
 }
 
 /// Calculate ideal widths for all columns (no scaling, just content-based).

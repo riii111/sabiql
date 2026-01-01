@@ -50,11 +50,7 @@ impl MetadataProvider for MySqlAdapter {
         ))
     }
 
-    async fn execute_adhoc(
-        &self,
-        _dsn: &str,
-        _query: &str,
-    ) -> Result<QueryResult, MetadataError> {
+    async fn execute_adhoc(&self, _dsn: &str, _query: &str) -> Result<QueryResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))

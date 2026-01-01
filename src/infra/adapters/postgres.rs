@@ -1182,4 +1182,52 @@ mod tests {
             assert_eq!(is_select_query(query), expected);
         }
     }
+
+    mod json_parse_errors {
+        use super::*;
+
+        #[test]
+        fn parse_tables_with_malformed_json_returns_error() {
+            let result = PostgresAdapter::parse_tables("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn parse_tables_with_wrong_structure_returns_error() {
+            // Array of strings instead of objects
+            let result = PostgresAdapter::parse_tables(r#"["table1", "table2"]"#);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn parse_columns_with_missing_field_returns_error() {
+            // Missing required field 'data_type'
+            let json = r#"[{"name": "id", "nullable": true}]"#;
+            let result = PostgresAdapter::parse_columns(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn parse_indexes_with_wrong_type_returns_error() {
+            // 'columns' should be array, not string
+            let json =
+                r#"[{"name": "idx_test", "columns": "id", "unique": false, "primary": false}]"#;
+            let result = PostgresAdapter::parse_indexes(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn parse_empty_string_returns_empty_vec() {
+            assert!(PostgresAdapter::parse_tables("").unwrap().is_empty());
+            assert!(PostgresAdapter::parse_columns("").unwrap().is_empty());
+            assert!(PostgresAdapter::parse_indexes("").unwrap().is_empty());
+        }
+
+        #[test]
+        fn parse_null_string_returns_empty_vec() {
+            assert!(PostgresAdapter::parse_tables("null").unwrap().is_empty());
+            assert!(PostgresAdapter::parse_columns("null").unwrap().is_empty());
+            assert!(PostgresAdapter::parse_indexes("null").unwrap().is_empty());
+        }
+    }
 }
