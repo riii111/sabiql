@@ -882,4 +882,63 @@ mod tests {
             assert_eq!(headers[1], "name");
         }
     }
+
+    mod select_validation {
+        fn is_select_query(query: &str) -> bool {
+            let trimmed = query.trim();
+            trimmed.to_lowercase().starts_with("select")
+                || trimmed.to_lowercase().starts_with("with")
+        }
+
+        #[test]
+        fn accepts_simple_select() {
+            assert!(is_select_query("SELECT * FROM users"));
+            assert!(is_select_query("select id from users where id = 1"));
+            assert!(is_select_query("  SELECT id FROM users  "));
+        }
+
+        #[test]
+        fn accepts_cte_with() {
+            assert!(is_select_query(
+                "WITH cte AS (SELECT 1) SELECT * FROM cte"
+            ));
+            assert!(is_select_query(
+                "with recursive tree AS (SELECT 1) SELECT * FROM tree"
+            ));
+        }
+
+        #[test]
+        fn rejects_insert() {
+            assert!(!is_select_query("INSERT INTO users VALUES (1, 'name')"));
+            assert!(!is_select_query("  insert into users (id) values (1)"));
+        }
+
+        #[test]
+        fn rejects_update() {
+            assert!(!is_select_query(
+                "UPDATE users SET name = 'new' WHERE id = 1"
+            ));
+            assert!(!is_select_query("  update users set active = true"));
+        }
+
+        #[test]
+        fn rejects_delete() {
+            assert!(!is_select_query("DELETE FROM users WHERE id = 1"));
+            assert!(!is_select_query("  delete from users"));
+        }
+
+        #[test]
+        fn rejects_ddl_statements() {
+            assert!(!is_select_query("CREATE TABLE foo (id INT)"));
+            assert!(!is_select_query("DROP TABLE users"));
+            assert!(!is_select_query("ALTER TABLE users ADD COLUMN foo INT"));
+            assert!(!is_select_query("TRUNCATE users"));
+        }
+
+        #[test]
+        fn handles_empty_and_whitespace() {
+            assert!(!is_select_query(""));
+            assert!(!is_select_query("   "));
+        }
+    }
 }
