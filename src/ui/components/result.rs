@@ -5,7 +5,9 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
-use super::viewport_columns::{calculate_max_offset, select_viewport_columns};
+use super::viewport_columns::{
+    calculate_max_offset, calculate_viewport_column_count, select_viewport_columns,
+};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
@@ -37,30 +39,35 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let (max_offset, column_widths, available_width) = if let Some(result) = result {
-            if result.is_error() {
-                Self::render_error(frame, area, result, block);
-                (0, Vec::new(), 0)
-            } else if result.rows.is_empty() {
-                Self::render_empty(frame, area, block);
-                (0, Vec::new(), 0)
+        let (max_offset, column_widths, available_width, viewport_column_count) =
+            if let Some(result) = result {
+                if result.is_error() {
+                    Self::render_error(frame, area, result, block);
+                    (0, Vec::new(), 0, 0)
+                } else if result.rows.is_empty() {
+                    Self::render_empty(frame, area, block);
+                    (0, Vec::new(), 0, 0)
+                } else {
+                    Self::render_table(
+                        frame,
+                        area,
+                        result,
+                        block,
+                        state.result_scroll_offset,
+                        state.result_horizontal_offset,
+                        state.result_viewport_column_count,
+                        state.result_available_width,
+                        state.result_column_widths.len(),
+                    )
+                }
             } else {
-                Self::render_table(
-                    frame,
-                    area,
-                    result,
-                    block,
-                    state.result_scroll_offset,
-                    state.result_horizontal_offset,
-                )
-            }
-        } else {
-            Self::render_placeholder(frame, area, block);
-            (0, Vec::new(), 0)
-        };
+                Self::render_placeholder(frame, area, block);
+                (0, Vec::new(), 0, 0)
+            };
         state.result_max_horizontal_offset = max_offset;
         state.result_column_widths = column_widths;
         state.result_available_width = available_width;
+        state.result_viewport_column_count = viewport_column_count;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
@@ -126,6 +133,7 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -133,23 +141,47 @@ impl ResultPane {
         block: Block,
         scroll_offset: usize,
         horizontal_offset: usize,
-    ) -> (usize, Vec<u16>, u16) {
+        stored_column_count: usize,
+        stored_available_width: u16,
+        stored_column_widths_len: usize,
+    ) -> (usize, Vec<u16>, u16, usize) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return (0, Vec::new(), inner.width);
+            return (0, Vec::new(), inner.width, 0);
         }
 
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
-        let max_offset = calculate_max_offset(&all_ideal_widths, inner.width);
+
+        // Recalculate column count on resize or data change
+        let needs_recalc = stored_column_count == 0
+            || stored_available_width != inner.width
+            || stored_column_widths_len != all_ideal_widths.len();
+
+        let viewport_column_count = if needs_recalc {
+            calculate_viewport_column_count(&all_ideal_widths, inner.width)
+        } else {
+            stored_column_count
+        };
+
+        let max_offset = calculate_max_offset(all_ideal_widths.len(), viewport_column_count);
         let clamped_offset = horizontal_offset.min(max_offset);
 
-        let (viewport_indices, viewport_widths) =
-            select_viewport_columns(&all_ideal_widths, clamped_offset, inner.width);
+        let (viewport_indices, viewport_widths) = select_viewport_columns(
+            &all_ideal_widths,
+            clamped_offset,
+            inner.width,
+            Some(viewport_column_count),
+        );
 
         if viewport_indices.is_empty() {
-            return (max_offset, all_ideal_widths, inner.width);
+            return (
+                max_offset,
+                all_ideal_widths,
+                inner.width,
+                viewport_column_count,
+            );
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -227,7 +259,12 @@ impl ResultPane {
             },
         );
 
-        (max_offset, all_ideal_widths, inner.width)
+        (
+            max_offset,
+            all_ideal_widths,
+            inner.width,
+            viewport_column_count,
+        )
     }
 }
 

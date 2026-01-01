@@ -30,7 +30,9 @@ use infra::config::{
 use infra::export::{DotExporter, ErTableInfo};
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
-use ui::components::viewport_columns::{calculate_next_column_offset, calculate_prev_column_offset};
+use ui::components::viewport_columns::{
+    calculate_next_column_offset, calculate_prev_column_offset,
+};
 use ui::event::handler::handle_event;
 use ui::tui::TuiRunner;
 
@@ -1022,20 +1024,16 @@ async fn handle_action(
         }
 
         Action::ResultScrollLeft => {
-            state.result_horizontal_offset = calculate_prev_column_offset(
-                &state.result_column_widths,
-                state.result_horizontal_offset,
-                state.result_available_width,
-            );
+            state.result_horizontal_offset =
+                calculate_prev_column_offset(state.result_horizontal_offset);
         }
 
         Action::ResultScrollRight => {
             state.result_horizontal_offset = calculate_next_column_offset(
-                &state.result_column_widths,
+                state.result_column_widths.len(),
                 state.result_horizontal_offset,
-                state.result_available_width,
-            )
-            .min(state.result_max_horizontal_offset);
+                state.result_viewport_column_count,
+            );
         }
 
         // Inspector scroll (Columns tab only)
@@ -1056,20 +1054,16 @@ async fn handle_action(
         }
 
         Action::InspectorScrollLeft => {
-            state.inspector_horizontal_offset = calculate_prev_column_offset(
-                &state.inspector_column_widths,
-                state.inspector_horizontal_offset,
-                state.inspector_available_width,
-            );
+            state.inspector_horizontal_offset =
+                calculate_prev_column_offset(state.inspector_horizontal_offset);
         }
 
         Action::InspectorScrollRight => {
             state.inspector_horizontal_offset = calculate_next_column_offset(
-                &state.inspector_column_widths,
+                state.inspector_column_widths.len(),
                 state.inspector_horizontal_offset,
-                state.inspector_available_width,
-            )
-            .min(state.inspector_max_horizontal_offset);
+                state.inspector_viewport_column_count,
+            );
         }
 
         Action::OpenConsole => {

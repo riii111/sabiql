@@ -4,7 +4,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
-use super::viewport_columns::{calculate_max_offset, select_viewport_columns};
+use super::viewport_columns::{
+    calculate_max_offset, calculate_viewport_column_count, select_viewport_columns,
+};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
@@ -21,11 +23,12 @@ impl Inspector {
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        let (max_offset, column_widths, available_width) =
+        let (max_offset, column_widths, available_width, viewport_column_count) =
             Self::render_content(frame, content_area, state, is_focused);
         state.inspector_max_horizontal_offset = max_offset;
         state.inspector_column_widths = column_widths;
         state.inspector_available_width = available_width;
+        state.inspector_viewport_column_count = viewport_column_count;
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -61,7 +64,7 @@ impl Inspector {
         area: Rect,
         state: &AppState,
         is_focused: bool,
-    ) -> (usize, Vec<u16>, u16) {
+    ) -> (usize, Vec<u16>, u16, usize) {
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else {
@@ -84,22 +87,25 @@ impl Inspector {
                     table,
                     state.inspector_scroll_offset,
                     state.inspector_horizontal_offset,
+                    state.inspector_viewport_column_count,
+                    state.inspector_available_width,
+                    state.inspector_column_widths.len(),
                 ),
                 InspectorTab::Indexes => {
                     Self::render_indexes(frame, inner, table);
-                    (0, Vec::new(), 0)
+                    (0, Vec::new(), 0, 0)
                 }
                 InspectorTab::ForeignKeys => {
                     Self::render_foreign_keys(frame, inner, table);
-                    (0, Vec::new(), 0)
+                    (0, Vec::new(), 0, 0)
                 }
                 InspectorTab::Rls => {
                     Self::render_rls(frame, inner, table);
-                    (0, Vec::new(), 0)
+                    (0, Vec::new(), 0, 0)
                 }
                 InspectorTab::Ddl => {
                     Self::render_ddl(frame, inner, table);
-                    (0, Vec::new(), 0)
+                    (0, Vec::new(), 0, 0)
                 }
             }
         } else {
@@ -107,22 +113,26 @@ impl Inspector {
                 .block(block)
                 .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(content, area);
-            (0, Vec::new(), 0)
+            (0, Vec::new(), 0, 0)
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_columns(
         frame: &mut Frame,
         area: Rect,
         table: &TableDetail,
         scroll_offset: usize,
         horizontal_offset: usize,
-    ) -> (usize, Vec<u16>, u16) {
+        stored_column_count: usize,
+        stored_available_width: u16,
+        stored_column_widths_len: usize,
+    ) -> (usize, Vec<u16>, u16, usize) {
         let available_width = area.width.saturating_sub(2);
         if table.columns.is_empty() {
             let msg = Paragraph::new("No columns");
             frame.render_widget(msg, area);
-            return (0, Vec::new(), available_width);
+            return (0, Vec::new(), available_width, 0);
         }
 
         let headers = vec!["Name", "Type", "Null", "PK", "Default"];
@@ -151,14 +161,35 @@ impl Inspector {
             .collect();
 
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
-        let max_offset = calculate_max_offset(&all_ideal_widths, available_width);
+
+        // Recalculate column count on resize or data change
+        let needs_recalc = stored_column_count == 0
+            || stored_available_width != available_width
+            || stored_column_widths_len != all_ideal_widths.len();
+
+        let viewport_column_count = if needs_recalc {
+            calculate_viewport_column_count(&all_ideal_widths, available_width)
+        } else {
+            stored_column_count
+        };
+
+        let max_offset = calculate_max_offset(all_ideal_widths.len(), viewport_column_count);
         let clamped_offset = horizontal_offset.min(max_offset);
 
-        let (viewport_indices, viewport_widths) =
-            select_viewport_columns(&all_ideal_widths, clamped_offset, available_width);
+        let (viewport_indices, viewport_widths) = select_viewport_columns(
+            &all_ideal_widths,
+            clamped_offset,
+            available_width,
+            Some(viewport_column_count),
+        );
 
         if viewport_indices.is_empty() {
-            return (max_offset, all_ideal_widths, available_width);
+            return (
+                max_offset,
+                all_ideal_widths,
+                available_width,
+                viewport_column_count,
+            );
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -245,7 +276,12 @@ impl Inspector {
             },
         );
 
-        (max_offset, all_ideal_widths, available_width)
+        (
+            max_offset,
+            all_ideal_widths,
+            available_width,
+            viewport_column_count,
+        )
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {
