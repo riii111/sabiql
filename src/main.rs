@@ -20,6 +20,7 @@ use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
 use app::state::{AppState, ErStatus, QueryState};
 use app::tasks::{spawn_er_diagram_task, write_er_failure_log_blocking};
+use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
 use infra::cache::TtlCache;
@@ -29,7 +30,7 @@ use infra::config::{
     pgclirc::generate_pgclirc,
     project_root::{find_project_root, get_project_name},
 };
-use infra::export::ErTableInfo;
+use infra::export::DotExporter;
 use std::cell::RefCell;
 use ui::components::layout::MainLayout;
 use ui::components::viewport_columns::{
@@ -790,7 +791,8 @@ async fn handle_action(
                             .map(|(k, (_, v))| (k.clone(), v.clone()))
                             .collect();
                         tokio::task::spawn_blocking(move || {
-                            write_er_failure_log_blocking(failed_data, cache_dir);
+                            // Log write errors are non-critical; ignore but propagate Result
+                            let _ = write_er_failure_log_blocking(failed_data, cache_dir);
                         });
                     }
                     let failed_count = state.failed_prefetch_tables.len();
@@ -829,7 +831,8 @@ async fn handle_action(
                         .map(|(k, (_, v))| (k.clone(), v.clone()))
                         .collect();
                     tokio::task::spawn_blocking(move || {
-                        write_er_failure_log_blocking(failed_data, cache_dir);
+                        // Log write errors are non-critical; ignore but propagate Result
+                        let _ = write_er_failure_log_blocking(failed_data, cache_dir);
                     });
                 }
                 let failed_count = state.failed_prefetch_tables.len();
@@ -1203,7 +1206,8 @@ async fn handle_action(
             let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.project_name)?;
 
-            spawn_er_diagram_task(tables, total_tables, cache_dir, action_tx.clone());
+            let exporter = Arc::new(DotExporter);
+            spawn_er_diagram_task(exporter, tables, total_tables, cache_dir, action_tx.clone());
         }
 
         Action::ErDiagramOpened {
