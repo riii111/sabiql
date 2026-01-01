@@ -210,6 +210,7 @@ pub struct ViewportPlan {
     pub max_offset: usize,
     pub available_width: u16,
     pub min_widths_sum: u16,
+    pub slack_policy: SlackPolicy,
 }
 
 impl ViewportPlan {
@@ -217,12 +218,18 @@ impl ViewportPlan {
         let column_count = calculate_viewport_column_count(ideal_widths, min_widths, available_width);
         let max_offset = calculate_max_offset(ideal_widths.len(), column_count);
         let min_widths_sum = min_widths.iter().sum();
+        let slack_policy = if max_offset == 0 {
+            SlackPolicy::RightmostLimited
+        } else {
+            SlackPolicy::None
+        };
 
         Self {
             column_count,
             max_offset,
             available_width,
             min_widths_sum,
+            slack_policy,
         }
     }
 
@@ -395,6 +402,7 @@ mod tests {
                 max_offset: 3,
                 available_width: 80,
                 min_widths_sum: 50,
+                ..Default::default()
             };
 
             assert!(plan.needs_recalculation(5, 100, 50));
@@ -414,6 +422,7 @@ mod tests {
                 max_offset: 3,
                 available_width: 80,
                 min_widths_sum: 50,
+                ..Default::default()
             };
 
             assert!(plan.needs_recalculation(10, 80, 50));
