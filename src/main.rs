@@ -15,6 +15,7 @@ use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
 use app::input_mode::InputMode;
+use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::MetadataProvider;
 use app::state::{AppState, ErStatus, QueryState};
@@ -1039,18 +1040,43 @@ async fn handle_action(
             );
         }
 
-        // Inspector scroll (Columns tab only)
+        // Inspector scroll (all tabs)
         Action::InspectorScrollUp => {
             state.inspector_scroll_offset = state.inspector_scroll_offset.saturating_sub(1);
         }
 
         Action::InspectorScrollDown => {
             let visible = state.inspector_visible_rows();
-            let max_offset = state
+            let total_items = state
                 .table_detail
                 .as_ref()
-                .map(|t| t.columns.len().saturating_sub(visible))
+                .map(|t| match state.inspector_tab {
+                    InspectorTab::Columns => t.columns.len(),
+                    InspectorTab::Indexes => t.indexes.len(),
+                    InspectorTab::ForeignKeys => t.foreign_keys.len(),
+                    InspectorTab::Rls => {
+                        // RLS: status line + blank + header + policies (each 1-2 lines)
+                        t.rls.as_ref().map_or(1, |rls| {
+                            let mut lines = 1; // Status line
+                            if !rls.policies.is_empty() {
+                                lines += 2; // blank + "Policies:" header
+                                for policy in &rls.policies {
+                                    lines += 1; // policy line
+                                    if policy.qual.is_some() {
+                                        lines += 1; // USING line
+                                    }
+                                }
+                            }
+                            lines
+                        })
+                    }
+                    InspectorTab::Ddl => {
+                        // DDL: CREATE TABLE + columns + optional PK + closing
+                        2 + t.columns.len() + if t.primary_key.is_some() { 1 } else { 0 }
+                    }
+                })
                 .unwrap_or(0);
+            let max_offset = total_items.saturating_sub(visible);
             if state.inspector_scroll_offset < max_offset {
                 state.inspector_scroll_offset += 1;
             }
