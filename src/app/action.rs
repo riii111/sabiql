@@ -44,6 +44,10 @@ pub enum Action {
     SelectFirst,
     SelectLast,
 
+    // Explorer horizontal scroll
+    ExplorerScrollLeft,
+    ExplorerScrollRight,
+
     // Selection
     ConfirmSelection,
 

@@ -35,7 +35,7 @@ impl HelpOverlay {
             Self::chip_line(":", "Enter command line"),
             Self::chip_line("f", "Toggle Focus mode (Result fullscreen)"),
             Self::key_line("1/2/3", "Switch pane focus (exits Focus first)"),
-            Self::key_line("[ / ]", "Inspector prev/next tab"),
+            Self::key_line("Tab/⇧Tab", "Inspector prev/next tab (Inspector focus)"),
             Self::key_line("r", "Reload metadata"),
             Self::key_line("e", "Open ER Diagram in browser"),
             Line::from(""),

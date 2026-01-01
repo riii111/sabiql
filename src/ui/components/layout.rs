@@ -51,7 +51,7 @@ impl MainLayout {
         } else {
             // Normal mode: Explorer | Inspector / Result
             let [left_area, right_area] =
-                Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+                Layout::horizontal([Constraint::Percentage(20), Constraint::Percentage(80)])
                     .areas(main_area);
 
             Explorer::render(frame, left_area, state);

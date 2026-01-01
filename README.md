@@ -30,7 +30,7 @@ The ER (Entity-Relationship) diagram visualizes foreign key relationships betwee
 | `j`/`k` | Scroll down/up |
 | `g`/`G` | Scroll to top/bottom |
 | `h`/`l` | Scroll left/right |
-| `[`/`]` | Previous/Next inspector tab |
+| `Tab`/`Shift+Tab` | Previous/Next inspector tab (Inspector focus only) |
 | `r` | Reload metadata |
 | `c` | Open pgcli console |
 | `s` | Open SQL modal |
