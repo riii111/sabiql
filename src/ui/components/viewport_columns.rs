@@ -64,6 +64,26 @@ fn shrink_columns(
     excess
 }
 
+const SLACK_MAX_ABSORPTION: u16 = 50;
+
+fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
+    if widths.is_empty() {
+        return;
+    }
+
+    let current_total = total_width_with_separators(widths);
+    if current_total >= available_width {
+        return;
+    }
+
+    let slack = available_width - current_total;
+    let rightmost = widths.last_mut().unwrap();
+    let max_absorption = SLACK_MAX_ABSORPTION.saturating_sub(*rightmost);
+    let absorption = slack.min(max_absorption);
+
+    *rightmost += absorption;
+}
+
 pub fn select_viewport_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
