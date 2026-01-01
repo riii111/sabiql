@@ -6,7 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    ColumnWidthConfig, SelectionContext, ViewportPlan, select_viewport_columns,
+    ColumnWidthConfig, MAX_COL_WIDTH, MIN_COL_WIDTH, PADDING, SelectionContext, ViewportPlan,
+    select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -259,9 +260,6 @@ impl ResultPane {
     }
 }
 
-const MIN_COL_WIDTH: u16 = 4;
-const PADDING: u16 = 2;
-
 fn calculate_header_min_widths(headers: &[String]) -> Vec<u16> {
     headers
         .iter()
@@ -271,7 +269,6 @@ fn calculate_header_min_widths(headers: &[String]) -> Vec<u16> {
 
 /// Calculate ideal widths for all columns (no scaling, just content-based).
 fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
-    const MAX_WIDTH: u16 = 50;
     const SAMPLE_ROWS: usize = 50;
 
     headers
@@ -289,7 +286,7 @@ fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> 
                 }
             }
 
-            (max_width as u16 + PADDING).clamp(MIN_COL_WIDTH, MAX_WIDTH)
+            (max_width as u16 + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
         .collect()
 }
@@ -365,7 +362,7 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // Should be capped at MAX_WIDTH (50)
+            // Should be capped at MAX_COL_WIDTH (50)
             assert_eq!(result[0], 50);
         }
 
