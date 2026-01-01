@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    ColumnWidthConfig, calculate_max_offset, calculate_viewport_column_count,
+    ColumnWidthConfig, SelectionContext, calculate_max_offset, calculate_viewport_column_count,
     select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
@@ -40,14 +40,14 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let (max_offset, column_widths, available_width, viewport_column_count) =
+        let (max_offset, column_widths, available_width, viewport_column_count, min_widths_sum) =
             if let Some(result) = result {
                 if result.is_error() {
                     Self::render_error(frame, area, result, block);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 } else if result.rows.is_empty() {
                     Self::render_empty(frame, area, block);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 } else {
                     Self::render_table(
                         frame,
@@ -59,16 +59,18 @@ impl ResultPane {
                         state.result_viewport_column_count,
                         state.result_available_width,
                         state.result_column_widths.len(),
+                        state.result_min_widths_sum,
                     )
                 }
             } else {
                 Self::render_placeholder(frame, area, block);
-                (0, Vec::new(), 0, 0)
+                (0, Vec::new(), 0, 0, 0)
             };
         state.result_max_horizontal_offset = max_offset;
         state.result_column_widths = column_widths;
         state.result_available_width = available_width;
         state.result_viewport_column_count = viewport_column_count;
+        state.result_min_widths_sum = min_widths_sum;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
@@ -145,20 +147,23 @@ impl ResultPane {
         stored_column_count: usize,
         stored_available_width: u16,
         stored_column_widths_len: usize,
-    ) -> (usize, Vec<u16>, u16, usize) {
+        stored_min_widths_sum: u16,
+    ) -> (usize, Vec<u16>, u16, usize, u16) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return (0, Vec::new(), inner.width, 0);
+            return (0, Vec::new(), inner.width, 0, 0);
         }
 
         let header_min_widths = calculate_header_min_widths(&result.columns);
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
+        let current_min_widths_sum: u16 = header_min_widths.iter().sum();
 
         let needs_recalc = stored_column_count == 0
             || stored_available_width != inner.width
-            || stored_column_widths_len != all_ideal_widths.len();
+            || stored_column_widths_len != all_ideal_widths.len()
+            || stored_min_widths_sum != current_min_widths_sum;
 
         let viewport_column_count = if needs_recalc {
             calculate_viewport_column_count(&header_min_widths, inner.width)
@@ -173,13 +178,13 @@ impl ResultPane {
             ideal_widths: &all_ideal_widths,
             min_widths: &header_min_widths,
         };
-        let (viewport_indices, viewport_widths) = select_viewport_columns(
-            &config,
-            clamped_offset,
-            inner.width,
-            Some(viewport_column_count),
+        let ctx = SelectionContext {
+            horizontal_offset: clamped_offset,
+            available_width: inner.width,
+            fixed_count: Some(viewport_column_count),
             max_offset,
-        );
+        };
+        let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
             return (
@@ -187,6 +192,7 @@ impl ResultPane {
                 all_ideal_widths,
                 inner.width,
                 viewport_column_count,
+                current_min_widths_sum,
             );
         }
 
@@ -270,6 +276,7 @@ impl ResultPane {
             all_ideal_widths,
             inner.width,
             viewport_column_count,
+            current_min_widths_sum,
         )
     }
 }
