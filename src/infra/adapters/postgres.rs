@@ -92,6 +92,7 @@ fn is_select_query(query: &str) -> bool {
             if is_keyword(rest, "insert")
                 || is_keyword(rest, "update")
                 || is_keyword(rest, "delete")
+                || is_keyword(rest, "create")
             {
                 return false;
             }
@@ -1174,6 +1175,9 @@ mod tests {
         #[case("SELECT * FROM (SELECT 1) AS sub", true)]
         // INTO in string is OK
         #[case("SELECT * FROM t WHERE x = 'INTO'", true)]
+        // CREATE TABLE AS SELECT (rejected)
+        #[case("CREATE TABLE t AS SELECT * FROM users", false)]
+        #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
