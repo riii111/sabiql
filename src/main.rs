@@ -689,6 +689,7 @@ async fn handle_action(
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.table_detail = Some(*detail);
+                state.inspector_scroll_offset = 0;
             }
         }
 

@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    ColumnWidthConfig, calculate_max_offset, calculate_viewport_column_count,
+    ColumnWidthConfig, SelectionContext, calculate_max_offset, calculate_viewport_column_count,
     select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
@@ -24,12 +24,13 @@ impl Inspector {
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        let (max_offset, column_widths, available_width, viewport_column_count) =
+        let (max_offset, column_widths, available_width, viewport_column_count, min_widths_sum) =
             Self::render_content(frame, content_area, state, is_focused);
         state.inspector_max_horizontal_offset = max_offset;
         state.inspector_column_widths = column_widths;
         state.inspector_available_width = available_width;
         state.inspector_viewport_column_count = viewport_column_count;
+        state.inspector_min_widths_sum = min_widths_sum;
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -65,7 +66,7 @@ impl Inspector {
         area: Rect,
         state: &AppState,
         is_focused: bool,
-    ) -> (usize, Vec<u16>, u16, usize) {
+    ) -> (usize, Vec<u16>, u16, usize, u16) {
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
         } else {
@@ -91,22 +92,23 @@ impl Inspector {
                     state.inspector_viewport_column_count,
                     state.inspector_available_width,
                     state.inspector_column_widths.len(),
+                    state.inspector_min_widths_sum,
                 ),
                 InspectorTab::Indexes => {
                     Self::render_indexes(frame, inner, table);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 }
                 InspectorTab::ForeignKeys => {
                     Self::render_foreign_keys(frame, inner, table);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 }
                 InspectorTab::Rls => {
                     Self::render_rls(frame, inner, table);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 }
                 InspectorTab::Ddl => {
                     Self::render_ddl(frame, inner, table);
-                    (0, Vec::new(), 0, 0)
+                    (0, Vec::new(), 0, 0, 0)
                 }
             }
         } else {
@@ -114,7 +116,7 @@ impl Inspector {
                 .block(block)
                 .style(Style::default().fg(Color::DarkGray));
             frame.render_widget(content, area);
-            (0, Vec::new(), 0, 0)
+            (0, Vec::new(), 0, 0, 0)
         }
     }
 
@@ -128,12 +130,13 @@ impl Inspector {
         stored_column_count: usize,
         stored_available_width: u16,
         stored_column_widths_len: usize,
-    ) -> (usize, Vec<u16>, u16, usize) {
+        stored_min_widths_sum: u16,
+    ) -> (usize, Vec<u16>, u16, usize, u16) {
         let available_width = area.width.saturating_sub(2);
         if table.columns.is_empty() {
             let msg = Paragraph::new("No columns");
             frame.render_widget(msg, area);
-            return (0, Vec::new(), available_width, 0);
+            return (0, Vec::new(), available_width, 0, 0);
         }
 
         let headers = vec!["Name", "Type", "Null", "PK", "Default"];
@@ -163,10 +166,12 @@ impl Inspector {
 
         let header_min_widths = calculate_header_min_widths(&headers);
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let current_min_widths_sum: u16 = header_min_widths.iter().sum();
 
         let needs_recalc = stored_column_count == 0
             || stored_available_width != available_width
-            || stored_column_widths_len != all_ideal_widths.len();
+            || stored_column_widths_len != all_ideal_widths.len()
+            || stored_min_widths_sum != current_min_widths_sum;
 
         let viewport_column_count = if needs_recalc {
             calculate_viewport_column_count(&header_min_widths, available_width)
@@ -181,13 +186,13 @@ impl Inspector {
             ideal_widths: &all_ideal_widths,
             min_widths: &header_min_widths,
         };
-        let (viewport_indices, viewport_widths) = select_viewport_columns(
-            &config,
-            clamped_offset,
+        let ctx = SelectionContext {
+            horizontal_offset: clamped_offset,
             available_width,
-            Some(viewport_column_count),
+            fixed_count: Some(viewport_column_count),
             max_offset,
-        );
+        };
+        let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
             return (
@@ -195,6 +200,7 @@ impl Inspector {
                 all_ideal_widths,
                 available_width,
                 viewport_column_count,
+                current_min_widths_sum,
             );
         }
 
@@ -222,13 +228,16 @@ impl Inspector {
         let scroll_viewport_size = data_rows_visible;
         let total_rows = data_rows.len();
 
+        let max_scroll_offset = total_rows.saturating_sub(data_rows_visible);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
         let rows: Vec<Row> = data_rows
             .iter()
             .enumerate()
-            .skip(scroll_offset)
+            .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
-                let is_striped = (row_idx - scroll_offset) % 2 == 1;
+                let is_striped = (row_idx - clamped_scroll_offset) % 2 == 1;
 
                 let base_style = if is_striped {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
@@ -267,7 +276,7 @@ impl Inspector {
             frame,
             area,
             VerticalScrollParams {
-                position: scroll_offset,
+                position: clamped_scroll_offset,
                 viewport_size: scroll_viewport_size,
                 total_items: total_rows,
             },
@@ -287,6 +296,7 @@ impl Inspector {
             all_ideal_widths,
             available_width,
             viewport_column_count,
+            current_min_widths_sum,
         )
     }
 
@@ -594,5 +604,52 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
     } else {
         let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
         format!("{}...", truncated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn scroll_offset_clamping_with_large_offset_and_small_table() {
+        let total_rows: usize = 5;
+        let visible_rows: usize = 10;
+
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped = 100_usize.min(max_scroll_offset);
+
+        assert_eq!(clamped, 0);
+    }
+
+    #[test]
+    fn scroll_offset_clamping_with_exact_fit() {
+        let total_rows: usize = 10;
+        let visible_rows: usize = 10;
+
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped = 5_usize.min(max_scroll_offset);
+
+        assert_eq!(clamped, 0);
+    }
+
+    #[test]
+    fn scroll_offset_clamping_with_normal_scroll() {
+        let total_rows: usize = 100;
+        let visible_rows: usize = 10;
+
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped = 50_usize.min(max_scroll_offset);
+
+        assert_eq!(clamped, 50);
+    }
+
+    #[test]
+    fn scroll_offset_clamping_when_offset_exceeds_max() {
+        let total_rows: usize = 20;
+        let visible_rows: usize = 10;
+
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped = 100_usize.min(max_scroll_offset);
+
+        assert_eq!(clamped, 10);
     }
 }

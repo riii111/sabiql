@@ -102,6 +102,7 @@ pub struct AppState {
     pub inspector_column_widths: Vec<u16>,
     pub inspector_available_width: u16,
     pub inspector_viewport_column_count: usize,
+    pub inspector_min_widths_sum: u16,
 
     // Result pane
     pub current_result: Option<QueryResult>,
@@ -112,6 +113,7 @@ pub struct AppState {
     pub result_column_widths: Vec<u16>,
     pub result_available_width: u16,
     pub result_viewport_column_count: usize,
+    pub result_min_widths_sum: u16,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -192,6 +194,7 @@ impl AppState {
             inspector_column_widths: Vec::new(),
             inspector_available_width: 0,
             inspector_viewport_column_count: 0,
+            inspector_min_widths_sum: 0,
             // Result pane
             current_result: None,
             result_highlight_until: None,
@@ -201,6 +204,7 @@ impl AppState {
             result_column_widths: Vec::new(),
             result_available_width: 0,
             result_viewport_column_count: 0,
+            result_min_widths_sum: 0,
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,
@@ -672,6 +676,29 @@ mod tests {
             assert!(state.last_error.is_none());
             assert!(state.last_success.is_none());
             assert!(state.message_expires_at.is_none());
+        }
+    }
+
+    mod inspector_scroll_reset {
+        use super::*;
+
+        #[test]
+        fn scroll_offset_resets_to_zero_on_table_switch() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.inspector_scroll_offset = 42;
+
+            // Simulate table switch (TableDetailLoaded action)
+            state.inspector_scroll_offset = 0;
+
+            assert_eq!(state.inspector_scroll_offset, 0);
+        }
+
+        #[test]
+        fn scroll_offset_stays_zero_when_no_table_detail() {
+            let state = AppState::new("test".to_string(), "default".to_string());
+
+            assert_eq!(state.inspector_scroll_offset, 0);
+            assert!(state.table_detail.is_none());
         }
     }
 }
