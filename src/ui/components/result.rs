@@ -6,8 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    ColumnWidthConfig, SelectionContext, calculate_max_offset, calculate_viewport_column_count,
-    select_viewport_columns,
+    ColumnWidthConfig, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -40,37 +39,29 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let (max_offset, column_widths, available_width, viewport_column_count, min_widths_sum) =
-            if let Some(result) = result {
-                if result.is_error() {
-                    Self::render_error(frame, area, result, block);
-                    (0, Vec::new(), 0, 0, 0)
-                } else if result.rows.is_empty() {
-                    Self::render_empty(frame, area, block);
-                    (0, Vec::new(), 0, 0, 0)
-                } else {
-                    Self::render_table(
-                        frame,
-                        area,
-                        result,
-                        block,
-                        state.result_scroll_offset,
-                        state.result_horizontal_offset,
-                        state.result_viewport_column_count,
-                        state.result_available_width,
-                        state.result_column_widths.len(),
-                        state.result_min_widths_sum,
-                    )
-                }
+        let new_plan = if let Some(result) = result {
+            if result.is_error() {
+                Self::render_error(frame, area, result, block);
+                ViewportPlan::default()
+            } else if result.rows.is_empty() {
+                Self::render_empty(frame, area, block);
+                ViewportPlan::default()
             } else {
-                Self::render_placeholder(frame, area, block);
-                (0, Vec::new(), 0, 0, 0)
-            };
-        state.result_max_horizontal_offset = max_offset;
-        state.result_column_widths = column_widths;
-        state.result_available_width = available_width;
-        state.result_viewport_column_count = viewport_column_count;
-        state.result_min_widths_sum = min_widths_sum;
+                Self::render_table(
+                    frame,
+                    area,
+                    result,
+                    block,
+                    state.result_scroll_offset,
+                    state.result_horizontal_offset,
+                    &state.result_viewport_plan,
+                )
+            }
+        } else {
+            Self::render_placeholder(frame, area, block);
+            ViewportPlan::default()
+        };
+        state.result_viewport_plan = new_plan;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
@@ -136,7 +127,6 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -144,35 +134,30 @@ impl ResultPane {
         block: Block,
         scroll_offset: usize,
         horizontal_offset: usize,
-        stored_column_count: usize,
-        stored_available_width: u16,
-        stored_column_widths_len: usize,
-        stored_min_widths_sum: u16,
-    ) -> (usize, Vec<u16>, u16, usize, u16) {
+        stored_plan: &ViewportPlan,
+    ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return (0, Vec::new(), inner.width, 0, 0);
+            return ViewportPlan::default();
         }
 
         let header_min_widths = calculate_header_min_widths(&result.columns);
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
         let current_min_widths_sum: u16 = header_min_widths.iter().sum();
 
-        let needs_recalc = stored_column_count == 0
-            || stored_available_width != inner.width
-            || stored_column_widths_len != all_ideal_widths.len()
-            || stored_min_widths_sum != current_min_widths_sum;
-
-        let viewport_column_count = if needs_recalc {
-            calculate_viewport_column_count(&all_ideal_widths, &header_min_widths, inner.width)
+        let plan = if stored_plan.needs_recalculation(
+            all_ideal_widths.len(),
+            inner.width,
+            current_min_widths_sum,
+        ) {
+            ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, inner.width)
         } else {
-            stored_column_count
+            stored_plan.clone()
         };
 
-        let max_offset = calculate_max_offset(all_ideal_widths.len(), viewport_column_count);
-        let clamped_offset = horizontal_offset.min(max_offset);
+        let clamped_offset = horizontal_offset.min(plan.max_offset);
 
         let config = ColumnWidthConfig {
             ideal_widths: &all_ideal_widths,
@@ -181,19 +166,13 @@ impl ResultPane {
         let ctx = SelectionContext {
             horizontal_offset: clamped_offset,
             available_width: inner.width,
-            fixed_count: Some(viewport_column_count),
-            max_offset,
+            fixed_count: Some(plan.column_count),
+            max_offset: plan.max_offset,
         };
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
-            return (
-                max_offset,
-                all_ideal_widths,
-                inner.width,
-                viewport_column_count,
-                current_min_widths_sum,
-            );
+            return plan;
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -271,13 +250,7 @@ impl ResultPane {
             },
         );
 
-        (
-            max_offset,
-            all_ideal_widths,
-            inner.width,
-            viewport_column_count,
-            current_min_widths_sum,
-        )
+        plan
     }
 }
 

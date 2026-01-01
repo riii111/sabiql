@@ -10,6 +10,7 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::result_history::ResultHistory;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+use crate::ui::components::viewport_columns::ViewportPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalState {
@@ -98,22 +99,14 @@ pub struct AppState {
     pub inspector_tab: InspectorTab,
     pub inspector_scroll_offset: usize,
     pub inspector_horizontal_offset: usize,
-    pub inspector_max_horizontal_offset: usize,
-    pub inspector_column_widths: Vec<u16>,
-    pub inspector_available_width: u16,
-    pub inspector_viewport_column_count: usize,
-    pub inspector_min_widths_sum: u16,
+    pub inspector_viewport_plan: ViewportPlan,
 
     // Result pane
     pub current_result: Option<QueryResult>,
     pub result_highlight_until: Option<Instant>,
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
-    pub result_max_horizontal_offset: usize,
-    pub result_column_widths: Vec<u16>,
-    pub result_available_width: u16,
-    pub result_viewport_column_count: usize,
-    pub result_min_widths_sum: u16,
+    pub result_viewport_plan: ViewportPlan,
 
     // Result history (for Adhoc queries)
     pub result_history: ResultHistory,
@@ -190,21 +183,13 @@ impl AppState {
             inspector_tab: InspectorTab::default(),
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
-            inspector_max_horizontal_offset: 0,
-            inspector_column_widths: Vec::new(),
-            inspector_available_width: 0,
-            inspector_viewport_column_count: 0,
-            inspector_min_widths_sum: 0,
+            inspector_viewport_plan: ViewportPlan::default(),
             // Result pane
             current_result: None,
             result_highlight_until: None,
             result_scroll_offset: 0,
             result_horizontal_offset: 0,
-            result_max_horizontal_offset: 0,
-            result_column_widths: Vec::new(),
-            result_available_width: 0,
-            result_viewport_column_count: 0,
-            result_min_widths_sum: 0,
+            result_viewport_plan: ViewportPlan::default(),
             // Result history
             result_history: ResultHistory::default(),
             history_index: None,
