@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{MetadataError, MetadataProvider};
+use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
 
 #[allow(dead_code)]
@@ -37,7 +37,10 @@ impl MetadataProvider for MySqlAdapter {
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
+}
 
+#[async_trait]
+impl QueryExecutor for MySqlAdapter {
     async fn execute_preview(
         &self,
         _dsn: &str,

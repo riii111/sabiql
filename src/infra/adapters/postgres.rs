@@ -782,7 +782,12 @@ impl MetadataProvider for PostgresAdapter {
             comment: None,
         })
     }
+}
 
+use crate::app::ports::QueryExecutor;
+
+#[async_trait]
+impl QueryExecutor for PostgresAdapter {
     async fn execute_preview(
         &self,
         dsn: &str,

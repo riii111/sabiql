@@ -18,7 +18,7 @@ use app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
-use app::ports::MetadataProvider;
+use app::ports::{MetadataProvider, QueryExecutor};
 use app::state::{AppState, ErStatus, QueryState};
 use domain::ErTableInfo;
 use domain::MetadataState;
@@ -67,7 +67,9 @@ async fn main() -> Result<()> {
     // Bounded to prevent unbounded memory growth
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
-    let metadata_provider: Arc<dyn MetadataProvider> = Arc::new(PostgresAdapter::new());
+    let adapter = Arc::new(PostgresAdapter::new());
+    let metadata_provider: Arc<dyn MetadataProvider> = Arc::clone(&adapter) as _;
+    let query_executor: Arc<dyn QueryExecutor> = Arc::clone(&adapter) as _;
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
 
@@ -101,6 +103,7 @@ async fn main() -> Result<()> {
                     &mut tui,
                     &action_tx,
                     &metadata_provider,
+                    &query_executor,
                     &metadata_cache,
                     &completion_engine,
                 ).await?;
@@ -124,12 +127,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_action(
     action: Action,
     state: &mut AppState,
     tui: &mut TuiRunner,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
+    query_executor: &Arc<dyn QueryExecutor>,
     metadata_cache: &TtlCache<String, domain::DatabaseMetadata>,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
@@ -920,9 +925,9 @@ async fn handle_action(
                     }
                 });
 
-                let provider = metadata_provider.clone();
+                let executor = query_executor.clone();
                 tokio::spawn(async move {
-                    match provider.execute_preview(&dsn, &schema, &table, limit).await {
+                    match executor.execute_preview(&dsn, &schema, &table, limit).await {
                         Ok(result) => {
                             let _ = tx
                                 .send(Action::QueryCompleted(Box::new(result), generation))
@@ -945,9 +950,9 @@ async fn handle_action(
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
-                let provider = metadata_provider.clone();
+                let executor = query_executor.clone();
                 tokio::spawn(async move {
-                    match provider.execute_adhoc(&dsn, &query).await {
+                    match executor.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
                             // Adhoc queries use generation 0 to always show results
                             let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;

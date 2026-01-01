@@ -62,6 +62,7 @@ where
         cache.remove(key);
     }
 
+    #[allow(dead_code)]
     pub async fn cleanup_expired(&self) {
         let mut cache = self.inner.write().await;
         cache.retain(|_, entry| !entry.is_expired(self.ttl));
