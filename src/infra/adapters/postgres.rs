@@ -582,46 +582,6 @@ impl PostgresAdapter {
         ))
     }
 
-    /// Execute a preview query (SELECT * LIMIT N) for a table.
-    pub async fn execute_preview(
-        &self,
-        dsn: &str,
-        schema: &str,
-        table: &str,
-        limit: usize,
-    ) -> Result<QueryResult, MetadataError> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit
-        );
-        self.execute_query_raw(dsn, &query, QuerySource::Preview)
-            .await
-    }
-
-    /// Execute an adhoc SQL query.
-    /// For safety, only SELECT queries are allowed to use CSV output format.
-    /// Non-SELECT queries may produce NOTICE messages that break CSV parsing.
-    pub async fn execute_adhoc(
-        &self,
-        dsn: &str,
-        query: &str,
-    ) -> Result<QueryResult, MetadataError> {
-        // Check if query is a SELECT statement (basic validation)
-        let trimmed = query.trim();
-        let is_select = trimmed.to_lowercase().starts_with("select")
-            || trimmed.to_lowercase().starts_with("with"); // CTEs are also read-only
-
-        if !is_select {
-            return Err(MetadataError::QueryFailed(
-                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
-            ));
-        }
-
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
-    }
-
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
@@ -711,6 +671,37 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
         })
+    }
+
+    async fn execute_preview(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+    ) -> Result<QueryResult, MetadataError> {
+        let query = format!(
+            "SELECT * FROM {}.{} LIMIT {}",
+            quote_ident(schema),
+            quote_ident(table),
+            limit
+        );
+        self.execute_query_raw(dsn, &query, QuerySource::Preview)
+            .await
+    }
+
+    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
+        let trimmed = query.trim();
+        let is_select = trimmed.to_lowercase().starts_with("select")
+            || trimmed.to_lowercase().starts_with("with");
+
+        if !is_select {
+            return Err(MetadataError::QueryFailed(
+                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
+            ));
+        }
+
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 }
 
