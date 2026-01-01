@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::{DatabaseMetadata, QueryResult, Table};
+use crate::domain::{DatabaseMetadata, Table};
 
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
@@ -12,16 +12,6 @@ pub trait MetadataProvider: Send + Sync {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError>;
-
-    async fn execute_preview(
-        &self,
-        dsn: &str,
-        schema: &str,
-        table: &str,
-        limit: usize,
-    ) -> Result<QueryResult, MetadataError>;
-
-    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError>;
 }
 
 #[derive(Debug, Clone)]

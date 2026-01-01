@@ -5,8 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    ColumnWidthConfig, MAX_COL_WIDTH, MIN_COL_WIDTH, PADDING, SelectionContext, ViewportPlan,
-    select_viewport_columns,
+    ColumnWidthConfig, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
@@ -481,7 +480,7 @@ impl Inspector {
                         )));
                         if let Some(qual) = &policy.qual {
                             lines
-                                .push(Line::from(format!("    USING: {}", truncate_cell(qual, 50))));
+                                .push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
                         }
                     }
                 }
@@ -576,6 +575,9 @@ impl Inspector {
     }
 }
 
+const MIN_COL_WIDTH: u16 = 4;
+const PADDING: u16 = 2;
+
 fn calculate_header_min_widths(headers: &[&str]) -> Vec<u16> {
     headers
         .iter()
@@ -587,6 +589,8 @@ fn calculate_header_min_widths(headers: &[&str]) -> Vec<u16> {
 /// - clamped_widths: widths clamped to MIN/MAX for rendering
 /// - true_total_width: sum of unclamped widths (for scroll detection)
 fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
+    const MAX_WIDTH: u16 = 40;
+
     let mut true_total: u16 = 0;
     let clamped: Vec<u16> = headers
         .iter()
@@ -602,7 +606,7 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>,
 
             let true_width = max_width as u16 + PADDING;
             true_total += true_width;
-            true_width.clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+            true_width.clamp(MIN_COL_WIDTH, MAX_WIDTH)
         })
         .collect();
 
@@ -610,6 +614,16 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>,
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    }
+}
+
+fn truncate_str(s: &str, max_chars: usize) -> String {
     let char_count = s.chars().count();
     if char_count <= max_chars {
         s.to_string()

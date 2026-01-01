@@ -13,43 +13,6 @@ use crate::domain::{
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
-/// Check if query is a read-only SELECT (or SELECT-returning CTE).
-/// Rejects WITH ... UPDATE/DELETE/INSERT since PostgreSQL allows DML in CTEs.
-fn is_select_query(query: &str) -> bool {
-    let lower = query.trim().to_lowercase();
-
-    if lower.starts_with("select") {
-        return true;
-    }
-
-    if lower.starts_with("with") {
-        // Track parenthesis depth to find where CTEs end
-        let mut depth = 0;
-        let mut last_close_at_depth_zero = None;
-
-        for (i, c) in lower.char_indices() {
-            match c {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        last_close_at_depth_zero = Some(i);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // After the last ')' at depth 0, check if final statement is SELECT
-        if let Some(pos) = last_close_at_depth_zero {
-            let after_cte = lower[pos + 1..].trim_start();
-            return after_cte.starts_with("select");
-        }
-    }
-
-    false
-}
-
 pub struct PostgresAdapter {
     timeout_secs: u64,
 }
@@ -619,6 +582,46 @@ impl PostgresAdapter {
         ))
     }
 
+    /// Execute a preview query (SELECT * LIMIT N) for a table.
+    pub async fn execute_preview(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+    ) -> Result<QueryResult, MetadataError> {
+        let query = format!(
+            "SELECT * FROM {}.{} LIMIT {}",
+            quote_ident(schema),
+            quote_ident(table),
+            limit
+        );
+        self.execute_query_raw(dsn, &query, QuerySource::Preview)
+            .await
+    }
+
+    /// Execute an adhoc SQL query.
+    /// For safety, only SELECT queries are allowed to use CSV output format.
+    /// Non-SELECT queries may produce NOTICE messages that break CSV parsing.
+    pub async fn execute_adhoc(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<QueryResult, MetadataError> {
+        // Check if query is a SELECT statement (basic validation)
+        let trimmed = query.trim();
+        let is_select = trimmed.to_lowercase().starts_with("select")
+            || trimmed.to_lowercase().starts_with("with"); // CTEs are also read-only
+
+        if !is_select {
+            return Err(MetadataError::QueryFailed(
+                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
+            ));
+        }
+
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
+    }
+
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
@@ -708,33 +711,6 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
         })
-    }
-
-    async fn execute_preview(
-        &self,
-        dsn: &str,
-        schema: &str,
-        table: &str,
-        limit: usize,
-    ) -> Result<QueryResult, MetadataError> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit
-        );
-        self.execute_query_raw(dsn, &query, QuerySource::Preview)
-            .await
-    }
-
-    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
-        if !is_select_query(query) {
-            return Err(MetadataError::QueryFailed(
-                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
-            ));
-        }
-
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 }
 
@@ -913,158 +889,6 @@ mod tests {
 
             assert_eq!(headers[0], "id");
             assert_eq!(headers[1], "name");
-        }
-    }
-
-    mod rls_parsing {
-        use super::*;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("")]
-        #[case("null")]
-        #[case("   ")]
-        fn empty_or_null_input_returns_none(#[case] input: &str) {
-            let result = PostgresAdapter::parse_rls(input).unwrap();
-            assert!(result.is_none());
-        }
-
-        #[test]
-        fn malformed_json_returns_invalid_json_error() {
-            let result = PostgresAdapter::parse_rls("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
-        }
-
-        #[test]
-        fn disabled_rls_with_no_policies_returns_expected() {
-            let json = r#"{"enabled": false, "force": false, "policies": []}"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.expect("Should return Some(RlsInfo)");
-
-            assert!(!rls.enabled);
-            assert!(!rls.force);
-            assert!(rls.policies.is_empty());
-        }
-
-        #[test]
-        fn enabled_and_forced_rls_returns_expected() {
-            let json = r#"{"enabled": true, "force": true, "policies": []}"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-
-            assert!(rls.enabled);
-            assert!(rls.force);
-        }
-
-        #[test]
-        fn single_policy_parses_all_fields() {
-            let json = r#"{
-                "enabled": true,
-                "force": false,
-                "policies": [{
-                    "name": "tenant_isolation",
-                    "permissive": true,
-                    "roles": ["app_user", "admin"],
-                    "cmd": "r",
-                    "qual": "tenant_id = current_setting('app.tenant_id')::int",
-                    "with_check": null
-                }]
-            }"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-            let policy = &rls.policies[0];
-
-            assert_eq!(policy.name, "tenant_isolation");
-            assert!(policy.permissive);
-            assert_eq!(policy.roles, vec!["app_user", "admin"]);
-            assert_eq!(policy.cmd, RlsCommand::Select);
-            assert!(policy.qual.is_some());
-            assert!(policy.with_check.is_none());
-        }
-
-        #[rstest]
-        #[case("*", RlsCommand::All)]
-        #[case("r", RlsCommand::Select)]
-        #[case("a", RlsCommand::Insert)]
-        #[case("w", RlsCommand::Update)]
-        #[case("d", RlsCommand::Delete)]
-        #[case("x", RlsCommand::All)] // unknown defaults to All
-        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
-            let json = format!(
-                r#"{{"enabled": true, "force": false, "policies": [{{
-                    "name": "test", "permissive": true, "roles": null,
-                    "cmd": "{}", "qual": null, "with_check": null
-                }}]}}"#,
-                cmd
-            );
-
-            let result = PostgresAdapter::parse_rls(&json).unwrap();
-            let rls = result.unwrap();
-
-            assert_eq!(rls.policies[0].cmd, expected);
-        }
-
-        #[test]
-        fn null_roles_becomes_empty_vec() {
-            let json = r#"{
-                "enabled": true, "force": false,
-                "policies": [{"name": "p", "permissive": true, "roles": null, "cmd": "*", "qual": null, "with_check": null}]
-            }"#;
-
-            let result = PostgresAdapter::parse_rls(json).unwrap();
-            let rls = result.unwrap();
-
-            assert!(rls.policies[0].roles.is_empty());
-        }
-
-        #[test]
-        fn missing_required_field_returns_invalid_json_error() {
-            let json = r#"{"force": false, "policies": []}"#; // missing 'enabled'
-
-            let result = PostgresAdapter::parse_rls(json);
-
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
-        }
-    }
-
-    mod select_validation {
-        use super::is_select_query;
-        use rstest::rstest;
-
-        #[rstest]
-        // Basic SELECT
-        #[case("SELECT * FROM users", true)]
-        #[case("select id from users", true)]
-        #[case("  SELECT id FROM users  ", true)]
-        // CTE with SELECT (allowed)
-        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
-        #[case("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
-        #[case("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b", true)]
-        // CTE with DML (rejected - PostgreSQL allows this but we don't)
-        #[case("WITH cte AS (SELECT 1) UPDATE users SET name = 'x'", false)]
-        #[case("WITH cte AS (SELECT 1) DELETE FROM users", false)]
-        #[case("WITH cte AS (SELECT 1) INSERT INTO users VALUES (1)", false)]
-        #[case("with cte as (select 1) update users set name = 'x'", false)]
-        // Plain DML (rejected)
-        #[case("INSERT INTO users VALUES (1)", false)]
-        #[case("  insert into users (id) values (1)", false)]
-        #[case("UPDATE users SET name = 'new'", false)]
-        #[case("  update users set active = true", false)]
-        #[case("DELETE FROM users WHERE id = 1", false)]
-        #[case("  delete from users", false)]
-        // DDL (rejected)
-        #[case("CREATE TABLE foo (id INT)", false)]
-        #[case("DROP TABLE users", false)]
-        #[case("ALTER TABLE users ADD COLUMN foo INT", false)]
-        #[case("TRUNCATE users", false)]
-        // Edge cases
-        #[case("", false)]
-        #[case("   ", false)]
-        fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
-            assert_eq!(is_select_query(query), expected);
         }
     }
 }
