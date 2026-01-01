@@ -19,7 +19,8 @@ use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{MetadataProvider, QueryExecutor};
-use app::state::{AppState, ErStatus, QueryState};
+use app::er_state::ErStatus;
+use app::state::{AppState, QueryState};
 use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
@@ -647,7 +648,7 @@ async fn handle_action(
                 completion_engine.borrow_mut().clear_table_cache();
 
                 // Reset ER status and clear stale messages
-                state.er_status = ErStatus::Idle;
+                state.er_preparation.status = ErStatus::Idle;
                 state.last_error = None;
                 state.last_success = None;
                 state.message_expires_at = None;
@@ -791,8 +792,8 @@ async fn handle_action(
             // Notify user when prefetch completes while in Waiting state
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_status == ErStatus::Waiting && prefetch_complete {
-                state.er_status = ErStatus::Idle;
+            if state.er_preparation.status == ErStatus::Waiting && prefetch_complete {
+                state.er_preparation.status = ErStatus::Idle;
                 if state.failed_prefetch_tables.is_empty() {
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
@@ -841,8 +842,8 @@ async fn handle_action(
             // Notify user when prefetch completes while in Waiting state
             let prefetch_complete =
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_status == ErStatus::Waiting && prefetch_complete {
-                state.er_status = ErStatus::Idle;
+            if state.er_preparation.status == ErStatus::Waiting && prefetch_complete {
+                state.er_preparation.status = ErStatus::Idle;
                 let failed_count = state.failed_prefetch_tables.len();
                 let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                     let failed_data: Vec<(String, String)> = state
@@ -1187,7 +1188,7 @@ async fn handle_action(
 
         Action::ErOpenDiagram => {
             // Guard: ignore if already rendering or waiting
-            if matches!(state.er_status, ErStatus::Rendering | ErStatus::Waiting) {
+            if matches!(state.er_preparation.status, ErStatus::Rendering | ErStatus::Waiting) {
                 return Ok(());
             }
 
@@ -1201,7 +1202,7 @@ async fn handle_action(
                     state.prefetch_queue.push_back(qualified_name);
                 }
 
-                state.er_status = ErStatus::Waiting;
+                state.er_preparation.status = ErStatus::Waiting;
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
                 return Ok(());
             }
@@ -1211,7 +1212,7 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
 
             if !prefetch_complete {
-                state.er_status = ErStatus::Waiting;
+                state.er_preparation.status = ErStatus::Waiting;
                 return Ok(());
             }
 
@@ -1229,7 +1230,7 @@ async fn handle_action(
                 return Ok(());
             }
 
-            state.er_status = ErStatus::Rendering;
+            state.er_preparation.status = ErStatus::Rendering;
             let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.project_name)?;
 
@@ -1242,7 +1243,7 @@ async fn handle_action(
             table_count,
             total_tables,
         } => {
-            state.er_status = ErStatus::Idle;
+            state.er_preparation.status = ErStatus::Idle;
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables)",
                 path, table_count, total_tables
@@ -1250,7 +1251,7 @@ async fn handle_action(
         }
 
         Action::ErDiagramFailed(error) => {
-            state.er_status = ErStatus::Idle;
+            state.er_preparation.status = ErStatus::Idle;
             state.set_error(error);
         }
 

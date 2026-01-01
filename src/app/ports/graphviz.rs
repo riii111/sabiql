@@ -17,7 +17,11 @@ impl fmt::Display for GraphvizError {
                 "Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"
             ),
             GraphvizError::CommandFailed(code) => {
-                write!(f, "Graphviz failed (exit code {:?}). Check DOT syntax.", code)
+                write!(
+                    f,
+                    "Graphviz failed (exit code {:?}). Check DOT syntax.",
+                    code
+                )
             }
             GraphvizError::IoError(e) => write!(f, "IO error: {}", e),
         }

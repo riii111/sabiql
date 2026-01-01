@@ -1345,7 +1345,10 @@ mod tests {
         #[case("n", FkAction::SetNull)]
         #[case("d", FkAction::SetDefault)]
         #[case("x", FkAction::NoAction)]
-        fn fk_action_mapping_returns_expected(#[case] action_code: &str, #[case] expected: FkAction) {
+        fn fk_action_mapping_returns_expected(
+            #[case] action_code: &str,
+            #[case] expected: FkAction,
+        ) {
             let json = format!(
                 r#"[{{
                     "name": "test_fk",

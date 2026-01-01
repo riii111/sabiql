@@ -58,14 +58,6 @@ pub enum QueryState {
     Running,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ErStatus {
-    #[default]
-    Idle,
-    Waiting,   // User pressed 'e' but prefetch not complete
-    Rendering, // DOT generation in progress
-}
-
 pub struct AppState {
     pub should_quit: bool,
     pub project_name: String,
@@ -155,8 +147,8 @@ pub struct AppState {
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
 
-    // ER diagram status
-    pub er_status: ErStatus,
+    // ER diagram
+    pub er_preparation: super::er_state::ErPreparationState,
 }
 
 impl AppState {
@@ -221,8 +213,8 @@ impl AppState {
             // Focus mode
             focus_mode: false,
             focus_mode_prev_pane: None,
-            // ER diagram status
-            er_status: ErStatus::default(),
+            // ER diagram
+            er_preparation: super::er_state::ErPreparationState::default(),
         }
     }
 
@@ -526,90 +518,33 @@ mod tests {
         assert_eq!(error, "connection timeout");
     }
 
-    mod er_status {
+    mod er_preparation {
         use super::*;
+        use crate::app::er_state::ErStatus;
 
         #[test]
         fn new_state_defaults_to_idle() {
             let state = AppState::new("test".to_string(), "default".to_string());
 
-            assert_eq!(state.er_status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
 
         #[test]
-        fn idle_with_incomplete_prefetch_transitions_to_waiting() {
+        fn status_can_be_set_to_waiting() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.prefetch_queue.push_back("public.users".to_string());
 
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if !prefetch_complete {
-                state.er_status = ErStatus::Waiting;
-            }
+            state.er_preparation.status = ErStatus::Waiting;
 
-            assert_eq!(state.er_status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
         }
 
         #[test]
-        fn idle_with_complete_prefetch_transitions_to_rendering() {
+        fn status_can_be_set_to_rendering() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
 
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if prefetch_complete {
-                state.er_status = ErStatus::Rendering;
-            }
+            state.er_preparation.status = ErStatus::Rendering;
 
-            assert_eq!(state.er_status, ErStatus::Rendering);
-        }
-
-        #[test]
-        fn waiting_with_prefetch_complete_transitions_to_idle() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.er_status = ErStatus::Waiting;
-            state.prefetch_queue.push_back("public.users".to_string());
-
-            state.prefetch_queue.pop_front();
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_status == ErStatus::Waiting && prefetch_complete {
-                state.er_status = ErStatus::Idle;
-            }
-
-            assert_eq!(state.er_status, ErStatus::Idle);
-        }
-
-        #[test]
-        fn rendering_on_diagram_opened_transitions_to_idle() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.er_status = ErStatus::Rendering;
-
-            state.er_status = ErStatus::Idle;
-
-            assert_eq!(state.er_status, ErStatus::Idle);
-        }
-
-        #[test]
-        fn rendering_on_diagram_failed_transitions_to_idle() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.er_status = ErStatus::Rendering;
-
-            state.er_status = ErStatus::Idle;
-
-            assert_eq!(state.er_status, ErStatus::Idle);
-        }
-
-        #[test]
-        fn waiting_with_in_flight_tables_remains_waiting() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.er_status = ErStatus::Waiting;
-            state.prefetching_tables.insert("public.orders".to_string());
-
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-
-            assert!(!prefetch_complete);
-            assert_eq!(state.er_status, ErStatus::Waiting);
+            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
         }
     }
 
@@ -640,14 +575,15 @@ mod tests {
         }
 
         #[test]
-        fn resets_er_status_to_idle() {
+        fn resets_er_preparation() {
+            use crate::app::er_state::ErStatus;
+
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.er_status = ErStatus::Waiting;
+            state.er_preparation.status = ErStatus::Waiting;
 
-            // Simulate ReloadMetadata reset
-            state.er_status = ErStatus::Idle;
+            state.er_preparation.reset();
 
-            assert_eq!(state.er_status, ErStatus::Idle);
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
 
         #[test]
