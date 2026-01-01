@@ -122,9 +122,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        // Inspector sub-tab navigation ([ and ])
-        KeyCode::Char('[') => Action::InspectorPrevTab,
-        KeyCode::Char(']') => Action::InspectorNextTab,
+        // Inspector sub-tab navigation (Tab/Shift+Tab, only when Inspector focused)
+        KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
+        KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
         // Console: open pgcli directly
         KeyCode::Char('c') => Action::OpenConsole,
@@ -410,21 +410,53 @@ mod tests {
         }
 
         #[test]
-        fn bracket_left_returns_inspector_prev_tab() {
-            let state = browse_state();
+        fn tab_switches_inspector_tab_when_inspector_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Inspector;
 
-            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
+            let result = handle_normal_mode(key(KeyCode::Tab), &state);
+
+            assert!(matches!(result, Action::InspectorNextTab));
+        }
+
+        #[test]
+        fn shift_tab_switches_inspector_tab_prev_when_inspector_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Inspector;
+
+            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
 
             assert!(matches!(result, Action::InspectorPrevTab));
         }
 
         #[test]
-        fn bracket_right_returns_inspector_next_tab() {
-            let state = browse_state();
+        fn tab_does_nothing_when_explorer_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
+            let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
-            assert!(matches!(result, Action::InspectorNextTab));
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn tab_does_nothing_when_result_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Result;
+
+            let result = handle_normal_mode(key(KeyCode::Tab), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn backtab_does_nothing_when_explorer_focused() {
+            let mut state = browse_state();
+            state.focused_pane = FocusedPane::Explorer;
+
+            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
