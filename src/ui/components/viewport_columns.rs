@@ -65,8 +65,6 @@ fn shrink_columns(
     excess
 }
 
-const SLACK_MAX_ABSORPTION: u16 = 50;
-
 fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
     if widths.is_empty() {
         return;
@@ -77,12 +75,11 @@ fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
         return;
     }
 
+    // No upper limit: only called when max_offset == 0 (no scroll needed)
     let slack = available_width - current_total;
-    let rightmost = widths.last_mut().unwrap();
-    let max_absorption = SLACK_MAX_ABSORPTION.saturating_sub(*rightmost);
-    let absorption = slack.min(max_absorption);
-
-    *rightmost += absorption;
+    if let Some(rightmost) = widths.last_mut() {
+        *rightmost += slack;
+    }
 }
 
 pub fn select_viewport_columns(
@@ -836,20 +833,19 @@ mod tests {
         }
 
         #[test]
-        fn respects_max_width_limit() {
+        fn absorbs_all_slack_without_limit() {
             let ideal = vec![40, 40];
             let min = vec![10, 10];
             let cfg = config(&ideal, &min);
 
             // 40+40 + 1sep = 81, available = 120, slack = 39
-            // rightmost = 40, max_absorption = 50 - 40 = 10
             let (_, widths) = select_viewport_columns(
                 &cfg,
                 &ctx_with_slack(0, 120, Some(2), 0, SlackPolicy::RightmostLimited),
             );
 
-            assert!(widths[1] <= SLACK_MAX_ABSORPTION);
-            assert_eq!(widths[1], 50); // 40 + 10 (capped)
+            assert_eq!(widths[0], 40);
+            assert_eq!(widths[1], 79); // 40 + 39 (all slack absorbed)
         }
 
         #[test]
