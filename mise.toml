@@ -6,15 +6,11 @@ description = "Build the project"
 run = "cargo build -q"
 sources = ["Cargo.toml", "src/**/*.rs"]
 
-[tasks.check]
-description = "Type check"
-run = "cargo check -q"
-
 [tasks.fmt]
 description = "Format code"
 run = "cargo fmt"
 
-[tasks.clippy]
+[tasks.lint]
 description = "Run lints"
 run = "cargo clippy -- -D warnings"
 
