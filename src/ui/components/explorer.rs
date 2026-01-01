@@ -54,11 +54,7 @@ impl Explorer {
         } else {
             Vec::new()
         };
-        let max_name_width = table_names
-            .iter()
-            .map(|n| char_count(n))
-            .max()
-            .unwrap_or(0);
+        let max_name_width = table_names.iter().map(|n| char_count(n)).max().unwrap_or(0);
         let h_offset = state.explorer_horizontal_offset;
 
         let items: Vec<ListItem> = if has_cached_data {
@@ -166,75 +162,56 @@ fn char_count(s: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     mod truncate_with_offset {
         use super::*;
 
-        #[test]
-        fn ascii_basic() {
-            assert_eq!(truncate_with_offset("abcdefgh", 0, 5), "abcde");
+        #[rstest]
+        #[case("abcdefgh", 0, 5, "abcde")]
+        #[case("abcdefgh", 2, 4, "cdef")]
+        #[case("abc", 3, 5, "")]
+        #[case("abc", 10, 5, "")]
+        fn ascii_input_returns_expected_substring(
+            #[case] input: &str,
+            #[case] offset: usize,
+            #[case] max_width: usize,
+            #[case] expected: &str,
+        ) {
+            let result = truncate_with_offset(input, offset, max_width);
+
+            assert_eq!(result, expected);
         }
 
-        #[test]
-        fn ascii_with_offset() {
-            assert_eq!(truncate_with_offset("abcdefgh", 2, 4), "cdef");
-        }
+        #[rstest]
+        #[case("日本語テスト", 0, 3, "日本語")]
+        #[case("日本語テスト", 2, 3, "語テス")]
+        #[case("public.日本語_table", 0, 10, "public.日本語")]
+        #[case("🎉table🎊", 0, 6, "🎉table")]
+        fn unicode_input_returns_expected_substring(
+            #[case] input: &str,
+            #[case] offset: usize,
+            #[case] max_width: usize,
+            #[case] expected: &str,
+        ) {
+            let result = truncate_with_offset(input, offset, max_width);
 
-        #[test]
-        fn offset_at_end() {
-            assert_eq!(truncate_with_offset("abc", 3, 5), "");
-        }
-
-        #[test]
-        fn offset_beyond_end() {
-            assert_eq!(truncate_with_offset("abc", 10, 5), "");
-        }
-
-        #[test]
-        fn japanese_no_panic() {
-            let s = "日本語テスト";
-            let result = truncate_with_offset(s, 0, 3);
-            assert_eq!(result, "日本語");
-        }
-
-        #[test]
-        fn japanese_with_offset() {
-            let s = "日本語テスト";
-            let result = truncate_with_offset(s, 2, 3);
-            assert_eq!(result, "語テス");
-        }
-
-        #[test]
-        fn mixed_ascii_unicode() {
-            let s = "public.日本語_table";
-            let result = truncate_with_offset(s, 0, 10);
-            assert_eq!(result, "public.日本語");
-        }
-
-        #[test]
-        fn emoji_handling() {
-            let s = "🎉table🎊";
-            let result = truncate_with_offset(s, 0, 6);
-            assert_eq!(result, "🎉table");
+            assert_eq!(result, expected);
         }
     }
 
     mod char_count {
         use super::*;
 
-        #[test]
-        fn ascii() {
-            assert_eq!(char_count("hello"), 5);
-        }
+        #[rstest]
+        #[case("hello", 5)]
+        #[case("日本語", 3)]
+        #[case("hello日本語", 8)]
+        #[case("", 0)]
+        fn input_returns_character_count(#[case] input: &str, #[case] expected: usize) {
+            let result = char_count(input);
 
-        #[test]
-        fn japanese() {
-            assert_eq!(char_count("日本語"), 3);
-        }
-
-        #[test]
-        fn mixed() {
-            assert_eq!(char_count("hello日本語"), 8);
+            assert_eq!(result, expected);
         }
     }
 }
