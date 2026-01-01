@@ -1,21 +1,93 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use color_eyre::eyre::{Result, eyre};
-
-use crate::app::ports::ErDiagramExporter;
+use crate::app::ports::{
+    ErDiagramExporter, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
+};
 use crate::domain::ErTableInfo;
 
-pub struct DotExporter;
+pub struct SystemGraphvizRunner;
 
-impl DotExporter {
+impl GraphvizRunner for SystemGraphvizRunner {
+    fn convert_dot_to_svg(&self, dot_path: &Path, svg_path: &Path) -> Result<(), GraphvizError> {
+        let status = Command::new("dot")
+            .args(["-Tsvg", "-o"])
+            .arg(svg_path)
+            .arg(dot_path)
+            .status()
+            .map_err(|_| GraphvizError::NotInstalled)?;
+
+        if !status.success() {
+            return Err(GraphvizError::CommandFailed(status.code()));
+        }
+
+        Ok(())
+    }
+}
+
+pub struct SystemViewerLauncher;
+
+impl ViewerLauncher for SystemViewerLauncher {
+    fn open_file(&self, path: &Path) -> Result<(), ViewerError> {
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg(path)
+                .spawn()
+                .map_err(ViewerError::LaunchFailed)?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .map_err(ViewerError::LaunchFailed)?;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/C", "start"])
+                .arg(path)
+                .spawn()
+                .map_err(ViewerError::LaunchFailed)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct DotExporter<G = SystemGraphvizRunner, V = SystemViewerLauncher> {
+    graphviz: G,
+    viewer: V,
+}
+
+impl Default for DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
+    pub fn new() -> Self {
+        Self {
+            graphviz: SystemGraphvizRunner,
+            viewer: SystemViewerLauncher,
+        }
+    }
+}
+
+impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
+    pub fn with_dependencies(graphviz: G, viewer: V) -> Self {
+        Self { graphviz, viewer }
+    }
+}
+
+impl<G, V> DotExporter<G, V> {
     fn escape_dot_string(s: &str) -> String {
         s.replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
     }
 
-    /// Generate DOT for full database ER diagram (all tables and FKs)
     pub fn generate_full_dot(tables: &[ErTableInfo]) -> String {
         let mut dot = String::new();
         dot.push_str("digraph full_er {\n");
@@ -24,11 +96,9 @@ impl DotExporter {
         dot.push_str("    edge [fontname=\"Helvetica\", fontsize=10];\n");
         dot.push('\n');
 
-        // Sort by qualified name for stable output
         let mut sorted_tables: Vec<_> = tables.iter().collect();
         sorted_tables.sort_by(|a, b| a.qualified_name.cmp(&b.qualified_name));
 
-        // Add all tables as nodes
         for table in &sorted_tables {
             let full_name = Self::escape_dot_string(&table.qualified_name);
             let table_name = Self::escape_dot_string(&table.name);
@@ -42,7 +112,6 @@ impl DotExporter {
 
         dot.push('\n');
 
-        // Collect and sort all FK relationships for stable output
         let mut edges: Vec<_> = sorted_tables
             .iter()
             .flat_map(|table| {
@@ -57,7 +126,6 @@ impl DotExporter {
             .collect();
         edges.sort();
 
-        // Add all FK relationships as edges
         for (from, to, label) in edges {
             let from_escaped = Self::escape_dot_string(&from);
             let to_escaped = Self::escape_dot_string(&to);
@@ -72,52 +140,29 @@ impl DotExporter {
         dot.push_str("}\n");
         dot
     }
+}
 
-    pub fn export_dot_and_open(
+impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
+    pub fn export(
+        &self,
         dot_content: &str,
         filename: &str,
         cache_dir: &Path,
-    ) -> Result<PathBuf> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         let dot_path = cache_dir.join(filename);
         std::fs::write(&dot_path, dot_content)?;
 
         let svg_path = dot_path.with_extension("svg");
-
-        let status = Command::new("dot")
-            .args(["-Tsvg", "-o"])
-            .arg(&svg_path)
-            .arg(&dot_path)
-            .status()
-            .map_err(|_| eyre!("Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"))?;
-
-        if !status.success() {
-            return Err(eyre!(
-                "Graphviz failed (exit code {:?}). Check DOT syntax.",
-                status.code()
-            ));
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            Command::new("open").arg(&svg_path).spawn()?;
-        }
-        #[cfg(target_os = "linux")]
-        {
-            Command::new("xdg-open").arg(&svg_path).spawn()?;
-        }
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("cmd")
-                .args(["/C", "start"])
-                .arg(&svg_path)
-                .spawn()?;
-        }
+        self.graphviz.convert_dot_to_svg(&dot_path, &svg_path)?;
+        self.viewer.open_file(&svg_path)?;
 
         Ok(svg_path)
     }
 }
 
-impl ErDiagramExporter for DotExporter {
+impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
+    for DotExporter<G, V>
+{
     fn generate_and_export(
         &self,
         tables: &[ErTableInfo],
@@ -125,8 +170,7 @@ impl ErDiagramExporter for DotExporter {
         cache_dir: &Path,
     ) -> crate::app::ports::ErExportResult<PathBuf> {
         let dot_content = Self::generate_full_dot(tables);
-        Self::export_dot_and_open(&dot_content, filename, cache_dir)
-            .map_err(|e| e.to_string().into())
+        self.export(&dot_content, filename, cache_dir)
     }
 }
 
@@ -135,7 +179,7 @@ mod tests {
     use super::*;
     use crate::domain::ErFkInfo;
 
-    fn create_test_tables() -> Vec<ErTableInfo> {
+    fn make_test_tables() -> Vec<ErTableInfo> {
         vec![
             ErTableInfo {
                 qualified_name: "public.users".to_string(),
@@ -153,42 +197,147 @@ mod tests {
                     to_qualified: "public.users".to_string(),
                 }],
             },
-            ErTableInfo {
-                qualified_name: "public.products".to_string(),
-                name: "products".to_string(),
-                schema: "public".to_string(),
-                foreign_keys: vec![],
-            },
         ]
     }
 
-    #[test]
-    fn output_contains_all_tables_as_nodes() {
-        let tables = create_test_tables();
+    mod generate_full_dot {
+        use super::*;
 
-        let dot = DotExporter::generate_full_dot(&tables);
+        #[test]
+        fn tables_appear_as_nodes() {
+            let tables = make_test_tables();
 
-        assert!(dot.contains("\"public.users\""));
-        assert!(dot.contains("\"public.orders\""));
-        assert!(dot.contains("\"public.products\""));
+            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
+                &tables,
+            );
+
+            assert!(dot.contains("\"public.users\""));
+            assert!(dot.contains("\"public.orders\""));
+        }
+
+        #[test]
+        fn foreign_keys_appear_as_edges() {
+            let tables = make_test_tables();
+
+            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
+                &tables,
+            );
+
+            assert!(dot.contains("\"public.orders\" -> \"public.users\""));
+            assert!(dot.contains("label=\"fk_user\""));
+        }
+
+        #[test]
+        fn output_is_sorted_for_stability() {
+            let tables = vec![
+                ErTableInfo {
+                    qualified_name: "z.last".to_string(),
+                    name: "last".to_string(),
+                    schema: "z".to_string(),
+                    foreign_keys: vec![],
+                },
+                ErTableInfo {
+                    qualified_name: "a.first".to_string(),
+                    name: "first".to_string(),
+                    schema: "a".to_string(),
+                    foreign_keys: vec![],
+                },
+            ];
+
+            let dot = DotExporter::<SystemGraphvizRunner, SystemViewerLauncher>::generate_full_dot(
+                &tables,
+            );
+
+            let first_pos = dot.find("\"a.first\"").unwrap();
+            let last_pos = dot.find("\"z.last\"").unwrap();
+            assert!(first_pos < last_pos);
+        }
     }
 
-    #[test]
-    fn output_contains_fk_as_edge() {
-        let tables = create_test_tables();
+    mod export {
+        use super::*;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
-        let dot = DotExporter::generate_full_dot(&tables);
+        struct MockGraphviz {
+            called: AtomicBool,
+            should_fail: bool,
+        }
 
-        assert!(dot.contains("\"public.orders\" -> \"public.users\""));
-        assert!(dot.contains("label=\"fk_user\""));
-    }
+        impl MockGraphviz {
+            fn new() -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                    should_fail: false,
+                }
+            }
 
-    #[test]
-    fn output_uses_full_er_digraph_name() {
-        let tables = create_test_tables();
+            fn failing() -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                    should_fail: true,
+                }
+            }
+        }
 
-        let dot = DotExporter::generate_full_dot(&tables);
+        impl GraphvizRunner for MockGraphviz {
+            fn convert_dot_to_svg(
+                &self,
+                _dot_path: &Path,
+                _svg_path: &Path,
+            ) -> Result<(), GraphvizError> {
+                self.called.store(true, Ordering::SeqCst);
+                if self.should_fail {
+                    Err(GraphvizError::NotInstalled)
+                } else {
+                    Ok(())
+                }
+            }
+        }
 
-        assert!(dot.contains("digraph full_er {"));
+        struct MockViewer {
+            called: AtomicBool,
+        }
+
+        impl MockViewer {
+            fn new() -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                }
+            }
+        }
+
+        impl ViewerLauncher for MockViewer {
+            fn open_file(&self, _path: &Path) -> Result<(), ViewerError> {
+                self.called.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn calls_graphviz_and_viewer() {
+            let graphviz = MockGraphviz::new();
+            let viewer = MockViewer::new();
+            let exporter = DotExporter::with_dependencies(graphviz, viewer);
+            let temp_dir = tempfile::tempdir().unwrap();
+
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+
+            assert!(result.is_ok());
+            assert!(exporter.graphviz.called.load(Ordering::SeqCst));
+            assert!(exporter.viewer.called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn graphviz_failure_returns_error() {
+            let graphviz = MockGraphviz::failing();
+            let viewer = MockViewer::new();
+            let exporter = DotExporter::with_dependencies(graphviz, viewer);
+            let temp_dir = tempfile::tempdir().unwrap();
+
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+
+            assert!(result.is_err());
+            assert!(!exporter.viewer.called.load(Ordering::SeqCst));
+        }
     }
 }

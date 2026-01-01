@@ -1233,7 +1233,7 @@ async fn handle_action(
             let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.project_name)?;
 
-            let exporter = Arc::new(DotExporter);
+            let exporter = Arc::new(DotExporter::new());
             spawn_er_diagram_task(exporter, tables, total_tables, cache_dir, action_tx.clone());
         }
 
