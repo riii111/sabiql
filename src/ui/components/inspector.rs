@@ -5,7 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    calculate_max_offset, calculate_viewport_column_count, select_viewport_columns,
+    ColumnWidthConfig, calculate_max_offset, calculate_viewport_column_count,
+    select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
@@ -160,15 +161,15 @@ impl Inspector {
             })
             .collect();
 
+        let header_min_widths = calculate_header_min_widths(&headers);
         let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
 
-        // Recalculate column count on resize or data change
         let needs_recalc = stored_column_count == 0
             || stored_available_width != available_width
             || stored_column_widths_len != all_ideal_widths.len();
 
         let viewport_column_count = if needs_recalc {
-            calculate_viewport_column_count(&all_ideal_widths, available_width)
+            calculate_viewport_column_count(&header_min_widths, available_width)
         } else {
             stored_column_count
         };
@@ -176,8 +177,12 @@ impl Inspector {
         let max_offset = calculate_max_offset(all_ideal_widths.len(), viewport_column_count);
         let clamped_offset = horizontal_offset.min(max_offset);
 
+        let config = ColumnWidthConfig {
+            ideal_widths: &all_ideal_widths,
+            min_widths: &header_min_widths,
+        };
         let (viewport_indices, viewport_widths) = select_viewport_columns(
-            &all_ideal_widths,
+            &config,
             clamped_offset,
             available_width,
             Some(viewport_column_count),
@@ -534,13 +539,21 @@ impl Inspector {
     }
 }
 
+const MIN_COL_WIDTH: u16 = 4;
+const PADDING: u16 = 2;
+
+fn calculate_header_min_widths(headers: &[&str]) -> Vec<u16> {
+    headers
+        .iter()
+        .map(|h| (h.chars().count() as u16 + PADDING).max(MIN_COL_WIDTH))
+        .collect()
+}
+
 /// Returns (clamped_widths, true_total_width)
 /// - clamped_widths: widths clamped to MIN/MAX for rendering
 /// - true_total_width: sum of unclamped widths (for scroll detection)
 fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
-    const MIN_WIDTH: u16 = 4;
     const MAX_WIDTH: u16 = 40;
-    const PADDING: u16 = 2;
 
     let mut true_total: u16 = 0;
     let clamped: Vec<u16> = headers
@@ -557,7 +570,7 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>,
 
             let true_width = max_width as u16 + PADDING;
             true_total += true_width;
-            true_width.clamp(MIN_WIDTH, MAX_WIDTH)
+            true_width.clamp(MIN_COL_WIDTH, MAX_WIDTH)
         })
         .collect();
 

@@ -6,7 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::viewport_columns::{
-    calculate_max_offset, calculate_viewport_column_count, select_viewport_columns,
+    ColumnWidthConfig, calculate_max_offset, calculate_viewport_column_count,
+    select_viewport_columns,
 };
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -152,15 +153,15 @@ impl ResultPane {
             return (0, Vec::new(), inner.width, 0);
         }
 
+        let header_min_widths = calculate_header_min_widths(&result.columns);
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
 
-        // Recalculate column count on resize or data change
         let needs_recalc = stored_column_count == 0
             || stored_available_width != inner.width
             || stored_column_widths_len != all_ideal_widths.len();
 
         let viewport_column_count = if needs_recalc {
-            calculate_viewport_column_count(&all_ideal_widths, inner.width)
+            calculate_viewport_column_count(&header_min_widths, inner.width)
         } else {
             stored_column_count
         };
@@ -168,8 +169,12 @@ impl ResultPane {
         let max_offset = calculate_max_offset(all_ideal_widths.len(), viewport_column_count);
         let clamped_offset = horizontal_offset.min(max_offset);
 
+        let config = ColumnWidthConfig {
+            ideal_widths: &all_ideal_widths,
+            min_widths: &header_min_widths,
+        };
         let (viewport_indices, viewport_widths) = select_viewport_columns(
-            &all_ideal_widths,
+            &config,
             clamped_offset,
             inner.width,
             Some(viewport_column_count),
@@ -269,11 +274,19 @@ impl ResultPane {
     }
 }
 
+const MIN_COL_WIDTH: u16 = 4;
+const PADDING: u16 = 2;
+
+fn calculate_header_min_widths(headers: &[String]) -> Vec<u16> {
+    headers
+        .iter()
+        .map(|h| (h.chars().count() as u16 + PADDING).max(MIN_COL_WIDTH))
+        .collect()
+}
+
 /// Calculate ideal widths for all columns (no scaling, just content-based).
 fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
-    const MIN_WIDTH: u16 = 4;
     const MAX_WIDTH: u16 = 50;
-    const PADDING: u16 = 2;
     const SAMPLE_ROWS: usize = 50;
 
     headers
@@ -291,7 +304,7 @@ fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> 
                 }
             }
 
-            (max_width as u16 + PADDING).clamp(MIN_WIDTH, MAX_WIDTH)
+            (max_width as u16 + PADDING).clamp(MIN_COL_WIDTH, MAX_WIDTH)
         })
         .collect()
 }
