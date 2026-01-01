@@ -647,8 +647,8 @@ async fn handle_action(
                 state.failed_prefetch_tables.clear();
                 completion_engine.borrow_mut().clear_table_cache();
 
-                // Reset ER status and clear stale messages
-                state.er_preparation.status = ErStatus::Idle;
+                // Reset ER preparation state and clear stale messages
+                state.er_preparation.reset();
                 state.last_error = None;
                 state.last_success = None;
                 state.message_expires_at = None;
@@ -721,22 +721,21 @@ async fn handle_action(
             const PREFETCH_BACKOFF_SECS: u64 = 30;
             let qualified_name = format!("{}.{}", schema, table);
 
-            // Check if recently failed (backoff to avoid repeated failures)
             let recently_failed = state
                 .failed_prefetch_tables
                 .get(&qualified_name)
                 .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
-            // Why 2-stage duplicate check (here + missing_tables)?
-            // Skip if already prefetching, cached, or recently failed (race condition guard)
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
                 // skip
             } else if let Some(dsn) = &state.dsn {
-                state.prefetching_tables.insert(qualified_name);
+                state.prefetching_tables.insert(qualified_name.clone());
+                state.er_preparation.pending_tables.remove(&qualified_name);
+                state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
                 let schema = schema.clone();
                 let table = table.clone();
@@ -776,11 +775,11 @@ async fn handle_action(
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state.failed_prefetch_tables.remove(&qualified_name);
+            state.er_preparation.on_table_cached(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            // Only trigger completion when queue is empty to avoid repeated recalculation
             if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
@@ -789,20 +788,20 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
-            // Notify user when prefetch completes while in Waiting state
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_preparation.status == ErStatus::Waiting && prefetch_complete {
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
                 state.er_preparation.status = ErStatus::Idle;
-                if state.failed_prefetch_tables.is_empty() {
+                if !state.er_preparation.has_failures() {
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
-                    let failed_count = state.failed_prefetch_tables.len();
+                    let failed_count = state.er_preparation.failed_tables.len();
                     let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                         let failed_data: Vec<(String, String)> = state
-                            .failed_prefetch_tables
+                            .er_preparation
+                            .failed_tables
                             .iter()
-                            .map(|(k, (_, v))| (k.clone(), v.clone()))
+                            .map(|(k, v)| (k.clone(), v.clone()))
                             .collect();
                         tokio::task::spawn_blocking(move || {
                             write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
@@ -834,22 +833,26 @@ async fn handle_action(
             state.prefetching_tables.remove(&qualified_name);
             state
                 .failed_prefetch_tables
-                .insert(qualified_name, (Instant::now(), error));
+                .insert(qualified_name.clone(), (Instant::now(), error.clone()));
+            state
+                .er_preparation
+                .on_table_failed(&qualified_name, error);
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
             // Notify user when prefetch completes while in Waiting state
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_preparation.status == ErStatus::Waiting && prefetch_complete {
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
                 state.er_preparation.status = ErStatus::Idle;
-                let failed_count = state.failed_prefetch_tables.len();
+                let failed_count = state.er_preparation.failed_tables.len();
                 let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                     let failed_data: Vec<(String, String)> = state
-                        .failed_prefetch_tables
+                        .er_preparation
+                        .failed_tables
                         .iter()
-                        .map(|(k, (_, v))| (k.clone(), v.clone()))
+                        .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     tokio::task::spawn_blocking(move || {
                         write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
@@ -877,12 +880,17 @@ async fn handle_action(
             {
                 state.prefetch_started = true;
                 state.prefetch_queue.clear();
+                state.er_preparation.started = true;
+                state.er_preparation.pending_tables.clear();
+                state.er_preparation.fetching_tables.clear();
+                state.er_preparation.failed_tables.clear();
                 {
                     let engine = completion_engine.borrow();
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
                         if !engine.has_cached_table(&qualified_name) {
-                            state.prefetch_queue.push_back(qualified_name);
+                            state.prefetch_queue.push_back(qualified_name.clone());
+                            state.er_preparation.pending_tables.insert(qualified_name);
                         }
                     }
                 }
@@ -1193,9 +1201,10 @@ async fn handle_action(
             }
 
             // Retry failed tables if any
-            if !state.failed_prefetch_tables.is_empty() {
+            if state.er_preparation.has_failures() {
                 let failed_tables: Vec<String> =
-                    state.failed_prefetch_tables.keys().cloned().collect();
+                    state.er_preparation.failed_tables.keys().cloned().collect();
+                state.er_preparation.retry_failed();
                 state.failed_prefetch_tables.clear();
 
                 for qualified_name in failed_tables {
@@ -1208,10 +1217,7 @@ async fn handle_action(
             }
 
             // Check if prefetch is complete
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-
-            if !prefetch_complete {
+            if !state.er_preparation.is_complete() {
                 state.er_preparation.status = ErStatus::Waiting;
                 return Ok(());
             }
