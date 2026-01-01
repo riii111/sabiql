@@ -181,6 +181,7 @@ impl Inspector {
             clamped_offset,
             available_width,
             Some(viewport_column_count),
+            max_offset,
         );
 
         if viewport_indices.is_empty() {
