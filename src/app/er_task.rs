@@ -71,10 +71,13 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    mod spawn_er_diagram_task_tests {
+    mod spawn_er_diagram_task {
         use super::*;
 
-        struct SuccessExporter;
+        struct SuccessExporter {
+            output_path: PathBuf,
+        }
+
         impl ErDiagramExporter for SuccessExporter {
             fn generate_and_export(
                 &self,
@@ -82,7 +85,7 @@ mod tests {
                 _filename: &str,
                 _cache_dir: &Path,
             ) -> ErExportResult<PathBuf> {
-                Ok(PathBuf::from("/tmp/test.svg"))
+                Ok(self.output_path.clone())
             }
         }
 
@@ -110,18 +113,25 @@ mod tests {
             }
         }
 
-        #[tokio::test]
-        async fn success_sends_opened_action() {
-            let (tx, mut rx) = mpsc::channel(1);
-            let exporter = Arc::new(SuccessExporter);
-
-            spawn_er_diagram_task(exporter, vec![], 5, PathBuf::from("/tmp"), tx);
-
-            let action = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+        async fn receive_action(rx: &mut mpsc::Receiver<Action>) -> Action {
+            tokio::time::timeout(Duration::from_secs(1), rx.recv())
                 .await
                 .expect("timeout")
-                .expect("channel closed");
+                .expect("channel closed")
+        }
 
+        #[tokio::test]
+        async fn success_sends_opened_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let output_path = temp_dir.path().join("test.svg");
+            let (tx, mut rx) = mpsc::channel(1);
+            let exporter = Arc::new(SuccessExporter {
+                output_path: output_path.clone(),
+            });
+
+            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
+
+            let action = receive_action(&mut rx).await;
             match action {
                 Action::ErDiagramOpened {
                     path,
@@ -138,16 +148,13 @@ mod tests {
 
         #[tokio::test]
         async fn error_sends_failed_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(FailExporter);
 
-            spawn_er_diagram_task(exporter, vec![], 5, PathBuf::from("/tmp"), tx);
+            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
 
-            let action = tokio::time::timeout(Duration::from_secs(1), rx.recv())
-                .await
-                .expect("timeout")
-                .expect("channel closed");
-
+            let action = receive_action(&mut rx).await;
             match action {
                 Action::ErDiagramFailed(msg) => {
                     assert!(msg.contains("export failed"));
@@ -158,16 +165,13 @@ mod tests {
 
         #[tokio::test]
         async fn panic_sends_failed_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(PanicExporter);
 
-            spawn_er_diagram_task(exporter, vec![], 5, PathBuf::from("/tmp"), tx);
+            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
 
-            let action = tokio::time::timeout(Duration::from_secs(1), rx.recv())
-                .await
-                .expect("timeout")
-                .expect("channel closed");
-
+            let action = receive_action(&mut rx).await;
             match action {
                 Action::ErDiagramFailed(msg) => {
                     assert!(msg.contains("Task panicked"));
@@ -177,11 +181,11 @@ mod tests {
         }
     }
 
-    mod write_er_failure_log {
+    mod write_er_failure_log_blocking {
         use super::*;
 
         #[test]
-        fn writes_failure_details_to_log_file() {
+        fn multiple_failures_writes_all_details() {
             let temp_dir = tempfile::tempdir().unwrap();
             let failed_tables = vec![
                 ("public.users".to_string(), "connection timeout".to_string()),
@@ -190,10 +194,7 @@ mod tests {
 
             write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf()).unwrap();
 
-            let log_path = temp_dir.path().join("er_diagram.log");
-            assert!(log_path.exists());
-
-            let content = std::fs::read_to_string(&log_path).unwrap();
+            let content = std::fs::read_to_string(temp_dir.path().join("er_diagram.log")).unwrap();
             assert!(content.contains("ER Diagram Generation Failed"));
             assert!(content.contains("Failed tables (2):"));
             assert!(content.contains("public.users: connection timeout"));
@@ -201,28 +202,26 @@ mod tests {
         }
 
         #[test]
-        fn writes_empty_list_when_no_failures() {
+        fn empty_list_writes_zero_count() {
             let temp_dir = tempfile::tempdir().unwrap();
-            let failed_tables: Vec<(String, String)> = vec![];
 
-            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf()).unwrap();
+            write_er_failure_log_blocking(vec![], temp_dir.path().to_path_buf()).unwrap();
 
-            let log_path = temp_dir.path().join("er_diagram.log");
-            assert!(log_path.exists());
-
-            let content = std::fs::read_to_string(&log_path).unwrap();
+            let content = std::fs::read_to_string(temp_dir.path().join("er_diagram.log")).unwrap();
             assert!(content.contains("Failed tables (0):"));
         }
 
         #[test]
-        fn includes_timestamp_in_log() {
+        fn output_includes_timestamp() {
             let temp_dir = tempfile::tempdir().unwrap();
-            let failed_tables = vec![("public.test".to_string(), "error".to_string())];
 
-            write_er_failure_log_blocking(failed_tables, temp_dir.path().to_path_buf()).unwrap();
+            write_er_failure_log_blocking(
+                vec![("t".to_string(), "e".to_string())],
+                temp_dir.path().to_path_buf(),
+            )
+            .unwrap();
 
-            let log_path = temp_dir.path().join("er_diagram.log");
-            let content = std::fs::read_to_string(&log_path).unwrap();
+            let content = std::fs::read_to_string(temp_dir.path().join("er_diagram.log")).unwrap();
             assert!(content.contains("Timestamp:"));
         }
     }
