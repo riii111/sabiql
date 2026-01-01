@@ -1,3 +1,3 @@
 pub mod dot;
 
-pub use dot::{DotExporter, ErTableInfo};
+pub use dot::DotExporter;
