@@ -783,23 +783,26 @@ async fn handle_action(
                 if state.failed_prefetch_tables.is_empty() {
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
-                    // Write failure log in background thread
-                    if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                    let failed_count = state.failed_prefetch_tables.len();
+                    let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                         let failed_data: Vec<(String, String)> = state
                             .failed_prefetch_tables
                             .iter()
                             .map(|(k, (_, v))| (k.clone(), v.clone()))
                             .collect();
-                        tokio::task::spawn_blocking(move || {
-                            // Log write errors are non-critical; ignore but propagate Result
-                            let _ = write_er_failure_log_blocking(failed_data, cache_dir);
-                        });
-                    }
-                    let failed_count = state.failed_prefetch_tables.len();
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
-                        failed_count
-                    ));
+                        write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                    } else {
+                        false
+                    };
+                    let msg = if log_written {
+                        format!(
+                            "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                            failed_count
+                        )
+                    } else {
+                        format!("ER failed: {} table(s) failed. 'e' to retry.", failed_count)
+                    };
+                    state.set_error(msg);
                 }
             }
         }
@@ -823,23 +826,26 @@ async fn handle_action(
                 state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
             if state.er_status == ErStatus::Waiting && prefetch_complete {
                 state.er_status = ErStatus::Idle;
-                // Write failure log in background thread
-                if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                let failed_count = state.failed_prefetch_tables.len();
+                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                     let failed_data: Vec<(String, String)> = state
                         .failed_prefetch_tables
                         .iter()
                         .map(|(k, (_, v))| (k.clone(), v.clone()))
                         .collect();
-                    tokio::task::spawn_blocking(move || {
-                        // Log write errors are non-critical; ignore but propagate Result
-                        let _ = write_er_failure_log_blocking(failed_data, cache_dir);
-                    });
-                }
-                let failed_count = state.failed_prefetch_tables.len();
-                state.set_error(format!(
-                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
-                    failed_count
-                ));
+                    write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                } else {
+                    false
+                };
+                let msg = if log_written {
+                    format!(
+                        "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                        failed_count
+                    )
+                } else {
+                    format!("ER failed: {} table(s) failed. 'e' to retry.", failed_count)
+                };
+                state.set_error(msg);
             }
         }
 

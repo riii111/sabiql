@@ -123,9 +123,10 @@ impl ErDiagramExporter for DotExporter {
         tables: &[ErTableInfo],
         filename: &str,
         cache_dir: &Path,
-    ) -> Result<PathBuf> {
+    ) -> crate::app::ports::ErExportResult<PathBuf> {
         let dot_content = Self::generate_full_dot(tables);
         Self::export_dot_and_open(&dot_content, filename, cache_dir)
+            .map_err(|e| e.to_string().into())
     }
 }
 
