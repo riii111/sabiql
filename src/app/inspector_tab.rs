@@ -49,3 +49,52 @@ impl InspectorTab {
         ]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_wraps_from_last_to_first() {
+        let tab = InspectorTab::Ddl;
+        let result = tab.next();
+        assert_eq!(result, InspectorTab::Columns);
+    }
+
+    #[test]
+    fn prev_wraps_from_first_to_last() {
+        let tab = InspectorTab::Columns;
+        let result = tab.prev();
+        assert_eq!(result, InspectorTab::Ddl);
+    }
+
+    #[test]
+    fn next_cycles_through_all_tabs() {
+        let mut tab = InspectorTab::Columns;
+        tab = tab.next();
+        assert_eq!(tab, InspectorTab::Indexes);
+        tab = tab.next();
+        assert_eq!(tab, InspectorTab::ForeignKeys);
+        tab = tab.next();
+        assert_eq!(tab, InspectorTab::Rls);
+        tab = tab.next();
+        assert_eq!(tab, InspectorTab::Ddl);
+        tab = tab.next();
+        assert_eq!(tab, InspectorTab::Columns);
+    }
+
+    #[test]
+    fn prev_cycles_through_all_tabs_backward() {
+        let mut tab = InspectorTab::Columns;
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::Ddl);
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::Rls);
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::ForeignKeys);
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::Indexes);
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::Columns);
+    }
+}
