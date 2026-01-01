@@ -920,9 +920,9 @@ async fn handle_action(
                     }
                 });
 
-                let adapter = PostgresAdapter::new();
+                let provider = metadata_provider.clone();
                 tokio::spawn(async move {
-                    match adapter.execute_preview(&dsn, &schema, &table, limit).await {
+                    match provider.execute_preview(&dsn, &schema, &table, limit).await {
                         Ok(result) => {
                             let _ = tx
                                 .send(Action::QueryCompleted(Box::new(result), generation))
@@ -945,9 +945,9 @@ async fn handle_action(
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
-                let adapter = PostgresAdapter::new();
+                let provider = metadata_provider.clone();
                 tokio::spawn(async move {
-                    match adapter.execute_adhoc(&dsn, &query).await {
+                    match provider.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
                             // Adhoc queries use generation 0 to always show results
                             let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;

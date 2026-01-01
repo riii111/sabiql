@@ -13,6 +13,116 @@ use crate::domain::{
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
+/// PostgreSQL allows DML inside CTEs (e.g., `WITH ... UPDATE`), so we can't
+/// just check if query starts with SELECT/WITH. We need to find the first
+/// top-level SQL verb outside of parentheses, string literals, and comments.
+/// Also rejects multiple statements and SELECT INTO (which creates tables).
+fn is_select_query(query: &str) -> bool {
+    let lower = query.trim().to_lowercase();
+    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    let len = chars.len();
+
+    let mut i = 0;
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut found_select = false;
+
+    while i < len {
+        let (byte_pos, c) = chars[i];
+
+        // Skip -- line comments
+        if c == '-' && i + 1 < len && chars[i + 1].1 == '-' {
+            while i < len && chars[i].1 != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Skip /* block comments */
+        if c == '/' && i + 1 < len && chars[i + 1].1 == '*' {
+            i += 2;
+            while i + 1 < len && !(chars[i].1 == '*' && chars[i + 1].1 == '/') {
+                i += 1;
+            }
+            i += 2; // skip */
+            continue;
+        }
+
+        // Handle string literals
+        if c == '\'' {
+            if in_string {
+                if i + 1 < len && chars[i + 1].1 == '\'' {
+                    i += 2; // escaped quote ''
+                    continue;
+                }
+                in_string = false;
+            } else {
+                in_string = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        if in_string {
+            i += 1;
+            continue;
+        }
+
+        if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+        }
+
+        // Reject multiple statements
+        if depth == 0 && c == ';' {
+            return false;
+        }
+
+        // At top level and word boundary, check for SQL keywords
+        if depth == 0 && is_word_start(&chars, i) {
+            let rest = &lower[byte_pos..];
+            if is_keyword(rest, "select") {
+                found_select = true;
+            }
+            // SELECT INTO creates a table, reject it
+            if is_keyword(rest, "into") && found_select {
+                return false;
+            }
+            if is_keyword(rest, "insert")
+                || is_keyword(rest, "update")
+                || is_keyword(rest, "delete")
+                || is_keyword(rest, "create")
+            {
+                return false;
+            }
+        }
+
+        i += 1;
+    }
+
+    found_select
+}
+
+fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
+    if i == 0 {
+        return true;
+    }
+    let prev = chars[i - 1].1;
+    !prev.is_alphanumeric() && prev != '_'
+}
+
+fn is_keyword(s: &str, keyword: &str) -> bool {
+    if !s.starts_with(keyword) {
+        return false;
+    }
+    s[keyword.len()..]
+        .chars()
+        .next()
+        .map(|c| !c.is_alphanumeric() && c != '_')
+        .unwrap_or(true)
+}
+
 pub struct PostgresAdapter {
     timeout_secs: u64,
 }
@@ -582,46 +692,6 @@ impl PostgresAdapter {
         ))
     }
 
-    /// Execute a preview query (SELECT * LIMIT N) for a table.
-    pub async fn execute_preview(
-        &self,
-        dsn: &str,
-        schema: &str,
-        table: &str,
-        limit: usize,
-    ) -> Result<QueryResult, MetadataError> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit
-        );
-        self.execute_query_raw(dsn, &query, QuerySource::Preview)
-            .await
-    }
-
-    /// Execute an adhoc SQL query.
-    /// For safety, only SELECT queries are allowed to use CSV output format.
-    /// Non-SELECT queries may produce NOTICE messages that break CSV parsing.
-    pub async fn execute_adhoc(
-        &self,
-        dsn: &str,
-        query: &str,
-    ) -> Result<QueryResult, MetadataError> {
-        // Check if query is a SELECT statement (basic validation)
-        let trimmed = query.trim();
-        let is_select = trimmed.to_lowercase().starts_with("select")
-            || trimmed.to_lowercase().starts_with("with"); // CTEs are also read-only
-
-        if !is_select {
-            return Err(MetadataError::QueryFailed(
-                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
-            ));
-        }
-
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
-    }
-
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
@@ -711,6 +781,33 @@ impl MetadataProvider for PostgresAdapter {
             row_count_estimate: None,
             comment: None,
         })
+    }
+
+    async fn execute_preview(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+    ) -> Result<QueryResult, MetadataError> {
+        let query = format!(
+            "SELECT * FROM {}.{} LIMIT {}",
+            quote_ident(schema),
+            quote_ident(table),
+            limit
+        );
+        self.execute_query_raw(dsn, &query, QuerySource::Preview)
+            .await
+    }
+
+    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
+        if !is_select_query(query) {
+            return Err(MetadataError::QueryFailed(
+                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
+            ));
+        }
+
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 }
 
@@ -889,6 +986,200 @@ mod tests {
 
             assert_eq!(headers[0], "id");
             assert_eq!(headers[1], "name");
+        }
+    }
+
+    mod rls_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_none(#[case] input: &str) {
+            let result = PostgresAdapter::parse_rls(input).unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_rls("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn disabled_rls_with_no_policies_returns_expected() {
+            let json = r#"{"enabled": false, "force": false, "policies": []}"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.expect("Should return Some(RlsInfo)");
+
+            assert!(!rls.enabled);
+            assert!(!rls.force);
+            assert!(rls.policies.is_empty());
+        }
+
+        #[test]
+        fn enabled_and_forced_rls_returns_expected() {
+            let json = r#"{"enabled": true, "force": true, "policies": []}"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+
+            assert!(rls.enabled);
+            assert!(rls.force);
+        }
+
+        #[test]
+        fn single_policy_parses_all_fields() {
+            let json = r#"{
+                "enabled": true,
+                "force": false,
+                "policies": [{
+                    "name": "tenant_isolation",
+                    "permissive": true,
+                    "roles": ["app_user", "admin"],
+                    "cmd": "r",
+                    "qual": "tenant_id = current_setting('app.tenant_id')::int",
+                    "with_check": null
+                }]
+            }"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+            let policy = &rls.policies[0];
+
+            assert_eq!(policy.name, "tenant_isolation");
+            assert!(policy.permissive);
+            assert_eq!(policy.roles, vec!["app_user", "admin"]);
+            assert_eq!(policy.cmd, RlsCommand::Select);
+            assert!(policy.qual.is_some());
+            assert!(policy.with_check.is_none());
+        }
+
+        #[rstest]
+        #[case("*", RlsCommand::All)]
+        #[case("r", RlsCommand::Select)]
+        #[case("a", RlsCommand::Insert)]
+        #[case("w", RlsCommand::Update)]
+        #[case("d", RlsCommand::Delete)]
+        #[case("x", RlsCommand::All)] // unknown defaults to All
+        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
+            let json = format!(
+                r#"{{"enabled": true, "force": false, "policies": [{{
+                    "name": "test", "permissive": true, "roles": null,
+                    "cmd": "{}", "qual": null, "with_check": null
+                }}]}}"#,
+                cmd
+            );
+
+            let result = PostgresAdapter::parse_rls(&json).unwrap();
+            let rls = result.unwrap();
+
+            assert_eq!(rls.policies[0].cmd, expected);
+        }
+
+        #[test]
+        fn null_roles_becomes_empty_vec() {
+            let json = r#"{
+                "enabled": true, "force": false,
+                "policies": [{"name": "p", "permissive": true, "roles": null, "cmd": "*", "qual": null, "with_check": null}]
+            }"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+
+            assert!(rls.policies[0].roles.is_empty());
+        }
+
+        #[test]
+        fn missing_required_field_returns_invalid_json_error() {
+            let json = r#"{"force": false, "policies": []}"#; // missing 'enabled'
+
+            let result = PostgresAdapter::parse_rls(json);
+
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+    }
+
+    mod select_validation {
+        use super::is_select_query;
+        use rstest::rstest;
+
+        #[rstest]
+        // Basic SELECT
+        #[case("SELECT * FROM users", true)]
+        #[case("select id from users", true)]
+        #[case("  SELECT id FROM users  ", true)]
+        // CTE with SELECT (allowed)
+        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
+        #[case("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
+        #[case("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b", true)]
+        // CTE with DML (rejected)
+        #[case("WITH cte AS (SELECT 1) UPDATE users SET name = 'x'", false)]
+        #[case("WITH cte AS (SELECT 1) DELETE FROM users", false)]
+        #[case("WITH cte AS (SELECT 1) INSERT INTO users VALUES (1)", false)]
+        #[case("with cte as (select 1) update users set name = 'x'", false)]
+        // Plain DML (rejected)
+        #[case("INSERT INTO users VALUES (1)", false)]
+        #[case("  insert into users (id) values (1)", false)]
+        #[case("UPDATE users SET name = 'new'", false)]
+        #[case("  update users set active = true", false)]
+        #[case("DELETE FROM users WHERE id = 1", false)]
+        #[case("  delete from users", false)]
+        // DDL (rejected)
+        #[case("CREATE TABLE foo (id INT)", false)]
+        #[case("DROP TABLE users", false)]
+        #[case("ALTER TABLE users ADD COLUMN foo INT", false)]
+        #[case("TRUNCATE users", false)]
+        // Empty/whitespace
+        #[case("", false)]
+        #[case("   ", false)]
+        // Parentheses after CTE
+        #[case("WITH cte AS (SELECT 1) SELECT (1+2)", true)]
+        #[case("WITH cte AS (SELECT 1) SELECT (SELECT 1)", true)]
+        // String literals containing parentheses
+        #[case("WITH cte AS (SELECT '(' FROM t) SELECT * FROM cte", true)]
+        #[case("SELECT * FROM t WHERE name = '(test)'", true)]
+        // Escaped quotes in strings
+        #[case("SELECT * FROM t WHERE name = 'it''s'", true)]
+        #[case("WITH cte AS (SELECT 'a''b') SELECT * FROM cte", true)]
+        // SQL keywords inside string literals
+        #[case("SELECT * FROM t WHERE action = 'delete'", true)]
+        #[case("SELECT * FROM t WHERE cmd = 'INSERT INTO'", true)]
+        // Identifiers containing keywords (word boundary test)
+        #[case("SELECT mydelete FROM t", true)]
+        #[case("SELECT delete_flag FROM t", true)]
+        #[case("WITH mydelete AS (SELECT 1) SELECT * FROM mydelete", true)]
+        #[case("SELECT * FROM users_to_delete", true)]
+        // SQL comments containing keywords
+        #[case("-- delete old records\nSELECT * FROM t", true)]
+        #[case("/* update cache */ SELECT * FROM t", true)]
+        #[case("SELECT * FROM t -- insert comment", true)]
+        #[case("SELECT /* delete */ * FROM t", true)]
+        // Non-ASCII characters (UTF-8 safety test)
+        #[case("SELECT * FROM \"ユーザー\"", true)]
+        #[case("SELECT name FROM users WHERE name = '日本語'", true)]
+        #[case("WITH cte AS (SELECT '中文') SELECT * FROM cte", true)]
+        // Multiple statements (rejected)
+        #[case("SELECT 1; DELETE FROM users", false)]
+        #[case("SELECT * FROM t; UPDATE t SET x = 1", false)]
+        #[case("SELECT 1; SELECT 2", false)]
+        // Semicolon in string is OK
+        #[case("SELECT * FROM t WHERE x = ';'", true)]
+        // SELECT INTO (rejected - creates table)
+        #[case("SELECT * INTO new_table FROM old_table", false)]
+        #[case("SELECT id, name INTO backup FROM users", false)]
+        // INTO in subquery is OK
+        #[case("SELECT * FROM (SELECT 1) AS sub", true)]
+        // INTO in string is OK
+        #[case("SELECT * FROM t WHERE x = 'INTO'", true)]
+        // CREATE TABLE AS SELECT (rejected)
+        #[case("CREATE TABLE t AS SELECT * FROM users", false)]
+        #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
+        fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
+            assert_eq!(is_select_query(query), expected);
         }
     }
 
