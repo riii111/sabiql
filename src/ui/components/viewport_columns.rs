@@ -1,5 +1,12 @@
 const MIN_COL_WIDTH: u16 = 4;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SlackPolicy {
+    #[default]
+    None,
+    RightmostLimited,
+}
+
 pub struct ColumnWidthConfig<'a> {
     pub ideal_widths: &'a [u16],
     pub min_widths: &'a [u16],
