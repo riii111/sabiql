@@ -6,7 +6,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::{MetadataError, MetadataProvider};
+use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary,
@@ -783,8 +783,6 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 }
-
-use crate::app::ports::QueryExecutor;
 
 #[async_trait]
 impl QueryExecutor for PostgresAdapter {

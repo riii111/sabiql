@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
         let _ = action_tx.send(Action::LoadMetadata).await;
     }
 
-    let cache_cleanup_interval = Duration::from_secs(300);
+    let cache_cleanup_interval = Duration::from_secs(150);
     let mut last_cache_cleanup = Instant::now();
 
     loop {
