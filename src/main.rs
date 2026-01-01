@@ -88,6 +88,9 @@ async fn main() -> Result<()> {
         let _ = action_tx.send(Action::LoadMetadata).await;
     }
 
+    let cache_cleanup_interval = Duration::from_secs(300);
+    let mut last_cache_cleanup = Instant::now();
+
     loop {
         tokio::select! {
             Some(event) = tui.next_event() => {
@@ -116,6 +119,11 @@ async fn main() -> Result<()> {
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
             _ => (),
+        }
+
+        if last_cache_cleanup.elapsed() >= cache_cleanup_interval {
+            metadata_cache.cleanup_expired().await;
+            last_cache_cleanup = Instant::now();
         }
 
         if state.should_quit {
