@@ -147,12 +147,14 @@ impl ResultPane {
         let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
         let current_min_widths_sum: u16 = header_min_widths.iter().sum();
         let current_ideal_widths_sum: u16 = all_ideal_widths.iter().sum();
+        let current_ideal_widths_max: u16 = all_ideal_widths.iter().copied().max().unwrap_or(0);
 
         let plan = if stored_plan.needs_recalculation(
             all_ideal_widths.len(),
             inner.width,
             current_min_widths_sum,
             current_ideal_widths_sum,
+            current_ideal_widths_max,
         ) {
             ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, inner.width)
         } else {
