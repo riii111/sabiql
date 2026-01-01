@@ -1,6 +1,4 @@
-pub const MIN_COL_WIDTH: u16 = 4;
-pub const PADDING: u16 = 2;
-pub const MAX_COL_WIDTH: u16 = 50;
+const MIN_COL_WIDTH: u16 = 4;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SlackPolicy {
