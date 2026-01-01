@@ -46,7 +46,8 @@ impl Explorer {
         let scrollbar_reserved: u16 = 1;
         let content_width = inner
             .width
-            .saturating_sub(highlight_symbol_width + scrollbar_reserved) as usize;
+            .saturating_sub(highlight_symbol_width + scrollbar_reserved)
+            as usize;
 
         let table_names: Vec<String> = if has_cached_data {
             state.tables().iter().map(|t| t.qualified_name()).collect()

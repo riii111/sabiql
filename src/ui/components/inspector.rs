@@ -85,39 +85,19 @@ impl Inspector {
                     &state.inspector_viewport_plan,
                 ),
                 InspectorTab::Indexes => {
-                    Self::render_indexes(
-                        frame,
-                        inner,
-                        table,
-                        state.inspector_scroll_offset,
-                    );
+                    Self::render_indexes(frame, inner, table, state.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
                 InspectorTab::ForeignKeys => {
-                    Self::render_foreign_keys(
-                        frame,
-                        inner,
-                        table,
-                        state.inspector_scroll_offset,
-                    );
+                    Self::render_foreign_keys(frame, inner, table, state.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
                 InspectorTab::Rls => {
-                    Self::render_rls(
-                        frame,
-                        inner,
-                        table,
-                        state.inspector_scroll_offset,
-                    );
+                    Self::render_rls(frame, inner, table, state.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    Self::render_ddl(
-                        frame,
-                        inner,
-                        table,
-                        state.inspector_scroll_offset,
-                    );
+                    Self::render_ddl(frame, inner, table, state.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
             }
@@ -446,12 +426,7 @@ impl Inspector {
         );
     }
 
-    fn render_rls(
-        frame: &mut Frame,
-        area: Rect,
-        table: &TableDetail,
-        scroll_offset: usize,
-    ) {
+    fn render_rls(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
         match &table.rls {
             None => {
                 let msg = Paragraph::new("RLS not enabled");
@@ -533,12 +508,7 @@ impl Inspector {
         }
     }
 
-    fn render_ddl(
-        frame: &mut Frame,
-        area: Rect,
-        table: &TableDetail,
-        scroll_offset: usize,
-    ) {
+    fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
         // Generate a simplified DDL representation with proper identifier quoting
         let mut ddl = format!(
             "CREATE TABLE {}.{} (\n",
