@@ -884,61 +884,34 @@ mod tests {
     }
 
     mod select_validation {
+        use rstest::rstest;
+
         fn is_select_query(query: &str) -> bool {
             let trimmed = query.trim();
             trimmed.to_lowercase().starts_with("select")
                 || trimmed.to_lowercase().starts_with("with")
         }
 
-        #[test]
-        fn accepts_simple_select() {
-            assert!(is_select_query("SELECT * FROM users"));
-            assert!(is_select_query("select id from users where id = 1"));
-            assert!(is_select_query("  SELECT id FROM users  "));
-        }
-
-        #[test]
-        fn accepts_cte_with() {
-            assert!(is_select_query(
-                "WITH cte AS (SELECT 1) SELECT * FROM cte"
-            ));
-            assert!(is_select_query(
-                "with recursive tree AS (SELECT 1) SELECT * FROM tree"
-            ));
-        }
-
-        #[test]
-        fn rejects_insert() {
-            assert!(!is_select_query("INSERT INTO users VALUES (1, 'name')"));
-            assert!(!is_select_query("  insert into users (id) values (1)"));
-        }
-
-        #[test]
-        fn rejects_update() {
-            assert!(!is_select_query(
-                "UPDATE users SET name = 'new' WHERE id = 1"
-            ));
-            assert!(!is_select_query("  update users set active = true"));
-        }
-
-        #[test]
-        fn rejects_delete() {
-            assert!(!is_select_query("DELETE FROM users WHERE id = 1"));
-            assert!(!is_select_query("  delete from users"));
-        }
-
-        #[test]
-        fn rejects_ddl_statements() {
-            assert!(!is_select_query("CREATE TABLE foo (id INT)"));
-            assert!(!is_select_query("DROP TABLE users"));
-            assert!(!is_select_query("ALTER TABLE users ADD COLUMN foo INT"));
-            assert!(!is_select_query("TRUNCATE users"));
-        }
-
-        #[test]
-        fn handles_empty_and_whitespace() {
-            assert!(!is_select_query(""));
-            assert!(!is_select_query("   "));
+        #[rstest]
+        #[case("SELECT * FROM users", true)]
+        #[case("select id from users", true)]
+        #[case("  SELECT id FROM users  ", true)]
+        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
+        #[case("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
+        #[case("INSERT INTO users VALUES (1)", false)]
+        #[case("  insert into users (id) values (1)", false)]
+        #[case("UPDATE users SET name = 'new'", false)]
+        #[case("  update users set active = true", false)]
+        #[case("DELETE FROM users WHERE id = 1", false)]
+        #[case("  delete from users", false)]
+        #[case("CREATE TABLE foo (id INT)", false)]
+        #[case("DROP TABLE users", false)]
+        #[case("ALTER TABLE users ADD COLUMN foo INT", false)]
+        #[case("TRUNCATE users", false)]
+        #[case("", false)]
+        #[case("   ", false)]
+        fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
+            assert_eq!(is_select_query(query), expected);
         }
     }
 }
