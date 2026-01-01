@@ -168,6 +168,7 @@ impl ResultPane {
             available_width: inner.width,
             fixed_count: Some(plan.column_count),
             max_offset: plan.max_offset,
+            slack_policy: plan.slack_policy,
         };
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
