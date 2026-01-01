@@ -100,4 +100,25 @@ mod tests {
         let result = cache.get(&"nonexistent".to_string()).await;
         assert_eq!(result, None);
     }
+
+    #[tokio::test]
+    async fn test_cache_returns_none_for_expired_entry() {
+        use tokio::time::sleep;
+
+        // 1-second TTL for fast expiration
+        let cache = TtlCache::new(1);
+        cache.set("key".to_string(), "value".to_string()).await;
+
+        // Value should exist immediately
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
+
+        // Wait for expiration
+        sleep(Duration::from_millis(1100)).await;
+
+        // Value should be expired
+        assert_eq!(cache.get(&"key".to_string()).await, None);
+    }
 }
