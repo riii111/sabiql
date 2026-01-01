@@ -17,6 +17,7 @@ pub struct SelectionContext {
     pub available_width: u16,
     pub fixed_count: Option<usize>,
     pub max_offset: usize,
+    pub slack_policy: SlackPolicy,
 }
 
 fn total_width_with_separators(widths: &[u16]) -> u16 {
@@ -92,10 +93,16 @@ pub fn select_viewport_columns(
         return (Vec::new(), Vec::new());
     }
 
-    match ctx.fixed_count {
+    let (indices, mut widths) = match ctx.fixed_count {
         Some(count) => select_fixed_columns(config, ctx, count),
         None => select_dynamic_columns(config, ctx.horizontal_offset, ctx.available_width),
+    };
+
+    if ctx.slack_policy == SlackPolicy::RightmostLimited {
+        apply_slack_to_rightmost(&mut widths, ctx.available_width);
     }
+
+    (indices, widths)
 }
 
 /// At right edge, drops leftmost column if shrinking isn't enough to preserve rightmost.
@@ -300,6 +307,7 @@ mod tests {
             available_width: width,
             fixed_count: fixed,
             max_offset: max,
+            slack_policy: SlackPolicy::None,
         }
     }
 
