@@ -173,6 +173,7 @@ impl ResultPane {
             clamped_offset,
             inner.width,
             Some(viewport_column_count),
+            max_offset,
         );
 
         if viewport_indices.is_empty() {
