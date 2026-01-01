@@ -1030,10 +1030,12 @@ async fn handle_action(
         }
 
         Action::ResultScrollRight => {
+            let plan = &state.result_viewport_plan;
+            let all_widths_len = plan.max_offset + plan.column_count;
             state.result_horizontal_offset = calculate_next_column_offset(
-                state.result_column_widths.len(),
+                all_widths_len,
                 state.result_horizontal_offset,
-                state.result_viewport_column_count,
+                plan.column_count,
             );
         }
 
@@ -1060,10 +1062,12 @@ async fn handle_action(
         }
 
         Action::InspectorScrollRight => {
+            let plan = &state.inspector_viewport_plan;
+            let all_widths_len = plan.max_offset + plan.column_count;
             state.inspector_horizontal_offset = calculate_next_column_offset(
-                state.inspector_column_widths.len(),
+                all_widths_len,
                 state.inspector_horizontal_offset,
-                state.inspector_viewport_column_count,
+                plan.column_count,
             );
         }
 
