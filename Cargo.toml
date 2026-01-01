@@ -25,6 +25,7 @@ csv = "1"
 pretty_assertions = "1"
 rstest = "0.19"
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
 
 [profile.release]
 lto = true
