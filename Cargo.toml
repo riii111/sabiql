@@ -9,7 +9,7 @@ repository = "https://github.com/riii111/dbtui-rs"
 [dependencies]
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
 futures = "0.3"
 color-eyre = "0.6"

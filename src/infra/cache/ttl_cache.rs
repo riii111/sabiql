@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tokio::sync::RwLock;
+use tokio::time::Instant;
 
 struct CacheEntry<V> {
     value: V,
@@ -99,5 +100,25 @@ mod tests {
         let cache: TtlCache<String, String> = TtlCache::new(60);
         let result = cache.get(&"nonexistent".to_string()).await;
         assert_eq!(result, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_cache_returns_none_for_expired_entry() {
+        use tokio::time::advance;
+
+        let cache = TtlCache::new(60);
+        cache.set("key".to_string(), "value".to_string()).await;
+
+        // Value should exist immediately
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
+
+        // Advance time past TTL
+        advance(Duration::from_secs(61)).await;
+
+        // Value should be expired
+        assert_eq!(cache.get(&"key".to_string()).await, None);
     }
 }

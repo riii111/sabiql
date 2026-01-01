@@ -688,4 +688,68 @@ mod tests {
             assert!(state.table_detail.is_none());
         }
     }
+
+    mod error_handling {
+        use super::*;
+
+        #[test]
+        fn set_error_clears_success_message() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.set_success("Success!".to_string());
+            assert!(state.last_success.is_some());
+
+            state.set_error("Error!".to_string());
+
+            assert_eq!(state.last_error, Some("Error!".to_string()));
+            assert!(state.last_success.is_none());
+        }
+
+        #[test]
+        fn set_success_clears_error_message() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.set_error("Error!".to_string());
+            assert!(state.last_error.is_some());
+
+            state.set_success("Success!".to_string());
+
+            assert_eq!(state.last_success, Some("Success!".to_string()));
+            assert!(state.last_error.is_none());
+        }
+
+        #[test]
+        fn set_error_sets_expiration_time() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            assert!(state.message_expires_at.is_none());
+
+            state.set_error("Error!".to_string());
+
+            assert!(state.message_expires_at.is_some());
+        }
+
+        #[test]
+        fn clear_expired_messages_removes_expired_messages() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.last_error = Some("Error".to_string());
+            // Set expiration to the past
+            state.message_expires_at = Some(Instant::now() - std::time::Duration::from_secs(1));
+
+            state.clear_expired_messages();
+
+            assert!(state.last_error.is_none());
+            assert!(state.message_expires_at.is_none());
+        }
+
+        #[test]
+        fn clear_expired_messages_keeps_unexpired_messages() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.last_error = Some("Error".to_string());
+            // Set expiration to the future
+            state.message_expires_at = Some(Instant::now() + std::time::Duration::from_secs(10));
+
+            state.clear_expired_messages();
+
+            assert!(state.last_error.is_some());
+            assert!(state.message_expires_at.is_some());
+        }
+    }
 }

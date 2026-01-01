@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod column;
+pub mod er;
 pub mod foreign_key;
 pub mod index;
 pub mod metadata;
@@ -11,6 +12,9 @@ pub mod schema;
 pub mod table;
 
 pub use column::Column;
+#[cfg(test)]
+pub use er::ErFkInfo;
+pub use er::ErTableInfo;
 pub use foreign_key::{FkAction, ForeignKey};
 pub use index::{Index, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};

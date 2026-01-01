@@ -12,4 +12,5 @@ pub mod scroll_indicator;
 pub mod sql_modal;
 pub mod status_message;
 pub mod table_picker;
+pub mod text_utils;
 pub mod viewport_columns;

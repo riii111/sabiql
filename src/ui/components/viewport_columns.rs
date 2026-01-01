@@ -453,12 +453,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(5, 100, 50, 150, 30, true)]  // width changes
-        #[case(5, 80, 50, 150, 30, false)]  // no change
-        #[case(10, 80, 50, 150, 30, true)]  // widths_len changes
-        #[case(5, 80, 60, 150, 30, true)]   // min_widths_sum changes
-        #[case(5, 80, 50, 200, 30, true)]   // ideal_widths_sum changes
-        #[case(5, 80, 50, 150, 50, true)]   // ideal_widths_max changes
+        #[case(5, 100, 50, 150, 30, true)] // width changes
+        #[case(5, 80, 50, 150, 30, false)] // no change
+        #[case(10, 80, 50, 150, 30, true)] // widths_len changes
+        #[case(5, 80, 60, 150, 30, true)] // min_widths_sum changes
+        #[case(5, 80, 50, 200, 30, true)] // ideal_widths_sum changes
+        #[case(5, 80, 50, 150, 50, true)] // ideal_widths_max changes
         fn needs_recalculation_returns_expected(
             #[case] len: usize,
             #[case] width: u16,
