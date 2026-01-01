@@ -10,3 +10,4 @@ pub mod ports;
 pub mod result_history;
 pub mod sql_lexer;
 pub mod state;
+pub mod tasks;
