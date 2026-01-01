@@ -16,6 +16,7 @@ use crate::infra::utils::{quote_ident, quote_literal};
 /// PostgreSQL allows DML inside CTEs (e.g., `WITH ... UPDATE`), so we can't
 /// just check if query starts with SELECT/WITH. We need to find the first
 /// top-level SQL verb outside of parentheses, string literals, and comments.
+/// Also rejects multiple statements and SELECT INTO (which creates tables).
 fn is_select_query(query: &str) -> bool {
     let lower = query.trim().to_lowercase();
     let chars: Vec<(usize, char)> = lower.char_indices().collect();
@@ -24,6 +25,7 @@ fn is_select_query(query: &str) -> bool {
     let mut i = 0;
     let mut depth = 0;
     let mut in_string = false;
+    let mut found_select = false;
 
     while i < len {
         let (byte_pos, c) = chars[i];
@@ -72,11 +74,20 @@ fn is_select_query(query: &str) -> bool {
             depth -= 1;
         }
 
+        // Reject multiple statements
+        if depth == 0 && c == ';' {
+            return false;
+        }
+
         // At top level and word boundary, check for SQL keywords
         if depth == 0 && is_word_start(&chars, i) {
             let rest = &lower[byte_pos..];
             if is_keyword(rest, "select") {
-                return true;
+                found_select = true;
+            }
+            // SELECT INTO creates a table, reject it
+            if is_keyword(rest, "into") && found_select {
+                return false;
             }
             if is_keyword(rest, "insert")
                 || is_keyword(rest, "update")
@@ -89,7 +100,7 @@ fn is_select_query(query: &str) -> bool {
         i += 1;
     }
 
-    false
+    found_select
 }
 
 fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
@@ -1150,6 +1161,19 @@ mod tests {
         #[case("SELECT * FROM \"ユーザー\"", true)]
         #[case("SELECT name FROM users WHERE name = '日本語'", true)]
         #[case("WITH cte AS (SELECT '中文') SELECT * FROM cte", true)]
+        // Multiple statements (rejected)
+        #[case("SELECT 1; DELETE FROM users", false)]
+        #[case("SELECT * FROM t; UPDATE t SET x = 1", false)]
+        #[case("SELECT 1; SELECT 2", false)]
+        // Semicolon in string is OK
+        #[case("SELECT * FROM t WHERE x = ';'", true)]
+        // SELECT INTO (rejected - creates table)
+        #[case("SELECT * INTO new_table FROM old_table", false)]
+        #[case("SELECT id, name INTO backup FROM users", false)]
+        // INTO in subquery is OK
+        #[case("SELECT * FROM (SELECT 1) AS sub", true)]
+        // INTO in string is OK
+        #[case("SELECT * FROM t WHERE x = 'INTO'", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
