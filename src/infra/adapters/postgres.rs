@@ -883,6 +883,120 @@ mod tests {
         }
     }
 
+    mod rls_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_none(#[case] input: &str) {
+            let result = PostgresAdapter::parse_rls(input).unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_rls("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn disabled_rls_with_no_policies_returns_expected() {
+            let json = r#"{"enabled": false, "force": false, "policies": []}"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.expect("Should return Some(RlsInfo)");
+
+            assert!(!rls.enabled);
+            assert!(!rls.force);
+            assert!(rls.policies.is_empty());
+        }
+
+        #[test]
+        fn enabled_and_forced_rls_returns_expected() {
+            let json = r#"{"enabled": true, "force": true, "policies": []}"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+
+            assert!(rls.enabled);
+            assert!(rls.force);
+        }
+
+        #[test]
+        fn single_policy_parses_all_fields() {
+            let json = r#"{
+                "enabled": true,
+                "force": false,
+                "policies": [{
+                    "name": "tenant_isolation",
+                    "permissive": true,
+                    "roles": ["app_user", "admin"],
+                    "cmd": "r",
+                    "qual": "tenant_id = current_setting('app.tenant_id')::int",
+                    "with_check": null
+                }]
+            }"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+            let policy = &rls.policies[0];
+
+            assert_eq!(policy.name, "tenant_isolation");
+            assert!(policy.permissive);
+            assert_eq!(policy.roles, vec!["app_user", "admin"]);
+            assert_eq!(policy.cmd, RlsCommand::Select);
+            assert!(policy.qual.is_some());
+            assert!(policy.with_check.is_none());
+        }
+
+        #[rstest]
+        #[case("*", RlsCommand::All)]
+        #[case("r", RlsCommand::Select)]
+        #[case("a", RlsCommand::Insert)]
+        #[case("w", RlsCommand::Update)]
+        #[case("d", RlsCommand::Delete)]
+        #[case("x", RlsCommand::All)] // unknown defaults to All
+        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
+            let json = format!(
+                r#"{{"enabled": true, "force": false, "policies": [{{
+                    "name": "test", "permissive": true, "roles": null,
+                    "cmd": "{}", "qual": null, "with_check": null
+                }}]}}"#,
+                cmd
+            );
+
+            let result = PostgresAdapter::parse_rls(&json).unwrap();
+            let rls = result.unwrap();
+
+            assert_eq!(rls.policies[0].cmd, expected);
+        }
+
+        #[test]
+        fn null_roles_becomes_empty_vec() {
+            let json = r#"{
+                "enabled": true, "force": false,
+                "policies": [{"name": "p", "permissive": true, "roles": null, "cmd": "*", "qual": null, "with_check": null}]
+            }"#;
+
+            let result = PostgresAdapter::parse_rls(json).unwrap();
+            let rls = result.unwrap();
+
+            assert!(rls.policies[0].roles.is_empty());
+        }
+
+        #[test]
+        fn missing_required_field_returns_invalid_json_error() {
+            let json = r#"{"force": false, "policies": []}"#; // missing 'enabled'
+
+            let result = PostgresAdapter::parse_rls(json);
+
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+    }
+
     mod select_validation {
         use rstest::rstest;
 
