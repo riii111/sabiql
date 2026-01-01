@@ -1,10 +1,12 @@
-/// Select columns that fit within available width starting from offset.
-/// Returns (column_indices, column_widths).
+/// Select columns for viewport, shrinking the rightmost if needed.
+/// This ensures 1 scroll = 1 column change (no multi-column jumps).
 pub fn select_viewport_columns(
     all_widths: &[u16],
     horizontal_offset: usize,
     available_width: u16,
 ) -> (Vec<usize>, Vec<u16>) {
+    const MIN_COL_WIDTH: u16 = 4;
+
     let mut indices = Vec::new();
     let mut widths = Vec::new();
     let mut used_width: u16 = 0;
@@ -18,11 +20,15 @@ pub fn select_viewport_columns(
             indices.push(i);
             widths.push(width);
         } else {
+            let remaining = available_width.saturating_sub(used_width + separator);
+            if remaining >= MIN_COL_WIDTH {
+                indices.push(i);
+                widths.push(remaining);
+            }
             break;
         }
     }
 
-    // Always show at least one column
     if indices.is_empty() && horizontal_offset < all_widths.len() {
         indices.push(horizontal_offset);
         widths.push(all_widths[horizontal_offset].min(available_width));
@@ -56,53 +62,21 @@ pub fn calculate_max_offset(all_widths: &[u16], available_width: u16) -> usize {
     all_widths.len().saturating_sub(cols_from_right)
 }
 
-/// Calculate offset to reveal the next hidden column (scroll right).
-/// Ensures one keypress always reveals a new column.
 pub fn calculate_next_column_offset(
     all_widths: &[u16],
     current_offset: usize,
     available_width: u16,
 ) -> usize {
-    let (visible_indices, _) = select_viewport_columns(all_widths, current_offset, available_width);
-
-    let last_visible = visible_indices.last().copied().unwrap_or(current_offset);
-    let next_hidden = last_visible + 1;
-
-    if next_hidden >= all_widths.len() {
-        return current_offset;
-    }
-
-    for new_offset in (current_offset + 1)..=next_hidden {
-        let (new_visible, _) = select_viewport_columns(all_widths, new_offset, available_width);
-        if new_visible.contains(&next_hidden) {
-            return new_offset;
-        }
-    }
-
-    next_hidden.min(all_widths.len().saturating_sub(1))
+    let max_offset = calculate_max_offset(all_widths, available_width);
+    (current_offset + 1).min(max_offset)
 }
 
-/// Calculate offset to reveal the previous hidden column (scroll left).
-/// Ensures one keypress always reveals a new column.
 pub fn calculate_prev_column_offset(
-    all_widths: &[u16],
+    _all_widths: &[u16],
     current_offset: usize,
-    available_width: u16,
+    _available_width: u16,
 ) -> usize {
-    if current_offset == 0 {
-        return 0;
-    }
-
-    let prev_hidden = current_offset - 1;
-
-    for new_offset in (0..current_offset).rev() {
-        let (new_visible, _) = select_viewport_columns(all_widths, new_offset, available_width);
-        if new_visible.contains(&prev_hidden) {
-            return new_offset;
-        }
-    }
-
-    0
+    current_offset.saturating_sub(1)
 }
 
 #[cfg(test)]
@@ -140,30 +114,48 @@ mod tests {
     }
 
     #[test]
-    fn calculate_next_column_offset_reveals_next() {
+    fn calculate_next_offset_increments_by_one() {
         let widths = vec![10, 10, 50, 10];
         let next = calculate_next_column_offset(&widths, 0, 25);
-        assert_eq!(next, 2);
+        assert_eq!(next, 1);
     }
 
     #[test]
-    fn calculate_next_column_offset_at_end() {
+    fn calculate_next_offset_clamps_to_max() {
         let widths = vec![10, 10];
         let next = calculate_next_column_offset(&widths, 0, 100);
-        assert_eq!(next, 0);
+        assert_eq!(next, 0); // all columns fit, max_offset = 0
     }
 
     #[test]
-    fn calculate_prev_column_offset_reveals_prev() {
+    fn calculate_prev_offset_decrements_by_one() {
         let widths = vec![10, 10, 10];
         let prev = calculate_prev_column_offset(&widths, 2, 25);
         assert_eq!(prev, 1);
     }
 
     #[test]
-    fn calculate_prev_column_offset_at_start() {
+    fn calculate_prev_offset_clamps_to_zero() {
         let widths = vec![10, 10];
         let prev = calculate_prev_column_offset(&widths, 0, 25);
         assert_eq!(prev, 0);
+    }
+
+    #[test]
+    fn select_viewport_shrinks_rightmost_column() {
+        // col0(10) + sep(1) + col1(10) = 21, remaining = 30 - 21 - 1 = 8
+        let widths = vec![10, 10, 50];
+        let (indices, selected_widths) = select_viewport_columns(&widths, 0, 30);
+        assert_eq!(indices, vec![0, 1, 2]);
+        assert_eq!(selected_widths, vec![10, 10, 8]);
+    }
+
+    #[test]
+    fn select_viewport_skips_if_too_narrow() {
+        // col0(10) + sep(1) + col1(10) = 21, remaining = 25 - 21 - 1 = 3 < MIN(4)
+        let widths = vec![10, 10, 50];
+        let (indices, selected_widths) = select_viewport_columns(&widths, 0, 25);
+        assert_eq!(indices, vec![0, 1]);
+        assert_eq!(selected_widths, vec![10, 10]);
     }
 }
