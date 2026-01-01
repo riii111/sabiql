@@ -783,4 +783,114 @@ mod tests {
             assert_eq!(widths[0], 30, "Rightmost should have ideal width");
         }
     }
+
+    mod slack_absorption {
+        use super::*;
+
+        fn ctx_with_slack(
+            offset: usize,
+            width: u16,
+            fixed: Option<usize>,
+            max: usize,
+            policy: SlackPolicy,
+        ) -> SelectionContext {
+            SelectionContext {
+                horizontal_offset: offset,
+                available_width: width,
+                fixed_count: fixed,
+                max_offset: max,
+                slack_policy: policy,
+            }
+        }
+
+        #[test]
+        fn absorbs_slack_when_max_offset_zero() {
+            let ideal = vec![10, 10, 10];
+            let min = vec![4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            // 10+10+10 + 2sep = 32, available = 50, slack = 18
+            let (indices, widths) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::RightmostLimited),
+            );
+
+            assert_eq!(indices, vec![0, 1, 2]);
+            assert_eq!(widths[0], 10);
+            assert_eq!(widths[1], 10);
+            assert_eq!(widths[2], 28); // 10 + 18 absorbed
+        }
+
+        #[test]
+        fn no_absorption_when_policy_none() {
+            let ideal = vec![10, 10, 10];
+            let min = vec![4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            let (_, widths) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 50, Some(3), 0, SlackPolicy::None),
+            );
+
+            assert_eq!(widths, vec![10, 10, 10]);
+        }
+
+        #[test]
+        fn respects_max_width_limit() {
+            let ideal = vec![40, 40];
+            let min = vec![10, 10];
+            let cfg = config(&ideal, &min);
+
+            // 40+40 + 1sep = 81, available = 120, slack = 39
+            // rightmost = 40, max_absorption = 50 - 40 = 10
+            let (_, widths) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 120, Some(2), 0, SlackPolicy::RightmostLimited),
+            );
+
+            assert!(widths[1] <= SLACK_MAX_ABSORPTION);
+            assert_eq!(widths[1], 50); // 40 + 10 (capped)
+        }
+
+        #[test]
+        fn viewport_plan_sets_policy_based_on_max_offset() {
+            let ideal = vec![10, 10, 10];
+            let min = vec![4, 4, 4];
+
+            // All columns fit → max_offset = 0 → RightmostLimited
+            let plan = ViewportPlan::calculate(&ideal, &min, 100);
+            assert_eq!(plan.max_offset, 0);
+            assert_eq!(plan.slack_policy, SlackPolicy::RightmostLimited);
+
+            // Need scroll → max_offset > 0 → None
+            let plan2 = ViewportPlan::calculate(&ideal, &min, 25);
+            assert!(plan2.max_offset > 0);
+            assert_eq!(plan2.slack_policy, SlackPolicy::None);
+        }
+
+        #[test]
+        fn one_scroll_still_changes_one_column_with_slack_none() {
+            let ideal = vec![15, 15, 15, 15, 15];
+            let min = vec![8, 8, 8, 8, 8];
+            let cfg = config(&ideal, &min);
+            let max_offset = 2;
+
+            let (idx0, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 60, Some(3), max_offset, SlackPolicy::None),
+            );
+            let (idx1, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(1, 60, Some(3), max_offset, SlackPolicy::None),
+            );
+            let (idx2, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(2, 60, Some(3), max_offset, SlackPolicy::None),
+            );
+
+            assert_eq!(idx0, vec![0, 1, 2]);
+            assert_eq!(idx1, vec![1, 2, 3]);
+            assert_eq!(idx2, vec![2, 3, 4]);
+        }
+    }
 }
