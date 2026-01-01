@@ -1230,4 +1230,244 @@ mod tests {
             assert!(PostgresAdapter::parse_indexes("null").unwrap().is_empty());
         }
     }
+
+    mod schema_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+            let result = PostgresAdapter::parse_schemas(input).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn valid_single_schema_parses_correctly() {
+            let json = r#"[{"name": "public"}]"#;
+            let result = PostgresAdapter::parse_schemas(json).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].name, "public");
+        }
+
+        #[test]
+        fn valid_multiple_schemas_parse_in_order() {
+            let json = r#"[{"name": "public"}, {"name": "auth"}, {"name": "custom"}]"#;
+            let result = PostgresAdapter::parse_schemas(json).unwrap();
+
+            assert_eq!(result.len(), 3);
+            assert_eq!(result[0].name, "public");
+            assert_eq!(result[1].name, "auth");
+            assert_eq!(result[2].name, "custom");
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_schemas("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn missing_name_field_returns_error() {
+            let json = r#"[{}]"#;
+            let result = PostgresAdapter::parse_schemas(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn wrong_structure_returns_error() {
+            let json = r#"["public", "auth"]"#;
+            let result = PostgresAdapter::parse_schemas(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn empty_array_returns_empty_vec() {
+            let json = r#"[]"#;
+            let result = PostgresAdapter::parse_schemas(json).unwrap();
+            assert!(result.is_empty());
+        }
+    }
+
+    mod foreign_key_parsing {
+        use super::*;
+        use crate::domain::FkAction;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+            let result = PostgresAdapter::parse_foreign_keys(input).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn valid_single_fk_parses_all_fields() {
+            let json = r#"[{
+                "name": "orders_user_fk",
+                "from_schema": "public",
+                "from_table": "orders",
+                "from_columns": ["user_id"],
+                "to_schema": "public",
+                "to_table": "users",
+                "to_columns": ["id"],
+                "on_delete": "c",
+                "on_update": "a"
+            }]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
+            let fk = &result[0];
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(fk.name, "orders_user_fk");
+            assert_eq!(fk.from_schema, "public");
+            assert_eq!(fk.from_table, "orders");
+            assert_eq!(fk.from_columns, vec!["user_id"]);
+            assert_eq!(fk.to_schema, "public");
+            assert_eq!(fk.to_table, "users");
+            assert_eq!(fk.to_columns, vec!["id"]);
+            assert_eq!(fk.on_delete, FkAction::Cascade);
+            assert_eq!(fk.on_update, FkAction::NoAction);
+        }
+
+        #[rstest]
+        #[case("a", FkAction::NoAction)]
+        #[case("r", FkAction::Restrict)]
+        #[case("c", FkAction::Cascade)]
+        #[case("n", FkAction::SetNull)]
+        #[case("d", FkAction::SetDefault)]
+        #[case("x", FkAction::NoAction)]
+        fn fk_action_mapping_returns_expected(#[case] action_code: &str, #[case] expected: FkAction) {
+            let json = format!(
+                r#"[{{
+                    "name": "test_fk",
+                    "from_schema": "public",
+                    "from_table": "t1",
+                    "from_columns": ["id"],
+                    "to_schema": "public",
+                    "to_table": "t2",
+                    "to_columns": ["id"],
+                    "on_delete": "{}",
+                    "on_update": "a"
+                }}]"#,
+                action_code
+            );
+
+            let result = PostgresAdapter::parse_foreign_keys(&json).unwrap();
+            assert_eq!(result[0].on_delete, expected);
+        }
+
+        #[test]
+        fn composite_foreign_key_parses_multiple_columns() {
+            let json = r#"[{
+                "name": "order_item_fk",
+                "from_schema": "public",
+                "from_table": "order_items",
+                "from_columns": ["order_id", "item_id"],
+                "to_schema": "public",
+                "to_table": "order_item_master",
+                "to_columns": ["order_id", "id"],
+                "on_delete": "r",
+                "on_update": "r"
+            }]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
+            let fk = &result[0];
+
+            assert_eq!(fk.from_columns, vec!["order_id", "item_id"]);
+            assert_eq!(fk.to_columns, vec!["order_id", "id"]);
+            assert_eq!(fk.on_delete, FkAction::Restrict);
+            assert_eq!(fk.on_update, FkAction::Restrict);
+        }
+
+        #[test]
+        fn multiple_foreign_keys_parse_in_order() {
+            let json = r#"[
+                {
+                    "name": "fk_1",
+                    "from_schema": "public",
+                    "from_table": "t1",
+                    "from_columns": ["id"],
+                    "to_schema": "public",
+                    "to_table": "t2",
+                    "to_columns": ["id"],
+                    "on_delete": "c",
+                    "on_update": "c"
+                },
+                {
+                    "name": "fk_2",
+                    "from_schema": "public",
+                    "from_table": "t3",
+                    "from_columns": ["id"],
+                    "to_schema": "public",
+                    "to_table": "t4",
+                    "to_columns": ["id"],
+                    "on_delete": "n",
+                    "on_update": "d"
+                }
+            ]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0].name, "fk_1");
+            assert_eq!(result[0].on_delete, FkAction::Cascade);
+            assert_eq!(result[1].name, "fk_2");
+            assert_eq!(result[1].on_delete, FkAction::SetNull);
+            assert_eq!(result[1].on_update, FkAction::SetDefault);
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_foreign_keys("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn missing_required_field_returns_error() {
+            let json = r#"[{
+                "name": "test_fk",
+                "from_schema": "public",
+                "from_table": "t1",
+                "from_columns": ["id"],
+                "to_schema": "public",
+                "to_table": "t2",
+                "to_columns": ["id"],
+                "on_update": "a"
+            }]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn wrong_column_type_returns_error() {
+            let json = r#"[{
+                "name": "test_fk",
+                "from_schema": "public",
+                "from_table": "t1",
+                "from_columns": "user_id",
+                "to_schema": "public",
+                "to_table": "t2",
+                "to_columns": ["id"],
+                "on_delete": "c",
+                "on_update": "a"
+            }]"#;
+
+            let result = PostgresAdapter::parse_foreign_keys(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn empty_array_returns_empty_vec() {
+            let json = r#"[]"#;
+            let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
+            assert!(result.is_empty());
+        }
+    }
 }
