@@ -480,7 +480,7 @@ impl Inspector {
                         )));
                         if let Some(qual) = &policy.qual {
                             lines
-                                .push(Line::from(format!("    USING: {}", truncate_str(qual, 50))));
+                                .push(Line::from(format!("    USING: {}", truncate_cell(qual, 50))));
                         }
                     }
                 }
@@ -614,16 +614,6 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>,
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_chars {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
-        format!("{}...", truncated)
-    }
-}
-
-fn truncate_str(s: &str, max_chars: usize) -> String {
     let char_count = s.chars().count();
     if char_count <= max_chars {
         s.to_string()
