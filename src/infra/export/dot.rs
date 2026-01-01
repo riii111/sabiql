@@ -75,6 +75,7 @@ impl DotExporter<SystemGraphvizRunner, SystemViewerLauncher> {
     }
 }
 
+#[cfg(test)]
 impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
     pub fn with_dependencies(graphviz: G, viewer: V) -> Self {
         Self { graphviz, viewer }
