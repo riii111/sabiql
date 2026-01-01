@@ -85,19 +85,39 @@ impl Inspector {
                     &state.inspector_viewport_plan,
                 ),
                 InspectorTab::Indexes => {
-                    Self::render_indexes(frame, inner, table);
+                    Self::render_indexes(
+                        frame,
+                        inner,
+                        table,
+                        state.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::ForeignKeys => {
-                    Self::render_foreign_keys(frame, inner, table);
+                    Self::render_foreign_keys(
+                        frame,
+                        inner,
+                        table,
+                        state.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::Rls => {
-                    Self::render_rls(frame, inner, table);
+                    Self::render_rls(
+                        frame,
+                        inner,
+                        table,
+                        state.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    Self::render_ddl(frame, inner, table);
+                    Self::render_ddl(
+                        frame,
+                        inner,
+                        table,
+                        state.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
             }
@@ -272,7 +292,7 @@ impl Inspector {
         plan
     }
 
-    fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail) {
+    fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
         if table.indexes.is_empty() {
             let msg = Paragraph::new("No indexes");
             frame.render_widget(msg, area);
@@ -296,16 +316,19 @@ impl Inspector {
         // -2: header (1) + scroll indicator (1)
         let visible_rows = area.height.saturating_sub(2) as usize;
         let total_rows = table.indexes.len();
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
 
         let rows: Vec<Row> = table
             .indexes
             .iter()
             .enumerate()
+            .skip(clamped_scroll_offset)
             .take(visible_rows)
-            .map(|(i, idx)| {
+            .map(|(row_idx, idx)| {
                 let unique_marker = if idx.is_unique { "✓" } else { "" };
                 let type_str = format!("{:?}", idx.index_type).to_lowercase();
-                let style = if i % 2 == 1 {
+                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 } else {
                     Style::default()
@@ -336,14 +359,19 @@ impl Inspector {
             frame,
             area,
             VerticalScrollParams {
-                position: 0,
+                position: clamped_scroll_offset,
                 viewport_size: visible_rows,
                 total_items: total_rows,
             },
         );
     }
 
-    fn render_foreign_keys(frame: &mut Frame, area: Rect, table: &TableDetail) {
+    fn render_foreign_keys(
+        frame: &mut Frame,
+        area: Rect,
+        table: &TableDetail,
+        scroll_offset: usize,
+    ) {
         if table.foreign_keys.is_empty() {
             let msg = Paragraph::new("No foreign keys");
             frame.render_widget(msg, area);
@@ -366,20 +394,23 @@ impl Inspector {
         // -2: header (1) + scroll indicator (1)
         let visible_rows = area.height.saturating_sub(2) as usize;
         let total_rows = table.foreign_keys.len();
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
 
         let rows: Vec<Row> = table
             .foreign_keys
             .iter()
             .enumerate()
+            .skip(clamped_scroll_offset)
             .take(visible_rows)
-            .map(|(i, fk)| {
+            .map(|(row_idx, fk)| {
                 let refs = format!(
                     "{}.{}({})",
                     fk.to_schema,
                     fk.to_table,
                     fk.to_columns.join(", ")
                 );
-                let style = if i % 2 == 1 {
+                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
                 } else {
                     Style::default()
@@ -408,14 +439,19 @@ impl Inspector {
             frame,
             area,
             VerticalScrollParams {
-                position: 0,
+                position: clamped_scroll_offset,
                 viewport_size: visible_rows,
                 total_items: total_rows,
             },
         );
     }
 
-    fn render_rls(frame: &mut Frame, area: Rect, table: &TableDetail) {
+    fn render_rls(
+        frame: &mut Frame,
+        area: Rect,
+        table: &TableDetail,
+        scroll_offset: usize,
+    ) {
         match &table.rls {
             None => {
                 let msg = Paragraph::new("RLS not enabled");
@@ -470,13 +506,39 @@ impl Inspector {
                     }
                 }
 
-                let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+                let total_lines = lines.len();
+                let visible_lines = area.height as usize;
+                let max_scroll_offset = total_lines.saturating_sub(visible_lines);
+                let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+                let paragraph = Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .scroll((clamped_scroll_offset as u16, 0));
                 frame.render_widget(paragraph, area);
+
+                // Vertical scroll indicator
+                use super::scroll_indicator::{
+                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
+                };
+                render_vertical_scroll_indicator_bar(
+                    frame,
+                    area,
+                    VerticalScrollParams {
+                        position: clamped_scroll_offset,
+                        viewport_size: visible_lines,
+                        total_items: total_lines,
+                    },
+                );
             }
         }
     }
 
-    fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail) {
+    fn render_ddl(
+        frame: &mut Frame,
+        area: Rect,
+        table: &TableDetail,
+        scroll_offset: usize,
+    ) {
         // Generate a simplified DDL representation with proper identifier quoting
         let mut ddl = format!(
             "CREATE TABLE {}.{} (\n",
@@ -514,10 +576,28 @@ impl Inspector {
 
         ddl.push_str(");");
 
+        let total_lines = ddl.lines().count();
+        let visible_lines = area.height as usize;
+        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
         let paragraph = Paragraph::new(ddl)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(Color::White))
+            .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
+
+        // Vertical scroll indicator
+        use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: clamped_scroll_offset,
+                viewport_size: visible_lines,
+                total_items: total_lines,
+            },
+        );
     }
 }
 
