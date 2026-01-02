@@ -188,7 +188,7 @@ fn command_line_input() {
     state.cache.metadata = Some(fixtures::sample_metadata(now));
     state.cache.state = MetadataState::Loaded;
     state.ui.input_mode = InputMode::CommandLine;
-    state.command_line_input = ":sql".to_string();
+    state.command_line_input = "sql".to_string();
 
     let output = render_to_string(&mut terminal, &mut state);
 
