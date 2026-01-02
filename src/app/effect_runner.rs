@@ -178,18 +178,8 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::ScheduleCompletionDebounce { .. } => {
-                // Handled in main loop via state.sql_modal.completion_debounce
-                Ok(())
-            }
-
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;
-                Ok(())
-            }
-
-            Effect::CacheCleanup => {
-                self.metadata_cache.cleanup_expired().await;
                 Ok(())
             }
 
@@ -361,16 +351,22 @@ impl EffectRunner {
                     engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
                 };
 
-                // 2. Send prefetch actions for missing tables
-                for qualified_name in missing {
-                    if let Some((schema, table)) = qualified_name.split_once('.') {
-                        let _ = self
-                            .action_tx
-                            .send(Action::PrefetchTableDetail {
+                // 2. Batch prefetch actions to avoid blocking event loop
+                let prefetch_actions: Vec<Action> = missing
+                    .into_iter()
+                    .filter_map(|qualified_name| {
+                        qualified_name.split_once('.').map(|(schema, table)| {
+                            Action::PrefetchTableDetail {
                                 schema: schema.to_string(),
                                 table: table.to_string(),
-                            })
-                            .await;
+                            }
+                        })
+                    })
+                    .collect();
+
+                if !prefetch_actions.is_empty() {
+                    for action in prefetch_actions {
+                        let _ = self.action_tx.try_send(action);
                     }
                 }
 
