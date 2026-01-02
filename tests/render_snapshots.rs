@@ -162,3 +162,35 @@ fn empty_query_result() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn table_picker_overlay() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.input_mode = InputMode::TablePicker;
+    state.ui.filter_input = "user".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn command_line_input() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.input_mode = InputMode::CommandLine;
+    state.command_line_input = ":sql".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
