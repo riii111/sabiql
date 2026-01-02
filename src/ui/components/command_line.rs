@@ -11,7 +11,7 @@ pub struct CommandLine;
 
 impl CommandLine {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-        let content = if state.input_mode == InputMode::CommandLine {
+        let content = if state.ui.input_mode == InputMode::CommandLine {
             Line::from(vec![
                 Span::styled(":", Style::default().fg(Color::Yellow)),
                 Span::raw(&state.command_line_input),

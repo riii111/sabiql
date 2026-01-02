@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
-    state.terminal_height = initial_size.height;
+    state.ui.terminal_height = initial_size.height;
 
     if state.runtime.dsn.is_some() {
         let _ = action_tx.send(Action::LoadMetadata).await;
@@ -157,48 +157,48 @@ async fn handle_action(
         }
         Action::Resize(_w, h) => {
             // Ratatui auto-tracks size; explicit resize() restricts viewport
-            state.terminal_height = h;
+            state.ui.terminal_height = h;
         }
-        Action::SetFocusedPane(pane) => state.focused_pane = pane,
+        Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
         Action::ToggleFocus => {
             state.toggle_focus();
         }
 
         Action::InspectorNextTab => {
-            state.inspector_tab = state.inspector_tab.next();
+            state.ui.inspector_tab = state.ui.inspector_tab.next();
         }
         Action::InspectorPrevTab => {
-            state.inspector_tab = state.inspector_tab.prev();
+            state.ui.inspector_tab = state.ui.inspector_tab.prev();
         }
 
         Action::OpenTablePicker => {
-            state.input_mode = InputMode::TablePicker;
-            state.filter_input.clear();
-            state.picker_selected = 0;
+            state.ui.input_mode = InputMode::TablePicker;
+            state.ui.filter_input.clear();
+            state.ui.picker_selected = 0;
         }
         Action::CloseTablePicker => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::OpenCommandPalette => {
-            state.input_mode = InputMode::CommandPalette;
-            state.picker_selected = 0;
+            state.ui.input_mode = InputMode::CommandPalette;
+            state.ui.picker_selected = 0;
         }
         Action::CloseCommandPalette => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::OpenHelp => {
-            state.input_mode = if state.input_mode == InputMode::Help {
+            state.ui.input_mode = if state.ui.input_mode == InputMode::Help {
                 InputMode::Normal
             } else {
                 InputMode::Help
             };
         }
         Action::CloseHelp => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
 
         Action::OpenSqlModal => {
-            state.input_mode = InputMode::SqlModal;
+            state.ui.input_mode = InputMode::SqlModal;
             state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
@@ -209,7 +209,7 @@ async fn handle_action(
             }
         }
         Action::CloseSqlModal => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = None;
             // Keep prefetch running for ER diagram usage
@@ -359,7 +359,9 @@ async fn handle_action(
             state.sql_modal.completion.trigger_position = cursor.saturating_sub(token_len);
         }
         Action::CompletionAccept => {
-            if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
+            if state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty()
+            {
                 if let Some(candidate) = state
                     .sql_modal
                     .completion
@@ -389,30 +391,32 @@ async fn handle_action(
         Action::CompletionNext => {
             if !state.sql_modal.completion.candidates.is_empty() {
                 let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index >= max {
-                    0
-                } else {
-                    state.sql_modal.completion.selected_index + 1
-                };
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index >= max {
+                        0
+                    } else {
+                        state.sql_modal.completion.selected_index + 1
+                    };
             }
         }
         Action::CompletionPrev => {
             if !state.sql_modal.completion.candidates.is_empty() {
                 let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index == 0 {
-                    max
-                } else {
-                    state.sql_modal.completion.selected_index - 1
-                };
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index == 0 {
+                        max
+                    } else {
+                        state.sql_modal.completion.selected_index - 1
+                    };
             }
         }
 
         Action::EnterCommandLine => {
-            state.input_mode = InputMode::CommandLine;
+            state.ui.input_mode = InputMode::CommandLine;
             state.command_line_input.clear();
         }
         Action::ExitCommandLine => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::CommandLineInput(c) => {
             state.command_line_input.push(c);
@@ -423,13 +427,13 @@ async fn handle_action(
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
             state.command_line_input.clear();
             match follow_up {
                 Action::Quit => state.should_quit = true,
-                Action::OpenHelp => state.input_mode = InputMode::Help,
+                Action::OpenHelp => state.ui.input_mode = InputMode::Help,
                 Action::OpenSqlModal => {
-                    state.input_mode = InputMode::SqlModal;
+                    state.ui.input_mode = InputMode::SqlModal;
                     state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                 }
                 Action::OpenConsole => {
@@ -443,83 +447,83 @@ async fn handle_action(
         }
 
         Action::FilterInput(c) => {
-            state.filter_input.push(c);
-            state.picker_selected = 0;
+            state.ui.filter_input.push(c);
+            state.ui.picker_selected = 0;
         }
         Action::FilterBackspace => {
-            state.filter_input.pop();
-            state.picker_selected = 0;
+            state.ui.filter_input.pop();
+            state.ui.picker_selected = 0;
         }
 
-        Action::SelectNext => match state.input_mode {
+        Action::SelectNext => match state.ui.input_mode {
             InputMode::TablePicker => {
                 let max = state.filtered_tables().len().saturating_sub(1);
-                if state.picker_selected < max {
-                    state.picker_selected += 1;
+                if state.ui.picker_selected < max {
+                    state.ui.picker_selected += 1;
                 }
             }
             InputMode::CommandPalette => {
                 let max = palette_command_count() - 1;
-                if state.picker_selected < max {
-                    state.picker_selected += 1;
+                if state.ui.picker_selected < max {
+                    state.ui.picker_selected += 1;
                 }
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     let max = state.tables().len().saturating_sub(1);
-                    if state.explorer_selected < max {
-                        state.explorer_selected += 1;
+                    if state.ui.explorer_selected < max {
+                        state.ui.explorer_selected += 1;
                     }
                 }
             }
             _ => {}
         },
-        Action::SelectPrevious => match state.input_mode {
+        Action::SelectPrevious => match state.ui.input_mode {
             InputMode::TablePicker | InputMode::CommandPalette => {
-                state.picker_selected = state.picker_selected.saturating_sub(1);
+                state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = state.explorer_selected.saturating_sub(1);
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(1);
                 }
             }
             _ => {}
         },
-        Action::SelectFirst => match state.input_mode {
+        Action::SelectFirst => match state.ui.input_mode {
             InputMode::TablePicker | InputMode::CommandPalette => {
-                state.picker_selected = 0;
+                state.ui.picker_selected = 0;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = 0;
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = 0;
                 }
             }
             _ => {}
         },
-        Action::SelectLast => match state.input_mode {
+        Action::SelectLast => match state.ui.input_mode {
             InputMode::TablePicker => {
                 let max = state.filtered_tables().len().saturating_sub(1);
-                state.picker_selected = max;
+                state.ui.picker_selected = max;
             }
             InputMode::CommandPalette => {
-                state.picker_selected = palette_command_count() - 1;
+                state.ui.picker_selected = palette_command_count() - 1;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = state.tables().len().saturating_sub(1);
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = state.tables().len().saturating_sub(1);
                 }
             }
             _ => {}
         },
 
         Action::ConfirmSelection => {
-            if state.input_mode == InputMode::TablePicker {
+            if state.ui.input_mode == InputMode::TablePicker {
                 let filtered = state.filtered_tables();
-                if let Some(table) = filtered.get(state.picker_selected) {
+                if let Some(table) = filtered.get(state.ui.picker_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
-                    state.input_mode = InputMode::Normal;
+                    state.ui.input_mode = InputMode::Normal;
 
                     // Increment generation to invalidate any in-flight requests
                     state.cache.selection_generation += 1;
@@ -543,11 +547,11 @@ async fn handle_action(
                         })
                         .await;
                 }
-            } else if state.input_mode == InputMode::Normal
-                && state.focused_pane == app::focused_pane::FocusedPane::Explorer
+            } else if state.ui.input_mode == InputMode::Normal
+                && state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer
             {
                 let tables = state.tables();
-                if let Some(table) = tables.get(state.explorer_selected) {
+                if let Some(table) = tables.get(state.ui.explorer_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
@@ -572,20 +576,20 @@ async fn handle_action(
                         })
                         .await;
                 }
-            } else if state.input_mode == InputMode::CommandPalette {
-                let cmd_action = palette_action_for_index(state.picker_selected);
-                state.input_mode = InputMode::Normal;
+            } else if state.ui.input_mode == InputMode::CommandPalette {
+                let cmd_action = palette_action_for_index(state.ui.picker_selected);
+                state.ui.input_mode = InputMode::Normal;
                 match cmd_action {
                     Action::Quit => state.should_quit = true,
-                    Action::OpenHelp => state.input_mode = InputMode::Help,
+                    Action::OpenHelp => state.ui.input_mode = InputMode::Help,
                     Action::OpenTablePicker => {
-                        state.input_mode = InputMode::TablePicker;
-                        state.filter_input.clear();
-                        state.picker_selected = 0;
+                        state.ui.input_mode = InputMode::TablePicker;
+                        state.ui.filter_input.clear();
+                        state.ui.picker_selected = 0;
                     }
-                    Action::SetFocusedPane(pane) => state.focused_pane = pane,
+                    Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
                     Action::OpenSqlModal => {
-                        state.input_mode = InputMode::SqlModal;
+                        state.ui.input_mode = InputMode::SqlModal;
                         state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                     }
                     Action::ReloadMetadata => {
@@ -603,7 +607,7 @@ async fn handle_action(
         }
 
         Action::Escape => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
 
         Action::LoadMetadata => {
@@ -699,7 +703,7 @@ async fn handle_action(
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
                 state.cache.table_detail = Some(*detail);
-                state.inspector_scroll_offset = 0;
+                state.ui.inspector_scroll_offset = 0;
             }
         }
 
@@ -765,7 +769,10 @@ async fn handle_action(
                     }
                 }
             } else if let Some(dsn) = &state.runtime.dsn {
-                state.sql_modal.prefetching_tables.insert(qualified_name.clone());
+                state
+                    .sql_modal
+                    .prefetching_tables
+                    .insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);
                 state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
@@ -804,13 +811,17 @@ async fn handle_action(
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state.sql_modal.failed_prefetch_tables.remove(&qualified_name);
+            state
+                .sql_modal
+                .failed_prefetch_tables
+                .remove(&qualified_name);
             state.er_preparation.on_table_cached(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.input_mode == InputMode::SqlModal && state.sql_modal.prefetch_queue.is_empty() {
+            if state.ui.input_mode == InputMode::SqlModal && state.sql_modal.prefetch_queue.is_empty()
+            {
                 state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
@@ -919,7 +930,10 @@ async fn handle_action(
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
                         if !engine.has_cached_table(&qualified_name) {
-                            state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
+                            state
+                                .sql_modal
+                                .prefetch_queue
+                                .push_back(qualified_name.clone());
                             state.er_preparation.pending_tables.insert(qualified_name);
                         }
                     }
@@ -1019,8 +1033,8 @@ async fn handle_action(
             if generation == 0 || generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
+                state.ui.result_scroll_offset = 0;
+                state.ui.result_horizontal_offset = 0;
                 state.query.result_highlight_until =
                     Some(Instant::now() + Duration::from_millis(500));
                 state.query.history_index = None;
@@ -1050,7 +1064,7 @@ async fn handle_action(
                 state.query.start_time = None;
                 state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
-                if state.input_mode == InputMode::SqlModal {
+                if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Error;
                     // Show error in result pane for better visibility
                     let error_result = domain::QueryResult::error(
@@ -1066,7 +1080,7 @@ async fn handle_action(
 
         // Result scroll
         Action::ResultScrollUp => {
-            state.result_scroll_offset = state.result_scroll_offset.saturating_sub(1);
+            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
         }
 
         Action::ResultScrollDown => {
@@ -1078,13 +1092,13 @@ async fn handle_action(
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
-            if state.result_scroll_offset < max_scroll {
-                state.result_scroll_offset += 1;
+            if state.ui.result_scroll_offset < max_scroll {
+                state.ui.result_scroll_offset += 1;
             }
         }
 
         Action::ResultScrollTop => {
-            state.result_scroll_offset = 0;
+            state.ui.result_scroll_offset = 0;
         }
 
         Action::ResultScrollBottom => {
@@ -1095,31 +1109,31 @@ async fn handle_action(
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
-            state.result_scroll_offset = max_scroll;
+            state.ui.result_scroll_offset = max_scroll;
         }
 
         Action::ResultScrollLeft => {
-            state.result_horizontal_offset =
-                calculate_prev_column_offset(state.result_horizontal_offset);
+            state.ui.result_horizontal_offset =
+                calculate_prev_column_offset(state.ui.result_horizontal_offset);
         }
 
         Action::ResultScrollRight => {
-            let plan = &state.result_viewport_plan;
+            let plan = &state.ui.result_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.result_horizontal_offset = calculate_next_column_offset(
+            state.ui.result_horizontal_offset = calculate_next_column_offset(
                 all_widths_len,
-                state.result_horizontal_offset,
+                state.ui.result_horizontal_offset,
                 plan.column_count,
             );
         }
 
         // Inspector scroll (all tabs)
         Action::InspectorScrollUp => {
-            state.inspector_scroll_offset = state.inspector_scroll_offset.saturating_sub(1);
+            state.ui.inspector_scroll_offset = state.ui.inspector_scroll_offset.saturating_sub(1);
         }
 
         Action::InspectorScrollDown => {
-            let visible = match state.inspector_tab {
+            let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
@@ -1127,7 +1141,7 @@ async fn handle_action(
                 .cache
                 .table_detail
                 .as_ref()
-                .map(|t| match state.inspector_tab {
+                .map(|t| match state.ui.inspector_tab {
                     InspectorTab::Columns => t.columns.len(),
                     InspectorTab::Indexes => t.indexes.len(),
                     InspectorTab::ForeignKeys => t.foreign_keys.len(),
@@ -1151,28 +1165,28 @@ async fn handle_action(
                 })
                 .unwrap_or(0);
             let max_offset = total_items.saturating_sub(visible);
-            if state.inspector_scroll_offset < max_offset {
-                state.inspector_scroll_offset += 1;
+            if state.ui.inspector_scroll_offset < max_offset {
+                state.ui.inspector_scroll_offset += 1;
             }
         }
 
         Action::InspectorScrollLeft => {
-            state.inspector_horizontal_offset =
-                calculate_prev_column_offset(state.inspector_horizontal_offset);
+            state.ui.inspector_horizontal_offset =
+                calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
         }
 
         Action::InspectorScrollRight => {
-            let plan = &state.inspector_viewport_plan;
+            let plan = &state.ui.inspector_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.inspector_horizontal_offset = calculate_next_column_offset(
+            state.ui.inspector_horizontal_offset = calculate_next_column_offset(
                 all_widths_len,
-                state.inspector_horizontal_offset,
+                state.ui.inspector_horizontal_offset,
                 plan.column_count,
             );
         }
 
         Action::ExplorerScrollLeft => {
-            state.explorer_horizontal_offset = state.explorer_horizontal_offset.saturating_sub(1);
+            state.ui.explorer_horizontal_offset = state.ui.explorer_horizontal_offset.saturating_sub(1);
         }
 
         Action::ExplorerScrollRight => {
@@ -1182,8 +1196,8 @@ async fn handle_action(
                 .map(|t| t.qualified_name().len())
                 .max()
                 .unwrap_or(0);
-            if state.explorer_horizontal_offset < max_name_width {
-                state.explorer_horizontal_offset += 1;
+            if state.ui.explorer_horizontal_offset < max_name_width {
+                state.ui.explorer_horizontal_offset += 1;
             }
         }
 

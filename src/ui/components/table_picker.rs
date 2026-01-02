@@ -35,7 +35,7 @@ impl TablePicker {
 
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(&state.filter_input),
+            Span::raw(&state.ui.filter_input),
             Span::styled(
                 "█",
                 Style::default()
@@ -65,11 +65,11 @@ impl TablePicker {
             .highlight_symbol("▸ ");
 
         if !filtered.is_empty() {
-            state.picker_list_state.select(Some(state.picker_selected));
+            state.ui.picker_list_state.select(Some(state.ui.picker_selected));
         } else {
-            state.picker_list_state.select(None);
+            state.ui.picker_list_state.select(None);
         }
 
-        frame.render_stateful_widget(list, list_area, &mut state.picker_list_state);
+        frame.render_stateful_widget(list, list_area, &mut state.ui.picker_list_state);
     }
 }

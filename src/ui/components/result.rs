@@ -17,7 +17,7 @@ pub struct ResultPane;
 
 impl ResultPane {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let is_focused = state.focused_pane == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane == FocusedPane::Result;
 
         let should_highlight = state
             .query
@@ -54,16 +54,16 @@ impl ResultPane {
                     area,
                     result,
                     block,
-                    state.result_scroll_offset,
-                    state.result_horizontal_offset,
-                    &state.result_viewport_plan,
+                    state.ui.result_scroll_offset,
+                    state.ui.result_horizontal_offset,
+                    &state.ui.result_viewport_plan,
                 )
             }
         } else {
             Self::render_placeholder(frame, area, block);
             ViewportPlan::default()
         };
-        state.result_viewport_plan = new_plan;
+        state.ui.result_viewport_plan = new_plan;
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {

@@ -1,66 +1,25 @@
-use ratatui::widgets::ListState;
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
-use super::focused_pane::FocusedPane;
-use super::input_mode::InputMode;
-use super::inspector_tab::InspectorTab;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
 use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
+use super::ui_state::UiState;
 use crate::domain::TableSummary;
-use crate::ui::components::viewport_columns::ViewportPlan;
 
 pub struct AppState {
     pub should_quit: bool,
-    pub runtime: RuntimeState,
-    pub cache: MetadataCache,
-    pub focused_pane: FocusedPane,
-    pub input_mode: InputMode,
     pub command_line_input: String,
-    pub filter_input: String,
-    pub explorer_selected: usize,
-    pub explorer_horizontal_offset: usize,
-    pub picker_selected: usize,
-
-    pub explorer_list_state: ListState,
-    pub picker_list_state: ListState,
-
-    // Action channel for async tasks
     pub action_tx: Option<Sender<Action>>,
 
-    // Inspector sub-tabs
-    pub inspector_tab: InspectorTab,
-    pub inspector_scroll_offset: usize,
-    pub inspector_horizontal_offset: usize,
-    pub inspector_viewport_plan: ViewportPlan,
-
-    // Result pane scroll/viewport (UI state, not query data)
-    pub result_scroll_offset: usize,
-    pub result_horizontal_offset: usize,
-    pub result_viewport_plan: ViewportPlan,
-
-    // Query execution and results
+    pub runtime: RuntimeState,
+    pub ui: UiState,
+    pub cache: MetadataCache,
     pub query: QueryExecution,
-
-    // SQL Modal
     pub sql_modal: SqlModalContext,
-
-    // Status messages (shown in footer, auto-clear after timeout)
     pub messages: MessageState,
-
-    // Terminal dimensions for dynamic layout calculations
-    pub terminal_height: u16,
-    pub result_pane_height: u16,
-    pub inspector_pane_height: u16,
-
-    // Focus mode (Result full-screen)
-    pub focus_mode: bool,
-    pub focus_mode_prev_pane: Option<FocusedPane>,
-
-    // ER diagram
     pub er_preparation: super::er_state::ErPreparationState,
 }
 
@@ -68,41 +27,14 @@ impl AppState {
     pub fn new(project_name: String, profile_name: String) -> Self {
         Self {
             should_quit: false,
-            runtime: RuntimeState::new(project_name, profile_name),
-            cache: MetadataCache::default(),
-            focused_pane: FocusedPane::default(),
-            input_mode: InputMode::default(),
             command_line_input: String::new(),
-            filter_input: String::new(),
-            explorer_selected: 0,
-            explorer_horizontal_offset: 0,
-            picker_selected: 0,
-            explorer_list_state: ListState::default(),
-            picker_list_state: ListState::default(),
             action_tx: None,
-            // Inspector
-            inspector_tab: InspectorTab::default(),
-            inspector_scroll_offset: 0,
-            inspector_horizontal_offset: 0,
-            inspector_viewport_plan: ViewportPlan::default(),
-            // Result pane scroll/viewport
-            result_scroll_offset: 0,
-            result_horizontal_offset: 0,
-            result_viewport_plan: ViewportPlan::default(),
-            // Query execution
+            runtime: RuntimeState::new(project_name, profile_name),
+            ui: UiState::new(),
+            cache: MetadataCache::default(),
             query: QueryExecution::default(),
-            // SQL Modal
             sql_modal: SqlModalContext::default(),
-            // Status messages
             messages: MessageState::default(),
-            // Terminal height (will be updated on resize)
-            terminal_height: 24,      // default minimum
-            result_pane_height: 0,    // will be updated on render
-            inspector_pane_height: 0, // will be updated on render
-            // Focus mode
-            focus_mode: false,
-            focus_mode_prev_pane: None,
-            // ER diagram
             er_preparation: super::er_state::ErPreparationState::default(),
         }
     }
@@ -119,23 +51,16 @@ impl AppState {
         self.messages.clear_expired();
     }
 
-    /// Calculate the number of visible rows in the result pane.
-    /// Uses the actual result pane height from the last render.
-    /// Result content = height - 2 (border) - 1 (header row) = height - 3
     pub fn result_visible_rows(&self) -> usize {
-        self.result_pane_height.saturating_sub(3) as usize
+        self.ui.result_visible_rows()
     }
 
-    /// Calculate the number of visible rows in the inspector pane.
-    /// Inspector content = height - 2 (border) - 1 (tab bar) - 1 (header row) - 1 (scroll indicator) = height - 5
     pub fn inspector_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(5) as usize
+        self.ui.inspector_visible_rows()
     }
 
-    /// Calculate visible rows for DDL tab (no header row, no separate scroll indicator)
-    /// DDL content = height - 2 (border) - 1 (tab bar) = height - 3
     pub fn inspector_ddl_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(3) as usize
+        self.ui.inspector_ddl_visible_rows()
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
@@ -143,7 +68,7 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.filter_input.to_lowercase();
+        let filter_lower = self.ui.filter_input.to_lowercase();
         self.cache
             .tables()
             .into_iter()
@@ -152,23 +77,14 @@ impl AppState {
     }
 
     pub fn toggle_focus(&mut self) -> bool {
-        if self.focus_mode {
-            if let Some(prev) = self.focus_mode_prev_pane.take() {
-                self.focused_pane = prev;
-            }
-            self.focus_mode = false;
-        } else {
-            self.focus_mode_prev_pane = Some(self.focused_pane);
-            self.focused_pane = FocusedPane::Result;
-            self.focus_mode = true;
-        }
-        true
+        self.ui.toggle_focus()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::focused_pane::FocusedPane;
     use crate::domain::DatabaseMetadata;
     use rstest::rstest;
     use std::time::Instant;
@@ -192,7 +108,7 @@ mod tests {
         #[case] expected: usize,
     ) {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.result_pane_height = pane_height;
+        state.ui.result_pane_height = pane_height;
 
         let visible = state.result_visible_rows();
 
@@ -202,7 +118,7 @@ mod tests {
     #[test]
     fn small_result_pane_height_does_not_underflow() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.result_pane_height = 2;
+        state.ui.result_pane_height = 2;
 
         let visible = state.result_visible_rows();
 
@@ -212,7 +128,7 @@ mod tests {
     #[test]
     fn very_small_result_pane_returns_zero_rows() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.result_pane_height = 1;
+        state.ui.result_pane_height = 1;
 
         let visible = state.result_visible_rows();
 
@@ -222,7 +138,7 @@ mod tests {
     #[test]
     fn large_result_pane_height_returns_proportional_rows() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.result_pane_height = 50;
+        state.ui.result_pane_height = 50;
 
         let visible = state.result_visible_rows();
 
@@ -241,7 +157,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         });
-        state.filter_input = "".to_string();
+        state.ui.filter_input = "".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -260,7 +176,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         });
-        state.filter_input = "user".to_string();
+        state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -282,7 +198,7 @@ mod tests {
             )],
             fetched_at: std::time::Instant::now(),
         });
-        state.filter_input = "user".to_string();
+        state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -327,27 +243,27 @@ mod tests {
     #[test]
     fn toggle_focus_enters_focus_mode() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.focused_pane = FocusedPane::Explorer;
+        state.ui.focused_pane = FocusedPane::Explorer;
 
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(state.focus_mode);
-        assert_eq!(state.focused_pane, FocusedPane::Result);
-        assert_eq!(state.focus_mode_prev_pane, Some(FocusedPane::Explorer));
+        assert!(state.ui.focus_mode);
+        assert_eq!(state.ui.focused_pane, FocusedPane::Result);
+        assert_eq!(state.ui.focus_mode_prev_pane, Some(FocusedPane::Explorer));
     }
 
     #[test]
     fn toggle_focus_exits_focus_mode_and_restores_pane() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.focused_pane = FocusedPane::Inspector;
+        state.ui.focused_pane = FocusedPane::Inspector;
         state.toggle_focus();
 
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(!state.focus_mode);
-        assert_eq!(state.focused_pane, FocusedPane::Inspector);
+        assert!(!state.ui.focus_mode);
+        assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
     }
 
     // Prefetch state tests
@@ -363,8 +279,14 @@ mod tests {
     #[test]
     fn prefetch_queue_pop_returns_fifo_order() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.sql_modal.prefetch_queue.push_back("public.users".to_string());
-        state.sql_modal.prefetch_queue.push_back("public.orders".to_string());
+        state
+            .sql_modal
+            .prefetch_queue
+            .push_back("public.users".to_string());
+        state
+            .sql_modal
+            .prefetch_queue
+            .push_back("public.orders".to_string());
 
         let first = state.sql_modal.prefetch_queue.pop_front();
         let second = state.sql_modal.prefetch_queue.pop_front();
@@ -377,7 +299,10 @@ mod tests {
     fn prefetching_tables_tracks_in_flight() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
 
-        state.sql_modal.prefetching_tables.insert("public.users".to_string());
+        state
+            .sql_modal
+            .prefetching_tables
+            .insert("public.users".to_string());
 
         assert!(state.sql_modal.prefetching_tables.contains("public.users"));
         assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
@@ -393,8 +318,17 @@ mod tests {
             (now, "connection timeout".to_string()),
         );
 
-        assert!(state.sql_modal.failed_prefetch_tables.contains_key("public.users"));
-        let (instant, error) = state.sql_modal.failed_prefetch_tables.get("public.users").unwrap();
+        assert!(
+            state
+                .sql_modal
+                .failed_prefetch_tables
+                .contains_key("public.users")
+        );
+        let (instant, error) = state
+            .sql_modal
+            .failed_prefetch_tables
+            .get("public.users")
+            .unwrap();
         assert!(instant.elapsed().as_secs() < 1);
         assert_eq!(error, "connection timeout");
     }
@@ -436,8 +370,14 @@ mod tests {
         fn clears_prefetch_state() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
             state.sql_modal.prefetch_started = true;
-            state.sql_modal.prefetch_queue.push_back("public.users".to_string());
-            state.sql_modal.prefetching_tables.insert("public.orders".to_string());
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.users".to_string());
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.orders".to_string());
             state.sql_modal.failed_prefetch_tables.insert(
                 "public.failed".to_string(),
                 (Instant::now(), "timeout".to_string()),
@@ -484,19 +424,19 @@ mod tests {
         #[test]
         fn scroll_offset_resets_to_zero_on_table_switch() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.inspector_scroll_offset = 42;
+            state.ui.inspector_scroll_offset = 42;
 
             // Simulate table switch (TableDetailLoaded action)
-            state.inspector_scroll_offset = 0;
+            state.ui.inspector_scroll_offset = 0;
 
-            assert_eq!(state.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
 
         #[test]
         fn scroll_offset_stays_zero_when_no_table_detail() {
             let state = AppState::new("test".to_string(), "default".to_string());
 
-            assert_eq!(state.inspector_scroll_offset, 0);
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
             assert!(state.cache.table_detail.is_none());
         }
     }
@@ -507,7 +447,7 @@ mod tests {
         #[test]
         fn ddl_visible_rows_is_greater_than_standard() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.inspector_pane_height = 20;
+            state.ui.inspector_pane_height = 20;
 
             let standard = state.inspector_visible_rows();
             let ddl = state.inspector_ddl_visible_rows();
@@ -525,7 +465,7 @@ mod tests {
             #[case] expected: usize,
         ) {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.inspector_pane_height = pane_height;
+            state.ui.inspector_pane_height = pane_height;
 
             let visible = state.inspector_ddl_visible_rows();
 
@@ -535,7 +475,7 @@ mod tests {
         #[test]
         fn small_pane_height_does_not_underflow() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.inspector_pane_height = 2;
+            state.ui.inspector_pane_height = 2;
 
             let visible = state.inspector_ddl_visible_rows();
 
