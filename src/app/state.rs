@@ -9,9 +9,10 @@ use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::message_state::MessageState;
+use super::metadata_cache::MetadataCache;
 use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
-use crate::domain::{DatabaseMetadata, MetadataState, Table, TableSummary};
+use crate::domain::TableSummary;
 use crate::ui::components::viewport_columns::ViewportPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,7 +57,7 @@ impl CompletionState {
 pub struct AppState {
     pub should_quit: bool,
     pub runtime: RuntimeState,
-    pub current_table: Option<String>,
+    pub cache: MetadataCache,
     pub focused_pane: FocusedPane,
     pub input_mode: InputMode,
     pub command_line_input: String,
@@ -67,13 +68,6 @@ pub struct AppState {
 
     pub explorer_list_state: ListState,
     pub picker_list_state: ListState,
-
-    // Metadata
-    pub metadata_state: MetadataState,
-    pub metadata: Option<DatabaseMetadata>,
-
-    // Selected table detail
-    pub table_detail: Option<Table>,
 
     // Action channel for async tasks
     pub action_tx: Option<Sender<Action>>,
@@ -116,9 +110,6 @@ pub struct AppState {
     // Status messages (shown in footer, auto-clear after timeout)
     pub messages: MessageState,
 
-    // Generation counter for race condition prevention
-    pub selection_generation: u64,
-
     // Terminal dimensions for dynamic layout calculations
     pub terminal_height: u16,
     pub result_pane_height: u16,
@@ -137,7 +128,7 @@ impl AppState {
         Self {
             should_quit: false,
             runtime: RuntimeState::new(project_name, profile_name),
-            current_table: None,
+            cache: MetadataCache::default(),
             focused_pane: FocusedPane::default(),
             input_mode: InputMode::default(),
             command_line_input: String::new(),
@@ -147,9 +138,6 @@ impl AppState {
             picker_selected: 0,
             explorer_list_state: ListState::default(),
             picker_list_state: ListState::default(),
-            metadata_state: MetadataState::default(),
-            metadata: None,
-            table_detail: None,
             action_tx: None,
             // Inspector
             inspector_tab: InspectorTab::default(),
@@ -174,8 +162,6 @@ impl AppState {
             prefetch_started: false,
             // Status messages
             messages: MessageState::default(),
-            // Generation counter
-            selection_generation: 0,
             // Terminal height (will be updated on resize)
             terminal_height: 24,      // default minimum
             result_pane_height: 0,    // will be updated on render
@@ -220,15 +206,13 @@ impl AppState {
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
-        self.metadata
-            .as_ref()
-            .map(|m| m.tables.iter().collect())
-            .unwrap_or_default()
+        self.cache.tables()
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.filter_input.to_lowercase();
-        self.tables()
+        self.cache
+            .tables()
             .into_iter()
             .filter(|t| t.qualified_name_lower().contains(&filter_lower))
             .collect()
@@ -252,6 +236,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::DatabaseMetadata;
     use rstest::rstest;
 
     #[test]
@@ -313,7 +298,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_empty_filter_returns_all() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -332,7 +317,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_matching_filter_returns_subset() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -352,7 +337,7 @@ mod tests {
     #[test]
     fn filtered_tables_is_case_insensitive() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![TableSummary::new(
@@ -374,18 +359,18 @@ mod tests {
     fn selection_generation_starts_at_zero() {
         let state = AppState::new("test".to_string(), "default".to_string());
 
-        assert_eq!(state.selection_generation, 0);
+        assert_eq!(state.cache.selection_generation, 0);
     }
 
     #[test]
     fn selection_generation_increments_prevent_race_conditions() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
 
-        let gen1 = state.selection_generation;
-        state.selection_generation += 1;
-        let gen2 = state.selection_generation;
-        state.selection_generation += 1;
-        let gen3 = state.selection_generation;
+        let gen1 = state.cache.selection_generation;
+        state.cache.selection_generation += 1;
+        let gen2 = state.cache.selection_generation;
+        state.cache.selection_generation += 1;
+        let gen3 = state.cache.selection_generation;
 
         assert_eq!(gen1, 0);
         assert_eq!(gen2, 1);
@@ -396,9 +381,9 @@ mod tests {
     fn selection_generation_can_detect_stale_responses() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
 
-        let initial_gen = state.selection_generation;
-        state.selection_generation += 1;
-        let current_gen = state.selection_generation;
+        let initial_gen = state.cache.selection_generation;
+        state.cache.selection_generation += 1;
+        let current_gen = state.cache.selection_generation;
 
         assert!(initial_gen < current_gen);
     }
@@ -581,7 +566,7 @@ mod tests {
             let state = AppState::new("test".to_string(), "default".to_string());
 
             assert_eq!(state.inspector_scroll_offset, 0);
-            assert!(state.table_detail.is_none());
+            assert!(state.cache.table_detail.is_none());
         }
     }
 

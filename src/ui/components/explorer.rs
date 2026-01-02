@@ -11,10 +11,10 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let has_cached_data = state.metadata.is_some() && !state.tables().is_empty();
+        let has_cached_data = state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.focused_pane == FocusedPane::Explorer;
 
-        let title = match &state.metadata_state {
+        let title = match &state.cache.state {
             MetadataState::Loading => " [1] Explorer [Loading...] ".to_string(),
             MetadataState::Error(_) if has_cached_data => {
                 format!(" [1] Explorer [{} tables - Stale] ", state.tables().len())
@@ -66,7 +66,7 @@ impl Explorer {
                 })
                 .collect()
         } else {
-            match &state.metadata_state {
+            match &state.cache.state {
                 MetadataState::Loading => {
                     vec![ListItem::new("Loading metadata...")]
                 }

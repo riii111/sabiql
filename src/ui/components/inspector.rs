@@ -72,7 +72,7 @@ impl Inspector {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        if let Some(table) = &state.table_detail {
+        if let Some(table) = &state.cache.table_detail {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
