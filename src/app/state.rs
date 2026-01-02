@@ -10,6 +10,7 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::message_state::MessageState;
 use super::result_history::ResultHistory;
+use super::runtime_state::RuntimeState;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
 use crate::ui::components::viewport_columns::ViewportPlan;
 
@@ -61,9 +62,7 @@ pub enum QueryState {
 
 pub struct AppState {
     pub should_quit: bool,
-    pub project_name: String,
-    pub profile_name: String,
-    pub database_name: Option<String>,
+    pub runtime: RuntimeState,
     pub current_table: Option<String>,
     pub focused_pane: FocusedPane,
     pub input_mode: InputMode,
@@ -75,9 +74,6 @@ pub struct AppState {
 
     pub explorer_list_state: ListState,
     pub picker_list_state: ListState,
-
-    // Connection
-    pub dsn: Option<String>,
 
     // Metadata
     pub metadata_state: MetadataState,
@@ -154,9 +150,7 @@ impl AppState {
     pub fn new(project_name: String, profile_name: String) -> Self {
         Self {
             should_quit: false,
-            project_name,
-            profile_name,
-            database_name: None,
+            runtime: RuntimeState::new(project_name, profile_name),
             current_table: None,
             focused_pane: FocusedPane::default(),
             input_mode: InputMode::default(),
@@ -167,7 +161,6 @@ impl AppState {
             picker_selected: 0,
             explorer_list_state: ListState::default(),
             picker_list_state: ListState::default(),
-            dsn: None,
             metadata_state: MetadataState::default(),
             metadata: None,
             table_detail: None,

@@ -75,8 +75,8 @@ async fn main() -> Result<()> {
     let completion_engine = RefCell::new(CompletionEngine::new());
 
     let mut state = AppState::new(project_name, args.profile);
-    state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
-    state.dsn = dsn.clone();
+    state.runtime.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
+    state.runtime.dsn = dsn.clone();
     state.action_tx = Some(action_tx.clone());
 
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
     let initial_size = tui.terminal().size()?;
     state.terminal_height = initial_size.height;
 
-    if state.dsn.is_some() {
+    if state.runtime.dsn.is_some() {
         let _ = action_tx.send(Action::LoadMetadata).await;
     }
 
@@ -590,7 +590,7 @@ async fn handle_action(
                         state.sql_modal_state = app::state::SqlModalState::Editing;
                     }
                     Action::ReloadMetadata => {
-                        if let Some(dsn) = &state.dsn {
+                        if let Some(dsn) = &state.runtime.dsn {
                             metadata_cache.invalidate(dsn).await;
                             let _ = action_tx.send(Action::LoadMetadata).await;
                         }
@@ -608,7 +608,7 @@ async fn handle_action(
         }
 
         Action::LoadMetadata => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 if let Some(cached) = metadata_cache.get(dsn).await {
                     state.metadata = Some(cached);
                     state.metadata_state = MetadataState::Loaded;
@@ -637,7 +637,7 @@ async fn handle_action(
         }
 
         Action::ReloadMetadata => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 metadata_cache.invalidate(dsn).await;
 
                 // Reset prefetch state for fresh reload
@@ -674,7 +674,7 @@ async fn handle_action(
             table,
             generation,
         } => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 let dsn = dsn.clone();
                 let provider = Arc::clone(metadata_provider);
                 let tx = action_tx.clone();
@@ -741,7 +741,7 @@ async fn handle_action(
                         state.set_success("ER ready. Press 'e' to open.".to_string());
                     } else {
                         let failed_count = state.er_preparation.failed_tables.len();
-                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name)
+                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name)
                         {
                             let failed_data: Vec<(String, String)> = state
                                 .er_preparation
@@ -768,7 +768,7 @@ async fn handle_action(
                         state.set_error(msg);
                     }
                 }
-            } else if let Some(dsn) = &state.dsn {
+            } else if let Some(dsn) = &state.runtime.dsn {
                 state.prefetching_tables.insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);
                 state.er_preparation.fetching_tables.insert(qualified_name);
@@ -830,7 +830,7 @@ async fn handle_action(
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
                     let failed_count = state.er_preparation.failed_tables.len();
-                    let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                    let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
                         let failed_data: Vec<(String, String)> = state
                             .er_preparation
                             .failed_tables
@@ -879,7 +879,7 @@ async fn handle_action(
             {
                 state.er_preparation.status = ErStatus::Idle;
                 let failed_count = state.er_preparation.failed_tables.len();
-                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation
                         .failed_tables
@@ -955,7 +955,7 @@ async fn handle_action(
             table,
             generation,
         } => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 state.query_state = QueryState::Running;
                 state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
@@ -992,7 +992,7 @@ async fn handle_action(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 state.query_state = QueryState::Running;
                 state.query_start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
@@ -1185,8 +1185,8 @@ async fn handle_action(
         }
 
         Action::OpenConsole => {
-            if let Some(dsn) = &state.dsn {
-                let cache_dir = get_cache_dir(&state.project_name)?;
+            if let Some(dsn) = &state.runtime.dsn {
+                let cache_dir = get_cache_dir(&state.runtime.project_name)?;
                 let pgclirc = generate_pgclirc(&cache_dir)?;
 
                 let guard = tui.suspend_guard()?;
@@ -1272,7 +1272,7 @@ async fn handle_action(
 
             state.er_preparation.status = ErStatus::Rendering;
             let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
-            let cache_dir = get_cache_dir(&state.project_name)?;
+            let cache_dir = get_cache_dir(&state.runtime.project_name)?;
 
             let exporter = Arc::new(DotExporter::new());
             spawn_er_diagram_task(exporter, tables, total_tables, cache_dir, action_tx.clone());

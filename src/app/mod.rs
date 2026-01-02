@@ -11,5 +11,6 @@ pub mod mode;
 pub mod palette;
 pub mod ports;
 pub mod result_history;
+pub mod runtime_state;
 pub mod sql_lexer;
 pub mod state;
