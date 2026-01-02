@@ -13,7 +13,6 @@ pub struct ErPreparationState {
     pub pending_tables: HashSet<String>,
     pub fetching_tables: HashSet<String>,
     pub failed_tables: HashMap<String, String>,
-    pub started: bool,
     pub status: ErStatus,
 }
 
@@ -143,7 +142,6 @@ mod tests {
                 pending_tables: HashSet::from(["a".to_string()]),
                 fetching_tables: HashSet::from(["b".to_string()]),
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
-                started: true,
                 status: ErStatus::Waiting,
             };
 
@@ -152,7 +150,6 @@ mod tests {
             assert!(state.pending_tables.is_empty());
             assert!(state.fetching_tables.is_empty());
             assert!(state.failed_tables.is_empty());
-            assert!(!state.started);
             assert_eq!(state.status, ErStatus::Idle);
         }
     }

@@ -14,12 +14,12 @@ use tokio::sync::mpsc;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
+use app::er_state::ErStatus;
 use app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{MetadataProvider, QueryExecutor};
-use app::er_state::ErStatus;
 use app::state::{AppState, QueryState};
 use domain::ErTableInfo;
 use domain::MetadataState;
@@ -731,14 +731,13 @@ async fn handle_action(
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
-                // skip
+                // skip: remove from pending_tables if present
+                state.er_preparation.pending_tables.remove(&qualified_name);
             } else if let Some(dsn) = &state.dsn {
                 state.prefetching_tables.insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);
                 state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
-                let schema = schema.clone();
-                let table = table.clone();
                 let provider = Arc::clone(metadata_provider);
                 let tx = action_tx.clone();
 
@@ -834,9 +833,7 @@ async fn handle_action(
             state
                 .failed_prefetch_tables
                 .insert(qualified_name.clone(), (Instant::now(), error.clone()));
-            state
-                .er_preparation
-                .on_table_failed(&qualified_name, error);
+            state.er_preparation.on_table_failed(&qualified_name, error);
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
@@ -880,7 +877,6 @@ async fn handle_action(
             {
                 state.prefetch_started = true;
                 state.prefetch_queue.clear();
-                state.er_preparation.started = true;
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -1086,7 +1082,10 @@ async fn handle_action(
         }
 
         Action::InspectorScrollDown => {
-            let visible = state.inspector_visible_rows();
+            let visible = match state.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
             let total_items = state
                 .table_detail
                 .as_ref()
@@ -1110,10 +1109,7 @@ async fn handle_action(
                             lines
                         })
                     }
-                    InspectorTab::Ddl => {
-                        // DDL: CREATE TABLE + columns + optional PK + closing
-                        2 + t.columns.len() + if t.primary_key.is_some() { 1 } else { 0 }
-                    }
+                    InspectorTab::Ddl => ui::components::inspector::Inspector::ddl_line_count(t),
                 })
                 .unwrap_or(0);
             let max_offset = total_items.saturating_sub(visible);
@@ -1196,7 +1192,10 @@ async fn handle_action(
 
         Action::ErOpenDiagram => {
             // Guard: ignore if already rendering or waiting
-            if matches!(state.er_preparation.status, ErStatus::Rendering | ErStatus::Waiting) {
+            if matches!(
+                state.er_preparation.status,
+                ErStatus::Rendering | ErStatus::Waiting
+            ) {
                 return Ok(());
             }
 
