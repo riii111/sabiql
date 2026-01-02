@@ -1097,7 +1097,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
 
             // If prefetch hasn't started, start it now and wait
-            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+            if !state.sql_modal.prefetch_started
+                && let Some(metadata) = &state.cache.metadata
+            {
+                state.er_preparation.total_tables = metadata.tables.len();
                 state.er_preparation.status = ErStatus::Waiting;
                 state.set_success("Starting table prefetch for ER diagram...".to_string());
                 return vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])];

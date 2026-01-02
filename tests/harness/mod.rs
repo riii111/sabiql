@@ -25,10 +25,12 @@ pub fn create_test_terminal() -> Terminal<TestBackend> {
     Terminal::new(backend).unwrap()
 }
 
+const FIXED_TIME_MS: u128 = 0;
+
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     terminal
         .draw(|frame| {
-            let output = MainLayout::render(frame, state);
+            let output = MainLayout::render(frame, state, Some(FIXED_TIME_MS));
             state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
             state.ui.result_viewport_plan = output.result_viewport_plan;
             state.ui.inspector_pane_height = output.inspector_pane_height;

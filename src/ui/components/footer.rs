@@ -12,9 +12,9 @@ use crate::app::state::AppState;
 pub struct Footer;
 
 impl Footer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, time_ms: Option<u128>) {
         if state.er_preparation.status == ErStatus::Waiting {
-            let line = Self::build_er_waiting_line(state, None);
+            let line = Self::build_er_waiting_line(state, time_ms);
             frame.render_widget(Paragraph::new(line), area);
         } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
