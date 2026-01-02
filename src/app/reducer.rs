@@ -151,11 +151,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     if state.ui.focused_pane == FocusedPane::Explorer {
                         let len = state.tables().len();
                         if len > 0 && state.ui.explorer_selected < len - 1 {
-                            state.ui.explorer_selected += 1;
                             state
                                 .ui
-                                .explorer_list_state
-                                .select(Some(state.ui.explorer_selected));
+                                .set_explorer_selection(Some(state.ui.explorer_selected + 1));
                         }
                     }
                 }
@@ -171,11 +169,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
-                        state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(1);
-                        state
-                            .ui
-                            .explorer_list_state
-                            .select(Some(state.ui.explorer_selected));
+                        let new_idx = state.ui.explorer_selected.saturating_sub(1);
+                        state.ui.set_explorer_selection(Some(new_idx));
                     }
                 }
                 _ => {}
@@ -190,8 +185,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
-                        state.ui.explorer_selected = 0;
-                        state.ui.explorer_list_state.select(Some(0));
+                        state.ui.set_explorer_selection(Some(0));
                     }
                 }
                 _ => {}
@@ -211,8 +205,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     if state.ui.focused_pane == FocusedPane::Explorer {
                         let len = state.tables().len();
                         if len > 0 {
-                            state.ui.explorer_selected = len - 1;
-                            state.ui.explorer_list_state.select(Some(len - 1));
+                            state.ui.set_explorer_selection(Some(len - 1));
                         }
                     }
                 }
@@ -490,12 +483,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-            state.ui.explorer_selected = 0;
-            if has_tables {
-                state.ui.explorer_list_state.select(Some(0));
-            } else {
-                state.ui.explorer_list_state.select(None);
-            }
+            state
+                .ui
+                .set_explorer_selection(if has_tables { Some(0) } else { None });
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {

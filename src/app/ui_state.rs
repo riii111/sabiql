@@ -67,6 +67,20 @@ impl UiState {
         }
         true
     }
+
+    /// Update explorer selection, keeping explorer_selected and explorer_list_state in sync.
+    pub fn set_explorer_selection(&mut self, index: Option<usize>) {
+        match index {
+            Some(i) => {
+                self.explorer_selected = i;
+                self.explorer_list_state.select(Some(i));
+            }
+            None => {
+                self.explorer_selected = 0;
+                self.explorer_list_state.select(None);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +193,27 @@ mod tests {
         let ddl = state.inspector_ddl_visible_rows();
 
         assert_eq!(ddl - standard, 2);
+    }
+
+    #[test]
+    fn set_explorer_selection_with_some_syncs_both_fields() {
+        let mut state = UiState::default();
+
+        state.set_explorer_selection(Some(5));
+
+        assert_eq!(state.explorer_selected, 5);
+        assert_eq!(state.explorer_list_state.selected(), Some(5));
+    }
+
+    #[test]
+    fn set_explorer_selection_with_none_resets_to_zero_and_none() {
+        let mut state = UiState::default();
+        state.explorer_selected = 10;
+        state.explorer_list_state.select(Some(10));
+
+        state.set_explorer_selection(None);
+
+        assert_eq!(state.explorer_selected, 0);
+        assert_eq!(state.explorer_list_state.selected(), None);
     }
 }
