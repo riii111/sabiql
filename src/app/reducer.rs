@@ -1,18 +1,13 @@
-//! Pure reducer function for state transitions.
-//!
-//! The reducer takes the current state and an action, and returns a new state
-//! along with a list of effects to be executed. The reducer is pure: it does
-//! not perform any I/O, spawn tasks, or acquire the current time.
+//! Pure reducer: state transitions only, no I/O.
 //!
 //! # Purity Rules
 //!
 //! The reducer MUST NOT:
-//! - Call `Instant::now()` or any time-related functions
-//! - Perform I/O operations (file, network, etc.)
-//! - Spawn async tasks (`tokio::spawn`, etc.)
-//! - Access external state (except through the `state` parameter)
+//! - Call `Instant::now()` (time is passed as `now` parameter)
+//! - Perform I/O operations
+//! - Spawn async tasks
 //!
-//! Time is passed as the `now` parameter to keep the reducer pure and testable.
+//! This keeps the reducer testable without mocking time or I/O.
 
 use std::time::{Duration, Instant};
 
@@ -29,21 +24,8 @@ use crate::ui::components::viewport_columns::{
     calculate_next_column_offset, calculate_prev_column_offset,
 };
 
-/// Pure reducer: state transitions only, no I/O.
-///
-/// # Arguments
-///
-/// * `state` - Mutable reference to application state
-/// * `action` - The action to process
-/// * `now` - Current instant (passed in to keep reducer pure)
-///
-/// # Returns
-///
-/// Vector of effects to be executed by EffectRunner.
-/// An empty vector means no side effects are needed.
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
-        // ===== Basic State =====
         Action::None => vec![],
         Action::Quit => {
             state.should_quit = true;
@@ -573,7 +555,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
 
         // ===== Phase 3: Async Actions =====
-
         Action::OpenSqlModal => {
             state.input_mode = InputMode::SqlModal;
             state.sql_modal_state = crate::app::state::SqlModalState::Editing;
@@ -904,13 +885,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.dsn {
-                // Reset prefetch state for fresh reload
                 state.prefetch_started = false;
                 state.prefetch_queue.clear();
                 state.prefetching_tables.clear();
                 state.failed_prefetch_tables.clear();
-
-                // Reset ER preparation state and clear stale messages
                 state.er_preparation.reset();
                 state.last_error = None;
                 state.last_success = None;
@@ -926,9 +904,139 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
         }
 
-        // Phase 4: Special actions (Console, ER, Completion) will be migrated here
-        // These require completion_engine access or special TUI handling
-        _ => vec![], // Remaining actions handled in main.rs for now
+        Action::TableDetailCached {
+            schema,
+            table,
+            detail,
+        } => {
+            use crate::app::er_state::ErStatus;
+
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            state.failed_prefetch_tables.remove(&qualified_name);
+            state.er_preparation.on_table_cached(&qualified_name);
+
+            let mut effects = vec![Effect::CacheTableInCompletionEngine {
+                qualified_name,
+                table: detail,
+            }];
+
+            if !state.prefetch_queue.is_empty() {
+                effects.push(Effect::ProcessPrefetchQueue);
+            }
+
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
+                state.er_preparation.status = ErStatus::Idle;
+                if !state.er_preparation.has_failures() {
+                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                } else {
+                    let failed_count = state.er_preparation.failed_tables.len();
+                    let failed_data: Vec<(String, String)> = state
+                        .er_preparation
+                        .failed_tables
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    effects.push(Effect::WriteErFailureLog {
+                        failed_tables: failed_data,
+                        cache_dir: std::path::PathBuf::new(), // Will be resolved in EffectRunner
+                    });
+                    state.set_error(format!(
+                        "ER failed: {} table(s) failed. 'e' to retry.",
+                        failed_count
+                    ));
+                }
+            }
+
+            effects
+        }
+
+        Action::TableDetailCacheFailed {
+            schema,
+            table,
+            error,
+        } => {
+            use crate::app::er_state::ErStatus;
+
+            let qualified_name = format!("{}.{}", schema, table);
+            state.prefetching_tables.remove(&qualified_name);
+            state
+                .failed_prefetch_tables
+                .insert(qualified_name.clone(), (now, error.clone()));
+            state.er_preparation.on_table_failed(&qualified_name, error);
+
+            let mut effects = Vec::new();
+
+            if !state.prefetch_queue.is_empty() {
+                effects.push(Effect::ProcessPrefetchQueue);
+            }
+
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
+                state.er_preparation.status = ErStatus::Idle;
+                let failed_count = state.er_preparation.failed_tables.len();
+                let failed_data: Vec<(String, String)> = state
+                    .er_preparation
+                    .failed_tables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                effects.push(Effect::WriteErFailureLog {
+                    failed_tables: failed_data,
+                    cache_dir: std::path::PathBuf::new(),
+                });
+                state.set_error(format!(
+                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                    failed_count
+                ));
+            }
+
+            effects
+        }
+
+        Action::ErOpenDiagram => {
+            use crate::app::er_state::ErStatus;
+
+            if matches!(
+                state.er_preparation.status,
+                ErStatus::Rendering | ErStatus::Waiting
+            ) {
+                return vec![];
+            }
+
+            if state.er_preparation.has_failures() {
+                let failed_tables: Vec<String> =
+                    state.er_preparation.failed_tables.keys().cloned().collect();
+                state.er_preparation.retry_failed();
+                state.failed_prefetch_tables.clear();
+
+                for qualified_name in failed_tables {
+                    state.prefetch_queue.push_back(qualified_name);
+                }
+
+                state.er_preparation.status = ErStatus::Waiting;
+                return vec![Effect::ProcessPrefetchQueue];
+            }
+
+            if !state.er_preparation.is_complete() {
+                state.er_preparation.status = ErStatus::Waiting;
+                return vec![];
+            }
+
+            state.er_preparation.status = ErStatus::Rendering;
+            let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+
+            vec![Effect::GenerateErDiagramFromCache {
+                total_tables,
+                project_name: state.project_name.clone(),
+            }]
+        }
+
+        // CompletionTrigger, PrefetchTableDetail require completion_engine access
+        _ => vec![],
     }
 }
 
@@ -1194,11 +1302,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce(
-                &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
-                now,
-            );
+            let effects = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
             assert!(state.metadata.is_some());
             assert!(matches!(state.metadata_state, MetadataState::Loaded));
