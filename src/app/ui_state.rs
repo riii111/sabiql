@@ -208,8 +208,7 @@ mod tests {
     #[test]
     fn set_explorer_selection_with_none_resets_to_zero_and_none() {
         let mut state = UiState::default();
-        state.explorer_selected = 10;
-        state.explorer_list_state.select(Some(10));
+        state.set_explorer_selection(Some(10));
 
         state.set_explorer_selection(None);
 
