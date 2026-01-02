@@ -970,7 +970,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         .collect();
                     effects.push(Effect::WriteErFailureLog {
                         failed_tables: failed_data,
-                        cache_dir: std::path::PathBuf::new(), // Will be resolved in EffectRunner
                     });
                     state.set_error(format!(
                         "ER failed: {} table(s) failed. 'e' to retry.",
@@ -1016,7 +1015,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     .collect();
                 effects.push(Effect::WriteErFailureLog {
                     failed_tables: failed_data,
-                    cache_dir: std::path::PathBuf::new(),
                 });
                 state.set_error(format!(
                     "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -1061,7 +1059,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         .collect();
                     effects.push(Effect::WriteErFailureLog {
                         failed_tables: failed_data,
-                        cache_dir: std::path::PathBuf::new(),
                     });
                     state.set_error(format!(
                         "ER failed: {} table(s) failed. 'e' to retry.",

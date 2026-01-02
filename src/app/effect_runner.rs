@@ -364,10 +364,10 @@ impl EffectRunner {
                     })
                     .collect();
 
-                if !prefetch_actions.is_empty() {
-                    for action in prefetch_actions {
-                        let _ = self.action_tx.try_send(action);
-                    }
+                // Drop on channel full is acceptable: prefetch is best-effort,
+                // and missing tables will be retried on next completion trigger.
+                for action in prefetch_actions {
+                    let _ = self.action_tx.try_send(action);
                 }
 
                 // 3. Get candidates (scoped borrow)
@@ -434,10 +434,7 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::WriteErFailureLog {
-                failed_tables,
-                cache_dir: _,
-            } => {
+            Effect::WriteErFailureLog { failed_tables } => {
                 let project_name = state.runtime.project_name.clone();
                 if let Ok(cache_dir) = get_cache_dir(&project_name) {
                     tokio::task::spawn_blocking(move || {
