@@ -15,7 +15,13 @@ impl GraphvizRunner for SystemGraphvizRunner {
             .arg(svg_path)
             .arg(dot_path)
             .status()
-            .map_err(|_| GraphvizError::NotInstalled)?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    GraphvizError::NotInstalled
+                } else {
+                    GraphvizError::IoError(e)
+                }
+            })?;
 
         if !status.success() {
             return Err(GraphvizError::CommandFailed(status.code()));

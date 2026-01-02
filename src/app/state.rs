@@ -257,6 +257,12 @@ impl AppState {
         self.inspector_pane_height.saturating_sub(5) as usize
     }
 
+    /// Calculate visible rows for DDL tab (no header row, no separate scroll indicator)
+    /// DDL content = height - 2 (border) - 1 (tab bar) = height - 3
+    pub fn inspector_ddl_visible_rows(&self) -> usize {
+        self.inspector_pane_height.saturating_sub(3) as usize
+    }
+
     pub fn tables(&self) -> Vec<&TableSummary> {
         self.metadata
             .as_ref()
