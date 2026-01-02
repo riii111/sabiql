@@ -124,9 +124,7 @@ impl SqlModal {
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
         let (status_text, status_style) = match state.sql_modal.status {
-            SqlModalStatus::Editing => {
-                ("Ready".to_string(), Style::default().fg(Color::DarkGray))
-            }
+            SqlModalStatus::Editing => ("Ready".to_string(), Style::default().fg(Color::DarkGray)),
             SqlModalStatus::Running => {
                 let spinner_frames = ["◐", "◓", "◑", "◒"];
                 let elapsed = state
