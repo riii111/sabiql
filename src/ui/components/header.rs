@@ -12,12 +12,12 @@ pub struct Header;
 impl Header {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let db_name = state.runtime.database_name.as_deref().unwrap_or("-");
-        let table = state.current_table.as_deref().unwrap_or("-");
+        let table = state.cache.current_table.as_deref().unwrap_or("-");
 
         let (status_text, status_color) = if state.runtime.dsn.is_none() {
             ("no dsn", Color::Red)
         } else {
-            match &state.metadata_state {
+            match &state.cache.state {
                 MetadataState::Loaded => ("connected", Color::Green),
                 MetadataState::Loading => ("loading...", Color::Yellow),
                 MetadataState::Error(_) => ("error", Color::Red),

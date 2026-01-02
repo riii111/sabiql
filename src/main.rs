@@ -204,7 +204,7 @@ async fn handle_action(
             state.completion.candidates.clear();
             state.completion.selected_index = 0;
             state.completion_debounce = None;
-            if !state.prefetch_started && state.metadata.is_some() {
+            if !state.prefetch_started && state.cache.metadata.is_some() {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
@@ -330,7 +330,7 @@ async fn handle_action(
             // Scoped borrow to release before async operations
             let missing = {
                 let engine = completion_engine.borrow();
-                engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
+                engine.missing_tables(&state.sql_modal_content, state.cache.metadata.as_ref())
             };
 
             for qualified_name in missing {
@@ -351,8 +351,8 @@ async fn handle_action(
             let candidates = engine.get_candidates(
                 &state.sql_modal_content,
                 cursor,
-                state.metadata.as_ref(),
-                state.table_detail.as_ref(),
+                state.cache.metadata.as_ref(),
+                state.cache.table_detail.as_ref(),
                 &recent_cols,
             );
             state.completion.candidates = candidates;
@@ -520,12 +520,12 @@ async fn handle_action(
                 if let Some(table) = filtered.get(state.picker_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
-                    state.current_table = Some(table.qualified_name());
+                    state.cache.current_table = Some(table.qualified_name());
                     state.input_mode = InputMode::Normal;
 
                     // Increment generation to invalidate any in-flight requests
-                    state.selection_generation += 1;
-                    let current_gen = state.selection_generation;
+                    state.cache.selection_generation += 1;
+                    let current_gen = state.cache.selection_generation;
 
                     // Trigger table detail loading and preview (sequential to avoid rate limits)
                     // TODO: If performance becomes an issue, consider parallel execution
@@ -552,10 +552,10 @@ async fn handle_action(
                 if let Some(table) = tables.get(state.explorer_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
-                    state.current_table = Some(table.qualified_name());
+                    state.cache.current_table = Some(table.qualified_name());
 
-                    state.selection_generation += 1;
-                    let current_gen = state.selection_generation;
+                    state.cache.selection_generation += 1;
+                    let current_gen = state.cache.selection_generation;
 
                     // TODO: If performance becomes an issue, consider parallel execution
                     // with a semaphore to limit concurrency (e.g., tokio::sync::Semaphore)
@@ -611,10 +611,10 @@ async fn handle_action(
         Action::LoadMetadata => {
             if let Some(dsn) = &state.runtime.dsn {
                 if let Some(cached) = metadata_cache.get(dsn).await {
-                    state.metadata = Some(cached);
-                    state.metadata_state = MetadataState::Loaded;
+                    state.cache.metadata = Some(cached);
+                    state.cache.state = MetadataState::Loaded;
                 } else {
-                    state.metadata_state = MetadataState::Loading;
+                    state.cache.state = MetadataState::Loading;
 
                     let dsn = dsn.clone();
                     let provider = Arc::clone(metadata_provider);
@@ -657,8 +657,8 @@ async fn handle_action(
         }
 
         Action::MetadataLoaded(metadata) => {
-            state.metadata = Some(*metadata);
-            state.metadata_state = MetadataState::Loaded;
+            state.cache.metadata = Some(*metadata);
+            state.cache.state = MetadataState::Loaded;
 
             // Start prefetching table details for completion and ER diagrams
             if !state.prefetch_started {
@@ -667,7 +667,7 @@ async fn handle_action(
         }
 
         Action::MetadataFailed(error) => {
-            state.metadata_state = MetadataState::Error(error);
+            state.cache.state = MetadataState::Error(error);
         }
 
         Action::LoadTableDetail {
@@ -699,19 +699,19 @@ async fn handle_action(
 
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
-            if generation == state.selection_generation {
+            if generation == state.cache.selection_generation {
                 // Cache for completion to avoid redundant prefetch for the selected table
                 completion_engine
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
-                state.table_detail = Some(*detail);
+                state.cache.table_detail = Some(*detail);
                 state.inspector_scroll_offset = 0;
             }
         }
 
         Action::TableDetailFailed(error, generation) => {
             // Ignore stale errors from previous table selections
-            if generation == state.selection_generation {
+            if generation == state.cache.selection_generation {
                 state.set_error(error);
             }
         }
@@ -909,7 +909,7 @@ async fn handle_action(
 
         Action::StartPrefetchAll => {
             if !state.prefetch_started
-                && let Some(metadata) = &state.metadata
+                && let Some(metadata) = &state.cache.metadata
             {
                 state.prefetch_started = true;
                 state.prefetch_queue.clear();
@@ -963,7 +963,7 @@ async fn handle_action(
                 let tx = action_tx.clone();
 
                 // Adaptive limit: fewer rows for wide tables to avoid UI lag
-                let limit = state.table_detail.as_ref().map_or(100, |detail| {
+                let limit = state.cache.table_detail.as_ref().map_or(100, |detail| {
                     let col_count = detail.columns.len();
                     if col_count >= 30 {
                         20
@@ -1018,7 +1018,7 @@ async fn handle_action(
         Action::QueryCompleted(result, generation) => {
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show results
-            if generation == 0 || generation == state.selection_generation {
+            if generation == 0 || generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
                 state.result_scroll_offset = 0;
@@ -1046,7 +1046,7 @@ async fn handle_action(
         Action::QueryFailed(error, generation) => {
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show errors
-            if generation == 0 || generation == state.selection_generation {
+            if generation == 0 || generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
                 state.set_error(error.clone());
@@ -1125,6 +1125,7 @@ async fn handle_action(
                 _ => state.inspector_visible_rows(),
             };
             let total_items = state
+                .cache
                 .table_detail
                 .as_ref()
                 .map(|t| match state.inspector_tab {
@@ -1274,7 +1275,7 @@ async fn handle_action(
             }
 
             state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+            let total_tables = state.cache.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.runtime.project_name)?;
 
             let exporter = Arc::new(DotExporter::new());
