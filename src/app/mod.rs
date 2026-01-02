@@ -15,4 +15,5 @@ pub mod query_execution;
 pub mod result_history;
 pub mod runtime_state;
 pub mod sql_lexer;
+pub mod sql_modal_context;
 pub mod state;

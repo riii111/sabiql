@@ -25,7 +25,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::Help => handle_help_keys(key),
         InputMode::SqlModal => {
             let completion_visible =
-                state.completion.visible && !state.completion.candidates.is_empty();
+                state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
     }

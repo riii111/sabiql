@@ -115,9 +115,9 @@ async fn main() -> Result<()> {
             }
         }
 
-        match state.completion_debounce {
+        match state.sql_modal.completion_debounce {
             Some(debounce_until) if Instant::now() >= debounce_until => {
-                state.completion_debounce = None;
+                state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
             _ => (),
@@ -199,64 +199,64 @@ async fn handle_action(
 
         Action::OpenSqlModal => {
             state.input_mode = InputMode::SqlModal;
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            state.completion.visible = false;
-            state.completion.candidates.clear();
-            state.completion.selected_index = 0;
-            state.completion_debounce = None;
-            if !state.prefetch_started && state.cache.metadata.is_some() {
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion.candidates.clear();
+            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion_debounce = None;
+            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
         Action::CloseSqlModal => {
             state.input_mode = InputMode::Normal;
-            state.completion.visible = false;
-            state.completion_debounce = None;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = None;
             // Keep prefetch running for ER diagram usage
         }
         Action::SqlModalInput(c) => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert(byte_idx, c);
-            state.sql_modal_cursor += 1;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert(byte_idx, c);
+            state.sql_modal.cursor += 1;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalBackspace => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            if state.sql_modal_cursor > 0 {
-                state.sql_modal_cursor -= 1;
-                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                state.sql_modal_content.remove(byte_idx);
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            if state.sql_modal.cursor > 0 {
+                state.sql_modal.cursor -= 1;
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                state.sql_modal.content.remove(byte_idx);
             }
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalDelete => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let total_chars = char_count(&state.sql_modal_content);
-            if state.sql_modal_cursor < total_chars {
-                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                state.sql_modal_content.remove(byte_idx);
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let total_chars = char_count(&state.sql_modal.content);
+            if state.sql_modal.cursor < total_chars {
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                state.sql_modal.content.remove(byte_idx);
             }
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalNewLine => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert(byte_idx, '\n');
-            state.sql_modal_cursor += 1;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert(byte_idx, '\n');
+            state.sql_modal.cursor += 1;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalTab => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert_str(byte_idx, "    ");
-            state.sql_modal_cursor += 4;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert_str(byte_idx, "    ");
+            state.sql_modal.cursor += 4;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalMoveCursor(movement) => {
             use app::action::CursorMove;
-            let content = &state.sql_modal_content;
-            let cursor = state.sql_modal_cursor;
+            let content = &state.sql_modal.content;
+            let cursor = state.sql_modal.cursor;
             let total_chars = char_count(content);
 
             let lines: Vec<(usize, usize)> = {
@@ -283,7 +283,7 @@ async fn handle_action(
                 (line_idx, col)
             };
 
-            state.sql_modal_cursor = match movement {
+            state.sql_modal.cursor = match movement {
                 CursorMove::Left => cursor.saturating_sub(1),
                 CursorMove::Right => (cursor + 1).min(total_chars),
                 CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
@@ -310,27 +310,24 @@ async fn handle_action(
             };
         }
         Action::SqlModalSubmit => {
-            let query = state.sql_modal_content.trim().to_string();
+            let query = state.sql_modal.content.trim().to_string();
             if !query.is_empty() {
-                state.sql_modal_state = app::state::SqlModalState::Running;
-                state.completion.visible = false;
+                state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Running;
+                state.sql_modal.completion.visible = false;
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
         }
         Action::SqlModalClear => {
-            state.sql_modal_content.clear();
-            state.sql_modal_cursor = 0;
-            state.completion.visible = false;
-            state.completion.candidates.clear();
+            state.sql_modal.clear_content();
         }
 
         Action::CompletionTrigger => {
-            let cursor = state.sql_modal_cursor;
+            let cursor = state.sql_modal.cursor;
 
             // Scoped borrow to release before async operations
             let missing = {
                 let engine = completion_engine.borrow();
-                engine.missing_tables(&state.sql_modal_content, state.cache.metadata.as_ref())
+                engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
             };
 
             for qualified_name in missing {
@@ -346,65 +343,66 @@ async fn handle_action(
             }
 
             let engine = completion_engine.borrow();
-            let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
-            let recent_cols = state.completion.recent_columns_vec();
+            let token_len = engine.current_token_len(&state.sql_modal.content, cursor);
+            let recent_cols = state.sql_modal.completion.recent_columns_vec();
             let candidates = engine.get_candidates(
-                &state.sql_modal_content,
+                &state.sql_modal.content,
                 cursor,
                 state.cache.metadata.as_ref(),
                 state.cache.table_detail.as_ref(),
                 &recent_cols,
             );
-            state.completion.candidates = candidates;
-            state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty()
-                && !state.sql_modal_content.trim().is_empty();
-            state.completion.trigger_position = cursor.saturating_sub(token_len);
+            state.sql_modal.completion.candidates = candidates;
+            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion.visible = !state.sql_modal.completion.candidates.is_empty()
+                && !state.sql_modal.content.trim().is_empty();
+            state.sql_modal.completion.trigger_position = cursor.saturating_sub(token_len);
         }
         Action::CompletionAccept => {
-            if state.completion.visible && !state.completion.candidates.is_empty() {
+            if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
                 if let Some(candidate) = state
+                    .sql_modal
                     .completion
                     .candidates
-                    .get(state.completion.selected_index)
+                    .get(state.sql_modal.completion.selected_index)
                 {
                     let insert_text = candidate.text.clone();
-                    let trigger_pos = state.completion.trigger_position;
+                    let trigger_pos = state.sql_modal.completion.trigger_position;
 
-                    let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
+                    let start_byte = char_to_byte_index(&state.sql_modal.content, trigger_pos);
                     let end_byte =
-                        char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                    state.sql_modal_content.drain(start_byte..end_byte);
+                        char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                    state.sql_modal.content.drain(start_byte..end_byte);
 
-                    state.sql_modal_content.insert_str(start_byte, &insert_text);
-                    state.sql_modal_cursor = trigger_pos + insert_text.chars().count();
+                    state.sql_modal.content.insert_str(start_byte, &insert_text);
+                    state.sql_modal.cursor = trigger_pos + insert_text.chars().count();
                 }
-                state.completion.visible = false;
-                state.completion.candidates.clear();
-                state.completion_debounce = None;
+                state.sql_modal.completion.visible = false;
+                state.sql_modal.completion.candidates.clear();
+                state.sql_modal.completion_debounce = None;
             }
         }
         Action::CompletionDismiss => {
-            state.completion.visible = false;
-            state.completion_debounce = None;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = None;
         }
         Action::CompletionNext => {
-            if !state.completion.candidates.is_empty() {
-                let max = state.completion.candidates.len() - 1;
-                state.completion.selected_index = if state.completion.selected_index >= max {
+            if !state.sql_modal.completion.candidates.is_empty() {
+                let max = state.sql_modal.completion.candidates.len() - 1;
+                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index >= max {
                     0
                 } else {
-                    state.completion.selected_index + 1
+                    state.sql_modal.completion.selected_index + 1
                 };
             }
         }
         Action::CompletionPrev => {
-            if !state.completion.candidates.is_empty() {
-                let max = state.completion.candidates.len() - 1;
-                state.completion.selected_index = if state.completion.selected_index == 0 {
+            if !state.sql_modal.completion.candidates.is_empty() {
+                let max = state.sql_modal.completion.candidates.len() - 1;
+                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index == 0 {
                     max
                 } else {
-                    state.completion.selected_index - 1
+                    state.sql_modal.completion.selected_index - 1
                 };
             }
         }
@@ -432,7 +430,7 @@ async fn handle_action(
                 Action::OpenHelp => state.input_mode = InputMode::Help,
                 Action::OpenSqlModal => {
                     state.input_mode = InputMode::SqlModal;
-                    state.sql_modal_state = app::state::SqlModalState::Editing;
+                    state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                 }
                 Action::OpenConsole => {
                     let _ = action_tx.send(Action::OpenConsole).await;
@@ -588,7 +586,7 @@ async fn handle_action(
                     Action::SetFocusedPane(pane) => state.focused_pane = pane,
                     Action::OpenSqlModal => {
                         state.input_mode = InputMode::SqlModal;
-                        state.sql_modal_state = app::state::SqlModalState::Editing;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                     }
                     Action::ReloadMetadata => {
                         if let Some(dsn) = &state.runtime.dsn {
@@ -641,11 +639,7 @@ async fn handle_action(
             if let Some(dsn) = &state.runtime.dsn {
                 metadata_cache.invalidate(dsn).await;
 
-                // Reset prefetch state for fresh reload
-                state.prefetch_started = false;
-                state.prefetch_queue.clear();
-                state.prefetching_tables.clear();
-                state.failed_prefetch_tables.clear();
+                state.sql_modal.reset_prefetch();
                 completion_engine.borrow_mut().clear_table_cache();
 
                 // Reset ER preparation state and clear stale messages
@@ -661,7 +655,7 @@ async fn handle_action(
             state.cache.state = MetadataState::Loaded;
 
             // Start prefetching table details for completion and ER diagrams
-            if !state.prefetch_started {
+            if !state.sql_modal.prefetch_started {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
@@ -721,12 +715,13 @@ async fn handle_action(
             let qualified_name = format!("{}.{}", schema, table);
 
             let recently_failed = state
+                .sql_modal
                 .failed_prefetch_tables
                 .get(&qualified_name)
                 .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
-            if state.prefetching_tables.contains(&qualified_name)
+            if state.sql_modal.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
@@ -742,22 +737,22 @@ async fn handle_action(
                         state.set_success("ER ready. Press 'e' to open.".to_string());
                     } else {
                         let failed_count = state.er_preparation.failed_tables.len();
-                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name)
-                        {
-                            let failed_data: Vec<(String, String)> = state
-                                .er_preparation
-                                .failed_tables
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect();
-                            tokio::task::spawn_blocking(move || {
-                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
-                            })
-                            .await
-                            .unwrap_or(false)
-                        } else {
-                            false
-                        };
+                        let log_written =
+                            if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
+                                let failed_data: Vec<(String, String)> = state
+                                    .er_preparation
+                                    .failed_tables
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect();
+                                tokio::task::spawn_blocking(move || {
+                                    write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                                })
+                                .await
+                                .unwrap_or(false)
+                            } else {
+                                false
+                            };
                         let msg = if log_written {
                             format!(
                                 "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -770,7 +765,7 @@ async fn handle_action(
                     }
                 }
             } else if let Some(dsn) = &state.runtime.dsn {
-                state.prefetching_tables.insert(qualified_name.clone());
+                state.sql_modal.prefetching_tables.insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);
                 state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
@@ -808,18 +803,18 @@ async fn handle_action(
             detail,
         } => {
             let qualified_name = format!("{}.{}", schema, table);
-            state.prefetching_tables.remove(&qualified_name);
-            state.failed_prefetch_tables.remove(&qualified_name);
+            state.sql_modal.prefetching_tables.remove(&qualified_name);
+            state.sql_modal.failed_prefetch_tables.remove(&qualified_name);
             state.er_preparation.on_table_cached(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
-                state.completion_debounce = None;
+            if state.input_mode == InputMode::SqlModal && state.sql_modal.prefetch_queue.is_empty() {
+                state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
-            if !state.prefetch_queue.is_empty() {
+            if !state.sql_modal.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
@@ -831,21 +826,22 @@ async fn handle_action(
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
                     let failed_count = state.er_preparation.failed_tables.len();
-                    let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
-                        let failed_data: Vec<(String, String)> = state
-                            .er_preparation
-                            .failed_tables
-                            .iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect();
-                        tokio::task::spawn_blocking(move || {
-                            write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
-                        })
-                        .await
-                        .unwrap_or(false)
-                    } else {
-                        false
-                    };
+                    let log_written =
+                        if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
+                            let failed_data: Vec<(String, String)> = state
+                                .er_preparation
+                                .failed_tables
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            tokio::task::spawn_blocking(move || {
+                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                            })
+                            .await
+                            .unwrap_or(false)
+                        } else {
+                            false
+                        };
                     let msg = if log_written {
                         format!(
                             "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -865,12 +861,13 @@ async fn handle_action(
             error,
         } => {
             let qualified_name = format!("{}.{}", schema, table);
-            state.prefetching_tables.remove(&qualified_name);
+            state.sql_modal.prefetching_tables.remove(&qualified_name);
             state
+                .sql_modal
                 .failed_prefetch_tables
                 .insert(qualified_name.clone(), (Instant::now(), error.clone()));
             state.er_preparation.on_table_failed(&qualified_name, error);
-            if !state.prefetch_queue.is_empty() {
+            if !state.sql_modal.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
@@ -880,7 +877,8 @@ async fn handle_action(
             {
                 state.er_preparation.status = ErStatus::Idle;
                 let failed_count = state.er_preparation.failed_tables.len();
-                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
+                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name)
+                {
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation
                         .failed_tables
@@ -908,11 +906,11 @@ async fn handle_action(
         }
 
         Action::StartPrefetchAll => {
-            if !state.prefetch_started
+            if !state.sql_modal.prefetch_started
                 && let Some(metadata) = &state.cache.metadata
             {
-                state.prefetch_started = true;
-                state.prefetch_queue.clear();
+                state.sql_modal.prefetch_started = true;
+                state.sql_modal.prefetch_queue.clear();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -921,7 +919,7 @@ async fn handle_action(
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
                         if !engine.has_cached_table(&qualified_name) {
-                            state.prefetch_queue.push_back(qualified_name.clone());
+                            state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
                             state.er_preparation.pending_tables.insert(qualified_name);
                         }
                     }
@@ -932,11 +930,11 @@ async fn handle_action(
 
         Action::ProcessPrefetchQueue => {
             const MAX_CONCURRENT_PREFETCH: usize = 4;
-            let current_in_flight = state.prefetching_tables.len();
+            let current_in_flight = state.sql_modal.prefetching_tables.len();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
             for _ in 0..available_slots {
-                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                if let Some(qualified_name) = state.sql_modal.prefetch_queue.pop_front() {
                     if let Some((schema, table)) = qualified_name.split_once('.') {
                         let _ = action_tx
                             .send(Action::PrefetchTableDetail {
@@ -1023,14 +1021,15 @@ async fn handle_action(
                 state.query.start_time = None;
                 state.result_scroll_offset = 0;
                 state.result_horizontal_offset = 0;
-                state.query.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+                state.query.result_highlight_until =
+                    Some(Instant::now() + Duration::from_millis(500));
                 state.query.history_index = None;
 
                 if result.source == domain::QuerySource::Adhoc {
                     if result.is_error() {
-                        state.sql_modal_state = app::state::SqlModalState::Error;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Error;
                     } else {
-                        state.sql_modal_state = app::state::SqlModalState::Success;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Success;
                     }
                 }
 
@@ -1052,10 +1051,10 @@ async fn handle_action(
                 state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
-                    state.sql_modal_state = app::state::SqlModalState::Error;
+                    state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Error;
                     // Show error in result pane for better visibility
                     let error_result = domain::QueryResult::error(
-                        state.sql_modal_content.clone(),
+                        state.sql_modal.content.clone(),
                         error,
                         0,
                         domain::QuerySource::Adhoc,
@@ -1243,10 +1242,10 @@ async fn handle_action(
                 let failed_tables: Vec<String> =
                     state.er_preparation.failed_tables.keys().cloned().collect();
                 state.er_preparation.retry_failed();
-                state.failed_prefetch_tables.clear();
+                state.sql_modal.failed_prefetch_tables.clear();
 
                 for qualified_name in failed_tables {
-                    state.prefetch_queue.push_back(qualified_name);
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
                 }
 
                 state.er_preparation.status = ErStatus::Waiting;
@@ -1275,7 +1274,12 @@ async fn handle_action(
             }
 
             state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state.cache.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+            let total_tables = state
+                .cache
+                .metadata
+                .as_ref()
+                .map(|m| m.tables.len())
+                .unwrap_or(0);
             let cache_dir = get_cache_dir(&state.runtime.project_name)?;
 
             let exporter = Arc::new(DotExporter::new());

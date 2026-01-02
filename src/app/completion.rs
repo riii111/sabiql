@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
-use crate::app::state::{CompletionCandidate, CompletionKind};
+use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
