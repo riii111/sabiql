@@ -486,6 +486,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.ui.explorer_selected = 0;
             if has_tables {
                 state.ui.explorer_list_state.select(Some(0));
             } else {
@@ -1452,6 +1453,7 @@ mod tests {
         #[test]
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
+            state.ui.explorer_selected = 5;
             state.ui.explorer_list_state.select(Some(5));
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -1464,12 +1466,14 @@ mod tests {
             let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
             assert!(state.cache.metadata.is_some());
+            assert_eq!(state.ui.explorer_selected, 0);
             assert_eq!(state.ui.explorer_list_state.selected(), None);
         }
 
         #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
+            state.ui.explorer_selected = 3;
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1486,6 +1490,7 @@ mod tests {
             let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
             assert!(state.cache.metadata.is_some());
+            assert_eq!(state.ui.explorer_selected, 0);
             assert_eq!(state.ui.explorer_list_state.selected(), Some(0));
         }
 
