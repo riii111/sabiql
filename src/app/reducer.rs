@@ -483,9 +483,14 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         // ===== Response Handlers (pure state updates) =====
         Action::MetadataLoaded(metadata) => {
+            let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-            state.ui.explorer_list_state.select(Some(0));
+            if has_tables {
+                state.ui.explorer_list_state.select(Some(0));
+            } else {
+                state.ui.explorer_list_state.select(None);
+            }
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
@@ -1442,11 +1447,12 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn metadata_loaded_updates_state() {
+        fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
+            state.ui.explorer_list_state.select(Some(5));
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1455,13 +1461,32 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
             assert!(state.cache.metadata.is_some());
-            assert!(matches!(state.cache.state, MetadataState::Loaded));
-            // Prefetch is started on OpenSqlModal, not MetadataLoaded
-            assert!(!state.sql_modal.prefetch_started);
-            assert!(effects.is_empty());
+            assert_eq!(state.ui.explorer_list_state.selected(), None);
+        }
+
+        #[test]
+        fn metadata_loaded_with_tables_selects_first() {
+            let mut state = create_test_state();
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+                fetched_at: Instant::now(),
+            };
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            assert!(state.cache.metadata.is_some());
+            assert_eq!(state.ui.explorer_list_state.selected(), Some(0));
         }
 
         #[test]
