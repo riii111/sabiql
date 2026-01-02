@@ -16,10 +16,6 @@ pub fn fixed_instant() -> Instant {
     Instant::now()
 }
 
-pub fn fixed_time_ms() -> u128 {
-    0
-}
-
 pub fn create_test_state() -> AppState {
     AppState::new("test_project".to_string(), "default".to_string())
 }
