@@ -149,9 +149,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        let max = state.tables().len().saturating_sub(1);
-                        if state.ui.explorer_selected < max {
-                            state.ui.explorer_selected += 1;
+                        let len = state.tables().len();
+                        if len > 0 && state.ui.explorer_selected < len - 1 {
+                            state
+                                .ui
+                                .set_explorer_selection(Some(state.ui.explorer_selected + 1));
                         }
                     }
                 }
@@ -165,8 +167,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
                 }
                 InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
-                        state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(1);
+                    if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
+                    {
+                        let new_idx = state.ui.explorer_selected.saturating_sub(1);
+                        state.ui.set_explorer_selection(Some(new_idx));
                     }
                 }
                 _ => {}
@@ -179,8 +183,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     state.ui.picker_selected = 0;
                 }
                 InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
-                        state.ui.explorer_selected = 0;
+                    if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
+                    {
+                        state.ui.set_explorer_selection(Some(0));
                     }
                 }
                 _ => {}
@@ -198,7 +203,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        state.ui.explorer_selected = state.tables().len().saturating_sub(1);
+                        let len = state.tables().len();
+                        if len > 0 {
+                            state.ui.set_explorer_selection(Some(len - 1));
+                        }
                     }
                 }
                 _ => {}
@@ -472,8 +480,12 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         // ===== Response Handlers (pure state updates) =====
         Action::MetadataLoaded(metadata) => {
+            let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state
+                .ui
+                .set_explorer_selection(if has_tables { Some(0) } else { None });
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
@@ -614,7 +626,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     let end_byte =
                         char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                     state.sql_modal.content.drain(start_byte..end_byte);
-                    state.sql_modal.content.insert_str(start_byte, &candidate.text);
+                    state
+                        .sql_modal
+                        .content
+                        .insert_str(start_byte, &candidate.text);
                     state.sql_modal.cursor = trigger_pos + candidate.text.chars().count();
                 }
                 state.sql_modal.completion.visible = false;
@@ -1209,6 +1224,7 @@ mod tests {
 
     mod pure_actions {
         use super::*;
+        use rstest::rstest;
 
         #[test]
         fn quit_sets_should_quit_and_returns_no_effects() {
@@ -1252,6 +1268,22 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::Render));
+        }
+
+        #[rstest]
+        #[case(Action::SelectFirst)]
+        #[case(Action::SelectLast)]
+        #[case(Action::SelectNext)]
+        #[case(Action::SelectPrevious)]
+        fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
+            let mut state = create_test_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_list_state.select(None);
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, action, now);
+
+            assert_eq!(state.ui.explorer_list_state.selected(), None);
         }
     }
 
@@ -1427,11 +1459,13 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn metadata_loaded_updates_state() {
+        fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
+            state.ui.explorer_selected = 5;
+            state.ui.explorer_list_state.select(Some(5));
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -1440,13 +1474,35 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
             assert!(state.cache.metadata.is_some());
-            assert!(matches!(state.cache.state, MetadataState::Loaded));
-            // Prefetch is started on OpenSqlModal, not MetadataLoaded
-            assert!(!state.sql_modal.prefetch_started);
-            assert!(effects.is_empty());
+            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_list_state.selected(), None);
+        }
+
+        #[test]
+        fn metadata_loaded_with_tables_selects_first() {
+            let mut state = create_test_state();
+            state.ui.explorer_selected = 3;
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )],
+                fetched_at: Instant::now(),
+            };
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            assert!(state.cache.metadata.is_some());
+            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_list_state.selected(), Some(0));
         }
 
         #[test]

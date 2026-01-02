@@ -17,14 +17,13 @@ use crate::infra::utils::quote_ident;
 pub struct Inspector;
 
 impl Inspector {
-    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        let new_plan = Self::render_content(frame, content_area, state, is_focused);
-        state.ui.inspector_viewport_plan = new_plan;
+        Self::render_content(frame, content_area, state, is_focused)
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {

@@ -16,7 +16,7 @@ use crate::domain::{QueryResult, QuerySource};
 pub struct ResultPane;
 
 impl ResultPane {
-    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
 
         let should_highlight = state
@@ -41,7 +41,7 @@ impl ResultPane {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let new_plan = if let Some(result) = result {
+        if let Some(result) = result {
             if result.is_error() {
                 Self::render_error(frame, area, result, block);
                 ViewportPlan::default()
@@ -62,8 +62,7 @@ impl ResultPane {
         } else {
             Self::render_placeholder(frame, area, block);
             ViewportPlan::default()
-        };
-        state.ui.result_viewport_plan = new_plan;
+        }
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
