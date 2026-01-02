@@ -86,6 +86,11 @@ pub enum Action {
         table: String,
         error: String,
     },
+    /// Notifies that table was already cached (no data update needed)
+    TableDetailAlreadyCached {
+        schema: String,
+        table: String,
+    },
 
     // Prefetch all tables for completion
     StartPrefetchAll,
@@ -145,6 +150,7 @@ pub enum Action {
 
     // Console
     OpenConsole,
+    ConsoleFailed(String),
 
     // Focus mode
     ToggleFocus,

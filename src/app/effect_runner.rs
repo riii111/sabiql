@@ -123,13 +123,13 @@ impl EffectRunner {
                     Err(e) => {
                         let _ = self
                             .action_tx
-                            .send(Action::MetadataFailed(format!("pgcli task failed: {}", e)))
+                            .send(Action::ConsoleFailed(format!("pgcli task failed: {}", e)))
                             .await;
                     }
                     Ok(Err(e)) => {
                         let _ = self
                             .action_tx
-                            .send(Action::MetadataFailed(format!(
+                            .send(Action::ConsoleFailed(format!(
                                 "pgcli failed to start: {}",
                                 e
                             )))
@@ -141,7 +141,7 @@ impl EffectRunner {
                             .map_or("unknown".to_string(), |c| c.to_string());
                         let _ = self
                             .action_tx
-                            .send(Action::MetadataFailed(format!(
+                            .send(Action::ConsoleFailed(format!(
                                 "pgcli exited with code {}",
                                 code
                             )))
@@ -256,24 +256,10 @@ impl EffectRunner {
                 // Check cache before spawning
                 let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
                 if already_cached {
-                    // Send cached notification to update state
+                    // Notify state update without overwriting cache data
                     let _ = self
                         .action_tx
-                        .send(Action::TableDetailCached {
-                            schema: schema.clone(),
-                            table: table.clone(),
-                            detail: Box::new(crate::domain::Table {
-                                schema: schema.clone(),
-                                name: table.clone(),
-                                columns: vec![],
-                                primary_key: None,
-                                indexes: vec![],
-                                foreign_keys: vec![],
-                                rls: None,
-                                row_count_estimate: None,
-                                comment: None,
-                            }),
-                        })
+                        .send(Action::TableDetailAlreadyCached { schema, table })
                         .await;
                     return Ok(());
                 }
