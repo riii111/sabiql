@@ -91,15 +91,6 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        if has_cached_data {
-            state
-                .ui
-                .explorer_list_state
-                .select(Some(state.ui.explorer_selected));
-        } else {
-            state.ui.explorer_list_state.select(None);
-        }
-
         frame.render_stateful_widget(list, area, &mut state.ui.explorer_list_state);
 
         // Render scrollbars
