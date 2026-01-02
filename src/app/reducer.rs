@@ -13,10 +13,10 @@ use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
 use crate::app::effect::Effect;
+use crate::app::layout::compute_pane_heights;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
-use crate::app::layout::compute_pane_heights;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -40,10 +40,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
         Action::Render => {
+            state.clear_expired_messages();
             let heights = compute_pane_heights(state.ui.terminal_height, state.ui.focus_mode);
             state.ui.result_pane_height = heights.result_pane_height;
             state.ui.inspector_pane_height = heights.inspector_pane_height;
-            state.clear_expired_messages();
             vec![Effect::Render]
         }
 
@@ -214,11 +214,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        state.ui.explorer_selected = state.tables().len().saturating_sub(1);
-                        state
-                            .ui
-                            .explorer_list_state
-                            .select(Some(state.ui.explorer_selected));
+                        let last = state.tables().len().saturating_sub(1);
+                        state.ui.explorer_selected = last;
+                        state.ui.explorer_list_state.select(Some(last));
                     }
                 }
                 _ => {}
@@ -387,9 +385,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, c);
             state.sql_modal.cursor += 1;
-            let trigger_at = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(trigger_at);
-            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            vec![]
         }
         Action::SqlModalBackspace => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
@@ -398,9 +395,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
-            let trigger_at = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(trigger_at);
-            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            vec![]
         }
         Action::SqlModalDelete => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
@@ -409,27 +405,24 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
-            let trigger_at = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(trigger_at);
-            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            vec![]
         }
         Action::SqlModalNewLine => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, '\n');
             state.sql_modal.cursor += 1;
-            let trigger_at = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(trigger_at);
-            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            vec![]
         }
         Action::SqlModalTab => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert_str(byte_idx, "    ");
             state.sql_modal.cursor += 4;
-            let trigger_at = now + Duration::from_millis(100);
-            state.sql_modal.completion_debounce = Some(trigger_at);
-            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            vec![]
         }
         Action::SqlModalMoveCursor(movement) => {
             let content = &state.sql_modal.content;
@@ -499,13 +492,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::MetadataLoaded(metadata) => {
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-
-            if !state.tables().is_empty() {
-                state.ui.explorer_selected = 0;
-                state.ui.explorer_list_state.select(Some(0));
-            } else {
-                state.ui.explorer_list_state.select(None);
-            }
+            state.ui.explorer_list_state.select(Some(0));
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
@@ -637,25 +624,19 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             if state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty()
             {
-                if let Some(candidate) = state
-                    .sql_modal
-                    .completion
-                    .candidates
-                    .get(state.sql_modal.completion.selected_index)
-                {
-                    let insert_text = candidate.text.clone();
-                    let trigger_pos = state.sql_modal.completion.trigger_position;
+                let selected_idx = state.sql_modal.completion.selected_index;
+                let trigger_pos = state.sql_modal.completion.trigger_position;
+                let candidates = std::mem::take(&mut state.sql_modal.completion.candidates);
 
+                if let Some(candidate) = candidates.into_iter().nth(selected_idx) {
                     let start_byte = char_to_byte_index(&state.sql_modal.content, trigger_pos);
                     let end_byte =
                         char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                     state.sql_modal.content.drain(start_byte..end_byte);
-
-                    state.sql_modal.content.insert_str(start_byte, &insert_text);
-                    state.sql_modal.cursor = trigger_pos + insert_text.chars().count();
+                    state.sql_modal.content.insert_str(start_byte, &candidate.text);
+                    state.sql_modal.cursor = trigger_pos + candidate.text.chars().count();
                 }
                 state.sql_modal.completion.visible = false;
-                state.sql_modal.completion.candidates.clear();
                 state.sql_modal.completion_debounce = None;
             }
             vec![]
@@ -789,8 +770,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
 
-                // Note: Checking completion_engine cache is done in EffectRunner
-                // Here we just queue all tables
+                // Queue all tables; EffectRunner skips already-cached ones.
+                // Pre-filtering here would require completion_engine access, breaking reducer purity.
                 for table_summary in &metadata.tables {
                     let qualified_name = table_summary.qualified_name();
                     state
@@ -1008,7 +989,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         .collect();
                     effects.push(Effect::WriteErFailureLog {
                         failed_tables: failed_data,
-                        cache_dir: std::path::PathBuf::new(), // Will be resolved in EffectRunner
                     });
                     state.set_error(format!(
                         "ER failed: {} table(s) failed. 'e' to retry.",
@@ -1054,7 +1034,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     .collect();
                 effects.push(Effect::WriteErFailureLog {
                     failed_tables: failed_data,
-                    cache_dir: std::path::PathBuf::new(),
                 });
                 state.set_error(format!(
                     "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -1099,7 +1078,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         .collect();
                     effects.push(Effect::WriteErFailureLog {
                         failed_tables: failed_data,
-                        cache_dir: std::path::PathBuf::new(),
                     });
                     state.set_error(format!(
                         "ER failed: {} table(s) failed. 'e' to retry.",
@@ -1387,7 +1365,7 @@ mod tests {
         use std::time::Duration;
 
         #[test]
-        fn sql_modal_input_returns_debounce_effect() {
+        fn sql_modal_input_sets_debounce_state() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::SqlModal;
             let now = Instant::now();
@@ -1396,15 +1374,12 @@ mod tests {
 
             assert_eq!(state.sql_modal.content, "a");
             assert_eq!(state.sql_modal.cursor, 1);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                effects[0],
-                Effect::ScheduleCompletionDebounce { .. }
-            ));
+            assert!(effects.is_empty());
+            assert!(state.sql_modal.completion_debounce.is_some());
         }
 
         #[test]
-        fn sql_modal_backspace_returns_debounce_effect() {
+        fn sql_modal_backspace_sets_debounce_state() {
             let mut state = create_test_state();
             state.sql_modal.content = "ab".to_string();
             state.sql_modal.cursor = 2;
@@ -1414,26 +1389,19 @@ mod tests {
 
             assert_eq!(state.sql_modal.content, "a");
             assert_eq!(state.sql_modal.cursor, 1);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                effects[0],
-                Effect::ScheduleCompletionDebounce { .. }
-            ));
+            assert!(effects.is_empty());
+            assert!(state.sql_modal.completion_debounce.is_some());
         }
 
         #[test]
-        fn debounce_effect_uses_provided_now() {
+        fn debounce_state_uses_provided_now() {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            let effects = reduce(&mut state, Action::SqlModalInput('x'), now);
+            let _ = reduce(&mut state, Action::SqlModalInput('x'), now);
 
-            if let Effect::ScheduleCompletionDebounce { trigger_at } = &effects[0] {
-                let expected = now + Duration::from_millis(100);
-                assert_eq!(*trigger_at, expected);
-            } else {
-                panic!("Expected ScheduleCompletionDebounce effect");
-            }
+            let expected = now + Duration::from_millis(100);
+            assert_eq!(state.sql_modal.completion_debounce, Some(expected));
         }
     }
 

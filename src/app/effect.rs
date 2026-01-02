@@ -1,8 +1,5 @@
 //! Side effects returned by the reducer, executed by EffectRunner.
 
-use std::path::PathBuf;
-use std::time::Instant;
-
 use crate::app::action::Action;
 use crate::domain::Table;
 
@@ -14,7 +11,6 @@ pub enum Effect {
     CacheInvalidate {
         dsn: String,
     },
-    CacheCleanup,
 
     FetchMetadata {
         dsn: String,
@@ -65,17 +61,13 @@ pub enum Effect {
     },
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
-        cache_dir: PathBuf,
-    },
-
-    ScheduleCompletionDebounce {
-        trigger_at: Instant,
     },
 
     /// Triggers completion: fetches missing tables and updates candidates
     TriggerCompletion,
 
-    /// Ensures ordering: e.g., CacheInvalidate must complete before FetchMetadata
+    /// Executes effects in order. Each effect awaits before starting the next,
+    /// but spawned async tasks (e.g., FetchMetadata) may complete out of order.
     Sequence(Vec<Effect>),
 
     /// Dispatch actions to be processed by the reducer
