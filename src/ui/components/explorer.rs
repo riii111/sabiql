@@ -11,10 +11,10 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let has_cached_data = state.metadata.is_some() && !state.tables().is_empty();
-        let is_focused = state.focused_pane == FocusedPane::Explorer;
+        let has_cached_data = state.cache.metadata.is_some() && !state.tables().is_empty();
+        let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
 
-        let title = match &state.metadata_state {
+        let title = match &state.cache.state {
             MetadataState::Loading => " [1] Explorer [Loading...] ".to_string(),
             MetadataState::Error(_) if has_cached_data => {
                 format!(" [1] Explorer [{} tables - Stale] ", state.tables().len())
@@ -55,7 +55,7 @@ impl Explorer {
             Vec::new()
         };
         let max_name_width = table_names.iter().map(|n| char_count(n)).max().unwrap_or(0);
-        let h_offset = state.explorer_horizontal_offset;
+        let h_offset = state.ui.explorer_horizontal_offset;
 
         let items: Vec<ListItem> = if has_cached_data {
             table_names
@@ -66,7 +66,7 @@ impl Explorer {
                 })
                 .collect()
         } else {
-            match &state.metadata_state {
+            match &state.cache.state {
                 MetadataState::Loading => {
                     vec![ListItem::new("Loading metadata...")]
                 }
@@ -93,13 +93,14 @@ impl Explorer {
 
         if has_cached_data {
             state
+                .ui
                 .explorer_list_state
-                .select(Some(state.explorer_selected));
+                .select(Some(state.ui.explorer_selected));
         } else {
-            state.explorer_list_state.select(None);
+            state.ui.explorer_list_state.select(None);
         }
 
-        frame.render_stateful_widget(list, area, &mut state.explorer_list_state);
+        frame.render_stateful_widget(list, area, &mut state.ui.explorer_list_state);
 
         // Render scrollbars
         if has_cached_data {
@@ -107,7 +108,7 @@ impl Explorer {
             let viewport_size = inner.height.saturating_sub(2) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
-                let scroll_offset = state.explorer_list_state.offset();
+                let scroll_offset = state.ui.explorer_list_state.offset();
 
                 use super::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,

@@ -34,7 +34,7 @@ impl MainLayout {
         Footer::render(frame, footer_area, state);
         CommandLine::render(frame, cmdline_area, state);
 
-        match state.input_mode {
+        match state.ui.input_mode {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
@@ -44,9 +44,9 @@ impl MainLayout {
     }
 
     fn render_browse_mode(frame: &mut Frame, main_area: Rect, state: &mut AppState) {
-        if state.focus_mode {
+        if state.ui.focus_mode {
             // Focus mode: Result takes full main area
-            state.result_pane_height = main_area.height;
+            state.ui.result_pane_height = main_area.height;
             ResultPane::render(frame, main_area, state);
         } else {
             // Normal mode: Explorer | Inspector / Result
@@ -60,8 +60,8 @@ impl MainLayout {
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .areas(right_area);
 
-            state.result_pane_height = result_area.height;
-            state.inspector_pane_height = inspector_area.height;
+            state.ui.result_pane_height = result_area.height;
+            state.ui.inspector_pane_height = inspector_area.height;
 
             Inspector::render(frame, inspector_area, state);
             ResultPane::render(frame, result_area, state);

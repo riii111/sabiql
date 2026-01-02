@@ -16,10 +16,10 @@ impl Footer {
         if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state);
             frame.render_widget(Paragraph::new(line), area);
-        } else if let Some(error) = &state.last_error {
+        } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
-        } else if let Some(success) = &state.last_success {
+        } else if let Some(success) = &state.messages.last_success {
             let line = StatusMessage::render_line(success, MessageType::Success);
             frame.render_widget(Paragraph::new(line), area);
         } else {
@@ -41,9 +41,15 @@ impl Footer {
         let spinner = SPINNER_FRAMES[frame_idx];
 
         // Calculate progress from state (exclude failed tables from "cached" count)
-        let total = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
-        let failed_count = state.failed_prefetch_tables.len();
-        let remaining = state.prefetch_queue.len() + state.prefetching_tables.len();
+        let total = state
+            .cache
+            .metadata
+            .as_ref()
+            .map(|m| m.tables.len())
+            .unwrap_or(0);
+        let failed_count = state.sql_modal.failed_prefetch_tables.len();
+        let remaining =
+            state.sql_modal.prefetch_queue.len() + state.sql_modal.prefetching_tables.len();
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
@@ -53,9 +59,9 @@ impl Footer {
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::focused_pane::FocusedPane;
 
-        match state.input_mode {
+        match state.ui.input_mode {
             InputMode::Normal => {
-                if state.focus_mode {
+                if state.ui.focus_mode {
                     vec![
                         ("f", "Exit Focus"),
                         ("j/k", "Scroll"),
@@ -69,12 +75,12 @@ impl Footer {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
                     hints.push(("f", "Focus"));
                     // Show scroll hint when Result pane is focused
-                    if state.focused_pane == FocusedPane::Result {
+                    if state.ui.focused_pane == FocusedPane::Result {
                         hints.push(("j/k/g/G", "Scroll"));
                         hints.push(("h/l", "H-Scroll"));
                     }
                     // Show Inspector tab switching hint when Inspector is focused
-                    if state.focused_pane == FocusedPane::Inspector {
+                    if state.ui.focused_pane == FocusedPane::Inspector {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
                     }
                     hints.push(("r", "Reload"));

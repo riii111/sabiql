@@ -33,7 +33,7 @@ impl CommandPalette {
             .iter()
             .enumerate()
             .map(|(i, cmd)| {
-                let style = if i == state.picker_selected {
+                let style = if i == state.ui.picker_selected {
                     Style::default()
                         .bg(Theme::COMPLETION_SELECTED_BG)
                         .fg(Color::White)

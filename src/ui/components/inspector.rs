@@ -18,13 +18,13 @@ pub struct Inspector;
 
 impl Inspector {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let is_focused = state.focused_pane == FocusedPane::Inspector;
+        let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
         let new_plan = Self::render_content(frame, content_area, state, is_focused);
-        state.inspector_viewport_plan = new_plan;
+        state.ui.inspector_viewport_plan = new_plan;
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -32,7 +32,7 @@ impl Inspector {
             .iter()
             .enumerate()
             .flat_map(|(i, tab)| {
-                let is_selected = *tab == state.inspector_tab;
+                let is_selected = *tab == state.ui.inspector_tab;
                 let style = if is_selected {
                     Style::default()
                         .fg(Color::Cyan)
@@ -72,33 +72,38 @@ impl Inspector {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        if let Some(table) = &state.table_detail {
+        if let Some(table) = &state.cache.table_detail {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            match state.inspector_tab {
+            match state.ui.inspector_tab {
                 InspectorTab::Columns => Self::render_columns(
                     frame,
                     inner,
                     table,
-                    state.inspector_scroll_offset,
-                    state.inspector_horizontal_offset,
-                    &state.inspector_viewport_plan,
+                    state.ui.inspector_scroll_offset,
+                    state.ui.inspector_horizontal_offset,
+                    &state.ui.inspector_viewport_plan,
                 ),
                 InspectorTab::Indexes => {
-                    Self::render_indexes(frame, inner, table, state.inspector_scroll_offset);
+                    Self::render_indexes(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
                 InspectorTab::ForeignKeys => {
-                    Self::render_foreign_keys(frame, inner, table, state.inspector_scroll_offset);
+                    Self::render_foreign_keys(
+                        frame,
+                        inner,
+                        table,
+                        state.ui.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::Rls => {
-                    Self::render_rls(frame, inner, table, state.inspector_scroll_offset);
+                    Self::render_rls(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    Self::render_ddl(frame, inner, table, state.inspector_scroll_offset);
+                    Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
             }

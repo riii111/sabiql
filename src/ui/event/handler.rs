@@ -17,15 +17,15 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 }
 
 fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
-    match state.input_mode {
+    match state.ui.input_mode {
         InputMode::Normal => handle_normal_mode(key, state),
         InputMode::CommandLine => handle_command_line_mode(key),
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
         InputMode::Help => handle_help_keys(key),
         InputMode::SqlModal => {
-            let completion_visible =
-                state.completion.visible && !state.completion.candidates.is_empty();
+            let completion_visible = state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
     }
@@ -35,19 +35,17 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     use crate::app::focused_pane::FocusedPane;
 
     match (key.code, key.modifiers) {
-        // Ctrl+P: Open Table Picker
         (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenTablePicker;
         }
-        // Ctrl+K: Open Command Palette
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
         _ => {}
     }
 
-    let result_navigation = state.focus_mode || state.focused_pane == FocusedPane::Result;
-    let inspector_navigation = state.focused_pane == FocusedPane::Inspector;
+    let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
+    let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
 
     match key.code {
         KeyCode::Char('q') => Action::Quit,
@@ -90,13 +88,12 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        // Horizontal scroll (h/l)
         KeyCode::Char('h') | KeyCode::Left => {
             if result_navigation {
                 Action::ResultScrollLeft
             } else if inspector_navigation {
                 Action::InspectorScrollLeft
-            } else if state.focused_pane == FocusedPane::Explorer {
+            } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ExplorerScrollLeft
             } else {
                 Action::None
@@ -107,7 +104,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollRight
             } else if inspector_navigation {
                 Action::InspectorScrollRight
-            } else if state.focused_pane == FocusedPane::Explorer {
+            } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ExplorerScrollRight
             } else {
                 Action::None
@@ -116,7 +113,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         // Pane switching: exit focus mode first if active
         KeyCode::Char(c @ '1'..='3') => {
-            if state.focus_mode {
+            if state.ui.focus_mode {
                 // Exit focus mode before switching panes
                 Action::ToggleFocus
             } else {
@@ -130,16 +127,12 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        // Console: open pgcli directly
         KeyCode::Char('c') => Action::OpenConsole,
-        // SQL Modal: open adhoc query editor
         KeyCode::Char('s') => Action::OpenSqlModal,
-        // ER Diagram: open full database diagram in browser
         KeyCode::Char('e') => Action::ErOpenDiagram,
 
-        // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
-            if state.focused_pane == FocusedPane::Explorer {
+            if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection
             } else {
                 Action::None
@@ -373,7 +366,7 @@ mod tests {
         #[test]
         fn enter_confirms_selection_when_explorer_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Explorer;
+            state.ui.focused_pane = FocusedPane::Explorer;
 
             let result = handle_normal_mode(key(KeyCode::Enter), &state);
 
@@ -383,7 +376,7 @@ mod tests {
         #[test]
         fn enter_does_nothing_when_inspector_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Inspector;
+            state.ui.focused_pane = FocusedPane::Inspector;
 
             let result = handle_normal_mode(key(KeyCode::Enter), &state);
 
@@ -393,7 +386,7 @@ mod tests {
         #[test]
         fn enter_does_nothing_when_result_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Result;
+            state.ui.focused_pane = FocusedPane::Result;
 
             let result = handle_normal_mode(key(KeyCode::Enter), &state);
 
@@ -416,7 +409,7 @@ mod tests {
         #[test]
         fn tab_switches_inspector_tab_when_inspector_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Inspector;
+            state.ui.focused_pane = FocusedPane::Inspector;
 
             let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
@@ -426,7 +419,7 @@ mod tests {
         #[test]
         fn shift_tab_switches_inspector_tab_prev_when_inspector_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Inspector;
+            state.ui.focused_pane = FocusedPane::Inspector;
 
             let result = handle_normal_mode(key(KeyCode::BackTab), &state);
 
@@ -436,7 +429,7 @@ mod tests {
         #[test]
         fn tab_does_nothing_when_explorer_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Explorer;
+            state.ui.focused_pane = FocusedPane::Explorer;
 
             let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
@@ -446,7 +439,7 @@ mod tests {
         #[test]
         fn tab_does_nothing_when_result_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Result;
+            state.ui.focused_pane = FocusedPane::Result;
 
             let result = handle_normal_mode(key(KeyCode::Tab), &state);
 
@@ -456,7 +449,7 @@ mod tests {
         #[test]
         fn backtab_does_nothing_when_explorer_focused() {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Explorer;
+            state.ui.focused_pane = FocusedPane::Explorer;
 
             let result = handle_normal_mode(key(KeyCode::BackTab), &state);
 
@@ -474,14 +467,14 @@ mod tests {
 
         fn focus_mode_state() -> AppState {
             let mut state = browse_state();
-            state.focus_mode = true;
-            state.focused_pane = FocusedPane::Result;
+            state.ui.focus_mode = true;
+            state.ui.focused_pane = FocusedPane::Result;
             state
         }
 
         fn result_focused_state() -> AppState {
             let mut state = browse_state();
-            state.focused_pane = FocusedPane::Result;
+            state.ui.focused_pane = FocusedPane::Result;
             state
         }
 
@@ -893,7 +886,7 @@ mod tests {
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.input_mode = mode;
+            state.ui.input_mode = mode;
             state
         }
 

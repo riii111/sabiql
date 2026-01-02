@@ -20,7 +20,8 @@ use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{MetadataProvider, QueryExecutor};
-use app::state::{AppState, QueryState};
+use app::query_execution::QueryStatus;
+use app::state::AppState;
 use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
@@ -75,17 +76,17 @@ async fn main() -> Result<()> {
     let completion_engine = RefCell::new(CompletionEngine::new());
 
     let mut state = AppState::new(project_name, args.profile);
-    state.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
-    state.dsn = dsn.clone();
+    state.runtime.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
+    state.runtime.dsn = dsn.clone();
     state.action_tx = Some(action_tx.clone());
 
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
-    state.terminal_height = initial_size.height;
+    state.ui.terminal_height = initial_size.height;
 
-    if state.dsn.is_some() {
+    if state.runtime.dsn.is_some() {
         let _ = action_tx.send(Action::LoadMetadata).await;
     }
 
@@ -114,9 +115,9 @@ async fn main() -> Result<()> {
             }
         }
 
-        match state.completion_debounce {
+        match state.sql_modal.completion_debounce {
             Some(debounce_until) if Instant::now() >= debounce_until => {
-                state.completion_debounce = None;
+                state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
             _ => (),
@@ -156,106 +157,106 @@ async fn handle_action(
         }
         Action::Resize(_w, h) => {
             // Ratatui auto-tracks size; explicit resize() restricts viewport
-            state.terminal_height = h;
+            state.ui.terminal_height = h;
         }
-        Action::SetFocusedPane(pane) => state.focused_pane = pane,
+        Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
         Action::ToggleFocus => {
             state.toggle_focus();
         }
 
         Action::InspectorNextTab => {
-            state.inspector_tab = state.inspector_tab.next();
+            state.ui.inspector_tab = state.ui.inspector_tab.next();
         }
         Action::InspectorPrevTab => {
-            state.inspector_tab = state.inspector_tab.prev();
+            state.ui.inspector_tab = state.ui.inspector_tab.prev();
         }
 
         Action::OpenTablePicker => {
-            state.input_mode = InputMode::TablePicker;
-            state.filter_input.clear();
-            state.picker_selected = 0;
+            state.ui.input_mode = InputMode::TablePicker;
+            state.ui.filter_input.clear();
+            state.ui.picker_selected = 0;
         }
         Action::CloseTablePicker => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::OpenCommandPalette => {
-            state.input_mode = InputMode::CommandPalette;
-            state.picker_selected = 0;
+            state.ui.input_mode = InputMode::CommandPalette;
+            state.ui.picker_selected = 0;
         }
         Action::CloseCommandPalette => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::OpenHelp => {
-            state.input_mode = if state.input_mode == InputMode::Help {
+            state.ui.input_mode = if state.ui.input_mode == InputMode::Help {
                 InputMode::Normal
             } else {
                 InputMode::Help
             };
         }
         Action::CloseHelp => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
 
         Action::OpenSqlModal => {
-            state.input_mode = InputMode::SqlModal;
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            state.completion.visible = false;
-            state.completion.candidates.clear();
-            state.completion.selected_index = 0;
-            state.completion_debounce = None;
-            if !state.prefetch_started && state.metadata.is_some() {
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion.candidates.clear();
+            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion_debounce = None;
+            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
         Action::CloseSqlModal => {
-            state.input_mode = InputMode::Normal;
-            state.completion.visible = false;
-            state.completion_debounce = None;
+            state.ui.input_mode = InputMode::Normal;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = None;
             // Keep prefetch running for ER diagram usage
         }
         Action::SqlModalInput(c) => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert(byte_idx, c);
-            state.sql_modal_cursor += 1;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert(byte_idx, c);
+            state.sql_modal.cursor += 1;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalBackspace => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            if state.sql_modal_cursor > 0 {
-                state.sql_modal_cursor -= 1;
-                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                state.sql_modal_content.remove(byte_idx);
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            if state.sql_modal.cursor > 0 {
+                state.sql_modal.cursor -= 1;
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                state.sql_modal.content.remove(byte_idx);
             }
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalDelete => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let total_chars = char_count(&state.sql_modal_content);
-            if state.sql_modal_cursor < total_chars {
-                let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                state.sql_modal_content.remove(byte_idx);
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let total_chars = char_count(&state.sql_modal.content);
+            if state.sql_modal.cursor < total_chars {
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                state.sql_modal.content.remove(byte_idx);
             }
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalNewLine => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert(byte_idx, '\n');
-            state.sql_modal_cursor += 1;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert(byte_idx, '\n');
+            state.sql_modal.cursor += 1;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalTab => {
-            state.sql_modal_state = app::state::SqlModalState::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-            state.sql_modal_content.insert_str(byte_idx, "    ");
-            state.sql_modal_cursor += 4;
-            state.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
+            state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert_str(byte_idx, "    ");
+            state.sql_modal.cursor += 4;
+            state.sql_modal.completion_debounce = Some(Instant::now() + Duration::from_millis(100));
         }
         Action::SqlModalMoveCursor(movement) => {
             use app::action::CursorMove;
-            let content = &state.sql_modal_content;
-            let cursor = state.sql_modal_cursor;
+            let content = &state.sql_modal.content;
+            let cursor = state.sql_modal.cursor;
             let total_chars = char_count(content);
 
             let lines: Vec<(usize, usize)> = {
@@ -282,7 +283,7 @@ async fn handle_action(
                 (line_idx, col)
             };
 
-            state.sql_modal_cursor = match movement {
+            state.sql_modal.cursor = match movement {
                 CursorMove::Left => cursor.saturating_sub(1),
                 CursorMove::Right => (cursor + 1).min(total_chars),
                 CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
@@ -309,27 +310,24 @@ async fn handle_action(
             };
         }
         Action::SqlModalSubmit => {
-            let query = state.sql_modal_content.trim().to_string();
+            let query = state.sql_modal.content.trim().to_string();
             if !query.is_empty() {
-                state.sql_modal_state = app::state::SqlModalState::Running;
-                state.completion.visible = false;
+                state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Running;
+                state.sql_modal.completion.visible = false;
                 let _ = action_tx.send(Action::ExecuteAdhoc(query)).await;
             }
         }
         Action::SqlModalClear => {
-            state.sql_modal_content.clear();
-            state.sql_modal_cursor = 0;
-            state.completion.visible = false;
-            state.completion.candidates.clear();
+            state.sql_modal.clear_content();
         }
 
         Action::CompletionTrigger => {
-            let cursor = state.sql_modal_cursor;
+            let cursor = state.sql_modal.cursor;
 
             // Scoped borrow to release before async operations
             let missing = {
                 let engine = completion_engine.borrow();
-                engine.missing_tables(&state.sql_modal_content, state.metadata.as_ref())
+                engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
             };
 
             for qualified_name in missing {
@@ -345,75 +343,80 @@ async fn handle_action(
             }
 
             let engine = completion_engine.borrow();
-            let token_len = engine.current_token_len(&state.sql_modal_content, cursor);
-            let recent_cols = state.completion.recent_columns_vec();
+            let token_len = engine.current_token_len(&state.sql_modal.content, cursor);
+            let recent_cols = state.sql_modal.completion.recent_columns_vec();
             let candidates = engine.get_candidates(
-                &state.sql_modal_content,
+                &state.sql_modal.content,
                 cursor,
-                state.metadata.as_ref(),
-                state.table_detail.as_ref(),
+                state.cache.metadata.as_ref(),
+                state.cache.table_detail.as_ref(),
                 &recent_cols,
             );
-            state.completion.candidates = candidates;
-            state.completion.selected_index = 0;
-            state.completion.visible = !state.completion.candidates.is_empty()
-                && !state.sql_modal_content.trim().is_empty();
-            state.completion.trigger_position = cursor.saturating_sub(token_len);
+            state.sql_modal.completion.candidates = candidates;
+            state.sql_modal.completion.selected_index = 0;
+            state.sql_modal.completion.visible = !state.sql_modal.completion.candidates.is_empty()
+                && !state.sql_modal.content.trim().is_empty();
+            state.sql_modal.completion.trigger_position = cursor.saturating_sub(token_len);
         }
         Action::CompletionAccept => {
-            if state.completion.visible && !state.completion.candidates.is_empty() {
+            if state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty()
+            {
                 if let Some(candidate) = state
+                    .sql_modal
                     .completion
                     .candidates
-                    .get(state.completion.selected_index)
+                    .get(state.sql_modal.completion.selected_index)
                 {
                     let insert_text = candidate.text.clone();
-                    let trigger_pos = state.completion.trigger_position;
+                    let trigger_pos = state.sql_modal.completion.trigger_position;
 
-                    let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
+                    let start_byte = char_to_byte_index(&state.sql_modal.content, trigger_pos);
                     let end_byte =
-                        char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
-                    state.sql_modal_content.drain(start_byte..end_byte);
+                        char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                    state.sql_modal.content.drain(start_byte..end_byte);
 
-                    state.sql_modal_content.insert_str(start_byte, &insert_text);
-                    state.sql_modal_cursor = trigger_pos + insert_text.chars().count();
+                    state.sql_modal.content.insert_str(start_byte, &insert_text);
+                    state.sql_modal.cursor = trigger_pos + insert_text.chars().count();
                 }
-                state.completion.visible = false;
-                state.completion.candidates.clear();
-                state.completion_debounce = None;
+                state.sql_modal.completion.visible = false;
+                state.sql_modal.completion.candidates.clear();
+                state.sql_modal.completion_debounce = None;
             }
         }
         Action::CompletionDismiss => {
-            state.completion.visible = false;
-            state.completion_debounce = None;
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = None;
         }
         Action::CompletionNext => {
-            if !state.completion.candidates.is_empty() {
-                let max = state.completion.candidates.len() - 1;
-                state.completion.selected_index = if state.completion.selected_index >= max {
-                    0
-                } else {
-                    state.completion.selected_index + 1
-                };
+            if !state.sql_modal.completion.candidates.is_empty() {
+                let max = state.sql_modal.completion.candidates.len() - 1;
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index >= max {
+                        0
+                    } else {
+                        state.sql_modal.completion.selected_index + 1
+                    };
             }
         }
         Action::CompletionPrev => {
-            if !state.completion.candidates.is_empty() {
-                let max = state.completion.candidates.len() - 1;
-                state.completion.selected_index = if state.completion.selected_index == 0 {
-                    max
-                } else {
-                    state.completion.selected_index - 1
-                };
+            if !state.sql_modal.completion.candidates.is_empty() {
+                let max = state.sql_modal.completion.candidates.len() - 1;
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index == 0 {
+                        max
+                    } else {
+                        state.sql_modal.completion.selected_index - 1
+                    };
             }
         }
 
         Action::EnterCommandLine => {
-            state.input_mode = InputMode::CommandLine;
+            state.ui.input_mode = InputMode::CommandLine;
             state.command_line_input.clear();
         }
         Action::ExitCommandLine => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
         Action::CommandLineInput(c) => {
             state.command_line_input.push(c);
@@ -424,14 +427,14 @@ async fn handle_action(
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
             state.command_line_input.clear();
             match follow_up {
                 Action::Quit => state.should_quit = true,
-                Action::OpenHelp => state.input_mode = InputMode::Help,
+                Action::OpenHelp => state.ui.input_mode = InputMode::Help,
                 Action::OpenSqlModal => {
-                    state.input_mode = InputMode::SqlModal;
-                    state.sql_modal_state = app::state::SqlModalState::Editing;
+                    state.ui.input_mode = InputMode::SqlModal;
+                    state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                 }
                 Action::OpenConsole => {
                     let _ = action_tx.send(Action::OpenConsole).await;
@@ -444,87 +447,87 @@ async fn handle_action(
         }
 
         Action::FilterInput(c) => {
-            state.filter_input.push(c);
-            state.picker_selected = 0;
+            state.ui.filter_input.push(c);
+            state.ui.picker_selected = 0;
         }
         Action::FilterBackspace => {
-            state.filter_input.pop();
-            state.picker_selected = 0;
+            state.ui.filter_input.pop();
+            state.ui.picker_selected = 0;
         }
 
-        Action::SelectNext => match state.input_mode {
+        Action::SelectNext => match state.ui.input_mode {
             InputMode::TablePicker => {
                 let max = state.filtered_tables().len().saturating_sub(1);
-                if state.picker_selected < max {
-                    state.picker_selected += 1;
+                if state.ui.picker_selected < max {
+                    state.ui.picker_selected += 1;
                 }
             }
             InputMode::CommandPalette => {
                 let max = palette_command_count() - 1;
-                if state.picker_selected < max {
-                    state.picker_selected += 1;
+                if state.ui.picker_selected < max {
+                    state.ui.picker_selected += 1;
                 }
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
                     let max = state.tables().len().saturating_sub(1);
-                    if state.explorer_selected < max {
-                        state.explorer_selected += 1;
+                    if state.ui.explorer_selected < max {
+                        state.ui.explorer_selected += 1;
                     }
                 }
             }
             _ => {}
         },
-        Action::SelectPrevious => match state.input_mode {
+        Action::SelectPrevious => match state.ui.input_mode {
             InputMode::TablePicker | InputMode::CommandPalette => {
-                state.picker_selected = state.picker_selected.saturating_sub(1);
+                state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = state.explorer_selected.saturating_sub(1);
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(1);
                 }
             }
             _ => {}
         },
-        Action::SelectFirst => match state.input_mode {
+        Action::SelectFirst => match state.ui.input_mode {
             InputMode::TablePicker | InputMode::CommandPalette => {
-                state.picker_selected = 0;
+                state.ui.picker_selected = 0;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = 0;
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = 0;
                 }
             }
             _ => {}
         },
-        Action::SelectLast => match state.input_mode {
+        Action::SelectLast => match state.ui.input_mode {
             InputMode::TablePicker => {
                 let max = state.filtered_tables().len().saturating_sub(1);
-                state.picker_selected = max;
+                state.ui.picker_selected = max;
             }
             InputMode::CommandPalette => {
-                state.picker_selected = palette_command_count() - 1;
+                state.ui.picker_selected = palette_command_count() - 1;
             }
             InputMode::Normal => {
-                if state.focused_pane == app::focused_pane::FocusedPane::Explorer {
-                    state.explorer_selected = state.tables().len().saturating_sub(1);
+                if state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer {
+                    state.ui.explorer_selected = state.tables().len().saturating_sub(1);
                 }
             }
             _ => {}
         },
 
         Action::ConfirmSelection => {
-            if state.input_mode == InputMode::TablePicker {
+            if state.ui.input_mode == InputMode::TablePicker {
                 let filtered = state.filtered_tables();
-                if let Some(table) = filtered.get(state.picker_selected) {
+                if let Some(table) = filtered.get(state.ui.picker_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
-                    state.current_table = Some(table.qualified_name());
-                    state.input_mode = InputMode::Normal;
+                    state.cache.current_table = Some(table.qualified_name());
+                    state.ui.input_mode = InputMode::Normal;
 
                     // Increment generation to invalidate any in-flight requests
-                    state.selection_generation += 1;
-                    let current_gen = state.selection_generation;
+                    state.cache.selection_generation += 1;
+                    let current_gen = state.cache.selection_generation;
 
                     // Trigger table detail loading and preview (sequential to avoid rate limits)
                     // TODO: If performance becomes an issue, consider parallel execution
@@ -544,17 +547,17 @@ async fn handle_action(
                         })
                         .await;
                 }
-            } else if state.input_mode == InputMode::Normal
-                && state.focused_pane == app::focused_pane::FocusedPane::Explorer
+            } else if state.ui.input_mode == InputMode::Normal
+                && state.ui.focused_pane == app::focused_pane::FocusedPane::Explorer
             {
                 let tables = state.tables();
-                if let Some(table) = tables.get(state.explorer_selected) {
+                if let Some(table) = tables.get(state.ui.explorer_selected) {
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
-                    state.current_table = Some(table.qualified_name());
+                    state.cache.current_table = Some(table.qualified_name());
 
-                    state.selection_generation += 1;
-                    let current_gen = state.selection_generation;
+                    state.cache.selection_generation += 1;
+                    let current_gen = state.cache.selection_generation;
 
                     // TODO: If performance becomes an issue, consider parallel execution
                     // with a semaphore to limit concurrency (e.g., tokio::sync::Semaphore)
@@ -573,24 +576,24 @@ async fn handle_action(
                         })
                         .await;
                 }
-            } else if state.input_mode == InputMode::CommandPalette {
-                let cmd_action = palette_action_for_index(state.picker_selected);
-                state.input_mode = InputMode::Normal;
+            } else if state.ui.input_mode == InputMode::CommandPalette {
+                let cmd_action = palette_action_for_index(state.ui.picker_selected);
+                state.ui.input_mode = InputMode::Normal;
                 match cmd_action {
                     Action::Quit => state.should_quit = true,
-                    Action::OpenHelp => state.input_mode = InputMode::Help,
+                    Action::OpenHelp => state.ui.input_mode = InputMode::Help,
                     Action::OpenTablePicker => {
-                        state.input_mode = InputMode::TablePicker;
-                        state.filter_input.clear();
-                        state.picker_selected = 0;
+                        state.ui.input_mode = InputMode::TablePicker;
+                        state.ui.filter_input.clear();
+                        state.ui.picker_selected = 0;
                     }
-                    Action::SetFocusedPane(pane) => state.focused_pane = pane,
+                    Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
                     Action::OpenSqlModal => {
-                        state.input_mode = InputMode::SqlModal;
-                        state.sql_modal_state = app::state::SqlModalState::Editing;
+                        state.ui.input_mode = InputMode::SqlModal;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Editing;
                     }
                     Action::ReloadMetadata => {
-                        if let Some(dsn) = &state.dsn {
+                        if let Some(dsn) = &state.runtime.dsn {
                             metadata_cache.invalidate(dsn).await;
                             let _ = action_tx.send(Action::LoadMetadata).await;
                         }
@@ -604,16 +607,16 @@ async fn handle_action(
         }
 
         Action::Escape => {
-            state.input_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::Normal;
         }
 
         Action::LoadMetadata => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 if let Some(cached) = metadata_cache.get(dsn).await {
-                    state.metadata = Some(cached);
-                    state.metadata_state = MetadataState::Loaded;
+                    state.cache.metadata = Some(cached);
+                    state.cache.state = MetadataState::Loaded;
                 } else {
-                    state.metadata_state = MetadataState::Loading;
+                    state.cache.state = MetadataState::Loading;
 
                     let dsn = dsn.clone();
                     let provider = Arc::clone(metadata_provider);
@@ -637,38 +640,32 @@ async fn handle_action(
         }
 
         Action::ReloadMetadata => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 metadata_cache.invalidate(dsn).await;
 
-                // Reset prefetch state for fresh reload
-                state.prefetch_started = false;
-                state.prefetch_queue.clear();
-                state.prefetching_tables.clear();
-                state.failed_prefetch_tables.clear();
+                state.sql_modal.reset_prefetch();
                 completion_engine.borrow_mut().clear_table_cache();
 
                 // Reset ER preparation state and clear stale messages
                 state.er_preparation.reset();
-                state.last_error = None;
-                state.last_success = None;
-                state.message_expires_at = None;
+                state.messages.clear();
 
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
         }
 
         Action::MetadataLoaded(metadata) => {
-            state.metadata = Some(*metadata);
-            state.metadata_state = MetadataState::Loaded;
+            state.cache.metadata = Some(*metadata);
+            state.cache.state = MetadataState::Loaded;
 
             // Start prefetching table details for completion and ER diagrams
-            if !state.prefetch_started {
+            if !state.sql_modal.prefetch_started {
                 let _ = action_tx.send(Action::StartPrefetchAll).await;
             }
         }
 
         Action::MetadataFailed(error) => {
-            state.metadata_state = MetadataState::Error(error);
+            state.cache.state = MetadataState::Error(error);
         }
 
         Action::LoadTableDetail {
@@ -676,7 +673,7 @@ async fn handle_action(
             table,
             generation,
         } => {
-            if let Some(dsn) = &state.dsn {
+            if let Some(dsn) = &state.runtime.dsn {
                 let dsn = dsn.clone();
                 let provider = Arc::clone(metadata_provider);
                 let tx = action_tx.clone();
@@ -700,19 +697,19 @@ async fn handle_action(
 
         Action::TableDetailLoaded(detail, generation) => {
             // Ignore stale results from previous table selections
-            if generation == state.selection_generation {
+            if generation == state.cache.selection_generation {
                 // Cache for completion to avoid redundant prefetch for the selected table
                 completion_engine
                     .borrow_mut()
                     .cache_table_detail(detail.qualified_name(), (*detail).clone());
-                state.table_detail = Some(*detail);
-                state.inspector_scroll_offset = 0;
+                state.cache.table_detail = Some(*detail);
+                state.ui.inspector_scroll_offset = 0;
             }
         }
 
         Action::TableDetailFailed(error, generation) => {
             // Ignore stale errors from previous table selections
-            if generation == state.selection_generation {
+            if generation == state.cache.selection_generation {
                 state.set_error(error);
             }
         }
@@ -722,16 +719,16 @@ async fn handle_action(
             let qualified_name = format!("{}.{}", schema, table);
 
             let recently_failed = state
+                .sql_modal
                 .failed_prefetch_tables
                 .get(&qualified_name)
                 .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
-            if state.prefetching_tables.contains(&qualified_name)
+            if state.sql_modal.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
-                // skip: remove from pending_tables if present
                 state.er_preparation.pending_tables.remove(&qualified_name);
 
                 // Check if ER preparation completed after this skip
@@ -743,22 +740,22 @@ async fn handle_action(
                         state.set_success("ER ready. Press 'e' to open.".to_string());
                     } else {
                         let failed_count = state.er_preparation.failed_tables.len();
-                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name)
-                        {
-                            let failed_data: Vec<(String, String)> = state
-                                .er_preparation
-                                .failed_tables
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect();
-                            tokio::task::spawn_blocking(move || {
-                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
-                            })
-                            .await
-                            .unwrap_or(false)
-                        } else {
-                            false
-                        };
+                        let log_written =
+                            if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
+                                let failed_data: Vec<(String, String)> = state
+                                    .er_preparation
+                                    .failed_tables
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect();
+                                tokio::task::spawn_blocking(move || {
+                                    write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                                })
+                                .await
+                                .unwrap_or(false)
+                            } else {
+                                false
+                            };
                         let msg = if log_written {
                             format!(
                                 "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -770,8 +767,11 @@ async fn handle_action(
                         state.set_error(msg);
                     }
                 }
-            } else if let Some(dsn) = &state.dsn {
-                state.prefetching_tables.insert(qualified_name.clone());
+            } else if let Some(dsn) = &state.runtime.dsn {
+                state
+                    .sql_modal
+                    .prefetching_tables
+                    .insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);
                 state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
@@ -809,18 +809,23 @@ async fn handle_action(
             detail,
         } => {
             let qualified_name = format!("{}.{}", schema, table);
-            state.prefetching_tables.remove(&qualified_name);
-            state.failed_prefetch_tables.remove(&qualified_name);
+            state.sql_modal.prefetching_tables.remove(&qualified_name);
+            state
+                .sql_modal
+                .failed_prefetch_tables
+                .remove(&qualified_name);
             state.er_preparation.on_table_cached(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
-                state.completion_debounce = None;
+            if state.ui.input_mode == InputMode::SqlModal
+                && state.sql_modal.prefetch_queue.is_empty()
+            {
+                state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
             }
-            if !state.prefetch_queue.is_empty() {
+            if !state.sql_modal.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
@@ -832,21 +837,22 @@ async fn handle_action(
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
                     let failed_count = state.er_preparation.failed_tables.len();
-                    let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
-                        let failed_data: Vec<(String, String)> = state
-                            .er_preparation
-                            .failed_tables
-                            .iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect();
-                        tokio::task::spawn_blocking(move || {
-                            write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
-                        })
-                        .await
-                        .unwrap_or(false)
-                    } else {
-                        false
-                    };
+                    let log_written =
+                        if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name) {
+                            let failed_data: Vec<(String, String)> = state
+                                .er_preparation
+                                .failed_tables
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            tokio::task::spawn_blocking(move || {
+                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                            })
+                            .await
+                            .unwrap_or(false)
+                        } else {
+                            false
+                        };
                     let msg = if log_written {
                         format!(
                             "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
@@ -866,12 +872,13 @@ async fn handle_action(
             error,
         } => {
             let qualified_name = format!("{}.{}", schema, table);
-            state.prefetching_tables.remove(&qualified_name);
+            state.sql_modal.prefetching_tables.remove(&qualified_name);
             state
+                .sql_modal
                 .failed_prefetch_tables
                 .insert(qualified_name.clone(), (Instant::now(), error.clone()));
             state.er_preparation.on_table_failed(&qualified_name, error);
-            if !state.prefetch_queue.is_empty() {
+            if !state.sql_modal.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
@@ -881,7 +888,8 @@ async fn handle_action(
             {
                 state.er_preparation.status = ErStatus::Idle;
                 let failed_count = state.er_preparation.failed_tables.len();
-                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
+                let log_written = if let Ok(cache_dir) = get_cache_dir(&state.runtime.project_name)
+                {
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation
                         .failed_tables
@@ -909,11 +917,11 @@ async fn handle_action(
         }
 
         Action::StartPrefetchAll => {
-            if !state.prefetch_started
-                && let Some(metadata) = &state.metadata
+            if !state.sql_modal.prefetch_started
+                && let Some(metadata) = &state.cache.metadata
             {
-                state.prefetch_started = true;
-                state.prefetch_queue.clear();
+                state.sql_modal.prefetch_started = true;
+                state.sql_modal.prefetch_queue.clear();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -922,7 +930,10 @@ async fn handle_action(
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
                         if !engine.has_cached_table(&qualified_name) {
-                            state.prefetch_queue.push_back(qualified_name.clone());
+                            state
+                                .sql_modal
+                                .prefetch_queue
+                                .push_back(qualified_name.clone());
                             state.er_preparation.pending_tables.insert(qualified_name);
                         }
                     }
@@ -933,11 +944,11 @@ async fn handle_action(
 
         Action::ProcessPrefetchQueue => {
             const MAX_CONCURRENT_PREFETCH: usize = 4;
-            let current_in_flight = state.prefetching_tables.len();
+            let current_in_flight = state.sql_modal.prefetching_tables.len();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
             for _ in 0..available_slots {
-                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                if let Some(qualified_name) = state.sql_modal.prefetch_queue.pop_front() {
                     if let Some((schema, table)) = qualified_name.split_once('.') {
                         let _ = action_tx
                             .send(Action::PrefetchTableDetail {
@@ -957,14 +968,14 @@ async fn handle_action(
             table,
             generation,
         } => {
-            if let Some(dsn) = &state.dsn {
-                state.query_state = QueryState::Running;
-                state.query_start_time = Some(std::time::Instant::now());
+            if let Some(dsn) = &state.runtime.dsn {
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
                 // Adaptive limit: fewer rows for wide tables to avoid UI lag
-                let limit = state.table_detail.as_ref().map_or(100, |detail| {
+                let limit = state.cache.table_detail.as_ref().map_or(100, |detail| {
                     let col_count = detail.columns.len();
                     if col_count >= 30 {
                         20
@@ -994,9 +1005,9 @@ async fn handle_action(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.dsn {
-                state.query_state = QueryState::Running;
-                state.query_start_time = Some(std::time::Instant::now());
+            if let Some(dsn) = &state.runtime.dsn {
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -1019,114 +1030,116 @@ async fn handle_action(
         Action::QueryCompleted(result, generation) => {
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show results
-            if generation == 0 || generation == state.selection_generation {
-                state.query_state = QueryState::Idle;
-                state.query_start_time = None;
-                state.result_scroll_offset = 0;
-                state.result_horizontal_offset = 0;
-                state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
-                state.history_index = None;
+            if generation == 0 || generation == state.cache.selection_generation {
+                state.query.status = QueryStatus::Idle;
+                state.query.start_time = None;
+                state.ui.result_scroll_offset = 0;
+                state.ui.result_horizontal_offset = 0;
+                state.query.result_highlight_until =
+                    Some(Instant::now() + Duration::from_millis(500));
+                state.query.history_index = None;
 
                 if result.source == domain::QuerySource::Adhoc {
                     if result.is_error() {
-                        state.sql_modal_state = app::state::SqlModalState::Error;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Error;
                     } else {
-                        state.sql_modal_state = app::state::SqlModalState::Success;
+                        state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Success;
                     }
                 }
 
                 // Save adhoc results to history
                 if result.source == domain::QuerySource::Adhoc && !result.is_error() {
-                    state.result_history.push((*result).clone());
+                    state.query.result_history.push((*result).clone());
                 }
 
-                state.current_result = Some(*result);
+                state.query.current_result = Some(*result);
             }
         }
 
         Action::QueryFailed(error, generation) => {
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show errors
-            if generation == 0 || generation == state.selection_generation {
-                state.query_state = QueryState::Idle;
-                state.query_start_time = None;
+            if generation == 0 || generation == state.cache.selection_generation {
+                state.query.status = QueryStatus::Idle;
+                state.query.start_time = None;
                 state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
-                if state.input_mode == InputMode::SqlModal {
-                    state.sql_modal_state = app::state::SqlModalState::Error;
+                if state.ui.input_mode == InputMode::SqlModal {
+                    state.sql_modal.status = app::sql_modal_context::SqlModalStatus::Error;
                     // Show error in result pane for better visibility
                     let error_result = domain::QueryResult::error(
-                        state.sql_modal_content.clone(),
+                        state.sql_modal.content.clone(),
                         error,
                         0,
                         domain::QuerySource::Adhoc,
                     );
-                    state.current_result = Some(error_result);
+                    state.query.current_result = Some(error_result);
                 }
             }
         }
 
-        // Result scroll
         Action::ResultScrollUp => {
-            state.result_scroll_offset = state.result_scroll_offset.saturating_sub(1);
+            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
         }
 
         Action::ResultScrollDown => {
             // We need the result to determine max scroll
             let visible = state.result_visible_rows();
             let max_scroll = state
+                .query
                 .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
-            if state.result_scroll_offset < max_scroll {
-                state.result_scroll_offset += 1;
+            if state.ui.result_scroll_offset < max_scroll {
+                state.ui.result_scroll_offset += 1;
             }
         }
 
         Action::ResultScrollTop => {
-            state.result_scroll_offset = 0;
+            state.ui.result_scroll_offset = 0;
         }
 
         Action::ResultScrollBottom => {
             let visible = state.result_visible_rows();
             let max_scroll = state
+                .query
                 .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
-            state.result_scroll_offset = max_scroll;
+            state.ui.result_scroll_offset = max_scroll;
         }
 
         Action::ResultScrollLeft => {
-            state.result_horizontal_offset =
-                calculate_prev_column_offset(state.result_horizontal_offset);
+            state.ui.result_horizontal_offset =
+                calculate_prev_column_offset(state.ui.result_horizontal_offset);
         }
 
         Action::ResultScrollRight => {
-            let plan = &state.result_viewport_plan;
+            let plan = &state.ui.result_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.result_horizontal_offset = calculate_next_column_offset(
+            state.ui.result_horizontal_offset = calculate_next_column_offset(
                 all_widths_len,
-                state.result_horizontal_offset,
+                state.ui.result_horizontal_offset,
                 plan.column_count,
             );
         }
 
-        // Inspector scroll (all tabs)
         Action::InspectorScrollUp => {
-            state.inspector_scroll_offset = state.inspector_scroll_offset.saturating_sub(1);
+            state.ui.inspector_scroll_offset = state.ui.inspector_scroll_offset.saturating_sub(1);
         }
 
         Action::InspectorScrollDown => {
-            let visible = match state.inspector_tab {
+            let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
             let total_items = state
+                .cache
                 .table_detail
                 .as_ref()
-                .map(|t| match state.inspector_tab {
+                .map(|t| match state.ui.inspector_tab {
                     InspectorTab::Columns => t.columns.len(),
                     InspectorTab::Indexes => t.indexes.len(),
                     InspectorTab::ForeignKeys => t.foreign_keys.len(),
@@ -1150,28 +1163,29 @@ async fn handle_action(
                 })
                 .unwrap_or(0);
             let max_offset = total_items.saturating_sub(visible);
-            if state.inspector_scroll_offset < max_offset {
-                state.inspector_scroll_offset += 1;
+            if state.ui.inspector_scroll_offset < max_offset {
+                state.ui.inspector_scroll_offset += 1;
             }
         }
 
         Action::InspectorScrollLeft => {
-            state.inspector_horizontal_offset =
-                calculate_prev_column_offset(state.inspector_horizontal_offset);
+            state.ui.inspector_horizontal_offset =
+                calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
         }
 
         Action::InspectorScrollRight => {
-            let plan = &state.inspector_viewport_plan;
+            let plan = &state.ui.inspector_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.inspector_horizontal_offset = calculate_next_column_offset(
+            state.ui.inspector_horizontal_offset = calculate_next_column_offset(
                 all_widths_len,
-                state.inspector_horizontal_offset,
+                state.ui.inspector_horizontal_offset,
                 plan.column_count,
             );
         }
 
         Action::ExplorerScrollLeft => {
-            state.explorer_horizontal_offset = state.explorer_horizontal_offset.saturating_sub(1);
+            state.ui.explorer_horizontal_offset =
+                state.ui.explorer_horizontal_offset.saturating_sub(1);
         }
 
         Action::ExplorerScrollRight => {
@@ -1181,14 +1195,14 @@ async fn handle_action(
                 .map(|t| t.qualified_name().len())
                 .max()
                 .unwrap_or(0);
-            if state.explorer_horizontal_offset < max_name_width {
-                state.explorer_horizontal_offset += 1;
+            if state.ui.explorer_horizontal_offset < max_name_width {
+                state.ui.explorer_horizontal_offset += 1;
             }
         }
 
         Action::OpenConsole => {
-            if let Some(dsn) = &state.dsn {
-                let cache_dir = get_cache_dir(&state.project_name)?;
+            if let Some(dsn) = &state.runtime.dsn {
+                let cache_dir = get_cache_dir(&state.runtime.project_name)?;
                 let pgclirc = generate_pgclirc(&cache_dir)?;
 
                 let guard = tui.suspend_guard()?;
@@ -1241,10 +1255,10 @@ async fn handle_action(
                 let failed_tables: Vec<String> =
                     state.er_preparation.failed_tables.keys().cloned().collect();
                 state.er_preparation.retry_failed();
-                state.failed_prefetch_tables.clear();
+                state.sql_modal.failed_prefetch_tables.clear();
 
                 for qualified_name in failed_tables {
-                    state.prefetch_queue.push_back(qualified_name);
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
                 }
 
                 state.er_preparation.status = ErStatus::Waiting;
@@ -1273,8 +1287,13 @@ async fn handle_action(
             }
 
             state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
-            let cache_dir = get_cache_dir(&state.project_name)?;
+            let total_tables = state
+                .cache
+                .metadata
+                .as_ref()
+                .map(|m| m.tables.len())
+                .unwrap_or(0);
+            let cache_dir = get_cache_dir(&state.runtime.project_name)?;
 
             let exporter = Arc::new(DotExporter::new());
             spawn_er_diagram_task(exporter, tables, total_tables, cache_dir, action_tx.clone());

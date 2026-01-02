@@ -4,7 +4,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
+use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
+use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
@@ -40,14 +41,14 @@ impl SqlModal {
         Self::render_status(frame, status_area, state);
 
         // Render completion popup if visible
-        if state.completion.visible && !state.completion.candidates.is_empty() {
+        if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
             Self::render_completion_popup(frame, area, editor_area, state);
         }
     }
 
     fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
-        let content = &state.sql_modal_content;
-        let cursor_pos = state.sql_modal_cursor;
+        let content = &state.sql_modal.content;
+        let cursor_pos = state.sql_modal.cursor;
 
         // Convert cursor position to (row, col)
         let (cursor_row, cursor_col) = Self::cursor_to_position(content, cursor_pos);
@@ -122,30 +123,25 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
-        let is_running = state.query_state == QueryState::Running;
-
-        let (status_text, status_style) = if is_running {
-            let spinner_frames = ["◐", "◓", "◑", "◒"];
-            let elapsed = state
-                .query_start_time
-                .map(|t| t.elapsed())
-                .unwrap_or_default();
-            let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
-            let spinner = spinner_frames[frame_idx];
-            let elapsed_secs = elapsed.as_secs_f32();
-            let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
-            (status, Style::default().fg(Color::Yellow))
-        } else {
-            match state.sql_modal_state {
-                SqlModalState::Editing => {
-                    ("Ready".to_string(), Style::default().fg(Color::DarkGray))
-                }
-                SqlModalState::Running => {
-                    ("Running...".to_string(), Style::default().fg(Color::Yellow))
-                }
-                SqlModalState::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
-                SqlModalState::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
+        let (status_text, status_style) = match state.sql_modal.status {
+            SqlModalStatus::Editing => {
+                ("Ready".to_string(), Style::default().fg(Color::DarkGray))
             }
+            SqlModalStatus::Running => {
+                let spinner_frames = ["◐", "◓", "◑", "◒"];
+                let elapsed = state
+                    .query
+                    .start_time
+                    .map(|t| t.elapsed())
+                    .unwrap_or_default();
+                let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
+                let spinner = spinner_frames[frame_idx];
+                let elapsed_secs = elapsed.as_secs_f32();
+                let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
+                (status, Style::default().fg(Color::Yellow))
+            }
+            SqlModalStatus::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
+            SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
         };
 
         let hints = " Alt+Enter: Run  Ctrl+L: Clear  Esc: Close";
@@ -168,11 +164,11 @@ impl SqlModal {
         state: &AppState,
     ) {
         let (cursor_row, cursor_col) =
-            Self::cursor_to_position(&state.sql_modal_content, state.sql_modal_cursor);
+            Self::cursor_to_position(&state.sql_modal.content, state.sql_modal.cursor);
 
         // Popup dimensions
         let max_items = 8;
-        let visible_count = state.completion.candidates.len().min(max_items);
+        let visible_count = state.sql_modal.completion.candidates.len().min(max_items);
         let popup_height = (visible_count as u16) + 2; // +2 for borders
         let popup_width = 45u16.min(modal_area.width);
 
@@ -197,8 +193,8 @@ impl SqlModal {
         frame.render_widget(Clear, popup_area);
 
         // Calculate scroll window to keep selected item visible
-        let selected = state.completion.selected_index;
-        let total = state.completion.candidates.len();
+        let selected = state.sql_modal.completion.selected_index;
+        let total = state.sql_modal.completion.candidates.len();
         let scroll_offset = if total <= max_items {
             0
         } else {
@@ -215,6 +211,7 @@ impl SqlModal {
 
         // Calculate max text width for alignment
         let max_text_width = state
+            .sql_modal
             .completion
             .candidates
             .iter()
@@ -225,6 +222,7 @@ impl SqlModal {
             .unwrap_or(0);
 
         let items: Vec<ListItem> = state
+            .sql_modal
             .completion
             .candidates
             .iter()
