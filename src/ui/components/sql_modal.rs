@@ -4,7 +4,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::query_execution::QueryStatus;
 use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -124,31 +123,25 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
-        let is_running = state.query.status == QueryStatus::Running;
-
-        let (status_text, status_style) = if is_running {
-            let spinner_frames = ["◐", "◓", "◑", "◒"];
-            let elapsed = state
-                .query
-                .start_time
-                .map(|t| t.elapsed())
-                .unwrap_or_default();
-            let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
-            let spinner = spinner_frames[frame_idx];
-            let elapsed_secs = elapsed.as_secs_f32();
-            let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
-            (status, Style::default().fg(Color::Yellow))
-        } else {
-            match state.sql_modal.status {
-                SqlModalStatus::Editing => {
-                    ("Ready".to_string(), Style::default().fg(Color::DarkGray))
-                }
-                SqlModalStatus::Running => {
-                    ("Running...".to_string(), Style::default().fg(Color::Yellow))
-                }
-                SqlModalStatus::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
-                SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
+        let (status_text, status_style) = match state.sql_modal.status {
+            SqlModalStatus::Editing => {
+                ("Ready".to_string(), Style::default().fg(Color::DarkGray))
             }
+            SqlModalStatus::Running => {
+                let spinner_frames = ["◐", "◓", "◑", "◒"];
+                let elapsed = state
+                    .query
+                    .start_time
+                    .map(|t| t.elapsed())
+                    .unwrap_or_default();
+                let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
+                let spinner = spinner_frames[frame_idx];
+                let elapsed_secs = elapsed.as_secs_f32();
+                let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
+                (status, Style::default().fg(Color::Yellow))
+            }
+            SqlModalStatus::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
+            SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
         };
 
         let hints = " Alt+Enter: Run  Ctrl+L: Clear  Esc: Close";
