@@ -16,7 +16,6 @@ use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
-use crate::app::layout::compute_pane_heights;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -34,16 +33,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::Resize(_w, h) => {
             state.ui.terminal_height = h;
-            let heights = compute_pane_heights(h, state.ui.focus_mode);
-            state.ui.result_pane_height = heights.result_pane_height;
-            state.ui.inspector_pane_height = heights.inspector_pane_height;
             vec![]
         }
         Action::Render => {
             state.clear_expired_messages();
-            let heights = compute_pane_heights(state.ui.terminal_height, state.ui.focus_mode);
-            state.ui.result_pane_height = heights.result_pane_height;
-            state.ui.inspector_pane_height = heights.inspector_pane_height;
             vec![Effect::Render]
         }
 
