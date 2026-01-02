@@ -69,6 +69,7 @@ impl UiState {
     }
 
     /// Update explorer selection, keeping explorer_selected and explorer_list_state in sync.
+    /// For "no selection", `explorer_list_state.selected()` is the source of truth.
     pub fn set_explorer_selection(&mut self, index: Option<usize>) {
         match index {
             Some(i) => {
