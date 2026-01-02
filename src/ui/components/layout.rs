@@ -19,6 +19,8 @@ use crate::app::state::AppState;
 pub struct RenderOutput {
     pub inspector_viewport_plan: ViewportPlan,
     pub result_viewport_plan: ViewportPlan,
+    pub inspector_pane_height: u16,
+    pub result_pane_height: u16,
 }
 
 pub struct MainLayout;
@@ -62,6 +64,8 @@ impl MainLayout {
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
                 result_viewport_plan: result_plan,
+                inspector_pane_height: 0,
+                result_pane_height: main_area.height,
             }
         } else {
             let [left_area, right_area] =
@@ -80,6 +84,8 @@ impl MainLayout {
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,
                 result_viewport_plan: result_plan,
+                inspector_pane_height: inspector_area.height,
+                result_pane_height: result_area.height,
             }
         }
     }

@@ -177,6 +177,9 @@ impl EffectRunner {
                     let output = MainLayout::render(frame, state);
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                     state.ui.result_viewport_plan = output.result_viewport_plan;
+                    // Use actual layout heights to avoid rounding mismatch with Ratatui
+                    state.ui.inspector_pane_height = output.inspector_pane_height;
+                    state.ui.result_pane_height = output.result_pane_height;
                 })?;
                 Ok(())
             }
