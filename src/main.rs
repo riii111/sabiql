@@ -819,7 +819,8 @@ async fn handle_action(
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            if state.ui.input_mode == InputMode::SqlModal && state.sql_modal.prefetch_queue.is_empty()
+            if state.ui.input_mode == InputMode::SqlModal
+                && state.sql_modal.prefetch_queue.is_empty()
             {
                 state.sql_modal.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
@@ -1183,7 +1184,8 @@ async fn handle_action(
         }
 
         Action::ExplorerScrollLeft => {
-            state.ui.explorer_horizontal_offset = state.ui.explorer_horizontal_offset.saturating_sub(1);
+            state.ui.explorer_horizontal_offset =
+                state.ui.explorer_horizontal_offset.saturating_sub(1);
         }
 
         Action::ExplorerScrollRight => {

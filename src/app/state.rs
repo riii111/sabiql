@@ -70,10 +70,15 @@ impl AppState {
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.ui.filter_input.to_lowercase();
         self.cache
-            .tables()
-            .into_iter()
-            .filter(|t| t.qualified_name_lower().contains(&filter_lower))
-            .collect()
+            .metadata
+            .as_ref()
+            .map(|m| {
+                m.tables
+                    .iter()
+                    .filter(|t| t.qualified_name_lower().contains(&filter_lower))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn toggle_focus(&mut self) -> bool {
