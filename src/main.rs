@@ -743,10 +743,31 @@ async fn handle_action(
                         state.set_success("ER ready. Press 'e' to open.".to_string());
                     } else {
                         let failed_count = state.er_preparation.failed_tables.len();
-                        state.set_error(format!(
-                            "ER failed: {} table(s) failed. 'e' to retry.",
-                            failed_count
-                        ));
+                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name)
+                        {
+                            let failed_data: Vec<(String, String)> = state
+                                .er_preparation
+                                .failed_tables
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            tokio::task::spawn_blocking(move || {
+                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                            })
+                            .await
+                            .unwrap_or(false)
+                        } else {
+                            false
+                        };
+                        let msg = if log_written {
+                            format!(
+                                "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                                failed_count
+                            )
+                        } else {
+                            format!("ER failed: {} table(s) failed. 'e' to retry.", failed_count)
+                        };
+                        state.set_error(msg);
                     }
                 }
             } else if let Some(dsn) = &state.dsn {
