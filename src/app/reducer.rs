@@ -149,8 +149,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        let max = state.tables().len().saturating_sub(1);
-                        if state.ui.explorer_selected < max {
+                        let len = state.tables().len();
+                        if len > 0 && state.ui.explorer_selected < len - 1 {
                             state.ui.explorer_selected += 1;
                             state
                                 .ui
@@ -169,7 +169,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
                 }
                 InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
+                    if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
+                    {
                         state.ui.explorer_selected = state.ui.explorer_selected.saturating_sub(1);
                         state
                             .ui
@@ -187,7 +188,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     state.ui.picker_selected = 0;
                 }
                 InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
+                    if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
+                    {
                         state.ui.explorer_selected = 0;
                         state.ui.explorer_list_state.select(Some(0));
                     }
@@ -207,9 +209,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
-                        let last = state.tables().len().saturating_sub(1);
-                        state.ui.explorer_selected = last;
-                        state.ui.explorer_list_state.select(Some(last));
+                        let len = state.tables().len();
+                        if len > 0 {
+                            state.ui.explorer_selected = len - 1;
+                            state.ui.explorer_list_state.select(Some(len - 1));
+                        }
                     }
                 }
                 _ => {}
@@ -1230,6 +1234,7 @@ mod tests {
 
     mod pure_actions {
         use super::*;
+        use rstest::rstest;
 
         #[test]
         fn quit_sets_should_quit_and_returns_no_effects() {
@@ -1273,6 +1278,22 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::Render));
+        }
+
+        #[rstest]
+        #[case(Action::SelectFirst)]
+        #[case(Action::SelectLast)]
+        #[case(Action::SelectNext)]
+        #[case(Action::SelectPrevious)]
+        fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
+            let mut state = create_test_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_list_state.select(None);
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, action, now);
+
+            assert_eq!(state.ui.explorer_list_state.selected(), None);
         }
     }
 
