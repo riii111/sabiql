@@ -572,8 +572,362 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
-        // Phase 3: Async actions will be migrated here
-        // Phase 4: Special actions (Console, ER) will be migrated here
+        // ===== Phase 3: Async Actions =====
+
+        Action::OpenSqlModal => {
+            state.input_mode = InputMode::SqlModal;
+            state.sql_modal_state = crate::app::state::SqlModalState::Editing;
+            state.completion.visible = false;
+            state.completion.candidates.clear();
+            state.completion.selected_index = 0;
+            state.completion_debounce = None;
+            if !state.prefetch_started && state.metadata.is_some() {
+                vec![Effect::ProcessPrefetchQueue]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::SqlModalSubmit => {
+            let query = state.sql_modal_content.trim().to_string();
+            if !query.is_empty() {
+                state.sql_modal_state = crate::app::state::SqlModalState::Running;
+                state.completion.visible = false;
+                if let Some(dsn) = &state.dsn {
+                    vec![Effect::ExecuteAdhoc {
+                        dsn: dsn.clone(),
+                        query,
+                    }]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
+        }
+
+        Action::CompletionAccept => {
+            if state.completion.visible && !state.completion.candidates.is_empty() {
+                if let Some(candidate) = state
+                    .completion
+                    .candidates
+                    .get(state.completion.selected_index)
+                {
+                    let insert_text = candidate.text.clone();
+                    let trigger_pos = state.completion.trigger_position;
+
+                    let start_byte = char_to_byte_index(&state.sql_modal_content, trigger_pos);
+                    let end_byte =
+                        char_to_byte_index(&state.sql_modal_content, state.sql_modal_cursor);
+                    state.sql_modal_content.drain(start_byte..end_byte);
+
+                    state.sql_modal_content.insert_str(start_byte, &insert_text);
+                    state.sql_modal_cursor = trigger_pos + insert_text.chars().count();
+                }
+                state.completion.visible = false;
+                state.completion.candidates.clear();
+                state.completion_debounce = None;
+            }
+            vec![]
+        }
+
+        Action::CommandLineSubmit => {
+            use crate::app::command::{command_to_action, parse_command};
+
+            let cmd = parse_command(&state.command_line_input);
+            let follow_up = command_to_action(cmd);
+            state.input_mode = InputMode::Normal;
+            state.command_line_input.clear();
+
+            match follow_up {
+                Action::Quit => {
+                    state.should_quit = true;
+                    vec![]
+                }
+                Action::OpenHelp => {
+                    state.input_mode = InputMode::Help;
+                    vec![]
+                }
+                Action::OpenSqlModal => {
+                    state.input_mode = InputMode::SqlModal;
+                    state.sql_modal_state = crate::app::state::SqlModalState::Editing;
+                    vec![]
+                }
+                Action::OpenConsole => {
+                    if let Some(dsn) = &state.dsn {
+                        vec![Effect::OpenConsole {
+                            dsn: dsn.clone(),
+                            project_name: state.project_name.clone(),
+                        }]
+                    } else {
+                        state.set_error("No DSN configured".to_string());
+                        vec![]
+                    }
+                }
+                Action::ErOpenDiagram => {
+                    // Will be handled in Phase 4
+                    vec![]
+                }
+                _ => vec![],
+            }
+        }
+
+        Action::LoadMetadata => {
+            // Note: Cache check is done in EffectRunner
+            if let Some(dsn) = &state.dsn {
+                state.metadata_state = MetadataState::Loading;
+                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::LoadTableDetail {
+            schema,
+            table,
+            generation,
+        } => {
+            if let Some(dsn) = &state.dsn {
+                vec![Effect::FetchTableDetail {
+                    dsn: dsn.clone(),
+                    schema,
+                    table,
+                    generation,
+                }]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::ExecutePreview {
+            schema,
+            table,
+            generation,
+        } => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = crate::app::state::QueryState::Running;
+                state.query_start_time = Some(now);
+
+                // Adaptive limit: fewer rows for wide tables to avoid UI lag
+                let limit = state.table_detail.as_ref().map_or(100, |detail| {
+                    let col_count = detail.columns.len();
+                    if col_count >= 30 {
+                        20
+                    } else if col_count >= 20 {
+                        50
+                    } else {
+                        100
+                    }
+                });
+
+                vec![Effect::ExecutePreview {
+                    dsn: dsn.clone(),
+                    schema,
+                    table,
+                    generation,
+                    limit,
+                }]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::ExecuteAdhoc(query) => {
+            if let Some(dsn) = &state.dsn {
+                state.query_state = crate::app::state::QueryState::Running;
+                state.query_start_time = Some(now);
+                vec![Effect::ExecuteAdhoc {
+                    dsn: dsn.clone(),
+                    query,
+                }]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::StartPrefetchAll => {
+            if !state.prefetch_started
+                && let Some(metadata) = &state.metadata
+            {
+                state.prefetch_started = true;
+                state.prefetch_queue.clear();
+                state.er_preparation.pending_tables.clear();
+                state.er_preparation.fetching_tables.clear();
+                state.er_preparation.failed_tables.clear();
+
+                // Note: Checking completion_engine cache is done in EffectRunner
+                // Here we just queue all tables
+                for table_summary in &metadata.tables {
+                    let qualified_name = table_summary.qualified_name();
+                    state.prefetch_queue.push_back(qualified_name.clone());
+                    state.er_preparation.pending_tables.insert(qualified_name);
+                }
+                vec![Effect::ProcessPrefetchQueue]
+            } else {
+                vec![]
+            }
+        }
+
+        Action::ProcessPrefetchQueue => {
+            const MAX_CONCURRENT_PREFETCH: usize = 4;
+            let current_in_flight = state.prefetching_tables.len();
+            let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
+
+            let mut effects = Vec::new();
+            for _ in 0..available_slots {
+                if let Some(qualified_name) = state.prefetch_queue.pop_front() {
+                    if let Some((schema, table)) = qualified_name.split_once('.') {
+                        if let Some(dsn) = &state.dsn {
+                            effects.push(Effect::PrefetchTableDetail {
+                                dsn: dsn.clone(),
+                                schema: schema.to_string(),
+                                table: table.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+            effects
+        }
+
+        Action::ConfirmSelection => {
+            let mut effects = Vec::new();
+
+            if state.input_mode == InputMode::TablePicker {
+                let filtered = state.filtered_tables();
+                if let Some(table) = filtered.get(state.picker_selected).cloned() {
+                    let schema = table.schema.clone();
+                    let table_name = table.name.clone();
+                    state.current_table = Some(table.qualified_name());
+                    state.input_mode = InputMode::Normal;
+
+                    state.selection_generation += 1;
+                    let current_gen = state.selection_generation;
+
+                    if let Some(dsn) = &state.dsn {
+                        effects.push(Effect::FetchTableDetail {
+                            dsn: dsn.clone(),
+                            schema: schema.clone(),
+                            table: table_name.clone(),
+                            generation: current_gen,
+                        });
+                        effects.push(Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                            limit: 100,
+                        });
+                    }
+                }
+            } else if state.input_mode == InputMode::Normal
+                && state.focused_pane == FocusedPane::Explorer
+            {
+                let tables = state.tables();
+                if let Some(table) = tables.get(state.explorer_selected).cloned() {
+                    let schema = table.schema.clone();
+                    let table_name = table.name.clone();
+                    state.current_table = Some(table.qualified_name());
+
+                    state.selection_generation += 1;
+                    let current_gen = state.selection_generation;
+
+                    if let Some(dsn) = &state.dsn {
+                        effects.push(Effect::FetchTableDetail {
+                            dsn: dsn.clone(),
+                            schema: schema.clone(),
+                            table: table_name.clone(),
+                            generation: current_gen,
+                        });
+                        effects.push(Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                            limit: 100,
+                        });
+                    }
+                }
+            } else if state.input_mode == InputMode::CommandPalette {
+                use crate::app::palette::palette_action_for_index;
+
+                let cmd_action = palette_action_for_index(state.picker_selected);
+                state.input_mode = InputMode::Normal;
+
+                match cmd_action {
+                    Action::Quit => state.should_quit = true,
+                    Action::OpenHelp => state.input_mode = InputMode::Help,
+                    Action::OpenTablePicker => {
+                        state.input_mode = InputMode::TablePicker;
+                        state.filter_input.clear();
+                        state.picker_selected = 0;
+                    }
+                    Action::SetFocusedPane(pane) => state.focused_pane = pane,
+                    Action::OpenSqlModal => {
+                        state.input_mode = InputMode::SqlModal;
+                        state.sql_modal_state = crate::app::state::SqlModalState::Editing;
+                    }
+                    Action::ReloadMetadata => {
+                        // Will be handled in Phase 4 (needs cache invalidation)
+                        if let Some(dsn) = &state.dsn {
+                            effects.push(Effect::Sequence(vec![
+                                Effect::CacheInvalidate { dsn: dsn.clone() },
+                                Effect::ClearCompletionEngineCache,
+                                Effect::FetchMetadata { dsn: dsn.clone() },
+                            ]));
+
+                            // Reset prefetch state
+                            state.prefetch_started = false;
+                            state.prefetch_queue.clear();
+                            state.prefetching_tables.clear();
+                            state.failed_prefetch_tables.clear();
+                            state.er_preparation.reset();
+                            state.last_error = None;
+                            state.last_success = None;
+                            state.message_expires_at = None;
+                        }
+                    }
+                    Action::OpenConsole => {
+                        if let Some(dsn) = &state.dsn {
+                            effects.push(Effect::OpenConsole {
+                                dsn: dsn.clone(),
+                                project_name: state.project_name.clone(),
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            effects
+        }
+
+        Action::ReloadMetadata => {
+            if let Some(dsn) = &state.dsn {
+                // Reset prefetch state for fresh reload
+                state.prefetch_started = false;
+                state.prefetch_queue.clear();
+                state.prefetching_tables.clear();
+                state.failed_prefetch_tables.clear();
+
+                // Reset ER preparation state and clear stale messages
+                state.er_preparation.reset();
+                state.last_error = None;
+                state.last_success = None;
+                state.message_expires_at = None;
+
+                vec![Effect::Sequence(vec![
+                    Effect::CacheInvalidate { dsn: dsn.clone() },
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata { dsn: dsn.clone() },
+                ])]
+            } else {
+                vec![]
+            }
+        }
+
+        // Phase 4: Special actions (Console, ER, Completion) will be migrated here
+        // These require completion_engine access or special TUI handling
         _ => vec![], // Remaining actions handled in main.rs for now
     }
 }
