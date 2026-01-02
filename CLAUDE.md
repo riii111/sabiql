@@ -102,86 +102,14 @@ src/
 │   └── index.rs
 │
 └── error.rs                    # Common error types
+
+tests/                          # ── Integration Tests ──
+├── harness/
+│   ├── mod.rs                  # Test utilities
+│   └── fixtures.rs             # Sample data builders
+├── render_snapshots.rs         # Visual regression tests
+└── snapshots/                  # Generated .snap files
 ```
-
-## Key Technical Decisions
-
-### 1. Event Loop Pattern (Ratatui + Tokio)
-
-Use `tokio::select!` for multiplexing input, tick, and render events:
-
-```rust
-tokio::select! {
-    maybe_event = crossterm_event => { /* handle input */ },
-    _ = tick_delay => { event_tx.send(Event::Tick) },
-    _ = render_delay => { event_tx.send(Event::Render) },
-}
-```
-
-Key components:
-- `Tui` struct combining Terminal + event handling
-- `CancellationToken` for safe task shutdown
-- `mpsc::channel` for event communication
-- Independent tick/render rates for CPU efficiency
-
-**Reference**: https://ratatui.rs/tutorials/counter-async-app/full-async-events/
-
-### 2. External CLI Execution (Console Mode)
-
-Pattern for spawning pgcli/mycli and returning to TUI:
-
-```rust
-fn run_external_cli(terminal: &mut Terminal) -> Result<()> {
-    // 1. Leave TUI
-    stdout().execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
-
-    // 2. Execute external CLI
-    Command::new("pgcli").arg("-d").arg(&dsn).status()?;
-
-    // 3. Return to TUI
-    stdout().execute(EnterAlternateScreen)?;
-    enable_raw_mode()?;
-    terminal.clear()?;
-    Ok(())
-}
-```
-
-**Important**: Pause event handler tasks before spawning external processes to avoid ANSI escape code issues.
-
-**Reference**: https://ratatui.rs/recipes/apps/spawn-vim/
-
-### 3. Async Cache Updates
-
-Use background tasks with Action channels to avoid blocking UI:
-
-```rust
-tokio::spawn(async move {
-    let metadata = fetch_metadata(&dsn).await?;
-    action_tx.send(Action::MetadataLoaded(metadata)).await?;
-});
-```
-
-### 4. Driver-less Architecture
-
-All DB operations use CLI tools instead of Rust drivers:
-
-| Operation | Method |
-|-----------|--------|
-| Console | `exec pgcli/mycli` |
-| Metadata fetch | `psql -c "SELECT ..." -t -A` with JSON output |
-| Preview data | `psql -c "SELECT * LIMIT N"` |
-
-This minimizes dependencies and leverages users' existing DB tools.
-
-### 5. ER Diagram Export (Graphviz)
-
-The ER diagram is generated as DOT from cached table details and exported
-to SVG via Graphviz. The SVG is opened in the system viewer.
-
-- Keybinding: `e`
-- Command: `:erd`
-- Requires Graphviz (`brew install graphviz` on macOS)
 
 ## Build Commands
 
@@ -197,19 +125,7 @@ mise run test               # Run tests
 - Project config: `.dbx.toml` (in project root)
 - Cache directory: `~/.cache/dbtui/<project>/`
 
-## PR Plan
+## Testing
 
-| PR | Scope |
-|----|-------|
-| PR1 | Scaffold + config + app skeleton |
-| PR2 | Core UI: overlays + key UX |
-| PR3 | Data layer: metadata + TTL cache + adapters |
-| PR4 | Browse polish + SQL Modal + Result history + Copy |
-| PR5 | Console integration |
-| PR6 | ER diagram export (single-tab) + docs |
-
-## References
-
-- [Ratatui Async Tutorial](https://ratatui.rs/tutorials/counter-async-app/)
-- [Ratatui Templates](https://github.com/ratatui-org/templates)
-- [Spawn External Editor Recipe](https://ratatui.rs/recipes/apps/spawn-vim/)
+Visual regression tests verify UI rendering hasn't changed unexpectedly.
+See [`tests/README.md`](tests/README.md) for policy and commands.
