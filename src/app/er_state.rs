@@ -14,7 +14,6 @@ pub struct ErPreparationState {
     pub fetching_tables: HashSet<String>,
     pub failed_tables: HashMap<String, String>,
     pub status: ErStatus,
-    /// Total number of tables at ER preparation start (cached for stable progress display)
     pub total_tables: usize,
 }
 
