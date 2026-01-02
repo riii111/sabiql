@@ -173,8 +173,11 @@ impl EffectRunner {
     ) -> Result<()> {
         match effect {
             Effect::Render => {
-                tui.terminal()
-                    .draw(|frame| MainLayout::render(frame, state))?;
+                tui.terminal().draw(|frame| {
+                    let output = MainLayout::render(frame, state);
+                    state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+                    state.ui.result_viewport_plan = output.result_viewport_plan;
+                })?;
                 Ok(())
             }
 
