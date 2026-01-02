@@ -8,6 +8,7 @@ pub mod er_task;
 pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;
+pub mod layout;
 pub mod message_state;
 pub mod metadata_cache;
 pub mod mode;

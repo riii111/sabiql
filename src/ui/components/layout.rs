@@ -45,11 +45,8 @@ impl MainLayout {
 
     fn render_browse_mode(frame: &mut Frame, main_area: Rect, state: &mut AppState) {
         if state.ui.focus_mode {
-            // Focus mode: Result takes full main area
-            state.ui.result_pane_height = main_area.height;
             ResultPane::render(frame, main_area, state);
         } else {
-            // Normal mode: Explorer | Inspector / Result
             let [left_area, right_area] =
                 Layout::horizontal([Constraint::Percentage(20), Constraint::Percentage(80)])
                     .areas(main_area);
@@ -59,9 +56,6 @@ impl MainLayout {
             let [inspector_area, result_area] =
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .areas(right_area);
-
-            state.ui.result_pane_height = result_area.height;
-            state.ui.inspector_pane_height = inspector_area.height;
 
             Inspector::render(frame, inspector_area, state);
             ResultPane::render(frame, result_area, state);

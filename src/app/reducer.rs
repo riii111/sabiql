@@ -16,6 +16,7 @@ use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
+use crate::app::layout::compute_pane_heights;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -33,9 +34,15 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::Resize(_w, h) => {
             state.ui.terminal_height = h;
+            let heights = compute_pane_heights(h, state.ui.focus_mode);
+            state.ui.result_pane_height = heights.result_pane_height;
+            state.ui.inspector_pane_height = heights.inspector_pane_height;
             vec![]
         }
         Action::Render => {
+            let heights = compute_pane_heights(state.ui.terminal_height, state.ui.focus_mode);
+            state.ui.result_pane_height = heights.result_pane_height;
+            state.ui.inspector_pane_height = heights.inspector_pane_height;
             state.clear_expired_messages();
             vec![Effect::Render]
         }
@@ -214,7 +221,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::ResultScrollDown => {
             let visible = state.result_visible_rows();
             let max_scroll = state
-                .query.current_result
+                .query
+                .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
@@ -230,7 +238,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::ResultScrollBottom => {
             let visible = state.result_visible_rows();
             let max_scroll = state
-                .query.current_result
+                .query
+                .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
                 .unwrap_or(0);
@@ -264,7 +273,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 _ => state.inspector_visible_rows(),
             };
             let total_items = state
-                .cache.table_detail
+                .cache
+                .table_detail
                 .as_ref()
                 .map(|t| match state.ui.inspector_tab {
                     InspectorTab::Columns => t.columns.len(),
@@ -310,7 +320,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         // ===== Explorer Scroll =====
         Action::ExplorerScrollLeft => {
-            state.ui.explorer_horizontal_offset = state.ui.explorer_horizontal_offset.saturating_sub(1);
+            state.ui.explorer_horizontal_offset =
+                state.ui.explorer_horizontal_offset.saturating_sub(1);
             vec![]
         }
         Action::ExplorerScrollRight => {
@@ -330,22 +341,24 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::CompletionNext => {
             if !state.sql_modal.completion.candidates.is_empty() {
                 let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index >= max {
-                    0
-                } else {
-                    state.sql_modal.completion.selected_index + 1
-                };
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index >= max {
+                        0
+                    } else {
+                        state.sql_modal.completion.selected_index + 1
+                    };
             }
             vec![]
         }
         Action::CompletionPrev => {
             if !state.sql_modal.completion.candidates.is_empty() {
                 let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index = if state.sql_modal.completion.selected_index == 0 {
-                    max
-                } else {
-                    state.sql_modal.completion.selected_index - 1
-                };
+                state.sql_modal.completion.selected_index =
+                    if state.sql_modal.completion.selected_index == 0 {
+                        max
+                    } else {
+                        state.sql_modal.completion.selected_index - 1
+                    };
             }
             vec![]
         }
@@ -486,7 +499,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
                 for table_summary in &meta.tables {
                     let qualified_name = table_summary.qualified_name();
-                    state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
+                    state
+                        .sql_modal
+                        .prefetch_queue
+                        .push_back(qualified_name.clone());
                     state.er_preparation.pending_tables.insert(qualified_name);
                 }
                 return vec![Effect::ProcessPrefetchQueue];
@@ -521,9 +537,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
                 if result.source == crate::domain::QuerySource::Adhoc {
                     if result.is_error() {
-                        state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Error;
+                        state.sql_modal.status =
+                            crate::app::sql_modal_context::SqlModalStatus::Error;
                     } else {
-                        state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Success;
+                        state.sql_modal.status =
+                            crate::app::sql_modal_context::SqlModalStatus::Success;
                     }
                 }
 
@@ -610,9 +628,12 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
 
         Action::CompletionAccept => {
-            if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
+            if state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty()
+            {
                 if let Some(candidate) = state
-                    .sql_modal.completion
+                    .sql_modal
+                    .completion
                     .candidates
                     .get(state.sql_modal.completion.selected_index)
                 {
@@ -762,7 +783,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 // Here we just queue all tables
                 for table_summary in &metadata.tables {
                     let qualified_name = table_summary.qualified_name();
-                    state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
+                    state
+                        .sql_modal
+                        .prefetch_queue
+                        .push_back(qualified_name.clone());
                     state.er_preparation.pending_tables.insert(qualified_name);
                 }
                 vec![Effect::ProcessPrefetchQueue]
@@ -871,7 +895,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
                     Action::OpenSqlModal => {
                         state.ui.input_mode = InputMode::SqlModal;
-                        state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                        state.sql_modal.status =
+                            crate::app::sql_modal_context::SqlModalStatus::Editing;
                     }
                     Action::ReloadMetadata => {
                         // Will be handled in Phase 4 (needs cache invalidation)
@@ -938,7 +963,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state.sql_modal.failed_prefetch_tables.remove(&qualified_name);
+            state
+                .sql_modal
+                .failed_prefetch_tables
+                .remove(&qualified_name);
             state.er_preparation.on_table_cached(&qualified_name);
 
             let mut effects = vec![Effect::CacheTableInCompletionEngine {
@@ -988,7 +1016,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
             state
-                .sql_modal.failed_prefetch_tables
+                .sql_modal
+                .failed_prefetch_tables
                 .insert(qualified_name.clone(), (now, error.clone()));
             state.er_preparation.on_table_failed(&qualified_name, error);
 
@@ -1027,7 +1056,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state.sql_modal.failed_prefetch_tables.remove(&qualified_name);
+            state
+                .sql_modal
+                .failed_prefetch_tables
+                .remove(&qualified_name);
             state.er_preparation.on_table_cached(&qualified_name);
 
             let mut effects = Vec::new();
@@ -1095,7 +1127,12 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
 
             state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state.cache.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
+            let total_tables = state
+                .cache
+                .metadata
+                .as_ref()
+                .map(|m| m.tables.len())
+                .unwrap_or(0);
 
             vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
@@ -1129,7 +1166,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             // Check backoff for recently failed tables
             const PREFETCH_BACKOFF_SECS: u64 = 30;
             let recently_failed = state
-                .sql_modal.failed_prefetch_tables
+                .sql_modal
+                .failed_prefetch_tables
                 .get(&qualified_name)
                 .map(|(t, _): &(Instant, String)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
@@ -1139,7 +1177,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
 
             // Mark as in-flight and update ER state
-            state.sql_modal.prefetching_tables.insert(qualified_name.clone());
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert(qualified_name.clone());
             state.er_preparation.pending_tables.remove(&qualified_name);
             state
                 .er_preparation
@@ -1579,7 +1620,10 @@ mod tests {
         #[test]
         fn table_detail_cached_returns_cache_effect() {
             let mut state = create_test_state();
-            state.sql_modal.prefetching_tables.insert("public.users".to_string());
+            state
+                .sql_modal
+                .prefetching_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1603,7 +1647,10 @@ mod tests {
         #[test]
         fn table_detail_cached_with_queue_returns_process_effect() {
             let mut state = create_test_state();
-            state.sql_modal.prefetch_queue.push_back("public.orders".to_string());
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.orders".to_string());
             let now = Instant::now();
 
             let effects = reduce(
