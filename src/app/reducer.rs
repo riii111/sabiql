@@ -1324,4 +1324,175 @@ mod tests {
             assert!(effects.is_empty());
         }
     }
+
+    mod effect_producing_actions {
+        use super::*;
+
+        #[test]
+        fn load_metadata_with_dsn_returns_fetch_effect() {
+            let mut state = create_test_state();
+            state.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::LoadMetadata, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+            assert!(matches!(state.metadata_state, MetadataState::Loading));
+        }
+
+        #[test]
+        fn load_metadata_without_dsn_returns_no_effects() {
+            let mut state = create_test_state();
+            state.dsn = None;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::LoadMetadata, now);
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn reload_metadata_returns_sequence_effect() {
+            let mut state = create_test_state();
+            state.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ReloadMetadata, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::Sequence(_)));
+
+            if let Effect::Sequence(seq) = &effects[0] {
+                assert_eq!(seq.len(), 3);
+                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
+                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
+                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
+            }
+        }
+
+        #[test]
+        fn execute_adhoc_with_dsn_returns_effect() {
+            let mut state = create_test_state();
+            state.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                now,
+            );
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::ExecuteAdhoc { .. }));
+        }
+    }
+
+    mod er_diagram {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn er_open_while_rendering_returns_no_effects() {
+            let mut state = create_test_state();
+            state.er_preparation.status = ErStatus::Rendering;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn er_open_with_incomplete_prefetch_sets_waiting() {
+            let mut state = create_test_state();
+            state.er_preparation.pending_tables.insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn er_open_when_complete_returns_generate_effect() {
+            let mut state = create_test_state();
+            state.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                effects[0],
+                Effect::GenerateErDiagramFromCache { .. }
+            ));
+            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+        }
+    }
+
+    mod table_detail_cached {
+        use super::*;
+        use crate::domain::Table;
+
+        fn make_test_table() -> Box<Table> {
+            Box::new(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                columns: vec![],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            })
+        }
+
+        #[test]
+        fn table_detail_cached_returns_cache_effect() {
+            let mut state = create_test_state();
+            state.prefetching_tables.insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: make_test_table(),
+                },
+                now,
+            );
+
+            assert!(!effects.is_empty());
+            assert!(matches!(
+                effects[0],
+                Effect::CacheTableInCompletionEngine { .. }
+            ));
+            assert!(!state.prefetching_tables.contains("public.users"));
+        }
+
+        #[test]
+        fn table_detail_cached_with_queue_returns_process_effect() {
+            let mut state = create_test_state();
+            state.prefetch_queue.push_back("public.orders".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: make_test_table(),
+                },
+                now,
+            );
+
+            assert!(effects
+                .iter()
+                .any(|e| matches!(e, Effect::ProcessPrefetchQueue)));
+        }
+    }
 }
