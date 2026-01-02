@@ -1,8 +1,6 @@
 use std::time::Instant;
 
-use dbtui::domain::{
-    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary,
-};
+use dbtui::domain::{Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary};
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
     DatabaseMetadata {
@@ -11,7 +9,12 @@ pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
         tables: vec![
             TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
             TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            TableSummary::new("public".to_string(), "comments".to_string(), Some(200), false),
+            TableSummary::new(
+                "public".to_string(),
+                "comments".to_string(),
+                Some(200),
+                false,
+            ),
         ],
         fetched_at: now,
     }
@@ -65,11 +68,7 @@ pub fn sample_table_detail() -> Table {
 pub fn sample_query_result(now: Instant) -> QueryResult {
     QueryResult {
         query: "SELECT * FROM users LIMIT 100".to_string(),
-        columns: vec![
-            "id".to_string(),
-            "name".to_string(),
-            "email".to_string(),
-        ],
+        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
         rows: vec![
             vec![
                 "1".to_string(),
