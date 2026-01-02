@@ -88,3 +88,16 @@ pub fn sample_query_result(now: Instant) -> QueryResult {
         error: None,
     }
 }
+
+pub fn empty_query_result(now: Instant) -> QueryResult {
+    QueryResult {
+        query: "SELECT * FROM users WHERE 1=0".to_string(),
+        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        rows: vec![],
+        row_count: 0,
+        execution_time_ms: 5,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+    }
+}
