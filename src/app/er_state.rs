@@ -153,4 +153,40 @@ mod tests {
             assert_eq!(state.status, ErStatus::Idle);
         }
     }
+
+    mod waiting_resolution {
+        use super::*;
+
+        #[test]
+        fn skip_only_completion_becomes_ready() {
+            let mut state = ErPreparationState {
+                pending_tables: HashSet::from(["public.users".to_string()]),
+                fetching_tables: HashSet::new(),
+                failed_tables: HashMap::new(),
+                status: ErStatus::Waiting,
+            };
+
+            // Simulate skip: remove from pending (e.g., already cached)
+            state.pending_tables.remove("public.users");
+
+            assert!(state.is_complete());
+            assert!(!state.has_failures());
+        }
+
+        #[test]
+        fn skip_with_prior_failures_still_complete() {
+            let mut state = ErPreparationState {
+                pending_tables: HashSet::from(["public.orders".to_string()]),
+                fetching_tables: HashSet::new(),
+                failed_tables: HashMap::from([("public.users".to_string(), "timeout".to_string())]),
+                status: ErStatus::Waiting,
+            };
+
+            // Simulate skip: remove last pending (e.g., already cached)
+            state.pending_tables.remove("public.orders");
+
+            assert!(state.is_complete());
+            assert!(state.has_failures());
+        }
+    }
 }
