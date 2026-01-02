@@ -473,24 +473,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::MetadataLoaded(metadata) => {
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-
-            // Auto-start prefetch for all tables after metadata is loaded
-            if !state.sql_modal.prefetch_started
-                && let Some(meta) = &state.cache.metadata
-            {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.er_preparation.pending_tables.clear();
-                state.er_preparation.fetching_tables.clear();
-                state.er_preparation.failed_tables.clear();
-
-                for table_summary in &meta.tables {
-                    let qualified_name = table_summary.qualified_name();
-                    state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
-                    state.er_preparation.pending_tables.insert(qualified_name);
-                }
-                return vec![Effect::ProcessPrefetchQueue];
-            }
             vec![]
         }
         Action::MetadataFailed(error) => {
@@ -584,8 +566,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
+            // Dispatch StartPrefetchAll if not already started and metadata is loaded
             if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                vec![Effect::ProcessPrefetchQueue]
+                vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
             } else {
                 vec![]
             }
@@ -654,7 +637,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 Action::OpenSqlModal => {
                     state.ui.input_mode = InputMode::SqlModal;
                     state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-                    vec![]
+                    if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+                        vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
+                    } else {
+                        vec![]
+                    }
                 }
                 Action::OpenConsole => {
                     if let Some(dsn) = &state.runtime.dsn {
@@ -776,24 +763,25 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let current_in_flight = state.sql_modal.prefetching_tables.len();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
-            let dsn = match &state.runtime.dsn {
-                Some(d) => d.clone(),
-                None => return vec![],
-            };
-
-            let mut effects = Vec::new();
+            // Dispatch Action::PrefetchTableDetail for each slot
+            // This ensures in-flight management and backoff are applied
+            let mut actions = Vec::new();
             for _ in 0..available_slots {
                 if let Some(qualified_name) = state.sql_modal.prefetch_queue.pop_front()
                     && let Some((schema, table)) = qualified_name.split_once('.')
                 {
-                    effects.push(Effect::PrefetchTableDetail {
-                        dsn: dsn.clone(),
+                    actions.push(Action::PrefetchTableDetail {
                         schema: schema.to_string(),
                         table: table.to_string(),
                     });
                 }
             }
-            effects
+
+            if actions.is_empty() {
+                vec![]
+            } else {
+                vec![Effect::DispatchActions(actions)]
+            }
         }
 
         Action::ConfirmSelection => {
@@ -872,6 +860,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     Action::OpenSqlModal => {
                         state.ui.input_mode = InputMode::SqlModal;
                         state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                        if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+                            effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
+                        }
                     }
                     Action::ReloadMetadata => {
                         // Will be handled in Phase 4 (needs cache invalidation)
@@ -1413,7 +1404,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn metadata_loaded_updates_state_and_starts_prefetch() {
+        fn metadata_loaded_updates_state() {
             let mut state = create_test_state();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -1427,9 +1418,9 @@ mod tests {
 
             assert!(state.cache.metadata.is_some());
             assert!(matches!(state.cache.state, MetadataState::Loaded));
-            assert!(state.sql_modal.prefetch_started);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::ProcessPrefetchQueue));
+            // Prefetch is started on OpenSqlModal, not MetadataLoaded
+            assert!(!state.sql_modal.prefetch_started);
+            assert!(effects.is_empty());
         }
 
         #[test]
