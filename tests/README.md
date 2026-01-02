@@ -41,7 +41,7 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 ### When to Add a Snapshot Test
 
 - **Each InputMode** - At least one scenario per mode
-- **Major UI state changes** - Focus pane switching, focus mode toggle, message display
+- **Major UI state changes** - Focus pane switching, message display
 - **Boundary conditions** - Empty results, initial loading state, error states
 
 ### When NOT to Add
