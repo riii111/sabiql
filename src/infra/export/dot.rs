@@ -259,12 +259,63 @@ mod tests {
         use super::*;
         use std::sync::atomic::{AtomicBool, Ordering};
 
+        enum GraphvizFailure {
+            None,
+            NotInstalled,
+            CommandFailed(i32),
+        }
+
         struct MockGraphviz {
+            called: AtomicBool,
+            failure: GraphvizFailure,
+        }
+
+        impl MockGraphviz {
+            fn new() -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                    failure: GraphvizFailure::None,
+                }
+            }
+
+            fn not_installed() -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                    failure: GraphvizFailure::NotInstalled,
+                }
+            }
+
+            fn command_failed(exit_code: i32) -> Self {
+                Self {
+                    called: AtomicBool::new(false),
+                    failure: GraphvizFailure::CommandFailed(exit_code),
+                }
+            }
+        }
+
+        impl GraphvizRunner for MockGraphviz {
+            fn convert_dot_to_svg(
+                &self,
+                _dot_path: &Path,
+                _svg_path: &Path,
+            ) -> Result<(), GraphvizError> {
+                self.called.store(true, Ordering::SeqCst);
+                match &self.failure {
+                    GraphvizFailure::None => Ok(()),
+                    GraphvizFailure::NotInstalled => Err(GraphvizError::NotInstalled),
+                    GraphvizFailure::CommandFailed(code) => {
+                        Err(GraphvizError::CommandFailed(Some(*code)))
+                    }
+                }
+            }
+        }
+
+        struct MockViewer {
             called: AtomicBool,
             should_fail: bool,
         }
 
-        impl MockGraphviz {
+        impl MockViewer {
             fn new() -> Self {
                 Self {
                     called: AtomicBool::new(false),
@@ -280,37 +331,17 @@ mod tests {
             }
         }
 
-        impl GraphvizRunner for MockGraphviz {
-            fn convert_dot_to_svg(
-                &self,
-                _dot_path: &Path,
-                _svg_path: &Path,
-            ) -> Result<(), GraphvizError> {
-                self.called.store(true, Ordering::SeqCst);
-                if self.should_fail {
-                    Err(GraphvizError::NotInstalled)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-
-        struct MockViewer {
-            called: AtomicBool,
-        }
-
-        impl MockViewer {
-            fn new() -> Self {
-                Self {
-                    called: AtomicBool::new(false),
-                }
-            }
-        }
-
         impl ViewerLauncher for MockViewer {
             fn open_file(&self, _path: &Path) -> Result<(), ViewerError> {
                 self.called.store(true, Ordering::SeqCst);
-                Ok(())
+                if self.should_fail {
+                    Err(ViewerError::LaunchFailed(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "mock failure",
+                    )))
+                } else {
+                    Ok(())
+                }
             }
         }
 
@@ -329,8 +360,8 @@ mod tests {
         }
 
         #[test]
-        fn graphviz_failure_returns_error() {
-            let graphviz = MockGraphviz::failing();
+        fn graphviz_not_installed_returns_error() {
+            let graphviz = MockGraphviz::not_installed();
             let viewer = MockViewer::new();
             let exporter = DotExporter::with_dependencies(graphviz, viewer);
             let temp_dir = tempfile::tempdir().unwrap();
@@ -338,7 +369,40 @@ mod tests {
             let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
 
             assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("Graphviz"));
             assert!(!exporter.viewer.called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn graphviz_command_failed_includes_exit_code() {
+            let graphviz = MockGraphviz::command_failed(1);
+            let viewer = MockViewer::new();
+            let exporter = DotExporter::with_dependencies(graphviz, viewer);
+            let temp_dir = tempfile::tempdir().unwrap();
+
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("Graphviz failed"));
+            assert!(err_msg.contains("exit code"));
+            assert!(!exporter.viewer.called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn viewer_failure_returns_error() {
+            let graphviz = MockGraphviz::new();
+            let viewer = MockViewer::failing();
+            let exporter = DotExporter::with_dependencies(graphviz, viewer);
+            let temp_dir = tempfile::tempdir().unwrap();
+
+            let result = exporter.export("digraph {}", "test.dot", temp_dir.path());
+
+            assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("mock failure"));
+            assert!(exporter.graphviz.called.load(Ordering::SeqCst));
         }
     }
 }
