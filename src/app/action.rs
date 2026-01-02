@@ -1,4 +1,5 @@
 use crate::app::focused_pane::FocusedPane;
+use crate::app::sql_modal_context::CompletionCandidate;
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +13,7 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Action {
     None,
     Quit,
@@ -84,6 +86,11 @@ pub enum Action {
         table: String,
         error: String,
     },
+    /// Notifies that table was already cached (no data update needed)
+    TableDetailAlreadyCached {
+        schema: String,
+        table: String,
+    },
 
     // Prefetch all tables for completion
     StartPrefetchAll,
@@ -113,6 +120,11 @@ pub enum Action {
 
     // SQL Modal completion
     CompletionTrigger,
+    CompletionUpdated {
+        candidates: Vec<CompletionCandidate>,
+        trigger_position: usize,
+        visible: bool,
+    },
     CompletionAccept,
     CompletionDismiss,
     CompletionNext,
@@ -138,6 +150,7 @@ pub enum Action {
 
     // Console
     OpenConsole,
+    ConsoleFailed(String),
 
     // Focus mode
     ToggleFocus,

@@ -1,0 +1,465 @@
+//! Executes side effects returned by the reducer.
+//!
+//! # RefCell Borrow Safety
+//!
+//! When effects need data from `completion_engine` (a `RefCell`), the borrow
+//! MUST be dropped before any await point:
+//!
+//! ```ignore
+//! let tables = {
+//!     let engine = completion_engine.borrow();
+//!     engine.table_details_iter().map(|...| ...).collect()
+//! };  // borrow dropped here
+//! some_async_operation(tables).await;  // safe
+//! ```
+
+use std::cell::RefCell;
+use std::sync::Arc;
+
+use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
+
+use crate::app::action::Action;
+use crate::app::completion::CompletionEngine;
+use crate::app::effect::Effect;
+use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
+use crate::app::ports::{ErDiagramExporter, MetadataProvider, QueryExecutor};
+use crate::app::state::AppState;
+use crate::domain::{DatabaseMetadata, ErTableInfo};
+use crate::infra::cache::TtlCache;
+use crate::infra::config::cache::get_cache_dir;
+use crate::infra::config::pgclirc::generate_pgclirc;
+use crate::ui::components::layout::MainLayout;
+use crate::ui::tui::TuiRunner;
+
+pub struct EffectRunner {
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    er_exporter: Arc<dyn ErDiagramExporter>,
+    metadata_cache: TtlCache<String, DatabaseMetadata>,
+    action_tx: mpsc::Sender<Action>,
+}
+
+impl EffectRunner {
+    pub fn new(
+        metadata_provider: Arc<dyn MetadataProvider>,
+        query_executor: Arc<dyn QueryExecutor>,
+        er_exporter: Arc<dyn ErDiagramExporter>,
+        metadata_cache: TtlCache<String, DatabaseMetadata>,
+        action_tx: mpsc::Sender<Action>,
+    ) -> Self {
+        Self {
+            metadata_provider,
+            query_executor,
+            er_exporter,
+            metadata_cache,
+            action_tx,
+        }
+    }
+
+    pub async fn run(
+        &self,
+        effects: Vec<Effect>,
+        tui: &mut TuiRunner,
+        state: &mut AppState,
+        completion_engine: &RefCell<CompletionEngine>,
+    ) -> Result<()> {
+        for effect in effects {
+            match effect {
+                Effect::Sequence(seq_effects) => {
+                    for seq_effect in seq_effects {
+                        self.run_single(seq_effect, tui, state, completion_engine)
+                            .await?;
+                    }
+                }
+                single_effect => {
+                    self.run_single(single_effect, tui, state, completion_engine)
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn run_single(
+        &self,
+        effect: Effect,
+        tui: &mut TuiRunner,
+        state: &mut AppState,
+        completion_engine: &RefCell<CompletionEngine>,
+    ) -> Result<()> {
+        if effect.is_exclusive() {
+            self.run_exclusive(effect, tui, state).await
+        } else {
+            self.run_normal(effect, tui, state, completion_engine).await
+        }
+    }
+
+    async fn run_exclusive(
+        &self,
+        effect: Effect,
+        tui: &mut TuiRunner,
+        _state: &mut AppState,
+    ) -> Result<()> {
+        match effect {
+            Effect::OpenConsole { dsn, project_name } => {
+                let cache_dir = get_cache_dir(&project_name)?;
+                let pgclirc = generate_pgclirc(&cache_dir)?;
+
+                let guard = tui.suspend_guard()?;
+
+                let status = tokio::task::spawn_blocking(move || {
+                    std::process::Command::new("pgcli")
+                        .arg("--pgclirc")
+                        .arg(&pgclirc)
+                        .arg(&dsn)
+                        .status()
+                })
+                .await;
+
+                guard.resume()?;
+
+                match status {
+                    Err(e) => {
+                        let _ = self
+                            .action_tx
+                            .send(Action::ConsoleFailed(format!("pgcli task failed: {}", e)))
+                            .await;
+                    }
+                    Ok(Err(e)) => {
+                        let _ = self
+                            .action_tx
+                            .send(Action::ConsoleFailed(format!(
+                                "pgcli failed to start: {}",
+                                e
+                            )))
+                            .await;
+                    }
+                    Ok(Ok(exit_status)) if !exit_status.success() => {
+                        let code = exit_status
+                            .code()
+                            .map_or("unknown".to_string(), |c| c.to_string());
+                        let _ = self
+                            .action_tx
+                            .send(Action::ConsoleFailed(format!(
+                                "pgcli exited with code {}",
+                                code
+                            )))
+                            .await;
+                    }
+                    Ok(Ok(_)) => {}
+                }
+
+                let _ = self.action_tx.send(Action::Render).await;
+                Ok(())
+            }
+            _ => {
+                debug_assert!(
+                    false,
+                    "Non-exclusive effect passed to run_exclusive: {:?}",
+                    effect
+                );
+                Ok(())
+            }
+        }
+    }
+
+    async fn run_normal(
+        &self,
+        effect: Effect,
+        tui: &mut TuiRunner,
+        state: &mut AppState,
+        completion_engine: &RefCell<CompletionEngine>,
+    ) -> Result<()> {
+        match effect {
+            Effect::Render => {
+                tui.terminal()
+                    .draw(|frame| MainLayout::render(frame, state))?;
+                Ok(())
+            }
+
+            Effect::CacheInvalidate { dsn } => {
+                self.metadata_cache.invalidate(&dsn).await;
+                Ok(())
+            }
+
+            Effect::ClearCompletionEngineCache => {
+                completion_engine.borrow_mut().clear_table_cache();
+                Ok(())
+            }
+
+            Effect::FetchMetadata { dsn } => {
+                if let Some(cached) = self.metadata_cache.get(&dsn).await {
+                    let _ = self
+                        .action_tx
+                        .send(Action::MetadataLoaded(Box::new(cached)))
+                        .await;
+                } else {
+                    let provider = Arc::clone(&self.metadata_provider);
+                    let cache = self.metadata_cache.clone();
+                    let tx = self.action_tx.clone();
+
+                    tokio::spawn(async move {
+                        match provider.fetch_metadata(&dsn).await {
+                            Ok(metadata) => {
+                                cache.set(dsn, metadata.clone()).await;
+                                let _ = tx.send(Action::MetadataLoaded(Box::new(metadata))).await;
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Action::MetadataFailed(e.to_string())).await;
+                            }
+                        }
+                    });
+                }
+                Ok(())
+            }
+
+            Effect::FetchTableDetail {
+                dsn,
+                schema,
+                table,
+                generation,
+            } => {
+                let provider = Arc::clone(&self.metadata_provider);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx
+                                .send(Action::TableDetailLoaded(Box::new(detail), generation))
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::TableDetailFailed(e.to_string(), generation))
+                                .await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::PrefetchTableDetail { dsn, schema, table } => {
+                let qualified_name = format!("{}.{}", schema, table);
+
+                // Check cache before spawning
+                let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
+                if already_cached {
+                    // Notify state update without overwriting cache data
+                    let _ = self
+                        .action_tx
+                        .send(Action::TableDetailAlreadyCached { schema, table })
+                        .await;
+                    return Ok(());
+                }
+
+                let provider = Arc::clone(&self.metadata_provider);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                        Ok(detail) => {
+                            let _ = tx
+                                .send(Action::TableDetailCached {
+                                    schema,
+                                    table,
+                                    detail: Box::new(detail),
+                                })
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::TableDetailCacheFailed {
+                                    schema,
+                                    table,
+                                    error: e.to_string(),
+                                })
+                                .await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::ProcessPrefetchQueue => {
+                // Dispatch Action::ProcessPrefetchQueue to be handled by reducer
+                let _ = self.action_tx.send(Action::ProcessPrefetchQueue).await;
+                Ok(())
+            }
+
+            Effect::ExecutePreview {
+                dsn,
+                schema,
+                table,
+                generation,
+                limit,
+            } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match executor.execute_preview(&dsn, &schema, &table, limit).await {
+                        Ok(result) => {
+                            let _ = tx
+                                .send(Action::QueryCompleted(Box::new(result), generation))
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx
+                                .send(Action::QueryFailed(e.to_string(), generation))
+                                .await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::ExecuteAdhoc { dsn, query } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match executor.execute_adhoc(&dsn, &query).await {
+                        Ok(result) => {
+                            let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::CacheTableInCompletionEngine {
+                qualified_name,
+                table,
+            } => {
+                completion_engine
+                    .borrow_mut()
+                    .cache_table_detail(qualified_name, *table);
+                Ok(())
+            }
+
+            Effect::TriggerCompletion => {
+                let cursor = state.sql_modal.cursor;
+
+                // 1. Get missing tables (scoped borrow)
+                let missing = {
+                    let engine = completion_engine.borrow();
+                    engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
+                };
+
+                // 2. Batch prefetch actions to avoid blocking event loop
+                let prefetch_actions: Vec<Action> = missing
+                    .into_iter()
+                    .filter_map(|qualified_name| {
+                        qualified_name.split_once('.').map(|(schema, table)| {
+                            Action::PrefetchTableDetail {
+                                schema: schema.to_string(),
+                                table: table.to_string(),
+                            }
+                        })
+                    })
+                    .collect();
+
+                // Drop on channel full is acceptable: prefetch is best-effort,
+                // and missing tables will be retried on next completion trigger.
+                for action in prefetch_actions {
+                    let _ = self.action_tx.try_send(action);
+                }
+
+                // 3. Get candidates (scoped borrow)
+                let (candidates, token_len, visible) = {
+                    let engine = completion_engine.borrow();
+                    let token_len = engine.current_token_len(&state.sql_modal.content, cursor);
+                    let recent_cols = state.sql_modal.completion.recent_columns_vec();
+                    let candidates = engine.get_candidates(
+                        &state.sql_modal.content,
+                        cursor,
+                        state.cache.metadata.as_ref(),
+                        state.cache.table_detail.as_ref(),
+                        &recent_cols,
+                    );
+                    let visible =
+                        !candidates.is_empty() && !state.sql_modal.content.trim().is_empty();
+                    (candidates, token_len, visible)
+                };
+
+                // 4. Send state update action
+                let _ = self
+                    .action_tx
+                    .send(Action::CompletionUpdated {
+                        candidates,
+                        trigger_position: cursor.saturating_sub(token_len),
+                        visible,
+                    })
+                    .await;
+                Ok(())
+            }
+
+            Effect::GenerateErDiagramFromCache {
+                total_tables,
+                project_name,
+            } => {
+                // Collect lightweight snapshots for DOT generation
+                let tables: Vec<ErTableInfo> = {
+                    let engine = completion_engine.borrow();
+                    engine
+                        .table_details_iter()
+                        .map(|(k, v)| ErTableInfo::from_table(k, v))
+                        .collect()
+                };
+
+                if tables.is_empty() {
+                    let _ = self
+                        .action_tx
+                        .send(Action::ErDiagramFailed(
+                            "No table data loaded yet".to_string(),
+                        ))
+                        .await;
+                    return Ok(());
+                }
+
+                let cache_dir = get_cache_dir(&project_name)?;
+                let exporter = Arc::clone(&self.er_exporter);
+                spawn_er_diagram_task(
+                    exporter,
+                    tables,
+                    total_tables,
+                    cache_dir,
+                    self.action_tx.clone(),
+                );
+                Ok(())
+            }
+
+            Effect::WriteErFailureLog { failed_tables } => {
+                let project_name = state.runtime.project_name.clone();
+                if let Ok(cache_dir) = get_cache_dir(&project_name) {
+                    tokio::task::spawn_blocking(move || {
+                        let _ = write_er_failure_log_blocking(failed_tables, cache_dir);
+                    });
+                }
+                Ok(())
+            }
+
+            Effect::OpenConsole { .. } => {
+                // Handled in run_exclusive
+                Ok(())
+            }
+
+            Effect::Sequence(_) => {
+                // Handled in run()
+                Ok(())
+            }
+
+            Effect::DispatchActions(actions) => {
+                for action in actions {
+                    let _ = self.action_tx.send(action).await;
+                }
+                Ok(())
+            }
+        }
+    }
+}
