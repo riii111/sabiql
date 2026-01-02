@@ -729,7 +729,6 @@ async fn handle_action(
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
-                // skip: remove from pending_tables if present
                 state.er_preparation.pending_tables.remove(&qualified_name);
 
                 // Check if ER preparation completed after this skip
@@ -1078,7 +1077,6 @@ async fn handle_action(
             }
         }
 
-        // Result scroll
         Action::ResultScrollUp => {
             state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
         }
@@ -1127,7 +1125,6 @@ async fn handle_action(
             );
         }
 
-        // Inspector scroll (all tabs)
         Action::InspectorScrollUp => {
             state.ui.inspector_scroll_offset = state.ui.inspector_scroll_offset.saturating_sub(1);
         }

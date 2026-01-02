@@ -35,11 +35,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     use crate::app::focused_pane::FocusedPane;
 
     match (key.code, key.modifiers) {
-        // Ctrl+P: Open Table Picker
         (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenTablePicker;
         }
-        // Ctrl+K: Open Command Palette
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
@@ -90,7 +88,6 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        // Horizontal scroll (h/l)
         KeyCode::Char('h') | KeyCode::Left => {
             if result_navigation {
                 Action::ResultScrollLeft
@@ -130,14 +127,10 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        // Console: open pgcli directly
         KeyCode::Char('c') => Action::OpenConsole,
-        // SQL Modal: open adhoc query editor
         KeyCode::Char('s') => Action::OpenSqlModal,
-        // ER Diagram: open full database diagram in browser
         KeyCode::Char('e') => Action::ErOpenDiagram,
 
-        // Explorer: Enter to select table (only when Explorer is focused)
         KeyCode::Enter => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection
