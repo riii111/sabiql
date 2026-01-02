@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│public.post   ││(select a table)                                              │
+│public.comm   │╭ Table Picker ────────────────────────────────╮               │
+│              ││  > user█                                     │               │
+│              ││▸   public.users                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │───────────────┘
+│              ││                                              │───────────────┐
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              │╰ 1 tables │ ↑↓ Navigate │ Enter Select ───────╯               │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Esc:Close  Enter:Select  ↑↓:Navigate  type:Filter

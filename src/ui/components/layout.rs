@@ -26,7 +26,7 @@ pub struct RenderOutput {
 pub struct MainLayout;
 
 impl MainLayout {
-    pub fn render(frame: &mut Frame, state: &mut AppState) -> RenderOutput {
+    pub fn render(frame: &mut Frame, state: &mut AppState, time_ms: Option<u128>) -> RenderOutput {
         let area = frame.area();
 
         let [header_area, main_area, footer_area, cmdline_area] = Layout::vertical([
@@ -40,7 +40,7 @@ impl MainLayout {
         Header::render(frame, header_area, state);
         let output = Self::render_browse_mode(frame, main_area, state);
 
-        Footer::render(frame, footer_area, state);
+        Footer::render(frame, footer_area, state, time_ms);
         CommandLine::render(frame, cmdline_area, state);
 
         match state.ui.input_mode {

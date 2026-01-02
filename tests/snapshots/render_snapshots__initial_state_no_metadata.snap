@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│Press 'r' to l│┌ [2] Inspector ───────────────────────────────────────────────┐
+│              ││(select a table)                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              │└──────────────────────────────────────────────────────────────┘
+│              │┌ [3] Result ──────────────────────────────────────────────────┐
+│              ││(select a table to preview)                                   │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+q:Quit  ?:Help  1/2/3:Pane  f:Focus  r:Reload  c:Console  s:SQL  e:ER Diagram  ^

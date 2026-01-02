@@ -1,0 +1,28 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│public.post   ││(select a table)                                              │
+│public.comm   ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              │└──────────────────────────────────────────────────────────────┘
+│              │┌ [3] Result ──────────────────────────────────────────────────┐
+│              ││(select a table to preview)                                   │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter:Execute  Esc:Cancel                                                       
+:sql█

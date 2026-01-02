@@ -12,9 +12,9 @@ use crate::app::state::AppState;
 pub struct Footer;
 
 impl Footer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState, time_ms: Option<u128>) {
         if state.er_preparation.status == ErStatus::Waiting {
-            let line = Self::build_er_waiting_line(state);
+            let line = Self::build_er_waiting_line(state, time_ms);
             frame.render_widget(Paragraph::new(line), area);
         } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
@@ -29,27 +29,19 @@ impl Footer {
         }
     }
 
-    fn build_er_waiting_line(state: &AppState) -> Line<'static> {
-        const SPINNER_FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
+    fn build_er_waiting_line(state: &AppState, time_ms: Option<u128>) -> Line<'static> {
+        let now_ms = time_ms.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        });
+        let spinner = spinner_frame(now_ms);
 
-        // Use system time for spinner animation (wraps every ~1.2 seconds)
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let frame_idx = (now_ms / 300) as usize % SPINNER_FRAMES.len();
-        let spinner = SPINNER_FRAMES[frame_idx];
-
-        // Calculate progress from state (exclude failed tables from "cached" count)
-        let total = state
-            .cache
-            .metadata
-            .as_ref()
-            .map(|m| m.tables.len())
-            .unwrap_or(0);
-        let failed_count = state.sql_modal.failed_prefetch_tables.len();
+        let total = state.er_preparation.total_tables;
+        let failed_count = state.er_preparation.failed_tables.len();
         let remaining =
-            state.sql_modal.prefetch_queue.len() + state.sql_modal.prefetching_tables.len();
+            state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
@@ -121,4 +113,10 @@ impl Footer {
         }
         Line::from(spans)
     }
+}
+
+const SPINNER_FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
+
+fn spinner_frame(time_ms: u128) -> &'static str {
+    SPINNER_FRAMES[(time_ms / 300) as usize % SPINNER_FRAMES.len()]
 }

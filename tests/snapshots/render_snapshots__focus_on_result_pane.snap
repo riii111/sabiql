@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│> public.user │┌ [2] Inspector ───────────────────────────────────────────────┐
+│  public.post ││(select a table)                                              │
+│  public.comm ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              │└──────────────────────────────────────────────────────────────┘
+│              │┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────┐
+│              ││id   name    email                                            │
+│              ││1    Alice   alice@example.com                                │
+│              ││2    Bob     bob@example.com                                  │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+q:Quit  ?:Help  1/2/3:Pane  f:Focus  j/k/g/G:Scroll  h/l:H-Scroll  r:Reload  c:C

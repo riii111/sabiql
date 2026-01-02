@@ -14,6 +14,7 @@ pub struct ErPreparationState {
     pub fetching_tables: HashSet<String>,
     pub failed_tables: HashMap<String, String>,
     pub status: ErStatus,
+    pub total_tables: usize,
 }
 
 impl ErPreparationState {
@@ -143,6 +144,7 @@ mod tests {
                 fetching_tables: HashSet::from(["b".to_string()]),
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
                 status: ErStatus::Waiting,
+                total_tables: 3,
             };
 
             state.reset();
@@ -151,6 +153,7 @@ mod tests {
             assert!(state.fetching_tables.is_empty());
             assert!(state.failed_tables.is_empty());
             assert_eq!(state.status, ErStatus::Idle);
+            assert_eq!(state.total_tables, 0);
         }
     }
 
@@ -164,6 +167,7 @@ mod tests {
                 fetching_tables: HashSet::new(),
                 failed_tables: HashMap::new(),
                 status: ErStatus::Waiting,
+                total_tables: 1,
             };
 
             // Simulate skip: remove from pending (e.g., already cached)
@@ -180,6 +184,7 @@ mod tests {
                 fetching_tables: HashSet::new(),
                 failed_tables: HashMap::from([("public.users".to_string(), "timeout".to_string())]),
                 status: ErStatus::Waiting,
+                total_tables: 2,
             };
 
             // Simulate skip: remove last pending (e.g., already cached)

@@ -1,9 +1,3 @@
-mod app;
-mod domain;
-mod error;
-mod infra;
-mod ui;
-
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -12,20 +6,21 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use app::action::Action;
-use app::completion::CompletionEngine;
-use app::effect_runner::EffectRunner;
-use app::reducer::reduce;
-use app::state::AppState;
-use infra::adapters::PostgresAdapter;
-use infra::cache::TtlCache;
-use infra::config::{
+use dbtui::app::action::Action;
+use dbtui::app::completion::CompletionEngine;
+use dbtui::app::effect_runner::EffectRunner;
+use dbtui::app::reducer::reduce;
+use dbtui::app::state::AppState;
+use dbtui::error;
+use dbtui::infra::adapters::PostgresAdapter;
+use dbtui::infra::cache::TtlCache;
+use dbtui::infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
 };
-use infra::export::DotExporter;
-use ui::event::handler::handle_event;
-use ui::tui::TuiRunner;
+use dbtui::infra::export::DotExporter;
+use dbtui::ui::event::handler::handle_event;
+use dbtui::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
