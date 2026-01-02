@@ -26,9 +26,15 @@ impl Header {
         };
 
         let line = Line::from(vec![
-            Span::styled(&state.runtime.project_name, Style::default().fg(Color::Cyan)),
+            Span::styled(
+                &state.runtime.project_name,
+                Style::default().fg(Color::Cyan),
+            ),
             Span::raw(" | "),
-            Span::styled(&state.runtime.profile_name, Style::default().fg(Color::Yellow)),
+            Span::styled(
+                &state.runtime.profile_name,
+                Style::default().fg(Color::Yellow),
+            ),
             Span::raw(" | "),
             Span::raw(db_name),
             Span::raw(" | "),

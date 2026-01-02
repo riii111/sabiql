@@ -5,7 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 use crate::app::query_execution::QueryStatus;
-use crate::app::state::{AppState, CompletionKind, SqlModalState};
+use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
+use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
@@ -41,14 +42,14 @@ impl SqlModal {
         Self::render_status(frame, status_area, state);
 
         // Render completion popup if visible
-        if state.completion.visible && !state.completion.candidates.is_empty() {
+        if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
             Self::render_completion_popup(frame, area, editor_area, state);
         }
     }
 
     fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
-        let content = &state.sql_modal_content;
-        let cursor_pos = state.sql_modal_cursor;
+        let content = &state.sql_modal.content;
+        let cursor_pos = state.sql_modal.cursor;
 
         // Convert cursor position to (row, col)
         let (cursor_row, cursor_col) = Self::cursor_to_position(content, cursor_pos);
@@ -138,15 +139,15 @@ impl SqlModal {
             let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
             (status, Style::default().fg(Color::Yellow))
         } else {
-            match state.sql_modal_state {
-                SqlModalState::Editing => {
+            match state.sql_modal.status {
+                SqlModalStatus::Editing => {
                     ("Ready".to_string(), Style::default().fg(Color::DarkGray))
                 }
-                SqlModalState::Running => {
+                SqlModalStatus::Running => {
                     ("Running...".to_string(), Style::default().fg(Color::Yellow))
                 }
-                SqlModalState::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
-                SqlModalState::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
+                SqlModalStatus::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
+                SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
             }
         };
 
@@ -170,11 +171,11 @@ impl SqlModal {
         state: &AppState,
     ) {
         let (cursor_row, cursor_col) =
-            Self::cursor_to_position(&state.sql_modal_content, state.sql_modal_cursor);
+            Self::cursor_to_position(&state.sql_modal.content, state.sql_modal.cursor);
 
         // Popup dimensions
         let max_items = 8;
-        let visible_count = state.completion.candidates.len().min(max_items);
+        let visible_count = state.sql_modal.completion.candidates.len().min(max_items);
         let popup_height = (visible_count as u16) + 2; // +2 for borders
         let popup_width = 45u16.min(modal_area.width);
 
@@ -199,8 +200,8 @@ impl SqlModal {
         frame.render_widget(Clear, popup_area);
 
         // Calculate scroll window to keep selected item visible
-        let selected = state.completion.selected_index;
-        let total = state.completion.candidates.len();
+        let selected = state.sql_modal.completion.selected_index;
+        let total = state.sql_modal.completion.candidates.len();
         let scroll_offset = if total <= max_items {
             0
         } else {
@@ -217,6 +218,7 @@ impl SqlModal {
 
         // Calculate max text width for alignment
         let max_text_width = state
+            .sql_modal
             .completion
             .candidates
             .iter()
@@ -227,6 +229,7 @@ impl SqlModal {
             .unwrap_or(0);
 
         let items: Vec<ListItem> = state
+            .sql_modal
             .completion
             .candidates
             .iter()

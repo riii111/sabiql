@@ -1,6 +1,3 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::Instant;
-
 use ratatui::widgets::ListState;
 use tokio::sync::mpsc::Sender;
 
@@ -12,47 +9,9 @@ use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
 use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
+use super::sql_modal_context::SqlModalContext;
 use crate::domain::TableSummary;
 use crate::ui::components::viewport_columns::ViewportPlan;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SqlModalState {
-    #[default]
-    Editing,
-    Running,
-    Success,
-    Error,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompletionKind {
-    Keyword,
-    Table,
-    Column,
-}
-
-#[derive(Debug, Clone)]
-pub struct CompletionCandidate {
-    pub text: String,
-    pub kind: CompletionKind,
-    pub score: i32,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct CompletionState {
-    pub visible: bool,
-    pub candidates: Vec<CompletionCandidate>,
-    pub selected_index: usize,
-    pub trigger_position: usize,
-    pub recent_columns: VecDeque<String>,
-}
-
-impl CompletionState {
-    /// Get recent columns as a Vec for completion scoring
-    pub fn recent_columns_vec(&self) -> Vec<String> {
-        self.recent_columns.iter().cloned().collect()
-    }
-}
 
 pub struct AppState {
     pub should_quit: bool,
@@ -87,25 +46,7 @@ pub struct AppState {
     pub query: QueryExecution,
 
     // SQL Modal
-    pub sql_modal_content: String,
-    pub sql_modal_cursor: usize,
-    pub sql_modal_state: SqlModalState,
-
-    // SQL Modal completion
-    pub completion: CompletionState,
-    pub completion_debounce: Option<Instant>,
-
-    // Tables currently being prefetched for completion (schema.table)
-    pub prefetching_tables: HashSet<String>,
-
-    // Tables that failed to prefetch (schema.table -> (failure time, error message))
-    pub failed_prefetch_tables: HashMap<String, (Instant, String)>,
-
-    // Prefetch queue for all tables (schema.table qualified names)
-    pub prefetch_queue: VecDeque<String>,
-
-    // Whether prefetch-all has been started for this SQL modal session
-    pub prefetch_started: bool,
+    pub sql_modal: SqlModalContext,
 
     // Status messages (shown in footer, auto-clear after timeout)
     pub messages: MessageState,
@@ -151,15 +92,7 @@ impl AppState {
             // Query execution
             query: QueryExecution::default(),
             // SQL Modal
-            sql_modal_content: String::new(),
-            sql_modal_cursor: 0,
-            sql_modal_state: SqlModalState::default(),
-            completion: CompletionState::default(),
-            completion_debounce: None,
-            prefetching_tables: HashSet::new(),
-            failed_prefetch_tables: HashMap::new(),
-            prefetch_queue: VecDeque::new(),
-            prefetch_started: false,
+            sql_modal: SqlModalContext::default(),
             // Status messages
             messages: MessageState::default(),
             // Terminal height (will be updated on resize)
@@ -238,6 +171,7 @@ mod tests {
     use super::*;
     use crate::domain::DatabaseMetadata;
     use rstest::rstest;
+    use std::time::Instant;
 
     #[test]
     fn default_result_pane_height_returns_zero_visible_rows() {
@@ -422,18 +356,18 @@ mod tests {
     fn prefetch_queue_starts_empty() {
         let state = AppState::new("test".to_string(), "default".to_string());
 
-        assert!(state.prefetch_queue.is_empty());
-        assert!(!state.prefetch_started);
+        assert!(state.sql_modal.prefetch_queue.is_empty());
+        assert!(!state.sql_modal.prefetch_started);
     }
 
     #[test]
     fn prefetch_queue_pop_returns_fifo_order() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
-        state.prefetch_queue.push_back("public.users".to_string());
-        state.prefetch_queue.push_back("public.orders".to_string());
+        state.sql_modal.prefetch_queue.push_back("public.users".to_string());
+        state.sql_modal.prefetch_queue.push_back("public.orders".to_string());
 
-        let first = state.prefetch_queue.pop_front();
-        let second = state.prefetch_queue.pop_front();
+        let first = state.sql_modal.prefetch_queue.pop_front();
+        let second = state.sql_modal.prefetch_queue.pop_front();
 
         assert_eq!(first, Some("public.users".to_string()));
         assert_eq!(second, Some("public.orders".to_string()));
@@ -443,10 +377,10 @@ mod tests {
     fn prefetching_tables_tracks_in_flight() {
         let mut state = AppState::new("test".to_string(), "default".to_string());
 
-        state.prefetching_tables.insert("public.users".to_string());
+        state.sql_modal.prefetching_tables.insert("public.users".to_string());
 
-        assert!(state.prefetching_tables.contains("public.users"));
-        assert!(!state.prefetching_tables.contains("public.orders"));
+        assert!(state.sql_modal.prefetching_tables.contains("public.users"));
+        assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
     }
 
     #[test]
@@ -454,13 +388,13 @@ mod tests {
         let mut state = AppState::new("test".to_string(), "default".to_string());
         let now = Instant::now();
 
-        state.failed_prefetch_tables.insert(
+        state.sql_modal.failed_prefetch_tables.insert(
             "public.users".to_string(),
             (now, "connection timeout".to_string()),
         );
 
-        assert!(state.failed_prefetch_tables.contains_key("public.users"));
-        let (instant, error) = state.failed_prefetch_tables.get("public.users").unwrap();
+        assert!(state.sql_modal.failed_prefetch_tables.contains_key("public.users"));
+        let (instant, error) = state.sql_modal.failed_prefetch_tables.get("public.users").unwrap();
         assert!(instant.elapsed().as_secs() < 1);
         assert_eq!(error, "connection timeout");
     }
@@ -501,24 +435,21 @@ mod tests {
         #[test]
         fn clears_prefetch_state() {
             let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.prefetch_started = true;
-            state.prefetch_queue.push_back("public.users".to_string());
-            state.prefetching_tables.insert("public.orders".to_string());
-            state.failed_prefetch_tables.insert(
+            state.sql_modal.prefetch_started = true;
+            state.sql_modal.prefetch_queue.push_back("public.users".to_string());
+            state.sql_modal.prefetching_tables.insert("public.orders".to_string());
+            state.sql_modal.failed_prefetch_tables.insert(
                 "public.failed".to_string(),
                 (Instant::now(), "timeout".to_string()),
             );
 
-            // Simulate ReloadMetadata reset
-            state.prefetch_started = false;
-            state.prefetch_queue.clear();
-            state.prefetching_tables.clear();
-            state.failed_prefetch_tables.clear();
+            // Simulate ReloadMetadata reset using reset_prefetch()
+            state.sql_modal.reset_prefetch();
 
-            assert!(!state.prefetch_started);
-            assert!(state.prefetch_queue.is_empty());
-            assert!(state.prefetching_tables.is_empty());
-            assert!(state.failed_prefetch_tables.is_empty());
+            assert!(!state.sql_modal.prefetch_started);
+            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.sql_modal.prefetching_tables.is_empty());
+            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
         }
 
         #[test]
