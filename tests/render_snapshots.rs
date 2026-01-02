@@ -1,7 +1,9 @@
 mod harness;
 
 use harness::fixtures;
-use harness::{create_test_state, create_test_terminal, fixed_instant, render_to_string};
+use harness::{create_test_state, create_test_terminal, render_to_string, test_instant};
+
+use std::time::Duration;
 
 use dbtui::app::er_state::ErStatus;
 use dbtui::app::focused_pane::FocusedPane;
@@ -21,7 +23,7 @@ fn initial_state_no_metadata() {
 
 #[test]
 fn table_selection_with_preview() {
-    let now = fixed_instant();
+    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -38,7 +40,7 @@ fn table_selection_with_preview() {
 
 #[test]
 fn focus_on_result_pane() {
-    let now = fixed_instant();
+    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -55,7 +57,7 @@ fn focus_on_result_pane() {
 
 #[test]
 fn sql_modal_with_completion() {
-    let now = fixed_instant();
+    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -73,7 +75,7 @@ fn sql_modal_with_completion() {
 
 #[test]
 fn er_waiting_progress() {
-    let now = fixed_instant();
+    let now = test_instant();
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -91,6 +93,70 @@ fn er_waiting_progress() {
         .er_preparation
         .fetching_tables
         .insert("public.posts".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn help_overlay() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.input_mode = InputMode::Help;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn command_palette_overlay() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.input_mode = InputMode::CommandPalette;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn error_message_in_footer() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.messages.last_error = Some("Connection failed: timeout".to_string());
+    state.messages.expires_at = Some(now + Duration::from_secs(10));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn empty_query_result() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(fixtures::empty_query_result(now));
 
     let output = render_to_string(&mut terminal, &mut state);
 

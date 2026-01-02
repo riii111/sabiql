@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│public.user╭ Help ────────────────────────────────────────────────╮───────────┐
+│public.post│▸ Global Keys                                         │           │
+│public.comm│   q           Quit application                       │           │
+│           │   ?           Toggle this help                       │           │
+│           │   Ctrl+P      Open Table Picker                      │           │
+│           │   Ctrl+K      Open Command Palette                   │           │
+│           │   :           Enter command line                     │           │
+│           │   f           Toggle Focus mode (Result fullscreen)  │           │
+│           │  1/2/3        Switch pane focus (exits Focus first)  │           │
+│           │  Tab/⇧Tab     Inspector prev/next tab (Inspector     │───────────┘
+│           │focus)                                                │───────────┐
+│           │  r            Reload metadata                        │           │
+│           │  e            Open ER Diagram in browser             │           │
+│           │                                                      │           │
+│           │▸ Navigation                                          │           │
+│           │  j / ↓        Move down (scroll in Result/Focus)     │           │
+│           │  k / ↑        Move up (scroll in Result/Focus)       │           │
+│           │  g / Home     First item (top in Result/Focus)       │           │
+│           │  G / End      Last item (bottom in Result/Focus)     │           │
+└───────────╰ ? or Esc to close ───────────────────────────────────╯───────────┘
+q:Quit  ?/Esc:Close

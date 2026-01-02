@@ -36,6 +36,20 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 3. Review the generated `.snap.new` file
 4. Run `mise exec -- cargo insta accept`
 
+## Coverage Criteria
+
+### When to Add a Snapshot Test
+
+- **Each InputMode** - At least one scenario per mode (Normal, Help, CommandPalette, TablePicker, SqlModal)
+- **Major UI state changes** - Focus pane switching, focus mode toggle, message display
+- **Boundary conditions** - Empty results, initial loading state, error states
+
+### When NOT to Add
+
+- **Data variations** - Different row counts, column counts within same screen
+- **Exhaustive combinations** - All possible state permutations
+- **Transient states** - Brief loading indicators (except persistent ones like ER progress)
+
 ## Snapshot Update Policy
 
 ### Allowed
@@ -47,16 +61,3 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 
 - **Failing tests due to regressions** - Fix the code, not the snapshot
 - **Unintentional changes** - Investigate the diff first
-
-## Test Harness
-
-The `harness` module provides utilities for deterministic rendering:
-
-| Function | Purpose |
-|----------|---------|
-| `create_test_state()` | Creates `AppState` with test defaults |
-| `create_test_terminal()` | Creates 80x24 `TestBackend` terminal |
-| `render_to_string()` | Renders state to string with fixed time (0ms) |
-| `fixed_instant()` | Returns consistent `Instant` for message expiry |
-
-Time-dependent elements (spinner, message expiry) use injected values for reproducibility.
