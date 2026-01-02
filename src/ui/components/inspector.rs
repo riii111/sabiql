@@ -90,7 +90,12 @@ impl Inspector {
                     ViewportPlan::default()
                 }
                 InspectorTab::ForeignKeys => {
-                    Self::render_foreign_keys(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_foreign_keys(
+                        frame,
+                        inner,
+                        table,
+                        state.ui.inspector_scroll_offset,
+                    );
                     ViewportPlan::default()
                 }
                 InspectorTab::Rls => {

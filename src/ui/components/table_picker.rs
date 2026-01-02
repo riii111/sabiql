@@ -65,7 +65,10 @@ impl TablePicker {
             .highlight_symbol("▸ ");
 
         if !filtered.is_empty() {
-            state.ui.picker_list_state.select(Some(state.ui.picker_selected));
+            state
+                .ui
+                .picker_list_state
+                .select(Some(state.ui.picker_selected));
         } else {
             state.ui.picker_list_state.select(None);
         }
