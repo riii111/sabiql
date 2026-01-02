@@ -296,7 +296,8 @@ impl EffectRunner {
             }
 
             Effect::ProcessPrefetchQueue => {
-                // ProcessPrefetchQueue now handled in reducer - it returns PrefetchTableDetail effects
+                // Dispatch Action::ProcessPrefetchQueue to be handled by reducer
+                let _ = self.action_tx.send(Action::ProcessPrefetchQueue).await;
                 Ok(())
             }
 
@@ -460,6 +461,13 @@ impl EffectRunner {
 
             Effect::Sequence(_) => {
                 // Handled in run()
+                Ok(())
+            }
+
+            Effect::DispatchActions(actions) => {
+                for action in actions {
+                    let _ = self.action_tx.send(action).await;
+                }
                 Ok(())
             }
         }

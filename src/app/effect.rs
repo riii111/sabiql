@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::app::action::Action;
 use crate::domain::Table;
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,9 @@ pub enum Effect {
 
     /// Ensures ordering: e.g., CacheInvalidate must complete before FetchMetadata
     Sequence(Vec<Effect>),
+
+    /// Dispatch actions to be processed by the reducer
+    DispatchActions(Vec<Action>),
 }
 
 #[allow(dead_code)]
