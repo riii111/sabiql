@@ -74,9 +74,15 @@ fn is_select_query(query: &str) -> bool {
             depth -= 1;
         }
 
-        // Reject multiple statements
+        // Reject multiple statements (but allow trailing semicolon)
         if depth == 0 && c == ';' {
-            return false;
+            // Check if there's anything after the semicolon (besides whitespace)
+            let remaining = &lower[byte_pos + 1..];
+            if !remaining.trim().is_empty() {
+                return false;
+            }
+            // Trailing semicolon is OK, stop processing
+            break;
         }
 
         // At top level and word boundary, check for SQL keywords
@@ -1171,6 +1177,11 @@ mod tests {
         #[case("SELECT 1; SELECT 2", false)]
         // Semicolon in string is OK
         #[case("SELECT * FROM t WHERE x = ';'", true)]
+        // Trailing semicolon is OK
+        #[case("SELECT * FROM users;", true)]
+        #[case("SELECT 1;", true)]
+        #[case("SELECT * FROM t WHERE x = 1;", true)]
+        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte;", true)]
         // SELECT INTO (rejected - creates table)
         #[case("SELECT * INTO new_table FROM old_table", false)]
         #[case("SELECT id, name INTO backup FROM users", false)]
