@@ -733,6 +733,22 @@ async fn handle_action(
             {
                 // skip: remove from pending_tables if present
                 state.er_preparation.pending_tables.remove(&qualified_name);
+
+                // Check if ER preparation completed after this skip
+                if state.er_preparation.status == ErStatus::Waiting
+                    && state.er_preparation.is_complete()
+                {
+                    state.er_preparation.status = ErStatus::Idle;
+                    if !state.er_preparation.has_failures() {
+                        state.set_success("ER ready. Press 'e' to open.".to_string());
+                    } else {
+                        let failed_count = state.er_preparation.failed_tables.len();
+                        state.set_error(format!(
+                            "ER failed: {} table(s) failed. 'e' to retry.",
+                            failed_count
+                        ));
+                    }
+                }
             } else if let Some(dsn) = &state.dsn {
                 state.prefetching_tables.insert(qualified_name.clone());
                 state.er_preparation.pending_tables.remove(&qualified_name);

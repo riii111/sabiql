@@ -694,4 +694,46 @@ mod tests {
             assert!(state.message_expires_at.is_some());
         }
     }
+
+    mod inspector_visible_rows {
+        use super::*;
+
+        #[test]
+        fn ddl_visible_rows_is_greater_than_standard() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.inspector_pane_height = 20;
+
+            let standard = state.inspector_visible_rows();
+            let ddl = state.inspector_ddl_visible_rows();
+
+            // DDL has no header row, so it should have 2 more visible rows
+            assert_eq!(ddl - standard, 2);
+        }
+
+        #[rstest]
+        #[case(10, 7)]
+        #[case(15, 12)]
+        #[case(20, 17)]
+        fn ddl_visible_rows_equals_height_minus_three(
+            #[case] pane_height: u16,
+            #[case] expected: usize,
+        ) {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.inspector_pane_height = pane_height;
+
+            let visible = state.inspector_ddl_visible_rows();
+
+            assert_eq!(visible, expected);
+        }
+
+        #[test]
+        fn small_pane_height_does_not_underflow() {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.inspector_pane_height = 2;
+
+            let visible = state.inspector_ddl_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+    }
 }
