@@ -293,7 +293,8 @@ impl EffectRunner {
             }
 
             Effect::ProcessPrefetchQueue => {
-                // ProcessPrefetchQueue now handled in reducer - it returns PrefetchTableDetail effects
+                // Dispatch Action::ProcessPrefetchQueue to be handled by reducer
+                let _ = self.action_tx.send(Action::ProcessPrefetchQueue).await;
                 Ok(())
             }
 

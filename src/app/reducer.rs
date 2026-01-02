@@ -473,7 +473,15 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::MetadataLoaded(metadata) => {
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-            vec![]
+
+            // If SqlModal is already open and prefetch hasn't started, start it now
+            if state.ui.input_mode == InputMode::SqlModal
+                && !state.sql_modal.prefetch_started
+            {
+                vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
+            } else {
+                vec![]
+            }
         }
         Action::MetadataFailed(error) => {
             state.cache.state = MetadataState::Error(error);
@@ -1066,6 +1074,19 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 return vec![];
             }
 
+            // If prefetch hasn't started, start it now and wait
+            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+                state.er_preparation.status = ErStatus::Waiting;
+                state.set_success("Starting table prefetch for ER diagram...".to_string());
+                return vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])];
+            }
+
+            // If no metadata yet, show error
+            if state.cache.metadata.is_none() {
+                state.set_error("Metadata not loaded yet".to_string());
+                return vec![];
+            }
+
             if state.er_preparation.has_failures() {
                 let failed_tables: Vec<String> =
                     state.er_preparation.failed_tables.keys().cloned().collect();
@@ -1504,6 +1525,7 @@ mod tests {
 
     mod er_diagram {
         use super::*;
+        use crate::domain::DatabaseMetadata;
         use crate::app::er_state::ErStatus;
 
         #[test]
@@ -1520,6 +1542,13 @@ mod tests {
         #[test]
         fn er_open_with_incomplete_prefetch_sets_waiting() {
             let mut state = create_test_state();
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+            state.sql_modal.prefetch_started = true;
             state
                 .er_preparation
                 .pending_tables
@@ -1536,6 +1565,13 @@ mod tests {
         fn er_open_when_complete_returns_generate_effect() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+            state.sql_modal.prefetch_started = true;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
@@ -1546,6 +1582,37 @@ mod tests {
                 Effect::GenerateErDiagramFromCache { .. }
             ));
             assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+        }
+
+        #[test]
+        fn er_open_without_prefetch_starts_prefetch() {
+            let mut state = create_test_state();
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+            // prefetch_started is false by default
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+        }
+
+        #[test]
+        fn er_open_without_metadata_shows_error() {
+            let mut state = create_test_state();
+            // No metadata
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert!(state.messages.last_error.is_some());
+            assert!(effects.is_empty());
         }
     }
 
