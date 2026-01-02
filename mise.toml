@@ -13,7 +13,11 @@ run = "cargo fmt"
 
 [tasks.clippy]
 description = "Run lints"
-run = "cargo clippy -- -D warnings"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks."clippy:fix"]
+description = "Auto-fix clippy warnings"
+run = "cargo clippy --all-targets --fix --allow-dirty --allow-staged"
 
 [tasks.test]
 description = "Run tests"
