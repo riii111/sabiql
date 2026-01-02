@@ -459,6 +459,13 @@ impl EffectRunner {
                 // Handled in run()
                 Ok(())
             }
+
+            Effect::DispatchActions(actions) => {
+                for action in actions {
+                    let _ = self.action_tx.send(action).await;
+                }
+                Ok(())
+            }
         }
     }
 }
