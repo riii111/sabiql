@@ -5,15 +5,15 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::status_message::{MessageType, StatusMessage};
+use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
-use crate::app::state::{AppState, ErStatus};
+use crate::app::state::AppState;
 
 pub struct Footer;
 
 impl Footer {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-        // ER Waiting status takes priority (persistent, doesn't timeout)
-        if state.er_status == ErStatus::Waiting {
+        if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state);
             frame.render_widget(Paragraph::new(line), area);
         } else if let Some(error) = &state.last_error {

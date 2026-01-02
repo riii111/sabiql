@@ -14,12 +14,13 @@ use tokio::sync::mpsc;
 use app::action::Action;
 use app::command::{command_to_action, parse_command};
 use app::completion::CompletionEngine;
+use app::er_state::ErStatus;
 use app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{MetadataProvider, QueryExecutor};
-use app::state::{AppState, ErStatus, QueryState};
+use app::state::{AppState, QueryState};
 use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
@@ -646,8 +647,8 @@ async fn handle_action(
                 state.failed_prefetch_tables.clear();
                 completion_engine.borrow_mut().clear_table_cache();
 
-                // Reset ER status and clear stale messages
-                state.er_status = ErStatus::Idle;
+                // Reset ER preparation state and clear stale messages
+                state.er_preparation.reset();
                 state.last_error = None;
                 state.last_success = None;
                 state.message_expires_at = None;
@@ -720,25 +721,60 @@ async fn handle_action(
             const PREFETCH_BACKOFF_SECS: u64 = 30;
             let qualified_name = format!("{}.{}", schema, table);
 
-            // Check if recently failed (backoff to avoid repeated failures)
             let recently_failed = state
                 .failed_prefetch_tables
                 .get(&qualified_name)
                 .map(|(t, _)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
                 .unwrap_or(false);
 
-            // Why 2-stage duplicate check (here + missing_tables)?
-            // Skip if already prefetching, cached, or recently failed (race condition guard)
             if state.prefetching_tables.contains(&qualified_name)
                 || completion_engine.borrow().has_cached_table(&qualified_name)
                 || recently_failed
             {
-                // skip
+                // skip: remove from pending_tables if present
+                state.er_preparation.pending_tables.remove(&qualified_name);
+
+                // Check if ER preparation completed after this skip
+                if state.er_preparation.status == ErStatus::Waiting
+                    && state.er_preparation.is_complete()
+                {
+                    state.er_preparation.status = ErStatus::Idle;
+                    if !state.er_preparation.has_failures() {
+                        state.set_success("ER ready. Press 'e' to open.".to_string());
+                    } else {
+                        let failed_count = state.er_preparation.failed_tables.len();
+                        let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name)
+                        {
+                            let failed_data: Vec<(String, String)> = state
+                                .er_preparation
+                                .failed_tables
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            tokio::task::spawn_blocking(move || {
+                                write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
+                            })
+                            .await
+                            .unwrap_or(false)
+                        } else {
+                            false
+                        };
+                        let msg = if log_written {
+                            format!(
+                                "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
+                                failed_count
+                            )
+                        } else {
+                            format!("ER failed: {} table(s) failed. 'e' to retry.", failed_count)
+                        };
+                        state.set_error(msg);
+                    }
+                }
             } else if let Some(dsn) = &state.dsn {
-                state.prefetching_tables.insert(qualified_name);
+                state.prefetching_tables.insert(qualified_name.clone());
+                state.er_preparation.pending_tables.remove(&qualified_name);
+                state.er_preparation.fetching_tables.insert(qualified_name);
                 let dsn = dsn.clone();
-                let schema = schema.clone();
-                let table = table.clone();
                 let provider = Arc::clone(metadata_provider);
                 let tx = action_tx.clone();
 
@@ -775,11 +811,11 @@ async fn handle_action(
             let qualified_name = format!("{}.{}", schema, table);
             state.prefetching_tables.remove(&qualified_name);
             state.failed_prefetch_tables.remove(&qualified_name);
+            state.er_preparation.on_table_cached(&qualified_name);
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *detail);
 
-            // Only trigger completion when queue is empty to avoid repeated recalculation
             if state.input_mode == InputMode::SqlModal && state.prefetch_queue.is_empty() {
                 state.completion_debounce = None;
                 let _ = action_tx.send(Action::CompletionTrigger).await;
@@ -788,20 +824,20 @@ async fn handle_action(
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
-            // Notify user when prefetch completes while in Waiting state
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_status == ErStatus::Waiting && prefetch_complete {
-                state.er_status = ErStatus::Idle;
-                if state.failed_prefetch_tables.is_empty() {
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
+                state.er_preparation.status = ErStatus::Idle;
+                if !state.er_preparation.has_failures() {
                     state.set_success("ER ready. Press 'e' to open.".to_string());
                 } else {
-                    let failed_count = state.failed_prefetch_tables.len();
+                    let failed_count = state.er_preparation.failed_tables.len();
                     let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                         let failed_data: Vec<(String, String)> = state
-                            .failed_prefetch_tables
+                            .er_preparation
+                            .failed_tables
                             .iter()
-                            .map(|(k, (_, v))| (k.clone(), v.clone()))
+                            .map(|(k, v)| (k.clone(), v.clone()))
                             .collect();
                         tokio::task::spawn_blocking(move || {
                             write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
@@ -833,22 +869,24 @@ async fn handle_action(
             state.prefetching_tables.remove(&qualified_name);
             state
                 .failed_prefetch_tables
-                .insert(qualified_name, (Instant::now(), error));
+                .insert(qualified_name.clone(), (Instant::now(), error.clone()));
+            state.er_preparation.on_table_failed(&qualified_name, error);
             if !state.prefetch_queue.is_empty() {
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
             }
 
             // Notify user when prefetch completes while in Waiting state
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-            if state.er_status == ErStatus::Waiting && prefetch_complete {
-                state.er_status = ErStatus::Idle;
-                let failed_count = state.failed_prefetch_tables.len();
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
+                state.er_preparation.status = ErStatus::Idle;
+                let failed_count = state.er_preparation.failed_tables.len();
                 let log_written = if let Ok(cache_dir) = get_cache_dir(&state.project_name) {
                     let failed_data: Vec<(String, String)> = state
-                        .failed_prefetch_tables
+                        .er_preparation
+                        .failed_tables
                         .iter()
-                        .map(|(k, (_, v))| (k.clone(), v.clone()))
+                        .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     tokio::task::spawn_blocking(move || {
                         write_er_failure_log_blocking(failed_data, cache_dir).is_ok()
@@ -876,12 +914,16 @@ async fn handle_action(
             {
                 state.prefetch_started = true;
                 state.prefetch_queue.clear();
+                state.er_preparation.pending_tables.clear();
+                state.er_preparation.fetching_tables.clear();
+                state.er_preparation.failed_tables.clear();
                 {
                     let engine = completion_engine.borrow();
                     for table_summary in &metadata.tables {
                         let qualified_name = table_summary.qualified_name();
                         if !engine.has_cached_table(&qualified_name) {
-                            state.prefetch_queue.push_back(qualified_name);
+                            state.prefetch_queue.push_back(qualified_name.clone());
+                            state.er_preparation.pending_tables.insert(qualified_name);
                         }
                     }
                 }
@@ -1077,7 +1119,10 @@ async fn handle_action(
         }
 
         Action::InspectorScrollDown => {
-            let visible = state.inspector_visible_rows();
+            let visible = match state.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
             let total_items = state
                 .table_detail
                 .as_ref()
@@ -1101,10 +1146,7 @@ async fn handle_action(
                             lines
                         })
                     }
-                    InspectorTab::Ddl => {
-                        // DDL: CREATE TABLE + columns + optional PK + closing
-                        2 + t.columns.len() + if t.primary_key.is_some() { 1 } else { 0 }
-                    }
+                    InspectorTab::Ddl => ui::components::inspector::Inspector::ddl_line_count(t),
                 })
                 .unwrap_or(0);
             let max_offset = total_items.saturating_sub(visible);
@@ -1187,31 +1229,32 @@ async fn handle_action(
 
         Action::ErOpenDiagram => {
             // Guard: ignore if already rendering or waiting
-            if matches!(state.er_status, ErStatus::Rendering | ErStatus::Waiting) {
+            if matches!(
+                state.er_preparation.status,
+                ErStatus::Rendering | ErStatus::Waiting
+            ) {
                 return Ok(());
             }
 
             // Retry failed tables if any
-            if !state.failed_prefetch_tables.is_empty() {
+            if state.er_preparation.has_failures() {
                 let failed_tables: Vec<String> =
-                    state.failed_prefetch_tables.keys().cloned().collect();
+                    state.er_preparation.failed_tables.keys().cloned().collect();
+                state.er_preparation.retry_failed();
                 state.failed_prefetch_tables.clear();
 
                 for qualified_name in failed_tables {
                     state.prefetch_queue.push_back(qualified_name);
                 }
 
-                state.er_status = ErStatus::Waiting;
+                state.er_preparation.status = ErStatus::Waiting;
                 let _ = action_tx.send(Action::ProcessPrefetchQueue).await;
                 return Ok(());
             }
 
             // Check if prefetch is complete
-            let prefetch_complete =
-                state.prefetch_queue.is_empty() && state.prefetching_tables.is_empty();
-
-            if !prefetch_complete {
-                state.er_status = ErStatus::Waiting;
+            if !state.er_preparation.is_complete() {
+                state.er_preparation.status = ErStatus::Waiting;
                 return Ok(());
             }
 
@@ -1229,11 +1272,11 @@ async fn handle_action(
                 return Ok(());
             }
 
-            state.er_status = ErStatus::Rendering;
+            state.er_preparation.status = ErStatus::Rendering;
             let total_tables = state.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0);
             let cache_dir = get_cache_dir(&state.project_name)?;
 
-            let exporter = Arc::new(DotExporter);
+            let exporter = Arc::new(DotExporter::new());
             spawn_er_diagram_task(exporter, tables, total_tables, cache_dir, action_tx.clone());
         }
 
@@ -1242,7 +1285,7 @@ async fn handle_action(
             table_count,
             total_tables,
         } => {
-            state.er_status = ErStatus::Idle;
+            state.er_preparation.status = ErStatus::Idle;
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables)",
                 path, table_count, total_tables
@@ -1250,7 +1293,7 @@ async fn handle_action(
         }
 
         Action::ErDiagramFailed(error) => {
-            state.er_status = ErStatus::Idle;
+            state.er_preparation.status = ErStatus::Idle;
             state.set_error(error);
         }
 

@@ -1,6 +1,7 @@
 pub mod action;
 pub mod command;
 pub mod completion;
+pub mod er_state;
 pub mod er_task;
 pub mod focused_pane;
 pub mod input_mode;
