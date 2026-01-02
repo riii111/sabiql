@@ -361,9 +361,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, c);
             state.sql_modal.cursor += 1;
-            vec![Effect::ScheduleCompletionDebounce {
-                trigger_at: now + Duration::from_millis(100),
-            }]
+            let trigger_at = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(trigger_at);
+            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
         }
         Action::SqlModalBackspace => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
@@ -372,9 +372,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
-            vec![Effect::ScheduleCompletionDebounce {
-                trigger_at: now + Duration::from_millis(100),
-            }]
+            let trigger_at = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(trigger_at);
+            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
         }
         Action::SqlModalDelete => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
@@ -383,27 +383,27 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
-            vec![Effect::ScheduleCompletionDebounce {
-                trigger_at: now + Duration::from_millis(100),
-            }]
+            let trigger_at = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(trigger_at);
+            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
         }
         Action::SqlModalNewLine => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, '\n');
             state.sql_modal.cursor += 1;
-            vec![Effect::ScheduleCompletionDebounce {
-                trigger_at: now + Duration::from_millis(100),
-            }]
+            let trigger_at = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(trigger_at);
+            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
         }
         Action::SqlModalTab => {
             state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert_str(byte_idx, "    ");
             state.sql_modal.cursor += 4;
-            vec![Effect::ScheduleCompletionDebounce {
-                trigger_at: now + Duration::from_millis(100),
-            }]
+            let trigger_at = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(trigger_at);
+            vec![Effect::ScheduleCompletionDebounce { trigger_at }]
         }
         Action::SqlModalMoveCursor(movement) => {
             let content = &state.sql_modal.content;
@@ -473,7 +473,24 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::MetadataLoaded(metadata) => {
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
-            // Note: StartPrefetchAll effect will be added in Phase 3
+
+            // Auto-start prefetch for all tables after metadata is loaded
+            if !state.sql_modal.prefetch_started
+                && let Some(meta) = &state.cache.metadata
+            {
+                state.sql_modal.prefetch_started = true;
+                state.sql_modal.prefetch_queue.clear();
+                state.er_preparation.pending_tables.clear();
+                state.er_preparation.fetching_tables.clear();
+                state.er_preparation.failed_tables.clear();
+
+                for table_summary in &meta.tables {
+                    let qualified_name = table_summary.qualified_name();
+                    state.sql_modal.prefetch_queue.push_back(qualified_name.clone());
+                    state.er_preparation.pending_tables.insert(qualified_name);
+                }
+                return vec![Effect::ProcessPrefetchQueue];
+            }
             vec![]
         }
         Action::MetadataFailed(error) => {
@@ -550,6 +567,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::ErDiagramFailed(error) => {
             state.er_preparation.status = crate::app::er_state::ErStatus::Idle;
+            state.set_error(error);
+            vec![]
+        }
+
+        Action::ConsoleFailed(error) => {
             state.set_error(error);
             vec![]
         }
@@ -1000,6 +1022,49 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             effects
         }
 
+        Action::TableDetailAlreadyCached { schema, table } => {
+            use crate::app::er_state::ErStatus;
+
+            let qualified_name = format!("{}.{}", schema, table);
+            state.sql_modal.prefetching_tables.remove(&qualified_name);
+            state.sql_modal.failed_prefetch_tables.remove(&qualified_name);
+            state.er_preparation.on_table_cached(&qualified_name);
+
+            let mut effects = Vec::new();
+
+            if !state.sql_modal.prefetch_queue.is_empty() {
+                effects.push(Effect::ProcessPrefetchQueue);
+            }
+
+            // Check if ER preparation is complete (same logic as TableDetailCached)
+            if state.er_preparation.status == ErStatus::Waiting
+                && state.er_preparation.is_complete()
+            {
+                state.er_preparation.status = ErStatus::Idle;
+                if !state.er_preparation.has_failures() {
+                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                } else {
+                    let failed_count = state.er_preparation.failed_tables.len();
+                    let failed_data: Vec<(String, String)> = state
+                        .er_preparation
+                        .failed_tables
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    effects.push(Effect::WriteErFailureLog {
+                        failed_tables: failed_data,
+                        cache_dir: std::path::PathBuf::new(),
+                    });
+                    state.set_error(format!(
+                        "ER failed: {} table(s) failed. 'e' to retry.",
+                        failed_count
+                    ));
+                }
+            }
+
+            effects
+        }
+
         Action::ErOpenDiagram => {
             use crate::app::er_state::ErStatus;
 
@@ -1348,7 +1413,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn metadata_loaded_updates_state() {
+        fn metadata_loaded_updates_state_and_starts_prefetch() {
             let mut state = create_test_state();
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -1362,7 +1427,9 @@ mod tests {
 
             assert!(state.cache.metadata.is_some());
             assert!(matches!(state.cache.state, MetadataState::Loaded));
-            assert!(effects.is_empty());
+            assert!(state.sql_modal.prefetch_started);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::ProcessPrefetchQueue));
         }
 
         #[test]
