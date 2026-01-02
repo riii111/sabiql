@@ -181,18 +181,8 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::ScheduleCompletionDebounce { .. } => {
-                // Handled in main loop via state.sql_modal.completion_debounce
-                Ok(())
-            }
-
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;
-                Ok(())
-            }
-
-            Effect::CacheCleanup => {
-                self.metadata_cache.cleanup_expired().await;
                 Ok(())
             }
 
@@ -364,17 +354,23 @@ impl EffectRunner {
                     engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
                 };
 
-                // 2. Send prefetch actions for missing tables
-                for qualified_name in missing {
-                    if let Some((schema, table)) = qualified_name.split_once('.') {
-                        let _ = self
-                            .action_tx
-                            .send(Action::PrefetchTableDetail {
+                // 2. Batch prefetch actions to avoid blocking event loop
+                let prefetch_actions: Vec<Action> = missing
+                    .into_iter()
+                    .filter_map(|qualified_name| {
+                        qualified_name.split_once('.').map(|(schema, table)| {
+                            Action::PrefetchTableDetail {
                                 schema: schema.to_string(),
                                 table: table.to_string(),
-                            })
-                            .await;
-                    }
+                            }
+                        })
+                    })
+                    .collect();
+
+                // Drop on channel full is acceptable: prefetch is best-effort,
+                // and missing tables will be retried on next completion trigger.
+                for action in prefetch_actions {
+                    let _ = self.action_tx.try_send(action);
                 }
 
                 // 3. Get candidates (scoped borrow)
@@ -441,10 +437,7 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::WriteErFailureLog {
-                failed_tables,
-                cache_dir: _,
-            } => {
+            Effect::WriteErFailureLog { failed_tables } => {
                 let project_name = state.runtime.project_name.clone();
                 if let Ok(cache_dir) = get_cache_dir(&project_name) {
                     tokio::task::spawn_blocking(move || {
