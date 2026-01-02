@@ -13,10 +13,10 @@ use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
 use crate::app::effect::Effect;
-use crate::app::layout::compute_pane_heights;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
+use crate::app::layout::compute_pane_heights;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -633,7 +633,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     let end_byte =
                         char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                     state.sql_modal.content.drain(start_byte..end_byte);
-                    state.sql_modal.content.insert_str(start_byte, &candidate.text);
+                    state
+                        .sql_modal
+                        .content
+                        .insert_str(start_byte, &candidate.text);
                     state.sql_modal.cursor = trigger_pos + candidate.text.chars().count();
                 }
                 state.sql_modal.completion.visible = false;
