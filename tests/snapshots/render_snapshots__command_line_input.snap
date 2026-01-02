@@ -25,4 +25,4 @@ test_project | default | - | - | no dsn
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
 Enter:Execute  Esc:Cancel                                                       
-::sql█
+:sql█
