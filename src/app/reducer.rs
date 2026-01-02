@@ -765,6 +765,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
+                state.er_preparation.total_tables = metadata.tables.len();
 
                 // Queue all tables; EffectRunner skips already-cached ones.
                 // Pre-filtering here would require completion_engine access, breaking reducer purity.

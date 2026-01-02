@@ -40,13 +40,8 @@ impl Footer {
         let frame_idx = (now_ms / 300) as usize % SPINNER_FRAMES.len();
         let spinner = SPINNER_FRAMES[frame_idx];
 
-        // Calculate progress from state (exclude failed tables from "cached" count)
-        let total = state
-            .cache
-            .metadata
-            .as_ref()
-            .map(|m| m.tables.len())
-            .unwrap_or(0);
+        // Calculate progress from cached total (stable during ER preparation)
+        let total = state.er_preparation.total_tables;
         let failed_count = state.er_preparation.failed_tables.len();
         let remaining =
             state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
