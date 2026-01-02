@@ -16,10 +16,10 @@ impl Footer {
         if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state);
             frame.render_widget(Paragraph::new(line), area);
-        } else if let Some(error) = &state.last_error {
+        } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
-        } else if let Some(success) = &state.last_success {
+        } else if let Some(success) = &state.messages.last_success {
             let line = StatusMessage::render_line(success, MessageType::Success);
             frame.render_widget(Paragraph::new(line), area);
         } else {

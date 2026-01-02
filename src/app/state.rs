@@ -8,6 +8,7 @@ use super::action::Action;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
+use super::message_state::MessageState;
 use super::result_history::ResultHistory;
 use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
 use crate::ui::components::viewport_columns::ViewportPlan;
@@ -131,9 +132,7 @@ pub struct AppState {
     pub query_start_time: Option<Instant>,
 
     // Status messages (shown in footer, auto-clear after timeout)
-    pub last_error: Option<String>,
-    pub last_success: Option<String>,
-    pub message_expires_at: Option<Instant>,
+    pub messages: MessageState,
 
     // Generation counter for race condition prevention
     pub selection_generation: u64,
@@ -201,9 +200,7 @@ impl AppState {
             query_state: QueryState::default(),
             query_start_time: None,
             // Status messages
-            last_error: None,
-            last_success: None,
-            message_expires_at: None,
+            messages: MessageState::default(),
             // Generation counter
             selection_generation: 0,
             // Terminal height (will be updated on resize)
@@ -218,30 +215,16 @@ impl AppState {
         }
     }
 
-    const MESSAGE_TIMEOUT_SECS: u64 = 3;
-
     pub fn set_error(&mut self, msg: String) {
-        self.last_error = Some(msg);
-        self.last_success = None;
-        self.message_expires_at =
-            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+        self.messages.set_error(msg);
     }
 
     pub fn set_success(&mut self, msg: String) {
-        self.last_success = Some(msg);
-        self.last_error = None;
-        self.message_expires_at =
-            Some(Instant::now() + std::time::Duration::from_secs(Self::MESSAGE_TIMEOUT_SECS));
+        self.messages.set_success(msg);
     }
 
     pub fn clear_expired_messages(&mut self) {
-        if let Some(expires) = self.message_expires_at
-            && expires <= Instant::now()
-        {
-            self.last_error = None;
-            self.last_success = None;
-            self.message_expires_at = None;
-        }
+        self.messages.clear_expired();
     }
 
     /// Calculate the number of visible rows in the result pane.
@@ -598,13 +581,11 @@ mod tests {
             state.set_error("Old error".to_string());
 
             // Simulate ReloadMetadata reset
-            state.last_error = None;
-            state.last_success = None;
-            state.message_expires_at = None;
+            state.messages.clear();
 
-            assert!(state.last_error.is_none());
-            assert!(state.last_success.is_none());
-            assert!(state.message_expires_at.is_none());
+            assert!(state.messages.last_error.is_none());
+            assert!(state.messages.last_success.is_none());
+            assert!(state.messages.expires_at.is_none());
         }
     }
 
@@ -628,70 +609,6 @@ mod tests {
 
             assert_eq!(state.inspector_scroll_offset, 0);
             assert!(state.table_detail.is_none());
-        }
-    }
-
-    mod error_handling {
-        use super::*;
-
-        #[test]
-        fn set_error_clears_success_message() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.set_success("Success!".to_string());
-            assert!(state.last_success.is_some());
-
-            state.set_error("Error!".to_string());
-
-            assert_eq!(state.last_error, Some("Error!".to_string()));
-            assert!(state.last_success.is_none());
-        }
-
-        #[test]
-        fn set_success_clears_error_message() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.set_error("Error!".to_string());
-            assert!(state.last_error.is_some());
-
-            state.set_success("Success!".to_string());
-
-            assert_eq!(state.last_success, Some("Success!".to_string()));
-            assert!(state.last_error.is_none());
-        }
-
-        #[test]
-        fn set_error_sets_expiration_time() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            assert!(state.message_expires_at.is_none());
-
-            state.set_error("Error!".to_string());
-
-            assert!(state.message_expires_at.is_some());
-        }
-
-        #[test]
-        fn clear_expired_messages_removes_expired_messages() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.last_error = Some("Error".to_string());
-            // Set expiration to the past
-            state.message_expires_at = Some(Instant::now() - std::time::Duration::from_secs(1));
-
-            state.clear_expired_messages();
-
-            assert!(state.last_error.is_none());
-            assert!(state.message_expires_at.is_none());
-        }
-
-        #[test]
-        fn clear_expired_messages_keeps_unexpired_messages() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
-            state.last_error = Some("Error".to_string());
-            // Set expiration to the future
-            state.message_expires_at = Some(Instant::now() + std::time::Duration::from_secs(10));
-
-            state.clear_expired_messages();
-
-            assert!(state.last_error.is_some());
-            assert!(state.message_expires_at.is_some());
         }
     }
 

@@ -649,9 +649,7 @@ async fn handle_action(
 
                 // Reset ER preparation state and clear stale messages
                 state.er_preparation.reset();
-                state.last_error = None;
-                state.last_success = None;
-                state.message_expires_at = None;
+                state.messages.clear();
 
                 let _ = action_tx.send(Action::LoadMetadata).await;
             }
