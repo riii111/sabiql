@@ -47,9 +47,9 @@ impl Footer {
             .as_ref()
             .map(|m| m.tables.len())
             .unwrap_or(0);
-        let failed_count = state.sql_modal.failed_prefetch_tables.len();
+        let failed_count = state.er_preparation.failed_tables.len();
         let remaining =
-            state.sql_modal.prefetch_queue.len() + state.sql_modal.prefetching_tables.len();
+            state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
