@@ -174,7 +174,7 @@ impl EffectRunner {
         match effect {
             Effect::Render => {
                 tui.terminal().draw(|frame| {
-                    let output = MainLayout::render(frame, state);
+                    let output = MainLayout::render(frame, state, None);
                     // Preserve inspector plan in focus mode to avoid resetting scroll state
                     if !state.ui.focus_mode {
                         state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
