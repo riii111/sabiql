@@ -20,6 +20,7 @@ impl ResultPane {
         let is_focused = state.focused_pane == FocusedPane::Result;
 
         let should_highlight = state
+            .query
             .result_highlight_until
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
@@ -66,9 +67,9 @@ impl ResultPane {
     }
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
-        match state.history_index {
-            None => state.current_result.as_ref(),
-            Some(i) => state.result_history.get(i),
+        match state.query.history_index {
+            None => state.query.current_result.as_ref(),
+            Some(i) => state.query.result_history.get(i),
         }
     }
 
@@ -79,7 +80,7 @@ impl ResultPane {
                 let source_badge = match r.source {
                     QuerySource::Preview => "PREVIEW".to_string(),
                     QuerySource::Adhoc => {
-                        if let Some(idx) = state.history_index {
+                        if let Some(idx) = state.query.history_index {
                             format!("ADHOC #{}", idx + 1)
                         } else {
                             "ADHOC".to_string()

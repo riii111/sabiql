@@ -10,6 +10,7 @@ pub mod message_state;
 pub mod mode;
 pub mod palette;
 pub mod ports;
+pub mod query_execution;
 pub mod result_history;
 pub mod runtime_state;
 pub mod sql_lexer;

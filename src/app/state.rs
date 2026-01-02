@@ -9,9 +9,9 @@ use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::message_state::MessageState;
-use super::result_history::ResultHistory;
+use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
-use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+use crate::domain::{DatabaseMetadata, MetadataState, Table, TableSummary};
 use crate::ui::components::viewport_columns::ViewportPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -53,13 +53,6 @@ impl CompletionState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QueryState {
-    #[default]
-    Idle,
-    Running,
-}
-
 pub struct AppState {
     pub should_quit: bool,
     pub runtime: RuntimeState,
@@ -91,16 +84,13 @@ pub struct AppState {
     pub inspector_horizontal_offset: usize,
     pub inspector_viewport_plan: ViewportPlan,
 
-    // Result pane
-    pub current_result: Option<QueryResult>,
-    pub result_highlight_until: Option<Instant>,
+    // Result pane scroll/viewport (UI state, not query data)
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
     pub result_viewport_plan: ViewportPlan,
 
-    // Result history (for Adhoc queries)
-    pub result_history: ResultHistory,
-    pub history_index: Option<usize>,
+    // Query execution and results
+    pub query: QueryExecution,
 
     // SQL Modal
     pub sql_modal_content: String,
@@ -122,10 +112,6 @@ pub struct AppState {
 
     // Whether prefetch-all has been started for this SQL modal session
     pub prefetch_started: bool,
-
-    // Query execution state
-    pub query_state: QueryState,
-    pub query_start_time: Option<Instant>,
 
     // Status messages (shown in footer, auto-clear after timeout)
     pub messages: MessageState,
@@ -170,15 +156,12 @@ impl AppState {
             inspector_scroll_offset: 0,
             inspector_horizontal_offset: 0,
             inspector_viewport_plan: ViewportPlan::default(),
-            // Result pane
-            current_result: None,
-            result_highlight_until: None,
+            // Result pane scroll/viewport
             result_scroll_offset: 0,
             result_horizontal_offset: 0,
             result_viewport_plan: ViewportPlan::default(),
-            // Result history
-            result_history: ResultHistory::default(),
-            history_index: None,
+            // Query execution
+            query: QueryExecution::default(),
             // SQL Modal
             sql_modal_content: String::new(),
             sql_modal_cursor: 0,
@@ -189,9 +172,6 @@ impl AppState {
             failed_prefetch_tables: HashMap::new(),
             prefetch_queue: VecDeque::new(),
             prefetch_started: false,
-            // Query state
-            query_state: QueryState::default(),
-            query_start_time: None,
             // Status messages
             messages: MessageState::default(),
             // Generation counter

@@ -20,7 +20,8 @@ use app::input_mode::InputMode;
 use app::inspector_tab::InspectorTab;
 use app::palette::{palette_action_for_index, palette_command_count};
 use app::ports::{MetadataProvider, QueryExecutor};
-use app::state::{AppState, QueryState};
+use app::query_execution::QueryStatus;
+use app::state::AppState;
 use domain::ErTableInfo;
 use domain::MetadataState;
 use infra::adapters::PostgresAdapter;
@@ -956,8 +957,8 @@ async fn handle_action(
             generation,
         } => {
             if let Some(dsn) = &state.runtime.dsn {
-                state.query_state = QueryState::Running;
-                state.query_start_time = Some(std::time::Instant::now());
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -993,8 +994,8 @@ async fn handle_action(
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.runtime.dsn {
-                state.query_state = QueryState::Running;
-                state.query_start_time = Some(std::time::Instant::now());
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(std::time::Instant::now());
                 let dsn = dsn.clone();
                 let tx = action_tx.clone();
 
@@ -1018,12 +1019,12 @@ async fn handle_action(
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show results
             if generation == 0 || generation == state.selection_generation {
-                state.query_state = QueryState::Idle;
-                state.query_start_time = None;
+                state.query.status = QueryStatus::Idle;
+                state.query.start_time = None;
                 state.result_scroll_offset = 0;
                 state.result_horizontal_offset = 0;
-                state.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
-                state.history_index = None;
+                state.query.result_highlight_until = Some(Instant::now() + Duration::from_millis(500));
+                state.query.history_index = None;
 
                 if result.source == domain::QuerySource::Adhoc {
                     if result.is_error() {
@@ -1035,10 +1036,10 @@ async fn handle_action(
 
                 // Save adhoc results to history
                 if result.source == domain::QuerySource::Adhoc && !result.is_error() {
-                    state.result_history.push((*result).clone());
+                    state.query.result_history.push((*result).clone());
                 }
 
-                state.current_result = Some(*result);
+                state.query.current_result = Some(*result);
             }
         }
 
@@ -1046,8 +1047,8 @@ async fn handle_action(
             // For Preview (non-zero generation), check if this is still the current selection
             // For Adhoc (generation 0), always show errors
             if generation == 0 || generation == state.selection_generation {
-                state.query_state = QueryState::Idle;
-                state.query_start_time = None;
+                state.query.status = QueryStatus::Idle;
+                state.query.start_time = None;
                 state.set_error(error.clone());
                 // If we're in SqlModal mode, set error state and show error in result pane
                 if state.input_mode == InputMode::SqlModal {
@@ -1059,7 +1060,7 @@ async fn handle_action(
                         0,
                         domain::QuerySource::Adhoc,
                     );
-                    state.current_result = Some(error_result);
+                    state.query.current_result = Some(error_result);
                 }
             }
         }
@@ -1073,6 +1074,7 @@ async fn handle_action(
             // We need the result to determine max scroll
             let visible = state.result_visible_rows();
             let max_scroll = state
+                .query
                 .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))
@@ -1089,6 +1091,7 @@ async fn handle_action(
         Action::ResultScrollBottom => {
             let visible = state.result_visible_rows();
             let max_scroll = state
+                .query
                 .current_result
                 .as_ref()
                 .map(|r| r.rows.len().saturating_sub(visible))

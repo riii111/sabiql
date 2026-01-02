@@ -4,7 +4,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::state::{AppState, CompletionKind, QueryState, SqlModalState};
+use crate::app::query_execution::QueryStatus;
+use crate::app::state::{AppState, CompletionKind, SqlModalState};
 use crate::ui::theme::Theme;
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
@@ -122,12 +123,13 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
-        let is_running = state.query_state == QueryState::Running;
+        let is_running = state.query.status == QueryStatus::Running;
 
         let (status_text, status_style) = if is_running {
             let spinner_frames = ["◐", "◓", "◑", "◒"];
             let elapsed = state
-                .query_start_time
+                .query
+                .start_time
                 .map(|t| t.elapsed())
                 .unwrap_or_default();
             let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
