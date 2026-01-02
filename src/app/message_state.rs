@@ -32,6 +32,7 @@ impl MessageState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.last_error = None;
         self.last_success = None;

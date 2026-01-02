@@ -6,13 +6,18 @@ use std::time::Instant;
 use crate::domain::Table;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Effect {
     Render,
 
-    CacheInvalidate { dsn: String },
+    CacheInvalidate {
+        dsn: String,
+    },
     CacheCleanup,
 
-    FetchMetadata { dsn: String },
+    FetchMetadata {
+        dsn: String,
+    },
 
     /// Updates state.table_detail on completion
     FetchTableDetail {
@@ -36,7 +41,10 @@ pub enum Effect {
         generation: u64,
         limit: usize,
     },
-    ExecuteAdhoc { dsn: String, query: String },
+    ExecuteAdhoc {
+        dsn: String,
+        query: String,
+    },
 
     CacheTableInCompletionEngine {
         qualified_name: String,
@@ -45,7 +53,10 @@ pub enum Effect {
     ClearCompletionEngineCache,
 
     /// Requires TUI suspension - must not run in parallel with other effects
-    OpenConsole { dsn: String, project_name: String },
+    OpenConsole {
+        dsn: String,
+        project_name: String,
+    },
 
     GenerateErDiagramFromCache {
         total_tables: usize,
@@ -56,12 +67,18 @@ pub enum Effect {
         cache_dir: PathBuf,
     },
 
-    ScheduleCompletionDebounce { trigger_at: Instant },
+    ScheduleCompletionDebounce {
+        trigger_at: Instant,
+    },
+
+    /// Triggers completion: fetches missing tables and updates candidates
+    TriggerCompletion,
 
     /// Ensures ordering: e.g., CacheInvalidate must complete before FetchMetadata
     Sequence(Vec<Effect>),
 }
 
+#[allow(dead_code)]
 impl Effect {
     /// OpenConsole requires TUI suspension and blocks other effects
     pub fn is_exclusive(&self) -> bool {
