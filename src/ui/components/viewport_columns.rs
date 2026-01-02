@@ -493,7 +493,7 @@ mod tests {
             let original_min = vec![5, 5, 5, 5, 5];
             let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
 
-            let changed = vec![10, 20, 30, 40, 60];
+            let changed = [10, 20, 30, 40, 60];
             let sum: u16 = changed.iter().sum();
             let max: u16 = changed.iter().copied().max().unwrap();
 
@@ -511,7 +511,7 @@ mod tests {
             let original_min = vec![5, 5, 5, 5, 5];
             let plan = ViewportPlan::calculate(&original_ideal, &original_min, 80);
 
-            let reordered = vec![50, 40, 30, 20, 10];
+            let reordered = [50, 40, 30, 20, 10];
             let sum: u16 = reordered.iter().sum();
             let max: u16 = reordered.iter().copied().max().unwrap();
 

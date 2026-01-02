@@ -87,8 +87,10 @@ mod tests {
 
     #[test]
     fn reset_prefetch_clears_all_prefetch_state() {
-        let mut ctx = SqlModalContext::default();
-        ctx.prefetch_started = true;
+        let mut ctx = SqlModalContext {
+            prefetch_started: true,
+            ..Default::default()
+        };
         ctx.prefetch_queue.push_back("public.users".to_string());
         ctx.prefetching_tables.insert("public.posts".to_string());
         ctx.failed_prefetch_tables.insert(
@@ -106,9 +108,11 @@ mod tests {
 
     #[test]
     fn clear_content_resets_editor_state() {
-        let mut ctx = SqlModalContext::default();
-        ctx.content = "SELECT * FROM users".to_string();
-        ctx.cursor = 10;
+        let mut ctx = SqlModalContext {
+            content: "SELECT * FROM users".to_string(),
+            cursor: 10,
+            ..Default::default()
+        };
         ctx.completion.visible = true;
         ctx.completion.candidates.push(CompletionCandidate {
             text: "test".to_string(),

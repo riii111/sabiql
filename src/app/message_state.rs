@@ -104,9 +104,11 @@ mod tests {
     #[test]
     fn clear_expired_at_removes_expired_messages() {
         let now = fixed_instant();
-        let mut state = MessageState::default();
-        state.last_error = Some("Error".to_string());
-        state.expires_at = Some(now - Duration::from_secs(1));
+        let mut state = MessageState {
+            last_error: Some("Error".to_string()),
+            expires_at: Some(now - Duration::from_secs(1)),
+            ..Default::default()
+        };
 
         state.clear_expired_at(now);
 
@@ -117,9 +119,11 @@ mod tests {
     #[test]
     fn clear_expired_at_keeps_unexpired_messages() {
         let now = fixed_instant();
-        let mut state = MessageState::default();
-        state.last_error = Some("Error".to_string());
-        state.expires_at = Some(now + Duration::from_secs(10));
+        let mut state = MessageState {
+            last_error: Some("Error".to_string()),
+            expires_at: Some(now + Duration::from_secs(10)),
+            ..Default::default()
+        };
 
         state.clear_expired_at(now);
 
