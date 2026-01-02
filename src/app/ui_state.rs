@@ -125,8 +125,10 @@ mod tests {
         #[case] pane_height: u16,
         #[case] expected: usize,
     ) {
-        let mut state = UiState::default();
-        state.result_pane_height = pane_height;
+        let state = UiState {
+            result_pane_height: pane_height,
+            ..Default::default()
+        };
 
         let visible = state.result_visible_rows();
 
@@ -135,8 +137,10 @@ mod tests {
 
     #[test]
     fn small_result_pane_height_does_not_underflow() {
-        let mut state = UiState::default();
-        state.result_pane_height = 2;
+        let state = UiState {
+            result_pane_height: 2,
+            ..Default::default()
+        };
 
         let visible = state.result_visible_rows();
 
@@ -145,8 +149,10 @@ mod tests {
 
     #[test]
     fn toggle_focus_enters_focus_mode() {
-        let mut state = UiState::default();
-        state.focused_pane = FocusedPane::Explorer;
+        let mut state = UiState {
+            focused_pane: FocusedPane::Explorer,
+            ..Default::default()
+        };
 
         let result = state.toggle_focus();
 
@@ -158,8 +164,10 @@ mod tests {
 
     #[test]
     fn toggle_focus_exits_focus_mode_and_restores_pane() {
-        let mut state = UiState::default();
-        state.focused_pane = FocusedPane::Inspector;
+        let mut state = UiState {
+            focused_pane: FocusedPane::Inspector,
+            ..Default::default()
+        };
         state.toggle_focus();
 
         let result = state.toggle_focus();
@@ -177,8 +185,10 @@ mod tests {
         #[case] pane_height: u16,
         #[case] expected: usize,
     ) {
-        let mut state = UiState::default();
-        state.inspector_pane_height = pane_height;
+        let state = UiState {
+            inspector_pane_height: pane_height,
+            ..Default::default()
+        };
 
         let visible = state.inspector_ddl_visible_rows();
 
@@ -187,8 +197,10 @@ mod tests {
 
     #[test]
     fn ddl_visible_rows_is_greater_than_standard() {
-        let mut state = UiState::default();
-        state.inspector_pane_height = 20;
+        let state = UiState {
+            inspector_pane_height: 20,
+            ..Default::default()
+        };
 
         let standard = state.inspector_visible_rows();
         let ddl = state.inspector_ddl_visible_rows();

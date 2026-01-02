@@ -44,16 +44,18 @@ mod tests {
 
     #[test]
     fn tables_returns_all_when_metadata_exists() {
-        let mut cache = MetadataCache::default();
-        cache.metadata = Some(DatabaseMetadata {
-            database_name: "test".to_string(),
-            schemas: vec![],
-            tables: vec![
-                TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
-                TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
-            ],
-            fetched_at: std::time::Instant::now(),
-        });
+        let cache = MetadataCache {
+            metadata: Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![
+                    TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
+                    TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
+                ],
+                fetched_at: std::time::Instant::now(),
+            }),
+            ..Default::default()
+        };
 
         let tables = cache.tables();
 

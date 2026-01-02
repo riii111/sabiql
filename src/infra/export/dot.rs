@@ -341,8 +341,7 @@ mod tests {
             fn open_file(&self, _path: &Path) -> Result<(), ViewerError> {
                 self.called.store(true, Ordering::SeqCst);
                 if self.should_fail {
-                    Err(ViewerError::LaunchFailed(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    Err(ViewerError::LaunchFailed(std::io::Error::other(
                         "mock failure",
                     )))
                 } else {
