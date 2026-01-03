@@ -27,11 +27,13 @@ impl Renderer for TuiAdapter<'_> {
 }
 
 impl TuiSession for TuiAdapter<'_> {
-    fn suspend(&mut self) -> Result<()> {
-        self.tui.suspend()
-    }
-
-    fn resume(&mut self) -> Result<()> {
-        self.tui.resume()
+    fn with_suspended<F, R>(&mut self, f: F) -> Result<R>
+    where
+        F: FnOnce() -> R,
+    {
+        let guard = self.tui.suspend_guard()?;
+        let result = f();
+        guard.resume()?;
+        Ok(result)
     }
 }

@@ -1,23 +1,14 @@
-use crate::app::ports::Dialect;
 use crate::domain::Table;
 
-pub struct PostgresDialect;
-
-impl Dialect for PostgresDialect {
-    fn quote_ident(&self, name: &str) -> String {
-        format!("\"{}\"", name.replace('"', "\"\""))
-    }
-
-    fn quote_literal(&self, value: &str) -> String {
-        format!("'{}'", value.replace('\'', "''"))
-    }
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-pub fn generate_ddl(table: &Table, dialect: &dyn Dialect) -> String {
+fn generate_ddl(table: &Table) -> String {
     let mut ddl = format!(
         "CREATE TABLE {}.{} (\n",
-        dialect.quote_ident(&table.schema),
-        dialect.quote_ident(&table.name)
+        quote_ident(&table.schema),
+        quote_ident(&table.name)
     );
 
     for (i, col) in table.columns.iter().enumerate() {
@@ -30,7 +21,7 @@ pub fn generate_ddl(table: &Table, dialect: &dyn Dialect) -> String {
 
         ddl.push_str(&format!(
             "  {} {}{}{}",
-            dialect.quote_ident(&col.name),
+            quote_ident(&col.name),
             col.data_type,
             nullable,
             default
@@ -43,7 +34,7 @@ pub fn generate_ddl(table: &Table, dialect: &dyn Dialect) -> String {
     }
 
     if let Some(pk) = &table.primary_key {
-        let quoted_cols: Vec<String> = pk.iter().map(|c| dialect.quote_ident(c)).collect();
+        let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
         ddl.push_str(&format!("  PRIMARY KEY ({})\n", quoted_cols.join(", ")));
     }
 
@@ -51,16 +42,12 @@ pub fn generate_ddl(table: &Table, dialect: &dyn Dialect) -> String {
     ddl
 }
 
-pub fn ddl_line_count(table: &Table, dialect: &dyn Dialect) -> usize {
-    generate_ddl(table, dialect).lines().count()
-}
-
 pub fn generate_ddl_postgres(table: &Table) -> String {
-    generate_ddl(table, &PostgresDialect)
+    generate_ddl(table)
 }
 
 pub fn ddl_line_count_postgres(table: &Table) -> usize {
-    ddl_line_count(table, &PostgresDialect)
+    generate_ddl(table).lines().count()
 }
 
 #[cfg(test)]
