@@ -13,7 +13,7 @@ use dbtui::app::reducer::reduce;
 use dbtui::app::state::AppState;
 use dbtui::error;
 use dbtui::infra::adapters::PostgresAdapter;
-use dbtui::infra::cache::TtlCache;
+use dbtui::app::cache::TtlCache;
 use dbtui::infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
