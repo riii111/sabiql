@@ -1,6 +1,8 @@
 pub mod action;
+pub mod cache;
 pub mod command;
 pub mod completion;
+pub mod ddl;
 pub mod effect;
 pub mod effect_runner;
 pub mod er_state;
@@ -21,3 +23,4 @@ pub mod sql_lexer;
 pub mod sql_modal_context;
 pub mod state;
 pub mod ui_state;
+pub mod viewport;

@@ -12,104 +12,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-### Three-Layer Structure (Simplified Hexagonal)
+### Layer Structure (Hexagonal / Ports & Adapters)
 
 ```
 src/
-├── ui/          # Presentation Layer
-├── app/         # Application Layer (includes Ports)
-├── infra/       # Infrastructure Layer (Adapters)
-└── domain/      # Domain Models
+├── ui/          # Presentation Layer + UI Adapters
+├── app/         # Application Layer (State, Reducers, Ports)
+├── infra/       # Infrastructure Adapters
+└── domain/      # Domain Models (pure data structures)
 ```
 
-### Layer Responsibilities
+### Dependency Rules
 
-| Layer | Directory | Responsibility |
-|-------|-----------|----------------|
-| **Presentation** | `ui/` | TUI rendering, event loop, user input handling |
-| **Application** | `app/` | State management, actions, port definitions (traits) |
-| **Infrastructure** | `infra/` | Adapters (DB CLI wrappers), cache, config parsing |
-| **Domain** | `domain/` | Core models (Table, Column, ForeignKey, Index, Schema) |
+**Allowed:**
+- `ui/` → `app/` → `domain/`
+- `infra/adapters/` → `app/ports/` (implements traits)
+- `ui/adapters/` → `app/ports/` (implements traits)
 
-### Dependency Direction
+**Forbidden:**
+- `app/` → `ui/` (use Renderer/TuiSession ports instead)
+- `app/` → `infra/` (use ports like MetadataProvider, ConfigWriter)
+- `ui/` → `infra/`
 
-```
-ui/ ──uses──> app/ ──uses──> domain/
-                │
-                └──defines──> ports/ (traits)
-                                 ▲
-                                 │ implements
-infra/ ─────────────────────────┘
-```
+### Ports & Adapters Pattern
 
-### Directory Structure
+Ports are **traits defined in `app/ports/`** that abstract external dependencies:
 
-```
-src/
-├── main.rs
-│
-├── ui/                         # ── Presentation Layer ──
-│   ├── mod.rs
-│   ├── tui.rs                  # Terminal + Event loop (tokio::select!)
-│   ├── event/
-│   │   ├── mod.rs
-│   │   ├── handler.rs          # Event → Action conversion
-│   │   └── key.rs              # Key mappings
-│   └── components/
-│       ├── mod.rs
-│       ├── layout.rs
-│       ├── header.rs
-│       ├── footer.rs
-│       ├── explorer.rs
-│       ├── inspector.rs
-│       ├── result.rs
-│       └── status_message.rs
-│
-├── app/                        # ── Application Layer ──
-│   ├── mod.rs
-│   ├── state.rs                # AppState (UI state + domain state)
-│   ├── mode.rs                 # Browse mode (single-tab)
-│   ├── action.rs               # Action enum (state update triggers)
-│   └── ports/                  # Port definitions (traits)
-│       ├── mod.rs
-│       ├── metadata.rs         # MetadataProvider trait
-│       ├── template.rs         # TemplateGenerator trait
-│       └── clipboard.rs        # ClipboardWriter trait
-│
-├── infra/                      # ── Infrastructure Layer ──
-│   ├── mod.rs
-│   ├── adapters/               # Adapter implementations
-│   │   ├── mod.rs
-│   │   ├── postgres.rs         # PostgresAdapter (uses psql CLI)
-│   │   └── mysql.rs            # MysqlAdapter (stub)
-│   ├── cache/
-│   │   ├── mod.rs
-│   │   └── ttl_cache.rs        # TTL-based metadata cache
-│   ├── export/
-│   │   ├── mod.rs
-│   │   └── dot.rs              # Graphviz DOT export
-│   └── config/
-│       ├── mod.rs
-│       ├── dbx_toml.rs         # .dbx.toml parser
-│       └── project_root.rs     # Project root detection
-│
-├── domain/                     # ── Domain Models ──
-│   ├── mod.rs
-│   ├── schema.rs
-│   ├── table.rs
-│   ├── column.rs
-│   ├── foreign_key.rs
-│   └── index.rs
-│
-└── error.rs                    # Common error types
+| Port | Purpose | Adapter Location |
+|------|---------|------------------|
+| `MetadataProvider` | DB metadata fetching | `infra/adapters/` |
+| `QueryExecutor` | SQL execution | `infra/adapters/` |
+| `ConfigWriter` | Cache dir, pgclirc | `infra/adapters/` |
+| `Renderer` | TUI drawing | `ui/adapters/` |
+| `TuiSession` | Terminal suspend/resume | `ui/adapters/` |
 
-tests/                          # ── Integration Tests ──
-├── harness/
-│   ├── mod.rs                  # Test utilities
-│   └── fixtures.rs             # Sample data builders
-├── render_snapshots.rs         # Visual regression tests
-└── snapshots/                  # Generated .snap files
-```
+### Where to Put New Code
+
+| If you need to... | Put it in... |
+|-------------------|--------------|
+| Add UI component | `ui/components/` |
+| Add business logic | `app/` (pure functions, no I/O) |
+| Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
+| Add domain model | `domain/` |
+| Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
+
+### Key Principles
+
+1. **app/ is I/O-free**: Reducers and state logic have no side effects. Effects are returned as data.
+2. **Ports invert dependencies**: app defines what it needs, adapters provide implementations.
+3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
+4. **Domain is pure data**: No business logic in domain models, just structure.
 
 ## Build Commands
 

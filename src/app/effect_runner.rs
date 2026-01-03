@@ -20,22 +20,21 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::app::action::Action;
+use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
-use crate::app::ports::{ErDiagramExporter, MetadataProvider, QueryExecutor};
+use crate::app::ports::{
+    ConfigWriter, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer, TuiSession,
+};
 use crate::app::state::AppState;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
-use crate::infra::cache::TtlCache;
-use crate::infra::config::cache::get_cache_dir;
-use crate::infra::config::pgclirc::generate_pgclirc;
-use crate::ui::components::layout::MainLayout;
-use crate::ui::tui::TuiRunner;
 
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     er_exporter: Arc<dyn ErDiagramExporter>,
+    config_writer: Arc<dyn ConfigWriter>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -45,6 +44,7 @@ impl EffectRunner {
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
         er_exporter: Arc<dyn ErDiagramExporter>,
+        config_writer: Arc<dyn ConfigWriter>,
         metadata_cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
     ) -> Self {
@@ -52,15 +52,16 @@ impl EffectRunner {
             metadata_provider,
             query_executor,
             er_exporter,
+            config_writer,
             metadata_cache,
             action_tx,
         }
     }
 
-    pub async fn run(
+    pub async fn run<T: Renderer + TuiSession>(
         &self,
         effects: Vec<Effect>,
-        tui: &mut TuiRunner,
+        tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
     ) -> Result<()> {
@@ -81,10 +82,10 @@ impl EffectRunner {
         Ok(())
     }
 
-    async fn run_single(
+    async fn run_single<T: Renderer + TuiSession>(
         &self,
         effect: Effect,
-        tui: &mut TuiRunner,
+        tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
     ) -> Result<()> {
@@ -95,38 +96,29 @@ impl EffectRunner {
         }
     }
 
-    async fn run_exclusive(
+    /// Exclusive effects run while TUI is suspended, so blocking the tokio
+    /// worker is acceptable—no rendering or async tasks need to proceed.
+    async fn run_exclusive<T: TuiSession>(
         &self,
         effect: Effect,
-        tui: &mut TuiRunner,
+        tui: &mut T,
         _state: &mut AppState,
     ) -> Result<()> {
         match effect {
             Effect::OpenConsole { dsn, project_name } => {
-                let cache_dir = get_cache_dir(&project_name)?;
-                let pgclirc = generate_pgclirc(&cache_dir)?;
+                let cache_dir = self.config_writer.get_cache_dir(&project_name)?;
+                let pgclirc = self.config_writer.generate_pgclirc(&cache_dir)?;
 
-                let guard = tui.suspend_guard()?;
-
-                let status = tokio::task::spawn_blocking(move || {
+                let status = tui.with_suspended(|| {
                     std::process::Command::new("pgcli")
                         .arg("--pgclirc")
                         .arg(&pgclirc)
                         .arg(&dsn)
                         .status()
-                })
-                .await;
-
-                guard.resume()?;
+                })?;
 
                 match status {
                     Err(e) => {
-                        let _ = self
-                            .action_tx
-                            .send(Action::ConsoleFailed(format!("pgcli task failed: {}", e)))
-                            .await;
-                    }
-                    Ok(Err(e)) => {
                         let _ = self
                             .action_tx
                             .send(Action::ConsoleFailed(format!(
@@ -135,7 +127,7 @@ impl EffectRunner {
                             )))
                             .await;
                     }
-                    Ok(Ok(exit_status)) if !exit_status.success() => {
+                    Ok(exit_status) if !exit_status.success() => {
                         let code = exit_status
                             .code()
                             .map_or("unknown".to_string(), |c| c.to_string());
@@ -147,7 +139,7 @@ impl EffectRunner {
                             )))
                             .await;
                     }
-                    Ok(Ok(_)) => {}
+                    Ok(_) => {}
                 }
 
                 let _ = self.action_tx.send(Action::Render).await;
@@ -164,26 +156,22 @@ impl EffectRunner {
         }
     }
 
-    async fn run_normal(
+    async fn run_normal<T: Renderer>(
         &self,
         effect: Effect,
-        tui: &mut TuiRunner,
+        tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
     ) -> Result<()> {
         match effect {
             Effect::Render => {
-                tui.terminal().draw(|frame| {
-                    let output = MainLayout::render(frame, state, None);
-                    // Preserve inspector plan in focus mode to avoid resetting scroll state
-                    if !state.ui.focus_mode {
-                        state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-                    }
-                    state.ui.result_viewport_plan = output.result_viewport_plan;
-                    // Use actual layout heights to avoid rounding mismatch with Ratatui
-                    state.ui.inspector_pane_height = output.inspector_pane_height;
-                    state.ui.result_pane_height = output.result_pane_height;
-                })?;
+                let output = tui.draw(state)?;
+                if !state.ui.focus_mode {
+                    state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+                }
+                state.ui.result_viewport_plan = output.result_viewport_plan;
+                state.ui.inspector_pane_height = output.inspector_pane_height;
+                state.ui.result_pane_height = output.result_pane_height;
                 Ok(())
             }
 
@@ -252,10 +240,8 @@ impl EffectRunner {
             Effect::PrefetchTableDetail { dsn, schema, table } => {
                 let qualified_name = format!("{}.{}", schema, table);
 
-                // Check cache before spawning
                 let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
                 if already_cached {
-                    // Notify state update without overwriting cache data
                     let _ = self
                         .action_tx
                         .send(Action::TableDetailAlreadyCached { schema, table })
@@ -292,7 +278,6 @@ impl EffectRunner {
             }
 
             Effect::ProcessPrefetchQueue => {
-                // Dispatch Action::ProcessPrefetchQueue to be handled by reducer
                 let _ = self.action_tx.send(Action::ProcessPrefetchQueue).await;
                 Ok(())
             }
@@ -354,13 +339,11 @@ impl EffectRunner {
             Effect::TriggerCompletion => {
                 let cursor = state.sql_modal.cursor;
 
-                // 1. Get missing tables (scoped borrow)
                 let missing = {
                     let engine = completion_engine.borrow();
                     engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
                 };
 
-                // 2. Batch prefetch actions to avoid blocking event loop
                 let prefetch_actions: Vec<Action> = missing
                     .into_iter()
                     .filter_map(|qualified_name| {
@@ -373,13 +356,10 @@ impl EffectRunner {
                     })
                     .collect();
 
-                // Drop on channel full is acceptable: prefetch is best-effort,
-                // and missing tables will be retried on next completion trigger.
                 for action in prefetch_actions {
                     let _ = self.action_tx.try_send(action);
                 }
 
-                // 3. Get candidates (scoped borrow)
                 let (candidates, token_len, visible) = {
                     let engine = completion_engine.borrow();
                     let token_len = engine.current_token_len(&state.sql_modal.content, cursor);
@@ -396,7 +376,6 @@ impl EffectRunner {
                     (candidates, token_len, visible)
                 };
 
-                // 4. Send state update action
                 let _ = self
                     .action_tx
                     .send(Action::CompletionUpdated {
@@ -412,7 +391,6 @@ impl EffectRunner {
                 total_tables,
                 project_name,
             } => {
-                // Collect lightweight snapshots for DOT generation
                 let tables: Vec<ErTableInfo> = {
                     let engine = completion_engine.borrow();
                     engine
@@ -431,7 +409,7 @@ impl EffectRunner {
                     return Ok(());
                 }
 
-                let cache_dir = get_cache_dir(&project_name)?;
+                let cache_dir = self.config_writer.get_cache_dir(&project_name)?;
                 let exporter = Arc::clone(&self.er_exporter);
                 spawn_er_diagram_task(
                     exporter,
@@ -444,8 +422,10 @@ impl EffectRunner {
             }
 
             Effect::WriteErFailureLog { failed_tables } => {
-                let project_name = state.runtime.project_name.clone();
-                if let Ok(cache_dir) = get_cache_dir(&project_name) {
+                if let Ok(cache_dir) = self
+                    .config_writer
+                    .get_cache_dir(&state.runtime.project_name)
+                {
                     tokio::task::spawn_blocking(move || {
                         let _ = write_er_failure_log_blocking(failed_tables, cache_dir);
                     });
