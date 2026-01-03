@@ -18,11 +18,9 @@ use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
+use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::domain::MetadataState;
 use crate::ui::components::inspector::Inspector;
-use crate::ui::components::viewport_columns::{
-    calculate_next_column_offset, calculate_prev_column_offset,
-};
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {

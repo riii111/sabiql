@@ -39,7 +39,7 @@ ui/ ──uses──> app/ ──uses──> domain/
                 └──defines──> ports/ (traits)
                                  ▲
                                  │ implements
-infra/ ─────────────────────────┘
+infra/ ──────────────────────────┘
 ```
 
 ### Directory Structure
