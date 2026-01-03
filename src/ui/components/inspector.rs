@@ -5,14 +5,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
-use super::viewport_columns::{
+use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
+use crate::app::ddl::generate_ddl_postgres;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
 use crate::domain::Table as TableDetail;
-use crate::infra::utils::quote_ident;
 
 pub struct Inspector;
 
@@ -520,7 +520,7 @@ impl Inspector {
     }
 
     fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
-        let ddl = generate_ddl(table);
+        let ddl = generate_ddl_postgres(table);
 
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
@@ -546,51 +546,9 @@ impl Inspector {
         );
     }
 
-    /// Calculates the total number of lines in the DDL representation for a table.
-    /// This must match the line count returned by `generate_ddl().lines().count()`.
     pub fn ddl_line_count(table: &TableDetail) -> usize {
-        generate_ddl(table).lines().count()
+        crate::app::ddl::ddl_line_count_postgres(table)
     }
-}
-
-/// Generate a simplified DDL representation with proper identifier quoting
-fn generate_ddl(table: &TableDetail) -> String {
-    let mut ddl = format!(
-        "CREATE TABLE {}.{} (\n",
-        quote_ident(&table.schema),
-        quote_ident(&table.name)
-    );
-
-    for (i, col) in table.columns.iter().enumerate() {
-        let nullable = if col.nullable { "" } else { " NOT NULL" };
-        let default = col
-            .default
-            .as_ref()
-            .map(|d| format!(" DEFAULT {}", d))
-            .unwrap_or_default();
-
-        ddl.push_str(&format!(
-            "  {} {}{}{}",
-            quote_ident(&col.name),
-            col.data_type,
-            nullable,
-            default
-        ));
-
-        if i < table.columns.len() - 1 {
-            ddl.push(',');
-        }
-        ddl.push('\n');
-    }
-
-    // Add primary key constraint
-    if let Some(pk) = &table.primary_key {
-        let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
-        ddl.push_str(&format!("  PRIMARY KEY ({})\n", quoted_cols.join(", ")));
-    }
-
-    ddl.push_str(");");
-    ddl
 }
 
 /// Returns (clamped_widths, true_total_width)

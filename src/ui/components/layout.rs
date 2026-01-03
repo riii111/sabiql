@@ -11,17 +11,10 @@ use super::inspector::Inspector;
 use super::result::ResultPane;
 use super::sql_modal::SqlModal;
 use super::table_picker::TablePicker;
-use super::viewport_columns::ViewportPlan;
 use crate::app::input_mode::InputMode;
+use crate::app::ports::RenderOutput;
 use crate::app::state::AppState;
-
-#[derive(Default)]
-pub struct RenderOutput {
-    pub inspector_viewport_plan: ViewportPlan,
-    pub result_viewport_plan: ViewportPlan,
-    pub inspector_pane_height: u16,
-    pub result_pane_height: u16,
-}
+use crate::app::viewport::ViewportPlan;
 
 pub struct MainLayout;
 

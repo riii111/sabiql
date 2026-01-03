@@ -12,17 +12,15 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
+use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::domain::MetadataState;
-use crate::ui::components::inspector::Inspector;
-use crate::ui::components::viewport_columns::{
-    calculate_next_column_offset, calculate_prev_column_offset,
-};
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
@@ -294,7 +292,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         }
                         lines
                     }),
-                    InspectorTab::Ddl => Inspector::ddl_line_count(t),
+                    InspectorTab::Ddl => ddl_line_count_postgres(t),
                 })
                 .unwrap_or(0);
             let max_offset = total_items.saturating_sub(visible);
