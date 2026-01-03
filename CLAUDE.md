@@ -81,3 +81,10 @@ mise run test               # Run tests
 
 Visual regression tests verify UI rendering hasn't changed unexpectedly.
 See [`tests/README.md`](tests/README.md) for policy and commands.
+
+## Release
+
+1. Update `version` in `Cargo.toml`
+2. Commit and push to main
+3. Create and push tag: `git tag v1.0.0 && git push origin v1.0.0`
+4. GitHub Actions builds and publishes binaries to Releases
