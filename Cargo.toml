@@ -1,10 +1,10 @@
 [package]
-name = "dbtui"
+name = "sabiql"
 version = "0.1.0"
 edition = "2024"
-description = "A TUI database browser integrating dbn and dbx functionality"
+description = "A fast, driver-less TUI for browsing PostgreSQL databases"
 license = "MIT"
-repository = "https://github.com/riii111/dbtui-rs"
+repository = "https://github.com/riii111/sabiql"
 
 [dependencies]
 ratatui = "0.29"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**dbtui-rs** is a Rust-based TUI (Terminal User Interface) application that integrates database browsing and CLI wrapper functionality. It combines the features of `dbn` (table browser) and `dbx` (pgcli/mycli launcher) into a unified interface.
+**sabiql** is a fast, driver-less TUI for browsing PostgreSQL databases.
 
 - **Tech Stack**: Rust + Ratatui + Tokio
 - **Target DB**: PostgreSQL (MVP), MySQL (future)
@@ -75,9 +75,16 @@ mise run test               # Run tests
 ## Configuration
 
 - Project config: `.dbx.toml` (in project root)
-- Cache directory: `~/.cache/dbtui/<project>/`
+- Cache directory: `~/.cache/sabiql/<project>/`
 
 ## Testing
 
 Visual regression tests verify UI rendering hasn't changed unexpectedly.
 See [`tests/README.md`](tests/README.md) for policy and commands.
+
+## Release
+
+1. Update `version` in `Cargo.toml`
+2. Commit and push to main
+3. Create and push tag: `git tag v1.0.0 && git push origin v1.0.0`
+4. GitHub Actions builds and publishes binaries to Releases

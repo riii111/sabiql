@@ -1,50 +1,76 @@
-# dbtui-rs
+# sabiql
 
-A Rust-based TUI (Terminal User Interface) application for database browsing and CLI wrapper functionality.
+A fast, driver-less TUI for browsing PostgreSQL databases.
 
-## Features
+[![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- **Browse Mode**: Navigate database schemas, tables, and view table details
-- **ER Diagram**: Visualize all table relationships via Graphviz export
-- **SQL Modal**: Execute ad-hoc SQL queries
-- **Console Integration**: Seamless integration with pgcli
+## Concept
 
-## ER Diagram
+sabiql wraps your existing database CLI (psql) — no drivers to install, no connection pools to configure. Just point it at your database and browse.
 
-The ER (Entity-Relationship) diagram visualizes foreign key relationships between all tables in the database.
+- **Driver-less**: Uses psql directly, no Rust database drivers needed
+- **ER Diagram**: Visualize table relationships via Graphviz export
+- **Lightweight**: No persistent connections, event-driven rendering
 
-### How to Use
+## Installation
 
-1. Press `e` in Browse mode or use `:erd` command
-2. The diagram shows all tables and FK relationships loaded in the cache
-3. The diagram is exported as DOT format and converted to SVG for viewing
+### Using the install script
 
-**Note**: Requires Graphviz to be installed (`brew install graphviz` on macOS)
+```bash
+curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
+```
 
-## Browse Mode Keybindings
+### From source
 
-| Key | Action |
-|-----|--------|
-| `1`/`2`/`3` | Switch pane (Explorer/Inspector/Result) |
-| `f` | Toggle focus mode (Result pane fullscreen) |
-| `j`/`k` | Scroll down/up |
-| `g`/`G` | Scroll to top/bottom |
-| `h`/`l` | Scroll left/right |
-| `Tab`/`Shift+Tab` | Previous/Next inspector tab (Inspector focus only) |
-| `r` | Reload metadata |
-| `c` | Open pgcli console |
-| `s` | Open SQL modal |
-| `e` | Open ER diagram (via Graphviz) |
-| `Ctrl+P` | Open table picker |
-| `Ctrl+K` | Open command palette |
-| `?` | Show help |
-| `q` | Quit |
+```bash
+cargo install --git https://github.com/riii111/sabiql
+```
 
-## Configuration
+## Quick Start
 
-Create a `.dbx.toml` file in your project root:
+1. Create `.dbx.toml` in your project root:
 
 ```toml
 [profiles.default]
 dsn = "postgres://user:password@localhost:5432/database"
 ```
+
+2. Run sabiql:
+
+```bash
+sabiql
+```
+
+3. Press `?` for help.
+
+## Features
+
+- **Browse Mode**: Navigate schemas and tables with vim-like keybindings
+- **SQL Modal**: Execute ad-hoc queries with auto-completion
+- **ER Diagram**: Generate relationship diagrams via Graphviz
+- **Console Integration**: Seamless integration with pgcli
+
+## Keybindings
+
+| Key | Action |
+|-----|--------|
+| `1`/`2`/`3` | Switch pane (Explorer/Inspector/Result) |
+| `j`/`k` | Scroll down/up |
+| `g`/`G` | Jump to top/bottom |
+| `f` | Toggle focus mode |
+| `s` | Open SQL modal |
+| `e` | Open ER diagram |
+| `c` | Open pgcli console |
+| `Ctrl+K` | Command palette |
+| `?` | Show help |
+| `q` | Quit |
+
+## Requirements
+
+- PostgreSQL (`psql` CLI must be available)
+- Graphviz (optional, for ER diagrams): `brew install graphviz`
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
