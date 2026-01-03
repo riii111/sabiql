@@ -26,7 +26,7 @@ use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use crate::app::ports::{ErDiagramExporter, MetadataProvider, QueryExecutor};
 use crate::app::state::AppState;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
-use crate::infra::cache::TtlCache;
+use crate::app::cache::TtlCache;
 use crate::infra::config::cache::get_cache_dir;
 use crate::infra::config::pgclirc::generate_pgclirc;
 use crate::ui::components::layout::MainLayout;

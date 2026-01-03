@@ -1,4 +1,5 @@
 pub mod action;
+pub mod cache;
 pub mod command;
 pub mod completion;
 pub mod ddl;
