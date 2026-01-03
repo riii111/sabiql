@@ -107,27 +107,16 @@ impl EffectRunner {
                 let cache_dir = self.config_writer.get_cache_dir(&project_name)?;
                 let pgclirc = self.config_writer.generate_pgclirc(&cache_dir)?;
 
-                tui.suspend()?;
-
-                let status = tokio::task::spawn_blocking(move || {
+                let status = tui.with_suspended(|| {
                     std::process::Command::new("pgcli")
                         .arg("--pgclirc")
                         .arg(&pgclirc)
                         .arg(&dsn)
                         .status()
-                })
-                .await;
-
-                tui.resume()?;
+                })?;
 
                 match status {
                     Err(e) => {
-                        let _ = self
-                            .action_tx
-                            .send(Action::ConsoleFailed(format!("pgcli task failed: {}", e)))
-                            .await;
-                    }
-                    Ok(Err(e)) => {
                         let _ = self
                             .action_tx
                             .send(Action::ConsoleFailed(format!(
@@ -136,7 +125,7 @@ impl EffectRunner {
                             )))
                             .await;
                     }
-                    Ok(Ok(exit_status)) if !exit_status.success() => {
+                    Ok(exit_status) if !exit_status.success() => {
                         let code = exit_status
                             .code()
                             .map_or("unknown".to_string(), |c| c.to_string());
@@ -148,7 +137,7 @@ impl EffectRunner {
                             )))
                             .await;
                     }
-                    Ok(Ok(_)) => {}
+                    Ok(_) => {}
                 }
 
                 let _ = self.action_tx.send(Action::Render).await;
