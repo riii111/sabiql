@@ -96,6 +96,8 @@ impl EffectRunner {
         }
     }
 
+    /// Exclusive effects run while TUI is suspended, so blocking the tokio
+    /// worker is acceptable—no rendering or async tasks need to proceed.
     async fn run_exclusive<T: TuiSession>(
         &self,
         effect: Effect,
@@ -420,9 +422,10 @@ impl EffectRunner {
             }
 
             Effect::WriteErFailureLog { failed_tables } => {
-                let project_name = state.runtime.project_name.clone();
-                let config_writer = Arc::clone(&self.config_writer);
-                if let Ok(cache_dir) = config_writer.get_cache_dir(&project_name) {
+                if let Ok(cache_dir) = self
+                    .config_writer
+                    .get_cache_dir(&state.runtime.project_name)
+                {
                     tokio::task::spawn_blocking(move || {
                         let _ = write_er_failure_log_blocking(failed_tables, cache_dir);
                     });
