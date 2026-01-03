@@ -55,12 +55,12 @@ mod tests {
     use super::*;
     use crate::domain::Column;
 
-    fn test_column(name: &str, data_type: &str, nullable: bool, is_primary_key: bool) -> Column {
+    fn make_column(name: &str, data_type: &str, nullable: bool) -> Column {
         Column {
             name: name.to_string(),
             data_type: data_type.to_string(),
             nullable,
-            is_primary_key,
+            is_primary_key: false,
             default: None,
             is_unique: false,
             comment: None,
@@ -68,10 +68,10 @@ mod tests {
         }
     }
 
-    fn test_table(schema: &str, name: &str, columns: Vec<Column>, primary_key: Option<Vec<String>>) -> Table {
+    fn make_table(columns: Vec<Column>, primary_key: Option<Vec<String>>) -> Table {
         Table {
-            schema: schema.to_string(),
-            name: name.to_string(),
+            schema: "public".to_string(),
+            name: "test_table".to_string(),
             columns,
             primary_key,
             foreign_keys: vec![],
@@ -82,38 +82,39 @@ mod tests {
         }
     }
 
-    #[test]
-    fn generates_basic_ddl() {
-        let table = test_table(
-            "public",
-            "users",
-            vec![
-                test_column("id", "integer", false, true),
-                test_column("name", "text", true, false),
-            ],
-            Some(vec!["id".to_string()]),
-        );
+    mod generate_ddl_postgres {
+        use super::*;
 
-        let ddl = generate_ddl_postgres(&table);
+        #[test]
+        fn table_with_pk_returns_valid_ddl() {
+            let table = make_table(
+                vec![
+                    make_column("id", "integer", false),
+                    make_column("name", "text", true),
+                ],
+                Some(vec!["id".to_string()]),
+            );
 
-        assert!(ddl.contains("CREATE TABLE \"public\".\"users\""));
-        assert!(ddl.contains("\"id\" integer NOT NULL"));
-        assert!(ddl.contains("\"name\" text"));
-        assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+            let ddl = generate_ddl_postgres(&table);
+
+            assert!(ddl.contains("CREATE TABLE \"public\".\"test_table\""));
+            assert!(ddl.contains("\"id\" integer NOT NULL"));
+            assert!(ddl.contains("\"name\" text"));
+            assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+        }
     }
 
-    #[test]
-    fn ddl_line_count_matches_lines() {
-        let table = test_table(
-            "public",
-            "test",
-            vec![test_column("col", "text", true, false)],
-            None,
-        );
+    mod ddl_line_count_postgres {
+        use super::*;
 
-        let ddl = generate_ddl_postgres(&table);
-        let count = ddl_line_count_postgres(&table);
+        #[test]
+        fn count_matches_actual_lines() {
+            let table = make_table(vec![make_column("col", "text", true)], None);
 
-        assert_eq!(count, ddl.lines().count());
+            let ddl = generate_ddl_postgres(&table);
+            let count = ddl_line_count_postgres(&table);
+
+            assert_eq!(count, ddl.lines().count());
+        }
     }
 }

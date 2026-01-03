@@ -32,7 +32,7 @@ src/
 **Forbidden:**
 - `app/` → `ui/` (use Renderer/TuiSession ports instead)
 - `app/` → `infra/` (use ports like MetadataProvider, ConfigWriter)
-- `ui/` → `infra/` (use ports like Dialect)
+- `ui/` → `infra/`
 
 ### Ports & Adapters Pattern
 
@@ -45,7 +45,6 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | `ConfigWriter` | Cache dir, pgclirc | `infra/adapters/` |
 | `Renderer` | TUI drawing | `ui/adapters/` |
 | `TuiSession` | Terminal suspend/resume | `ui/adapters/` |
-| `Dialect` | SQL identifier quoting | `infra/adapters/` |
 
 ### Where to Put New Code
 
