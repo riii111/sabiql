@@ -7,18 +7,19 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use dbtui::app::action::Action;
+use dbtui::app::cache::TtlCache;
 use dbtui::app::completion::CompletionEngine;
 use dbtui::app::effect_runner::EffectRunner;
 use dbtui::app::reducer::reduce;
 use dbtui::app::state::AppState;
 use dbtui::error;
-use dbtui::infra::adapters::PostgresAdapter;
-use dbtui::app::cache::TtlCache;
+use dbtui::infra::adapters::{FileConfigWriter, PostgresAdapter};
 use dbtui::infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
 };
 use dbtui::infra::export::DotExporter;
+use dbtui::ui::adapters::TuiAdapter;
 use dbtui::ui::event::handler::handle_event;
 use dbtui::ui::tui::TuiRunner;
 
@@ -56,6 +57,7 @@ async fn main() -> Result<()> {
         Arc::clone(&adapter) as _,
         Arc::clone(&adapter) as _,
         Arc::new(DotExporter::new()),
+        Arc::new(FileConfigWriter::new()),
         metadata_cache.clone(),
         action_tx.clone(),
     );
@@ -89,7 +91,8 @@ async fn main() -> Result<()> {
             Some(action) = action_rx.recv() => {
                 let now = Instant::now();
                 let effects = reduce(&mut state, action, now);
-                effect_runner.run(effects, &mut tui, &mut state, &completion_engine).await?;
+                let mut tui_adapter = TuiAdapter::new(&mut tui);
+                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
             }
         }
 
