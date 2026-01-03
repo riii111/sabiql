@@ -6,22 +6,22 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use dbtui::app::action::Action;
-use dbtui::app::cache::TtlCache;
-use dbtui::app::completion::CompletionEngine;
-use dbtui::app::effect_runner::EffectRunner;
-use dbtui::app::reducer::reduce;
-use dbtui::app::state::AppState;
-use dbtui::error;
-use dbtui::infra::adapters::{FileConfigWriter, PostgresAdapter};
-use dbtui::infra::config::{
+use sabiql::app::action::Action;
+use sabiql::app::cache::TtlCache;
+use sabiql::app::completion::CompletionEngine;
+use sabiql::app::effect_runner::EffectRunner;
+use sabiql::app::reducer::reduce;
+use sabiql::app::state::AppState;
+use sabiql::error;
+use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter};
+use sabiql::infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
 };
-use dbtui::infra::export::DotExporter;
-use dbtui::ui::adapters::TuiAdapter;
-use dbtui::ui::event::handler::handle_event;
-use dbtui::ui::tui::TuiRunner;
+use sabiql::infra::export::DotExporter;
+use sabiql::ui::adapters::TuiAdapter;
+use sabiql::ui::event::handler::handle_event;
+use sabiql::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

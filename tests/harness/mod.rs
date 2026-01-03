@@ -6,8 +6,8 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
-use dbtui::app::state::AppState;
-use dbtui::ui::components::layout::MainLayout;
+use sabiql::app::state::AppState;
+use sabiql::ui::components::layout::MainLayout;
 
 pub const TEST_WIDTH: u16 = 80;
 pub const TEST_HEIGHT: u16 = 24;
