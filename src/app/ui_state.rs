@@ -3,7 +3,7 @@ use ratatui::widgets::ListState;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
-use crate::ui::components::viewport_columns::ViewportPlan;
+use super::viewport::ViewportPlan;
 
 #[derive(Debug, Clone, Default)]
 pub struct UiState {

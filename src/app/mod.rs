@@ -21,3 +21,4 @@ pub mod sql_lexer;
 pub mod sql_modal_context;
 pub mod state;
 pub mod ui_state;
+pub mod viewport;
