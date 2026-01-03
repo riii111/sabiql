@@ -36,6 +36,20 @@ get_latest_version() {
         sed -E 's/.*"([^"]+)".*/\1/'
 }
 
+verify_checksum() {
+    local file="$1"
+    local checksum_file="$2"
+
+    if command -v sha256sum > /dev/null 2>&1; then
+        sha256sum -c "$checksum_file" > /dev/null 2>&1
+    elif command -v shasum > /dev/null 2>&1; then
+        shasum -a 256 -c "$checksum_file" > /dev/null 2>&1
+    else
+        echo "Warning: No checksum tool available, skipping verification"
+        return 0
+    fi
+}
+
 install() {
     detect_platform
     VERSION=$(get_latest_version)
@@ -47,12 +61,26 @@ install() {
 
     echo "Installing ${BINARY_NAME} ${VERSION} for ${PLATFORM}..."
 
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}-${PLATFORM}.tar.gz"
+    ARCHIVE_NAME="${BINARY_NAME}-${PLATFORM}.tar.gz"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
+    CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+
     TEMP_DIR=$(mktemp -d)
-    TEMP_FILE="${TEMP_DIR}/${BINARY_NAME}.tar.gz"
+    TEMP_FILE="${TEMP_DIR}/${ARCHIVE_NAME}"
+    CHECKSUM_FILE="${TEMP_DIR}/${ARCHIVE_NAME}.sha256"
 
     echo "Downloading from ${DOWNLOAD_URL}..."
     curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"
+    curl -fsSL "$CHECKSUM_URL" -o "$CHECKSUM_FILE"
+
+    echo "Verifying checksum..."
+    cd "$TEMP_DIR"
+    if ! verify_checksum "$TEMP_FILE" "$CHECKSUM_FILE"; then
+        echo "Error: Checksum verification failed!"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    echo "Checksum verified."
 
     echo "Extracting..."
     tar -xzf "$TEMP_FILE" -C "$TEMP_DIR"
