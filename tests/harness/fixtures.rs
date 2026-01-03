@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use dbtui::domain::{Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary};
+use sabiql::domain::{Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary};
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
     DatabaseMetadata {

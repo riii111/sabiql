@@ -5,11 +5,11 @@ use harness::{create_test_state, create_test_terminal, render_to_string, test_in
 
 use std::time::Duration;
 
-use dbtui::app::er_state::ErStatus;
-use dbtui::app::focused_pane::FocusedPane;
-use dbtui::app::input_mode::InputMode;
-use dbtui::app::sql_modal_context::SqlModalStatus;
-use dbtui::domain::MetadataState;
+use sabiql::app::er_state::ErStatus;
+use sabiql::app::focused_pane::FocusedPane;
+use sabiql::app::input_mode::InputMode;
+use sabiql::app::sql_modal_context::SqlModalStatus;
+use sabiql::domain::MetadataState;
 
 #[test]
 fn initial_state_no_metadata() {
