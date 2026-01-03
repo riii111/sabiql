@@ -1,8 +1,10 @@
+pub mod dialect;
 pub mod er_exporter;
 pub mod graphviz;
 pub mod metadata;
 pub mod query_executor;
 
+pub use dialect::Dialect;
 pub use er_exporter::{ErDiagramExporter, ErExportResult};
 pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::{MetadataError, MetadataProvider};

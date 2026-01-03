@@ -1,6 +1,7 @@
 pub mod action;
 pub mod command;
 pub mod completion;
+pub mod ddl;
 pub mod effect;
 pub mod effect_runner;
 pub mod er_state;
