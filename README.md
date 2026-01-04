@@ -10,7 +10,7 @@ A fast, driver-less TUI for browsing PostgreSQL databases.
 
 sabiql wraps your existing database CLI (psql) — no drivers to install, no connection pools to configure. Just point it at your database and browse with vim-like keybindings.
 
-Built to be driver-less and lightweight. No persistent connections, just event-driven rendering when you need it.
+Built to be driver-less and lightweight (requires psql, but no Rust database drivers). No persistent connections, just event-driven rendering when you need it.
 
 ## Features
 
@@ -35,6 +35,8 @@ Built to be driver-less and lightweight. No persistent connections, just event-d
 ## Installation
 
 ### Using the install script
+
+Downloads the latest release binary and places it in `~/.local/bin`. ([view source](https://github.com/riii111/sabiql/blob/main/install.sh))
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
