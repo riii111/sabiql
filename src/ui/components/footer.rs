@@ -59,7 +59,6 @@ impl Footer {
                         ("j/k", "Scroll"),
                         ("h/l", "H-Scroll"),
                         ("g/G", "Top/Bottom"),
-                        ("1/2/3", "Pane"),
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
