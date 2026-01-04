@@ -127,7 +127,6 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        KeyCode::Char('c') => Action::OpenConsole,
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
 

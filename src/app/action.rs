@@ -148,10 +148,6 @@ pub enum Action {
     ResultScrollLeft,
     ResultScrollRight,
 
-    // Console
-    OpenConsole,
-    ConsoleFailed(String),
-
     // Focus mode
     ToggleFocus,
 

@@ -59,7 +59,6 @@ impl Footer {
                         ("j/k", "Scroll"),
                         ("h/l", "H-Scroll"),
                         ("g/G", "Top/Bottom"),
-                        ("1/2/3", "Pane"),
                         ("?", "Help"),
                         ("q", "Quit"),
                     ]
@@ -76,7 +75,6 @@ impl Footer {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
                     }
                     hints.push(("r", "Reload"));
-                    hints.push(("c", "Console"));
                     hints.push(("s", "SQL"));
                     hints.push(("e", "ER Diagram"));
                     hints.push(("^P", "Tables"));

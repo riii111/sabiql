@@ -572,11 +572,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
-        Action::ConsoleFailed(error) => {
-            state.set_error(error);
-            vec![]
-        }
-
         // ===== Phase 3: Async Actions =====
         Action::OpenSqlModal => {
             state.ui.input_mode = InputMode::SqlModal;
@@ -659,17 +654,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
                     } else {
-                        vec![]
-                    }
-                }
-                Action::OpenConsole => {
-                    if let Some(dsn) = &state.runtime.dsn {
-                        vec![Effect::OpenConsole {
-                            dsn: dsn.clone(),
-                            project_name: state.runtime.project_name.clone(),
-                        }]
-                    } else {
-                        state.set_error("No DSN configured".to_string());
                         vec![]
                     }
                 }
@@ -906,14 +890,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                             state.messages.last_error = None;
                             state.messages.last_success = None;
                             state.messages.expires_at = None;
-                        }
-                    }
-                    Action::OpenConsole => {
-                        if let Some(dsn) = &state.runtime.dsn {
-                            effects.push(Effect::OpenConsole {
-                                dsn: dsn.clone(),
-                                project_name: state.runtime.project_name.clone(),
-                            });
                         }
                     }
                     _ => {}
@@ -1200,8 +1176,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 vec![]
             }
         }
-
-        _ => vec![],
     }
 }
 

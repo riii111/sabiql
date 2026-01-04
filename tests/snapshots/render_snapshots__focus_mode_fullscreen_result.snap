@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────────────────────┐
+│id   name    email                                                            │
+│1    Alice   alice@example.com                                                │
+│2    Bob     bob@example.com                                                  │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+f:Exit Focus  j/k:Scroll  h/l:H-Scroll  g/G:Top/Bottom  ?:Help  q:Quit
