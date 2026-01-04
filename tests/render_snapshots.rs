@@ -56,6 +56,23 @@ fn focus_on_result_pane() {
 }
 
 #[test]
+fn focus_mode_fullscreen_result() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.query.current_result = Some(fixtures::sample_query_result(now));
+    state.ui.focus_mode = true;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_with_completion() {
     let now = test_instant();
     let mut state = create_test_state();
