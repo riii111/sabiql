@@ -42,9 +42,8 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 |------|---------|------------------|
 | `MetadataProvider` | DB metadata fetching | `infra/adapters/` |
 | `QueryExecutor` | SQL execution | `infra/adapters/` |
-| `ConfigWriter` | Cache dir, pgclirc | `infra/adapters/` |
+| `ConfigWriter` | Cache dir | `infra/adapters/` |
 | `Renderer` | TUI drawing | `ui/adapters/` |
-| `TuiSession` | Terminal suspend/resume | `ui/adapters/` |
 
 ### Where to Put New Code
 
@@ -70,6 +69,13 @@ mise run build              # Build
 mise run clippy             # Lint
 mise run fmt                # Format
 mise run test               # Run tests
+```
+
+### Snapshot Testing
+
+```bash
+mise exec -- cargo insta review    # Review pending snapshots
+mise exec -- cargo insta accept    # Accept all pending snapshots
 ```
 
 ## Configuration
