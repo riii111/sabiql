@@ -53,6 +53,8 @@ sabiql
   Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
 
 - **ER Diagram**: Generate relationship diagrams via Graphviz
+  ![er-diagram-1400](https://github.com/user-attachments/assets/53d09bea-5013-4b0b-b20c-a861a3d90e1f)
+
 - **Console Integration**: Seamless integration with pgcli
 
 ## Keybindings
