@@ -12,10 +12,10 @@ test_project | default | - | - | no dsn
 │              ││   │  q / :quit          Quit application │                   │
 │              ││   │  ? / :help          Show help        │                   │
 │              ││   │  :sql               Open SQL Editor  │                   │
-│              ││   │  :open-console      Open Console (pgc│                   │
-│              │└───│  e / :erd           Open ER Diagram  │───────────────────┘
-│              │┌ [3│  Ctrl+P             Open Table Picker│───────────────────┐
-│              ││(se│  r                  Reload metadata  │                   │
+│              ││   │  e / :erd           Open ER Diagram  │                   │
+│              │└───│  Ctrl+P             Open Table Picker│───────────────────┘
+│              │┌ [3│  r                  Reload metadata  │───────────────────┐
+│              ││(se│                                      │                   │
 │              ││   │                                      │                   │
 │              ││   │                                      │                   │
 │              ││   │                                      │                   │

@@ -7,7 +7,6 @@ pub enum Command {
     Quit,
     Help,
     Sql,
-    OpenConsole,
     Erd,
     Unknown(String),
 }
@@ -18,7 +17,6 @@ pub fn parse_command(input: &str) -> Command {
         "q" | "quit" => Command::Quit,
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
-        "open-console" | "console" => Command::OpenConsole,
         "erd" => Command::Erd,
         other => Command::Unknown(other.to_string()),
     }
@@ -30,7 +28,6 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Quit => Action::Quit,
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
-        Command::OpenConsole => Action::OpenConsole,
         Command::Erd => Action::ErOpenDiagram,
         Command::Unknown(_) => Action::None,
     }
@@ -68,15 +65,6 @@ mod tests {
             let result = parse_command("sql");
 
             assert_eq!(result, Command::Sql);
-        }
-
-        #[rstest]
-        #[case("open-console", Command::OpenConsole)]
-        #[case("console", Command::OpenConsole)]
-        fn open_console_aliases(#[case] input: &str, #[case] expected: Command) {
-            let result = parse_command(input);
-
-            assert_eq!(result, expected);
         }
 
         #[test]
@@ -130,13 +118,6 @@ mod tests {
             let result = command_to_action(Command::Sql);
 
             assert!(matches!(result, Action::OpenSqlModal));
-        }
-
-        #[test]
-        fn open_console_returns_open_console_action() {
-            let result = command_to_action(Command::OpenConsole);
-
-            assert!(matches!(result, Action::OpenConsole));
         }
 
         #[test]
