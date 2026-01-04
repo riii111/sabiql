@@ -613,9 +613,11 @@ mod tests {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
+            // max_offset=1, available=100, fixed=3
+            // 3 cols: 32, slack=68, bonus col needs 11 → bonus added
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(0, 100, Some(3), 1));
-            assert_eq!(indices, vec![0, 1, 2]);
-            assert_eq!(selected, vec![10, 10, 10]);
+            assert_eq!(indices, vec![0, 1, 2, 3]); // 3 fixed + 1 bonus
+            assert_eq!(selected, vec![10, 10, 10, 10]);
         }
 
         #[test]
@@ -623,9 +625,11 @@ mod tests {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
+            // max_offset=2, available=100, fixed=2
+            // 2 cols: 21, slack=79, bonus col needs 11 → bonus added
             let (indices, selected) = select_viewport_columns(&cfg, &ctx(1, 100, Some(2), 2));
-            assert_eq!(indices, vec![1, 2]);
-            assert_eq!(selected, vec![10, 10]);
+            assert_eq!(indices, vec![1, 2, 3]); // 2 fixed + 1 bonus
+            assert_eq!(selected, vec![10, 10, 10]);
         }
 
         #[test]
@@ -733,7 +737,9 @@ mod tests {
         use super::*;
 
         #[test]
-        fn one_scroll_changes_exactly_one_column() {
+        fn one_scroll_changes_first_column_by_one() {
+            // With bonus columns, the total column count may vary,
+            // but the FIRST column should always shift by 1 per scroll
             let ideal = vec![15, 20, 30, 10, 25];
             let min = vec![8, 8, 8, 8, 8];
             let cfg = config(&ideal, &min);
@@ -743,25 +749,34 @@ mod tests {
             let (idx1, _) = select_viewport_columns(&cfg, &ctx(1, 80, Some(3), max_offset));
             let (idx2, _) = select_viewport_columns(&cfg, &ctx(2, 80, Some(3), max_offset));
 
-            assert_eq!(idx0, vec![0, 1, 2]);
-            assert_eq!(idx1, vec![1, 2, 3]);
-            assert_eq!(idx2, vec![2, 3, 4]);
+            // First column shifts by 1 each scroll
+            assert_eq!(idx0[0], 0);
+            assert_eq!(idx1[0], 1);
+            assert_eq!(idx2[0], 2);
+
+            // At least fixed count columns are shown
+            assert!(idx0.len() >= 3);
+            assert!(idx1.len() >= 3);
+            assert!(idx2.len() >= 3);
         }
 
         #[test]
-        fn scroll_preserves_column_count() {
+        fn scroll_preserves_minimum_column_count() {
+            // With bonus columns, count may increase but never decrease below fixed
             let ideal = vec![10, 15, 20, 12, 18];
             let min = vec![6, 6, 6, 6, 6];
             let cfg = config(&ideal, &min);
             let max_offset = 2;
+            let fixed_count = 3;
 
             for offset in 0..=max_offset {
                 let (indices, _) =
-                    select_viewport_columns(&cfg, &ctx(offset, 60, Some(3), max_offset));
-                assert_eq!(
+                    select_viewport_columns(&cfg, &ctx(offset, 60, Some(fixed_count), max_offset));
+                assert!(
+                    indices.len() >= fixed_count,
+                    "Column count {} below fixed {} at offset {}",
                     indices.len(),
-                    3,
-                    "Column count changed at offset {}",
+                    fixed_count,
                     offset
                 );
             }
@@ -1084,20 +1099,22 @@ mod tests {
         }
 
         #[test]
-        fn column_count_stable_during_scroll() {
+        fn column_count_at_least_fixed_during_scroll() {
+            // With bonus columns, count may vary but never below fixed
             let ideal = vec![25, 30, 20, 35, 25];
             let min = vec![10, 10, 10, 10, 10];
             let available = 80;
 
             let plan = ViewportPlan::calculate(&ideal, &min, available);
-            let expected_count = plan.column_count;
+            let fixed_count = plan.column_count;
 
             for offset in 0..=plan.max_offset {
                 let (indices, _) = run_full_pipeline(&ideal, &min, available, offset);
-                assert_eq!(
+                assert!(
+                    indices.len() >= fixed_count,
+                    "Column count {} below fixed {} at offset {}",
                     indices.len(),
-                    expected_count,
-                    "Column count changed at offset {}",
+                    fixed_count,
                     offset
                 );
             }
@@ -1158,6 +1175,144 @@ mod tests {
                     assert!(w >= min[col_idx]);
                 }
             }
+        }
+    }
+
+    mod bonus_column {
+        use super::*;
+
+        fn ctx_with_slack(
+            offset: usize,
+            width: u16,
+            fixed: Option<usize>,
+            max: usize,
+            policy: SlackPolicy,
+        ) -> SelectionContext {
+            SelectionContext {
+                horizontal_offset: offset,
+                available_width: width,
+                fixed_count: fixed,
+                max_offset: max,
+                slack_policy: policy,
+            }
+        }
+
+        #[test]
+        fn adds_bonus_when_slack_sufficient() {
+            // 3 fixed columns + bonus potential
+            let ideal = vec![10, 10, 10, 10, 10];
+            let min = vec![4, 4, 4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            // Fixed count = 3, max_offset = 2
+            // 3 cols: 10+10+10 + 2 sep = 32
+            // Available: 50, slack: 18
+            // Next col needs: 10 + 1 sep = 11
+            // 18 >= 11, so bonus added
+            let (indices, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 50, Some(3), 2, SlackPolicy::None),
+            );
+
+            assert_eq!(indices.len(), 4, "Should add 1 bonus column");
+            assert_eq!(indices, vec![0, 1, 2, 3]);
+        }
+
+        #[test]
+        fn no_bonus_when_slack_insufficient() {
+            let ideal = vec![10, 10, 10, 20, 10];
+            let min = vec![4, 4, 4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            // 3 cols: 10+10+10 + 2 sep = 32
+            // Available: 40, slack: 8
+            // Next col needs: 20 + 1 sep = 21
+            // 8 < 21, no bonus
+            let (indices, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 40, Some(3), 2, SlackPolicy::None),
+            );
+
+            assert_eq!(indices.len(), 3, "Should not add bonus column");
+        }
+
+        #[test]
+        fn no_bonus_at_last_column() {
+            let ideal = vec![10, 10, 10];
+            let min = vec![4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            // At offset 1, showing cols [1, 2], no col 3 exists
+            let (indices, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(1, 50, Some(2), 1, SlackPolicy::None),
+            );
+
+            assert_eq!(indices.len(), 2, "No bonus when no more columns exist");
+        }
+
+        #[test]
+        fn no_bonus_when_max_offset_zero() {
+            // When all columns fit (max_offset = 0), bonus logic is skipped
+            let ideal = vec![10, 10, 10, 10];
+            let min = vec![4, 4, 4, 4];
+            let cfg = config(&ideal, &min);
+
+            // max_offset = 0 means all columns fit, bonus logic should not apply
+            let (indices, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 100, Some(3), 0, SlackPolicy::RightmostLimited),
+            );
+
+            // Only 3 columns (fixed count), not 4
+            assert_eq!(indices.len(), 3);
+        }
+
+        #[test]
+        fn one_scroll_still_changes_one_column_with_bonus() {
+            let ideal = vec![15, 15, 15, 15, 15, 15];
+            let min = vec![8, 8, 8, 8, 8, 8];
+            let cfg = config(&ideal, &min);
+            // Fixed count = 3, max_offset = 3
+            // With bonus, might show 4 columns
+
+            let (idx0, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 70, Some(3), 3, SlackPolicy::None),
+            );
+            let (idx1, _) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(1, 70, Some(3), 3, SlackPolicy::None),
+            );
+
+            // Scroll should still move by 1 (fixed count behavior)
+            // idx0 starts at 0, idx1 starts at 1
+            assert_eq!(idx0[0], 0, "First column at offset 0 should be 0");
+            assert_eq!(idx1[0], 1, "First column at offset 1 should be 1");
+        }
+
+        #[test]
+        fn bonus_column_total_width_within_available() {
+            let ideal = vec![20, 20, 20, 15];
+            let min = vec![10, 10, 10, 10];
+            let cfg = config(&ideal, &min);
+
+            // 3 cols: 20+20+20 + 2 sep = 62
+            // Available: 80, slack: 18
+            // Next col needs: 15 + 1 sep = 16
+            // 18 >= 16, bonus added
+            let (indices, widths) = select_viewport_columns(
+                &cfg,
+                &ctx_with_slack(0, 80, Some(3), 1, SlackPolicy::None),
+            );
+
+            assert_eq!(indices.len(), 4);
+            let total = total_width_with_separators(&widths);
+            assert!(
+                total <= 80,
+                "Total width {} should not exceed available 80",
+                total
+            );
         }
     }
 }
