@@ -35,6 +35,26 @@ pub struct SystemViewerLauncher;
 
 impl ViewerLauncher for SystemViewerLauncher {
     fn open_file(&self, path: &Path) -> Result<(), ViewerError> {
+        if let Ok(browser) = std::env::var("SABIQL_BROWSER") {
+            #[cfg(target_os = "macos")]
+            {
+                Command::new("open")
+                    .arg("-a")
+                    .arg(&browser)
+                    .arg(path)
+                    .spawn()
+                    .map_err(ViewerError::LaunchFailed)?;
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                Command::new(&browser)
+                    .arg(path)
+                    .spawn()
+                    .map_err(ViewerError::LaunchFailed)?;
+            }
+            return Ok(());
+        }
+
         #[cfg(target_os = "macos")]
         {
             Command::new("open")
