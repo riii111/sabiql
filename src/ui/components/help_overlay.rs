@@ -59,7 +59,6 @@ impl HelpOverlay {
             Self::key_line(":quit", "Quit application"),
             Self::key_line(":help", "Show this help"),
             Self::key_line(":sql", "Open SQL Editor"),
-            Self::key_line(":console", "Open Console (pgcli)"),
         ];
 
         let help = Paragraph::new(help_lines)
