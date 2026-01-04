@@ -97,11 +97,9 @@ fn try_add_bonus_column(
     widths: &mut Vec<u16>,
     available_width: u16,
 ) -> bool {
-    if indices.is_empty() {
+    let Some(&rightmost_idx) = indices.last() else {
         return false;
-    }
-
-    let rightmost_idx = indices.last().copied().unwrap_or(0);
+    };
     let next_idx = rightmost_idx + 1;
 
     if next_idx >= config.ideal_widths.len() {
