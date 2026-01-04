@@ -1,5 +1,5 @@
 # sabiql
-![demo-1200](https://github.com/user-attachments/assets/73ad57bd-ad9a-486d-9e27-5b7098563f00)
+<img width="757" height="472" alt="hero" src="https://github.com/user-attachments/assets/d94720a1-7b28-4dfe-a5ca-1c9cedf415eb" />
 
 A fast, driver-less TUI for browsing PostgreSQL databases.
 
@@ -29,6 +29,8 @@ Built to be driver-less and lightweight. No persistent connections, just event-d
   ![fuzzy-search-1400](https://github.com/user-attachments/assets/4daf8b7a-cf24-4a09-b93a-f7aa9a63cadd)
 
 - **Focus Mode**: Expand any pane to full screen with `f`
+  ![focus-mode-1400](https://github.com/user-attachments/assets/7412e206-cc64-4652-9185-2269592e8d65)
+
 
 ## Installation
 
