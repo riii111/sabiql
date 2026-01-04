@@ -273,7 +273,7 @@ impl Inspector {
             area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: viewport_indices.len(),
+                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
                 total_items: headers.len(),
             },
         );

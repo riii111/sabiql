@@ -251,7 +251,7 @@ impl ResultPane {
             inner,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: viewport_indices.len(),
+                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
                 total_items: total_cols,
             },
         );
