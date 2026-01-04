@@ -8,13 +8,12 @@ A fast, driver-less TUI for browsing PostgreSQL databases.
 
 ## Concept
 
-sabiql wraps your existing database CLI (psql) — no drivers to install, no connection pools to configure. Just point it at your database and browse.
+sabiql wraps your existing database CLI (psql) — no drivers to install, no connection pools to configure. Just point it at your database and browse with vim-like keybindings.
 
 Built to be driver-less and lightweight. No persistent connections, just event-driven rendering when you need it.
 
 ## Features
 
-- **Browse Mode**: Navigate schemas and tables with vim-like keybindings
 - **SQL Modal**: Execute ad-hoc queries with auto-completion
   ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
   Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
@@ -29,6 +28,7 @@ Built to be driver-less and lightweight. No persistent connections, just event-d
 - **Fuzzy Search**: Quickly find tables with incremental filtering
   ![fuzzy-search-1400](https://github.com/user-attachments/assets/4daf8b7a-cf24-4a09-b93a-f7aa9a63cadd)
 
+- **Focus Mode**: Expand any pane to full screen with `f`
 
 ## Installation
 
