@@ -89,7 +89,7 @@ sabiql
 
 | Variable | Description |
 |----------|-------------|
-| `SABIQL_BROWSER` | Custom browser for ER diagrams (e.g., `firefox`, `chromium`). Falls back to OS default if unset. |
+| `SABIQL_BROWSER` | Custom browser command for ER diagrams. Supports arguments (e.g., `open -a Arc`, `firefox`). Falls back to OS default if unset. |
 
 ## Roadmap
 

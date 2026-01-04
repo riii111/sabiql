@@ -32,6 +32,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
     error::install_hooks()?;
 
     let args = Args::parse();
