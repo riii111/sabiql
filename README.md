@@ -75,7 +75,6 @@ sabiql
 | `f` | Toggle focus mode |
 | `s` | Open SQL modal |
 | `e` | Open ER diagram |
-| `c` | Open pgcli console |
 | `Ctrl+K` | Command palette |
 | `?` | Show help |
 | `q` | Quit |
