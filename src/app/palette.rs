@@ -23,11 +23,6 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         action: Action::OpenSqlModal,
     },
     PaletteCommand {
-        key: ":open-console",
-        description: "Open Console (pgcli)",
-        action: Action::OpenConsole,
-    },
-    PaletteCommand {
         key: "e / :erd",
         description: "Open ER Diagram",
         action: Action::ErOpenDiagram,
