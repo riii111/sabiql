@@ -24,7 +24,11 @@ Built to be driver-less and lightweight. No persistent connections, just event-d
   ![er-diagram-1400](https://github.com/user-attachments/assets/53d09bea-5013-4b0b-b20c-a861a3d90e1f)
 
 - **Inspector Pane**: View column details, types, constraints, and indexes for any table
+  ![inspector-1400](https://github.com/user-attachments/assets/fde64b47-fe1f-417b-9b9f-f65dcdac32c6)
+
 - **Fuzzy Search**: Quickly find tables with incremental filtering
+  ![fuzzy-search-1400](https://github.com/user-attachments/assets/4daf8b7a-cf24-4a09-b93a-f7aa9a63cadd)
+
 
 ## Installation
 
