@@ -89,6 +89,40 @@ fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
     }
 }
 
+/// Attempts to add a bonus column if slack space allows.
+/// Returns true if bonus column was added.
+fn try_add_bonus_column(
+    config: &ColumnWidthConfig,
+    indices: &mut Vec<usize>,
+    widths: &mut Vec<u16>,
+    available_width: u16,
+) -> bool {
+    if indices.is_empty() {
+        return false;
+    }
+
+    let rightmost_idx = indices.last().copied().unwrap_or(0);
+    let next_idx = rightmost_idx + 1;
+
+    if next_idx >= config.ideal_widths.len() {
+        return false;
+    }
+
+    let current_total = total_width_with_separators(widths);
+    let slack = available_width.saturating_sub(current_total);
+
+    let next_ideal_width = config.ideal_widths[next_idx];
+    let needed = next_ideal_width + 1; // +1 for separator
+
+    if slack >= needed {
+        indices.push(next_idx);
+        widths.push(next_ideal_width);
+        return true;
+    }
+
+    false
+}
+
 pub fn select_viewport_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
