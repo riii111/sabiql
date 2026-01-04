@@ -157,6 +157,12 @@ fn select_fixed_columns(
     }
 
     let mut widths: Vec<u16> = indices.iter().map(|&i| config.ideal_widths[i]).collect();
+
+    // Add bonus column when scrolling is needed (max_offset > 0)
+    if ctx.max_offset > 0 {
+        try_add_bonus_column(config, &mut indices, &mut widths, ctx.available_width);
+    }
+
     let total_needed = total_width_with_separators(&widths);
 
     if total_needed > ctx.available_width {
