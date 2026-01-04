@@ -50,6 +50,7 @@ sabiql
 - **Browse Mode**: Navigate schemas and tables with vim-like keybindings
 - **SQL Modal**: Execute ad-hoc queries with auto-completion
   ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
+  Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
 
 - **ER Diagram**: Generate relationship diagrams via Graphviz
 - **Console Integration**: Seamless integration with pgcli
@@ -73,6 +74,13 @@ sabiql
 
 - PostgreSQL (`psql` CLI must be available)
 - Graphviz (optional, for ER diagrams): `brew install graphviz`
+
+## Roadmap
+
+- [ ] **Connection UI** — Interactive database connection setup
+- [ ] **Expanded viewport** — Wider display area with improved horizontal scrolling
+- [ ] **Focused ER diagrams** — Generate diagrams centered on a specific table
+- [ ] **MySQL support** — Extend driver-less architecture to MySQL
 
 ## License
 
