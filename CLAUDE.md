@@ -30,7 +30,7 @@ src/
 - `ui/adapters/` → `app/ports/` (implements traits)
 
 **Forbidden:**
-- `app/` → `ui/` (use Renderer/TuiSession ports instead)
+- `app/` → `ui/` (use Renderer port instead)
 - `app/` → `infra/` (use ports like MetadataProvider, ConfigWriter)
 - `ui/` → `infra/`
 
