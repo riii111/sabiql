@@ -230,7 +230,6 @@ impl SqlModal {
             .map(|(i, candidate)| {
                 let is_selected = i == selected;
 
-                // Kind label (pgcli style)
                 let kind_label = match candidate.kind {
                     CompletionKind::Keyword => "keyword",
                     CompletionKind::Table => "table",
