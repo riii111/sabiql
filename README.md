@@ -1,4 +1,5 @@
 # sabiql
+![demo-1200](https://github.com/user-attachments/assets/73ad57bd-ad9a-486d-9e27-5b7098563f00)
 
 A fast, driver-less TUI for browsing PostgreSQL databases.
 
@@ -48,6 +49,8 @@ sabiql
 
 - **Browse Mode**: Navigate schemas and tables with vim-like keybindings
 - **SQL Modal**: Execute ad-hoc queries with auto-completion
+  ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
+
 - **ER Diagram**: Generate relationship diagrams via Graphviz
 - **Console Integration**: Seamless integration with pgcli
 
