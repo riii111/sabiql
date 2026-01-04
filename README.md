@@ -10,9 +10,21 @@ A fast, driver-less TUI for browsing PostgreSQL databases.
 
 sabiql wraps your existing database CLI (psql) — no drivers to install, no connection pools to configure. Just point it at your database and browse.
 
-- **Driver-less**: Uses psql directly, no Rust database drivers needed
-- **ER Diagram**: Visualize table relationships via Graphviz export
-- **Lightweight**: No persistent connections, event-driven rendering
+Built to be driver-less and lightweight. No persistent connections, just event-driven rendering when you need it.
+
+## Features
+
+- **Browse Mode**: Navigate schemas and tables with vim-like keybindings
+- **SQL Modal**: Execute ad-hoc queries with auto-completion
+  ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
+  Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
+
+- **ER Diagram**: Generate relationship diagrams via Graphviz
+  Press `e` to instantly open an ER diagram in your browser — see table relationships at a glance.
+  ![er-diagram-1400](https://github.com/user-attachments/assets/53d09bea-5013-4b0b-b20c-a861a3d90e1f)
+
+- **Inspector Pane**: View column details, types, constraints, and indexes for any table
+- **Fuzzy Search**: Quickly find tables with incremental filtering
 
 ## Installation
 
@@ -44,18 +56,6 @@ sabiql
 ```
 
 3. Press `?` for help.
-
-## Features
-
-- **Browse Mode**: Navigate schemas and tables with vim-like keybindings
-- **SQL Modal**: Execute ad-hoc queries with auto-completion
-  ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
-  Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
-
-- **ER Diagram**: Generate relationship diagrams via Graphviz
-  ![er-diagram-1400](https://github.com/user-attachments/assets/53d09bea-5013-4b0b-b20c-a861a3d90e1f)
-
-- **Console Integration**: Seamless integration with pgcli
 
 ## Keybindings
 
