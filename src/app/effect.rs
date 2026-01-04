@@ -74,4 +74,3 @@ impl Effect {
         matches!(self, Effect::Render)
     }
 }
-
