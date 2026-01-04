@@ -85,6 +85,12 @@ sabiql
 - PostgreSQL (`psql` CLI must be available)
 - Graphviz (optional, for ER diagrams): `brew install graphviz`
 
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SABIQL_BROWSER` | Custom browser/app name for ER diagrams (e.g., `Arc`, `Firefox`). On macOS, uses `open -a` automatically. Falls back to OS default if unset. |
+
 ## Roadmap
 
 - [ ] **Connection UI** — Interactive database connection setup
