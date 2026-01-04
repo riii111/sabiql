@@ -25,7 +25,7 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use crate::app::ports::{
-    ConfigWriter, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer, TuiSession,
+    ConfigWriter, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
@@ -58,7 +58,7 @@ impl EffectRunner {
         }
     }
 
-    pub async fn run<T: Renderer + TuiSession>(
+    pub async fn run<T: Renderer>(
         &self,
         effects: Vec<Effect>,
         tui: &mut T,
@@ -82,78 +82,14 @@ impl EffectRunner {
         Ok(())
     }
 
-    async fn run_single<T: Renderer + TuiSession>(
+    async fn run_single<T: Renderer>(
         &self,
         effect: Effect,
         tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
     ) -> Result<()> {
-        if effect.is_exclusive() {
-            self.run_exclusive(effect, tui, state).await
-        } else {
-            self.run_normal(effect, tui, state, completion_engine).await
-        }
-    }
-
-    /// Exclusive effects run while TUI is suspended, so blocking the tokio
-    /// worker is acceptable—no rendering or async tasks need to proceed.
-    async fn run_exclusive<T: TuiSession>(
-        &self,
-        effect: Effect,
-        tui: &mut T,
-        _state: &mut AppState,
-    ) -> Result<()> {
-        match effect {
-            Effect::OpenConsole { dsn, project_name } => {
-                let cache_dir = self.config_writer.get_cache_dir(&project_name)?;
-                let pgclirc = self.config_writer.generate_pgclirc(&cache_dir)?;
-
-                let status = tui.with_suspended(|| {
-                    std::process::Command::new("pgcli")
-                        .arg("--pgclirc")
-                        .arg(&pgclirc)
-                        .arg(&dsn)
-                        .status()
-                })?;
-
-                match status {
-                    Err(e) => {
-                        let _ = self
-                            .action_tx
-                            .send(Action::ConsoleFailed(format!(
-                                "pgcli failed to start: {}",
-                                e
-                            )))
-                            .await;
-                    }
-                    Ok(exit_status) if !exit_status.success() => {
-                        let code = exit_status
-                            .code()
-                            .map_or("unknown".to_string(), |c| c.to_string());
-                        let _ = self
-                            .action_tx
-                            .send(Action::ConsoleFailed(format!(
-                                "pgcli exited with code {}",
-                                code
-                            )))
-                            .await;
-                    }
-                    Ok(_) => {}
-                }
-
-                let _ = self.action_tx.send(Action::Render).await;
-                Ok(())
-            }
-            _ => {
-                debug_assert!(
-                    false,
-                    "Non-exclusive effect passed to run_exclusive: {:?}",
-                    effect
-                );
-                Ok(())
-            }
-        }
+        self.run_normal(effect, tui, state, completion_engine).await
     }
 
     async fn run_normal<T: Renderer>(
@@ -430,11 +366,6 @@ impl EffectRunner {
                         let _ = write_er_failure_log_blocking(failed_tables, cache_dir);
                     });
                 }
-                Ok(())
-            }
-
-            Effect::OpenConsole { .. } => {
-                // Handled in run_exclusive
                 Ok(())
             }
 
