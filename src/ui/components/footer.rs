@@ -76,7 +76,6 @@ impl Footer {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
                     }
                     hints.push(("r", "Reload"));
-                    hints.push(("c", "Console"));
                     hints.push(("s", "SQL"));
                     hints.push(("e", "ER Diagram"));
                     hints.push(("^P", "Tables"));
