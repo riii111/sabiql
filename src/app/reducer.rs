@@ -306,6 +306,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::ConnectionSaveCompleted { dsn } => {
             state.connection_setup.is_first_run = false;
             state.runtime.dsn = Some(dsn.clone());
+            state.runtime.active_connection_name = Some(state.connection_setup.auto_name());
             state.ui.input_mode = InputMode::Normal;
             vec![Effect::FetchMetadata { dsn }]
         }
