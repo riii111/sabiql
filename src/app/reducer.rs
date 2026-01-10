@@ -12,6 +12,7 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::connection_setup_state::ConnectionField;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
@@ -21,6 +22,7 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::domain::MetadataState;
+use crate::domain::connection::SslMode;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
@@ -125,26 +127,155 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
-        // Connection Setup form actions (implemented in Phase C)
-        Action::ConnectionSetupInput(_)
-        | Action::ConnectionSetupBackspace
-        | Action::ConnectionSetupNextField
-        | Action::ConnectionSetupPrevField
-        | Action::ConnectionSetupToggleDropdown
-        | Action::ConnectionSetupDropdownNext
-        | Action::ConnectionSetupDropdownPrev
-        | Action::ConnectionSetupDropdownConfirm
-        | Action::ConnectionSetupDropdownCancel
-        | Action::ConnectionSetupSave
-        | Action::ConnectionSetupCancel
-        | Action::ConnectionSaveCompleted
-        | Action::ConnectionSaveFailed(_) => {
+        // ===== Connection Setup Form =====
+        Action::ConnectionSetupInput(c) => {
+            let setup = &mut state.connection_setup;
+            match setup.focused_field {
+                ConnectionField::Host => setup.host.push(c),
+                ConnectionField::Port => {
+                    if c.is_ascii_digit() && setup.port.len() < 5 {
+                        setup.port.push(c);
+                    }
+                }
+                ConnectionField::Database => setup.database.push(c),
+                ConnectionField::User => setup.user.push(c),
+                ConnectionField::Password => setup.password.push(c),
+                ConnectionField::SslMode => {}
+            }
+            vec![]
+        }
+        Action::ConnectionSetupBackspace => {
+            let setup = &mut state.connection_setup;
+            match setup.focused_field {
+                ConnectionField::Host => {
+                    setup.host.pop();
+                }
+                ConnectionField::Port => {
+                    setup.port.pop();
+                }
+                ConnectionField::Database => {
+                    setup.database.pop();
+                }
+                ConnectionField::User => {
+                    setup.user.pop();
+                }
+                ConnectionField::Password => {
+                    setup.password.pop();
+                }
+                ConnectionField::SslMode => {}
+            }
+            vec![]
+        }
+        Action::ConnectionSetupNextField => {
+            let setup = &mut state.connection_setup;
+            validate_field(setup, setup.focused_field);
+            if let Some(next) = setup.focused_field.next() {
+                setup.focused_field = next;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupPrevField => {
+            let setup = &mut state.connection_setup;
+            if let Some(prev) = setup.focused_field.prev() {
+                setup.focused_field = prev;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupToggleDropdown => {
+            let setup = &mut state.connection_setup;
+            if setup.focused_field == ConnectionField::SslMode {
+                setup.ssl_dropdown.is_open = !setup.ssl_dropdown.is_open;
+                if setup.ssl_dropdown.is_open {
+                    setup.ssl_dropdown.selected_index = SslMode::all_variants()
+                        .iter()
+                        .position(|v| *v == setup.ssl_mode)
+                        .unwrap_or(2);
+                }
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownNext => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                let max = SslMode::all_variants().len() - 1;
+                if setup.ssl_dropdown.selected_index < max {
+                    setup.ssl_dropdown.selected_index += 1;
+                }
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownPrev => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                setup.ssl_dropdown.selected_index =
+                    setup.ssl_dropdown.selected_index.saturating_sub(1);
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownConfirm => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
+                    setup.ssl_mode = *mode;
+                }
+                setup.ssl_dropdown.is_open = false;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownCancel => {
+            state.connection_setup.ssl_dropdown.is_open = false;
+            vec![]
+        }
+        Action::ConnectionSetupSave => {
+            let setup = &mut state.connection_setup;
+            validate_all(setup);
+            if setup.validation_errors.is_empty() {
+                let port = setup.port.parse().unwrap_or(5432);
+                vec![Effect::SaveAndConnect {
+                    host: setup.host.clone(),
+                    port,
+                    database: setup.database.clone(),
+                    user: setup.user.clone(),
+                    password: setup.password.clone(),
+                    ssl_mode: setup.ssl_mode,
+                }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ConnectionSetupCancel => {
+            if state.connection_setup.is_first_run {
+                state.confirm_dialog.title = "Confirm".to_string();
+                state.confirm_dialog.message =
+                    "No connection configured.\nAre you sure you want to quit?".to_string();
+                state.confirm_dialog.on_confirm = Action::Quit;
+                state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+                state.ui.input_mode = InputMode::ConfirmDialog;
+            } else {
+                state.ui.input_mode = InputMode::Normal;
+            }
+            vec![]
+        }
+        Action::ConnectionSaveCompleted => {
+            state.connection_setup.is_first_run = false;
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::ConnectionSaveFailed(msg) => {
+            state.messages.set_error_at(msg, now);
             vec![]
         }
 
-        // Confirm Dialog actions (implemented in Phase C)
-        Action::ConfirmDialogConfirm | Action::ConfirmDialogCancel => {
-            vec![]
+        // ===== Confirm Dialog =====
+        Action::ConfirmDialogConfirm => {
+            let action = state.confirm_dialog.on_confirm.clone();
+            state.ui.input_mode = InputMode::Normal;
+            reduce(state, action, now)
+        }
+        Action::ConfirmDialogCancel => {
+            let action = state.confirm_dialog.on_cancel.clone();
+            state.ui.input_mode = InputMode::Normal;
+            reduce(state, action, now)
         }
 
         // ===== Filter Input =====
@@ -1236,6 +1367,68 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 
 fn char_count(s: &str) -> usize {
     s.chars().count()
+}
+
+// ===== Connection Setup Validation =====
+
+use crate::app::connection_setup_state::ConnectionSetupState;
+
+fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+    state.validation_errors.remove(&field);
+
+    match field {
+        ConnectionField::Host => {
+            if state.host.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::Port => {
+            if state.port.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            } else {
+                match state.port.parse::<u16>() {
+                    Err(_) => {
+                        state
+                            .validation_errors
+                            .insert(field, "Invalid port".to_string());
+                    }
+                    Ok(0) => {
+                        state
+                            .validation_errors
+                            .insert(field, "Port must be > 0".to_string());
+                    }
+                    Ok(_) => {}
+                }
+            }
+        }
+        ConnectionField::Database => {
+            if state.database.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::User => {
+            if state.user.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::Password | ConnectionField::SslMode => {
+            // Optional fields, no validation needed
+        }
+    }
+}
+
+fn validate_all(state: &mut ConnectionSetupState) {
+    for field in ConnectionField::all() {
+        validate_field(state, *field);
+    }
 }
 
 #[cfg(test)]

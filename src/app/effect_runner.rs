@@ -111,6 +111,9 @@ impl EffectRunner {
                 Ok(())
             }
 
+            // SaveAndConnect is implemented in Phase F
+            Effect::SaveAndConnect { .. } => Ok(()),
+
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;
                 Ok(())
