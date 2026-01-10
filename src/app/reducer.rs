@@ -125,6 +125,28 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
+        // Connection Setup form actions (implemented in Phase C)
+        Action::ConnectionSetupInput(_)
+        | Action::ConnectionSetupBackspace
+        | Action::ConnectionSetupNextField
+        | Action::ConnectionSetupPrevField
+        | Action::ConnectionSetupToggleDropdown
+        | Action::ConnectionSetupDropdownNext
+        | Action::ConnectionSetupDropdownPrev
+        | Action::ConnectionSetupDropdownConfirm
+        | Action::ConnectionSetupDropdownCancel
+        | Action::ConnectionSetupSave
+        | Action::ConnectionSetupCancel
+        | Action::ConnectionSaveCompleted
+        | Action::ConnectionSaveFailed(_) => {
+            vec![]
+        }
+
+        // Confirm Dialog actions (implemented in Phase C)
+        Action::ConfirmDialogConfirm | Action::ConfirmDialogCancel => {
+            vec![]
+        }
+
         // ===== Filter Input =====
         Action::FilterInput(c) => {
             state.ui.filter_input.push(c);

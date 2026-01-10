@@ -32,6 +32,19 @@ pub enum Action {
     // Connection Setup
     OpenConnectionSetup,
     CloseConnectionSetup,
+    ConnectionSetupInput(char),
+    ConnectionSetupBackspace,
+    ConnectionSetupNextField,
+    ConnectionSetupPrevField,
+    ConnectionSetupToggleDropdown,
+    ConnectionSetupDropdownNext,
+    ConnectionSetupDropdownPrev,
+    ConnectionSetupDropdownConfirm,
+    ConnectionSetupDropdownCancel,
+    ConnectionSetupSave,
+    ConnectionSetupCancel,
+    ConnectionSaveCompleted,
+    ConnectionSaveFailed(String),
 
     // Connection Error
     OpenConnectionError,
@@ -40,6 +53,8 @@ pub enum Action {
     // Confirm Dialog
     OpenConfirmDialog,
     CloseConfirmDialog,
+    ConfirmDialogConfirm,
+    ConfirmDialogCancel,
 
     // Command line actions
     EnterCommandLine,
