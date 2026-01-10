@@ -81,11 +81,8 @@ impl Explorer {
             .fg(Color::White)
             .add_modifier(Modifier::BOLD);
 
-        let [header_area, list_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Min(1),
-        ])
-        .areas(area);
+        let [header_area, list_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(tables_header, header_style))),
