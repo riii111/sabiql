@@ -1782,18 +1782,95 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state() {
+        fn metadata_failed_sets_error_state_and_opens_modal() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::MetadataFailed("Connection failed".to_string()),
+                Action::MetadataFailed("psql: error: connection refused".to_string()),
                 now,
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
+        }
+    }
+
+    mod connection_error_actions {
+        use super::*;
+        use crate::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+
+        fn state_with_error() -> AppState {
+            let mut state = create_test_state();
+            let info = ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::HostUnreachable,
+                "psql: error: could not translate host",
+            );
+            state.connection_error.set_error(info);
+            state.ui.input_mode = InputMode::ConnectionError;
+            state
+        }
+
+        #[test]
+        fn close_clears_error_and_returns_to_normal() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+        }
+
+        #[test]
+        fn toggle_details_flips_expanded_state() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            assert!(!state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(!state.connection_error.details_expanded);
+        }
+
+        #[test]
+        fn copy_returns_clipboard_effect() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::CopyConnectionError, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::CopyToClipboard { .. }));
+        }
+
+        #[test]
+        fn copied_marks_feedback_visible() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConnectionErrorCopied, now);
+
+            assert!(state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
+        fn retry_clears_error_and_fetches_metadata() {
+            let mut state = state_with_error();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
     }
 
