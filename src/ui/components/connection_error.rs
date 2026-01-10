@@ -35,9 +35,9 @@ impl ConnectionError {
         frame.render_widget(Clear, area);
 
         let hint_text = if details_expanded {
-            " Scroll: j/k  q to close "
+            " Scroll: ↑/↓/j/k  Esc to close  q to quit "
         } else {
-            " q or Esc to close "
+            " Esc to close  q to quit "
         };
         let block = modal_block_with_hint(" Connection Error ".to_string(), hint_text.to_string());
         let inner = block.inner(area);
