@@ -1060,7 +1060,10 @@ mod tests {
         #[test]
         fn altgr_char_is_allowed() {
             let state = setup_state();
-            let key = key_with_mod(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT);
+            let key = key_with_mod(
+                KeyCode::Char('@'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            );
 
             let result = handle_connection_setup_keys(key, &state);
 
