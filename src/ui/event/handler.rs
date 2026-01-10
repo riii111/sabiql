@@ -966,4 +966,135 @@ mod tests {
             assert!(matches!(result, Action::CloseSqlModal));
         }
     }
+
+    mod connection_setup_keys {
+        use super::*;
+        use crate::app::connection_setup_state::ConnectionField;
+        use rstest::rstest;
+
+        fn setup_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state
+        }
+
+        #[test]
+        fn tab_moves_to_next_field() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Tab), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupNextField));
+        }
+
+        #[test]
+        fn backtab_moves_to_prev_field() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::BackTab), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupPrevField));
+        }
+
+        #[test]
+        fn ctrl_s_saves() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('s'), KeyModifiers::CONTROL);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn esc_cancels() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Esc), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupCancel));
+        }
+
+        #[test]
+        fn char_input_sends_input_action() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Char('a')), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('a')));
+        }
+
+        #[test]
+        fn backspace_sends_backspace_action() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Backspace), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupBackspace));
+        }
+
+        #[test]
+        fn enter_on_ssl_field_toggles_dropdown() {
+            let mut state = setup_state();
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        mod dropdown_open {
+            use super::*;
+
+            fn dropdown_state() -> AppState {
+                let mut state = setup_state();
+                state.connection_setup.ssl_dropdown.is_open = true;
+                state
+            }
+
+            #[rstest]
+            #[case(KeyCode::Up, Action::ConnectionSetupDropdownPrev)]
+            #[case(KeyCode::Down, Action::ConnectionSetupDropdownNext)]
+            #[case(KeyCode::Enter, Action::ConnectionSetupDropdownConfirm)]
+            #[case(KeyCode::Esc, Action::ConnectionSetupDropdownCancel)]
+            fn dropdown_navigation(#[case] code: KeyCode, #[case] expected: Action) {
+                let state = dropdown_state();
+
+                let result = handle_connection_setup_keys(key(code), &state);
+
+                assert_eq!(
+                    std::mem::discriminant(&result),
+                    std::mem::discriminant(&expected)
+                );
+            }
+        }
+    }
+
+    mod confirm_dialog_keys {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Char('y'), Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Char('Y'), Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
+        #[case(KeyCode::Char('n'), Action::ConfirmDialogCancel)]
+        #[case(KeyCode::Char('N'), Action::ConfirmDialogCancel)]
+        fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
+            let result = handle_confirm_dialog_keys(key(code));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_confirm_dialog_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
 }

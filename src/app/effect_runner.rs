@@ -123,19 +123,18 @@ impl EffectRunner {
                 password,
                 ssl_mode,
             } => {
-                let profile = ConnectionProfile::new(host, port, database, user, password, ssl_mode);
+                let profile =
+                    ConnectionProfile::new(host, port, database, user, password, ssl_mode);
                 let dsn = profile.to_dsn();
                 let store = Arc::clone(&self.connection_store);
                 let tx = self.action_tx.clone();
 
-                tokio::task::spawn_blocking(move || {
-                    match store.save(&profile) {
-                        Ok(()) => {
-                            let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn });
-                        }
-                        Err(e) => {
-                            let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
-                        }
+                tokio::task::spawn_blocking(move || match store.save(&profile) {
+                    Ok(()) => {
+                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn });
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
                     }
                 });
                 Ok(())

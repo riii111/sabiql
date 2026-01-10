@@ -43,7 +43,9 @@ pub enum Action {
     ConnectionSetupDropdownCancel,
     ConnectionSetupSave,
     ConnectionSetupCancel,
-    ConnectionSaveCompleted { dsn: String },
+    ConnectionSaveCompleted {
+        dsn: String,
+    },
     ConnectionSaveFailed(String),
 
     // Connection Error

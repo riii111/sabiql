@@ -10,10 +10,10 @@ use sabiql::app::action::Action;
 use sabiql::app::cache::TtlCache;
 use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect_runner::EffectRunner;
-use sabiql::app::reducer::reduce;
-use sabiql::app::state::AppState;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::ports::ConnectionStore;
+use sabiql::app::reducer::reduce;
+use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
 use sabiql::infra::config::{

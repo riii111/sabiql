@@ -1966,4 +1966,102 @@ mod tests {
             );
         }
     }
+
+    mod connection_setup_validation {
+        use super::*;
+        use rstest::rstest;
+
+        fn setup_state() -> ConnectionSetupState {
+            ConnectionSetupState::default()
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Host, "", true)]
+        #[case(ConnectionField::Host, "  ", true)]
+        #[case(ConnectionField::Host, "localhost", false)]
+        #[case(ConnectionField::Database, "", true)]
+        #[case(ConnectionField::Database, "mydb", false)]
+        #[case(ConnectionField::User, "", true)]
+        #[case(ConnectionField::User, "postgres", false)]
+        fn required_field_validation(
+            #[case] field: ConnectionField,
+            #[case] value: &str,
+            #[case] has_error: bool,
+        ) {
+            let mut state = setup_state();
+            match field {
+                ConnectionField::Host => state.host = value.to_string(),
+                ConnectionField::Database => state.database = value.to_string(),
+                ConnectionField::User => state.user = value.to_string(),
+                _ => {}
+            }
+
+            validate_field(&mut state, field);
+
+            assert_eq!(state.validation_errors.contains_key(&field), has_error);
+        }
+
+        #[rstest]
+        #[case("", true)]
+        #[case("abc", true)]
+        #[case("0", true)]
+        #[case("1", false)]
+        #[case("5432", false)]
+        #[case("65535", false)]
+        #[case("65536", true)]
+        #[case("99999", true)]
+        fn port_validation(#[case] value: &str, #[case] has_error: bool) {
+            let mut state = setup_state();
+            state.port = value.to_string();
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert_eq!(
+                state.validation_errors.contains_key(&ConnectionField::Port),
+                has_error
+            );
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Password)]
+        #[case(ConnectionField::SslMode)]
+        fn optional_fields_never_error(#[case] field: ConnectionField) {
+            let mut state = setup_state();
+            state.password = String::new();
+
+            validate_field(&mut state, field);
+
+            assert!(!state.validation_errors.contains_key(&field));
+        }
+
+        #[test]
+        fn validate_all_checks_all_required_fields() {
+            let mut state = setup_state();
+            state.host = String::new();
+            state.port = "invalid".to_string();
+            state.database = String::new();
+            state.user = String::new();
+
+            validate_all(&mut state);
+
+            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Database)
+            );
+            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Password)
+            );
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::SslMode)
+            );
+        }
+    }
 }
