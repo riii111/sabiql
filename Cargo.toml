@@ -21,6 +21,8 @@ clap = { version = "4", features = ["derive"] }
 dirs = "5"
 dotenvy = "0.15"
 csv = "1"
+uuid = { version = "1", features = ["v4"] }
+urlencoding = "2"
 
 [dev-dependencies]
 pretty_assertions = "1"
