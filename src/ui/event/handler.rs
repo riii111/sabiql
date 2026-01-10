@@ -28,10 +28,9 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
                 && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
-        // Placeholder handlers - will be implemented in Phase 6
-        InputMode::ConnectionSetup => Action::None,
-        InputMode::ConnectionError => Action::None,
-        InputMode::ConfirmDialog => Action::None,
+        InputMode::ConnectionSetup => handle_connection_setup_keys(key),
+        InputMode::ConnectionError => handle_connection_error_keys(key),
+        InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
     }
 }
 
@@ -221,6 +220,27 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
         (KeyCode::Tab, _, false) => Action::SqlModalTab,
         (KeyCode::Char('l'), m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalClear,
         (KeyCode::Char(c), _, _) => Action::SqlModalInput(c),
+        _ => Action::None,
+    }
+}
+
+fn handle_connection_setup_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CloseConnectionSetup,
+        _ => Action::None,
+    }
+}
+
+fn handle_connection_error_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CloseConnectionError,
+        _ => Action::None,
+    }
+}
+
+fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CloseConfirmDialog,
         _ => Action::None,
     }
 }
