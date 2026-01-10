@@ -28,6 +28,10 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
                 && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
+        // Placeholder handlers - will be implemented in Phase 6
+        InputMode::ConnectionSetup => Action::None,
+        InputMode::ConnectionError => Action::None,
+        InputMode::ConfirmDialog => Action::None,
     }
 }
 
