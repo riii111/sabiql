@@ -95,7 +95,7 @@ impl Footer {
             InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
             InputMode::SqlModal => vec![("⌥Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
             InputMode::ConnectionSetup => vec![("Esc", "Close")],
-            InputMode::ConnectionError => vec![("Esc", "Close")],
+            InputMode::ConnectionError => vec![("Esc", "Close"), ("q", "Quit")],
             InputMode::ConfirmDialog => vec![("Esc", "Close")],
         }
     }

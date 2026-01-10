@@ -12,6 +12,7 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_setup_state::ConnectionField;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
@@ -110,12 +111,57 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.ui.input_mode = InputMode::Normal;
             vec![]
         }
-        Action::OpenConnectionError => {
+        Action::ShowConnectionError(info) => {
+            state.connection_error.set_error(info);
             state.ui.input_mode = InputMode::ConnectionError;
             vec![]
         }
         Action::CloseConnectionError => {
+            // Keep error_info so Enter can re-open modal
+            state.connection_error.details_expanded = false;
+            state.connection_error.scroll_offset = 0;
+            state.connection_error.clear_copied_feedback();
             state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::ToggleConnectionErrorDetails => {
+            state.connection_error.toggle_details();
+            vec![]
+        }
+        Action::ScrollConnectionErrorUp => {
+            state.connection_error.scroll_up();
+            vec![]
+        }
+        Action::ScrollConnectionErrorDown => {
+            // TODO: Calculate max_scroll from UI viewport in Phase 6b
+            state.connection_error.scroll_down(100);
+            vec![]
+        }
+        Action::CopyConnectionError => {
+            if let Some(content) = state.connection_error.masked_details() {
+                vec![Effect::CopyToClipboard {
+                    content: content.to_string(),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ConnectionErrorCopied => {
+            state.connection_error.mark_copied_at(now);
+            vec![]
+        }
+        Action::RetryConnection => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::Normal;
+            if let Some(dsn) = &state.runtime.dsn {
+                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ReenterConnectionSetup => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::ConnectionSetup;
             vec![]
         }
         Action::OpenConfirmDialog => {
@@ -664,6 +710,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.connection_error.clear();
             state
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
@@ -676,7 +723,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
         }
         Action::MetadataFailed(error) => {
+            let error_info = ConnectionErrorInfo::new(&error);
+            state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -1007,6 +1057,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             } else if state.ui.input_mode == InputMode::Normal
                 && state.ui.focused_pane == FocusedPane::Explorer
             {
+                if matches!(state.cache.state, MetadataState::Error(_)) {
+                    state.ui.input_mode = InputMode::ConnectionError;
+                    return effects;
+                }
+
                 let tables = state.tables();
                 if let Some(table) = tables.get(state.ui.explorer_selected).cloned() {
                     let schema = table.schema.clone();
@@ -1727,18 +1782,144 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state() {
+        fn metadata_failed_sets_error_state_without_opening_modal() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::MetadataFailed("Connection failed".to_string()),
+                Action::MetadataFailed("psql: error: connection refused".to_string()),
                 now,
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
+            // Modal is NOT opened - user must press Enter in Explorer to see details
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn enter_in_explorer_with_error_opens_modal() {
+            let mut state = create_test_state();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+        }
+    }
+
+    mod connection_error_actions {
+        use super::*;
+        use crate::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+
+        fn state_with_error() -> AppState {
+            let mut state = create_test_state();
+            let info = ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::HostUnreachable,
+                "psql: error: could not translate host",
+            );
+            state.connection_error.set_error(info);
+            state.ui.input_mode = InputMode::ConnectionError;
+            state
+        }
+
+        #[test]
+        fn close_keeps_error_info_for_reopen() {
+            let mut state = state_with_error();
+            state.connection_error.details_expanded = true;
+            state.connection_error.scroll_offset = 5;
+            let now = Instant::now();
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            // error_info is kept so Enter can re-open modal
+            assert!(state.connection_error.error_info.is_some());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            // UI state is reset
+            assert!(!state.connection_error.details_expanded);
+            assert_eq!(state.connection_error.scroll_offset, 0);
+        }
+
+        #[test]
+        fn close_clears_copied_feedback() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.is_copied_visible_at(now));
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            // Copied feedback is cleared on close
+            assert!(!state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
+        fn reopen_modal_after_close_shows_same_error() {
+            let mut state = state_with_error();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            // Close modal
+            reduce(&mut state, Action::CloseConnectionError, now);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+
+            // Re-open with Enter
+            reduce(&mut state, Action::ConfirmSelection, now);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_some());
+        }
+
+        #[test]
+        fn toggle_details_flips_expanded_state() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            assert!(!state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(!state.connection_error.details_expanded);
+        }
+
+        #[test]
+        fn copy_returns_clipboard_effect() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::CopyConnectionError, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::CopyToClipboard { .. }));
+        }
+
+        #[test]
+        fn copied_marks_feedback_visible() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConnectionErrorCopied, now);
+
+            assert!(state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
+        fn retry_clears_error_and_fetches_metadata() {
+            let mut state = state_with_error();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
     }
 

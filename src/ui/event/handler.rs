@@ -267,7 +267,14 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
 
 fn handle_connection_error_keys(key: KeyEvent) -> Action {
     match key.code {
+        KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
+        KeyCode::Char('r') => Action::RetryConnection,
+        KeyCode::Char('e') => Action::ReenterConnectionSetup,
+        KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
+        KeyCode::Char('c') => Action::CopyConnectionError,
+        KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
+        KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
         _ => Action::None,
     }
 }
@@ -937,6 +944,55 @@ mod tests {
                 !matches!(result, Action::None),
                 "Ctrl+H should open Result History per spec, but returns None"
             );
+        }
+    }
+
+    mod connection_error {
+        use super::*;
+        use rstest::rstest;
+
+        enum Expected {
+            Quit,
+            Close,
+            Retry,
+            Reenter,
+            ToggleDetails,
+            Copy,
+            ScrollUp,
+            ScrollDown,
+            None,
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('q'), Expected::Quit)]
+        #[case(KeyCode::Esc, Expected::Close)]
+        #[case(KeyCode::Char('r'), Expected::Retry)]
+        #[case(KeyCode::Char('e'), Expected::Reenter)]
+        #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
+        #[case(KeyCode::Char('c'), Expected::Copy)]
+        #[case(KeyCode::Up, Expected::ScrollUp)]
+        #[case(KeyCode::Char('k'), Expected::ScrollUp)]
+        #[case(KeyCode::Down, Expected::ScrollDown)]
+        #[case(KeyCode::Char('j'), Expected::ScrollDown)]
+        #[case(KeyCode::Tab, Expected::None)]
+        fn connection_error_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_connection_error_keys(key(code));
+
+            match expected {
+                Expected::Quit => assert!(matches!(result, Action::Quit)),
+                Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
+                Expected::Retry => assert!(matches!(result, Action::RetryConnection)),
+                Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
+                Expected::ToggleDetails => {
+                    assert!(matches!(result, Action::ToggleConnectionErrorDetails))
+                }
+                Expected::Copy => assert!(matches!(result, Action::CopyConnectionError)),
+                Expected::ScrollUp => assert!(matches!(result, Action::ScrollConnectionErrorUp)),
+                Expected::ScrollDown => {
+                    assert!(matches!(result, Action::ScrollConnectionErrorDown))
+                }
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
         }
     }
 

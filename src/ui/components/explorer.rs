@@ -11,14 +11,14 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let has_cached_data = state.cache.metadata.is_some() && !state.tables().is_empty();
+        let is_error = matches!(state.cache.state, MetadataState::Error(_));
+        // Don't show stale tables when in error state - keeps Enter behavior consistent
+        let has_cached_data =
+            !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
 
         let title = match &state.cache.state {
             MetadataState::Loading => " [1] Explorer [Loading...] ".to_string(),
-            MetadataState::Error(_) if has_cached_data => {
-                format!(" [1] Explorer [{} tables - Stale] ", state.tables().len())
-            }
             MetadataState::Error(_) => " [1] Explorer [Error] ".to_string(),
             MetadataState::Loaded => {
                 let count = state.tables().len();
@@ -70,8 +70,11 @@ impl Explorer {
                 MetadataState::Loading => {
                     vec![ListItem::new("Loading metadata...")]
                 }
-                MetadataState::Error(e) => {
-                    vec![ListItem::new(format!("Error: {}", e))]
+                MetadataState::Error(_) => {
+                    vec![
+                        ListItem::new("Metadata load failed"),
+                        ListItem::new("(r: retry, Enter: details)"),
+                    ]
                 }
                 MetadataState::Loaded => {
                     vec![ListItem::new("No tables found")]
