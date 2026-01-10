@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod column;
+pub mod connection;
 pub mod er;
 pub mod foreign_key;
 pub mod index;
@@ -22,3 +23,5 @@ pub use query_result::{QueryResult, QuerySource};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use table::{Table, TableSummary};
+
+pub use connection::{ConnectionId, ConnectionProfile, SslMode};
