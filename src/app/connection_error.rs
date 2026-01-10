@@ -1,4 +1,10 @@
+use std::sync::OnceLock;
+
 use regex::Regex;
+
+static URL_RE: OnceLock<Regex> = OnceLock::new();
+static PARAM_RE: OnceLock<Regex> = OnceLock::new();
+static ENV_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -116,13 +122,15 @@ impl ConnectionErrorInfo {
     }
 
     fn mask_password(text: &str) -> String {
-        let url_re = Regex::new(r"(postgres://[^:]+:)[^@]+(@)").unwrap();
+        let url_re = URL_RE.get_or_init(|| {
+            Regex::new(r"(?i)(postgres(?:ql)?://[^:]+:)[^@]+(@)").unwrap()
+        });
         let result = url_re.replace_all(text, "${1}****${2}");
 
-        let param_re = Regex::new(r"(password=)[^\s]+").unwrap();
+        let param_re = PARAM_RE.get_or_init(|| Regex::new(r"(?i)(password=)[^\s]+").unwrap());
         let result = param_re.replace_all(&result, "${1}****");
 
-        let env_re = Regex::new(r"(PGPASSWORD=)[^\s]+").unwrap();
+        let env_re = ENV_RE.get_or_init(|| Regex::new(r"(PGPASSWORD=)[^\s]+").unwrap());
         env_re.replace_all(&result, "${1}****").into_owned()
     }
 }
@@ -217,7 +225,11 @@ mod tests {
 
         #[rstest]
         #[case("postgres://user:secret@host", "postgres://user:****@host")]
+        #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
+        #[case("POSTGRES://user:secret@host", "POSTGRES://user:****@host")]
+        #[case("PostgreSQL://user:secret@host", "PostgreSQL://user:****@host")]
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
+        #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
         #[case("no password here", "no password here")]
         fn masks_correctly(#[case] input: &str, #[case] expected: &str) {

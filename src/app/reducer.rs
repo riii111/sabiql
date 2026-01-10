@@ -1782,7 +1782,7 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state_and_opens_modal() {
+        fn metadata_failed_sets_error_state_without_opening_modal() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -1793,9 +1793,22 @@ mod tests {
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            // Modal is NOT opened - user must press Enter in Explorer to see details
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn enter_in_explorer_with_error_opens_modal() {
+            let mut state = create_test_state();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
         }
     }
 
