@@ -1023,6 +1023,7 @@ dependencies = [
  "insta",
  "pretty_assertions",
  "ratatui",
+ "regex",
  "rstest",
  "serde",
  "serde_json",
