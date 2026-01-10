@@ -3,6 +3,9 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 use super::command_line::CommandLine;
 use super::command_palette::CommandPalette;
+use super::confirm_dialog::ConfirmDialog;
+use super::connection_error::ConnectionError;
+use super::connection_setup::ConnectionSetup;
 use super::explorer::Explorer;
 use super::footer::Footer;
 use super::header::Header;
@@ -41,6 +44,9 @@ impl MainLayout {
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
             InputMode::SqlModal => SqlModal::render(frame, state),
+            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
+            InputMode::ConnectionError => ConnectionError::render(frame, state),
+            InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
             _ => {}
         }
 

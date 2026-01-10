@@ -12,6 +12,8 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::connection_error::ConnectionErrorInfo;
+use crate::app::connection_setup_state::ConnectionField;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
@@ -21,6 +23,7 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::domain::MetadataState;
+use crate::domain::connection::SslMode;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
@@ -97,6 +100,232 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::Escape => {
             state.ui.input_mode = InputMode::Normal;
             vec![]
+        }
+
+        // ===== Connection Modes =====
+        Action::OpenConnectionSetup => {
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            vec![]
+        }
+        Action::CloseConnectionSetup => {
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::ShowConnectionError(info) => {
+            state.connection_error.set_error(info);
+            state.ui.input_mode = InputMode::ConnectionError;
+            vec![]
+        }
+        Action::CloseConnectionError => {
+            // Keep error_info so Enter can re-open modal
+            state.connection_error.details_expanded = false;
+            state.connection_error.scroll_offset = 0;
+            state.connection_error.clear_copied_feedback();
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::ToggleConnectionErrorDetails => {
+            state.connection_error.toggle_details();
+            vec![]
+        }
+        Action::ScrollConnectionErrorUp => {
+            state.connection_error.scroll_up();
+            vec![]
+        }
+        Action::ScrollConnectionErrorDown => {
+            // TODO: Calculate max_scroll from UI viewport in Phase 6b
+            state.connection_error.scroll_down(100);
+            vec![]
+        }
+        Action::CopyConnectionError => {
+            if let Some(content) = state.connection_error.masked_details() {
+                vec![Effect::CopyToClipboard {
+                    content: content.to_string(),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ConnectionErrorCopied => {
+            state.connection_error.mark_copied_at(now);
+            vec![]
+        }
+        Action::RetryConnection => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::Normal;
+            if let Some(dsn) = &state.runtime.dsn {
+                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ReenterConnectionSetup => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            vec![]
+        }
+        Action::OpenConfirmDialog => {
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            vec![]
+        }
+        Action::CloseConfirmDialog => {
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+
+        // ===== Connection Setup Form =====
+        Action::ConnectionSetupInput(c) => {
+            let setup = &mut state.connection_setup;
+            match setup.focused_field {
+                ConnectionField::Host => setup.host.push(c),
+                ConnectionField::Port => {
+                    if c.is_ascii_digit() && setup.port.len() < 5 {
+                        setup.port.push(c);
+                    }
+                }
+                ConnectionField::Database => setup.database.push(c),
+                ConnectionField::User => setup.user.push(c),
+                ConnectionField::Password => setup.password.push(c),
+                ConnectionField::SslMode => {}
+            }
+            vec![]
+        }
+        Action::ConnectionSetupBackspace => {
+            let setup = &mut state.connection_setup;
+            match setup.focused_field {
+                ConnectionField::Host => {
+                    setup.host.pop();
+                }
+                ConnectionField::Port => {
+                    setup.port.pop();
+                }
+                ConnectionField::Database => {
+                    setup.database.pop();
+                }
+                ConnectionField::User => {
+                    setup.user.pop();
+                }
+                ConnectionField::Password => {
+                    setup.password.pop();
+                }
+                ConnectionField::SslMode => {}
+            }
+            vec![]
+        }
+        Action::ConnectionSetupNextField => {
+            let setup = &mut state.connection_setup;
+            validate_field(setup, setup.focused_field);
+            if let Some(next) = setup.focused_field.next() {
+                setup.focused_field = next;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupPrevField => {
+            let setup = &mut state.connection_setup;
+            validate_field(setup, setup.focused_field);
+            if let Some(prev) = setup.focused_field.prev() {
+                setup.focused_field = prev;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupToggleDropdown => {
+            let setup = &mut state.connection_setup;
+            if setup.focused_field == ConnectionField::SslMode {
+                setup.ssl_dropdown.is_open = !setup.ssl_dropdown.is_open;
+                if setup.ssl_dropdown.is_open {
+                    setup.ssl_dropdown.selected_index = SslMode::all_variants()
+                        .iter()
+                        .position(|v| *v == setup.ssl_mode)
+                        .unwrap_or(2);
+                }
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownNext => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                let max = SslMode::all_variants().len() - 1;
+                if setup.ssl_dropdown.selected_index < max {
+                    setup.ssl_dropdown.selected_index += 1;
+                }
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownPrev => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                setup.ssl_dropdown.selected_index =
+                    setup.ssl_dropdown.selected_index.saturating_sub(1);
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownConfirm => {
+            let setup = &mut state.connection_setup;
+            if setup.ssl_dropdown.is_open {
+                if let Some(mode) = SslMode::all_variants().get(setup.ssl_dropdown.selected_index) {
+                    setup.ssl_mode = *mode;
+                }
+                setup.ssl_dropdown.is_open = false;
+            }
+            vec![]
+        }
+        Action::ConnectionSetupDropdownCancel => {
+            state.connection_setup.ssl_dropdown.is_open = false;
+            vec![]
+        }
+        Action::ConnectionSetupSave => {
+            let setup = &mut state.connection_setup;
+            validate_all(setup);
+            if setup.validation_errors.is_empty() {
+                let port = setup.port.parse().unwrap_or(5432);
+                vec![Effect::SaveAndConnect {
+                    host: setup.host.clone(),
+                    port,
+                    database: setup.database.clone(),
+                    user: setup.user.clone(),
+                    password: setup.password.clone(),
+                    ssl_mode: setup.ssl_mode,
+                }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ConnectionSetupCancel => {
+            if state.connection_setup.is_first_run {
+                state.confirm_dialog.title = "Confirm".to_string();
+                state.confirm_dialog.message =
+                    "No connection configured.\nAre you sure you want to quit?".to_string();
+                state.confirm_dialog.on_confirm = Action::Quit;
+                state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+                state.ui.input_mode = InputMode::ConfirmDialog;
+            } else {
+                state.ui.input_mode = InputMode::Normal;
+            }
+            vec![]
+        }
+        Action::ConnectionSaveCompleted { dsn } => {
+            state.connection_setup.is_first_run = false;
+            state.runtime.dsn = Some(dsn.clone());
+            state.ui.input_mode = InputMode::Normal;
+            vec![Effect::FetchMetadata { dsn }]
+        }
+        Action::ConnectionSaveFailed(msg) => {
+            state.messages.set_error_at(msg, now);
+            vec![]
+        }
+
+        // ===== Confirm Dialog =====
+        Action::ConfirmDialogConfirm => {
+            let action = std::mem::replace(&mut state.confirm_dialog.on_confirm, Action::None);
+            state.confirm_dialog.on_cancel = Action::None;
+            state.ui.input_mode = InputMode::Normal;
+            reduce(state, action, now)
+        }
+        Action::ConfirmDialogCancel => {
+            let action = std::mem::replace(&mut state.confirm_dialog.on_cancel, Action::None);
+            state.confirm_dialog.on_confirm = Action::None;
+            state.ui.input_mode = InputMode::Normal;
+            reduce(state, action, now)
         }
 
         // ===== Filter Input =====
@@ -481,6 +710,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.connection_error.clear();
             state
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
@@ -493,7 +723,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
         }
         Action::MetadataFailed(error) => {
+            let error_info = ConnectionErrorInfo::new(&error);
+            state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -824,6 +1057,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             } else if state.ui.input_mode == InputMode::Normal
                 && state.ui.focused_pane == FocusedPane::Explorer
             {
+                if matches!(state.cache.state, MetadataState::Error(_)) {
+                    state.ui.input_mode = InputMode::ConnectionError;
+                    return effects;
+                }
+
                 let tables = state.tables();
                 if let Some(table) = tables.get(state.ui.explorer_selected).cloned() {
                     let schema = table.schema.clone();
@@ -1190,6 +1428,68 @@ fn char_count(s: &str) -> usize {
     s.chars().count()
 }
 
+// ===== Connection Setup Validation =====
+
+use crate::app::connection_setup_state::ConnectionSetupState;
+
+fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
+    state.validation_errors.remove(&field);
+
+    match field {
+        ConnectionField::Host => {
+            if state.host.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::Port => {
+            if state.port.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            } else {
+                match state.port.parse::<u16>() {
+                    Err(_) => {
+                        state
+                            .validation_errors
+                            .insert(field, "Invalid port".to_string());
+                    }
+                    Ok(0) => {
+                        state
+                            .validation_errors
+                            .insert(field, "Port must be > 0".to_string());
+                    }
+                    Ok(_) => {}
+                }
+            }
+        }
+        ConnectionField::Database => {
+            if state.database.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::User => {
+            if state.user.trim().is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Required".to_string());
+            }
+        }
+        ConnectionField::Password | ConnectionField::SslMode => {
+            // Optional fields, no validation needed
+        }
+    }
+}
+
+fn validate_all(state: &mut ConnectionSetupState) {
+    for field in ConnectionField::all() {
+        validate_field(state, *field);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1482,18 +1782,144 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state() {
+        fn metadata_failed_sets_error_state_without_opening_modal() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::MetadataFailed("Connection failed".to_string()),
+                Action::MetadataFailed("psql: error: connection refused".to_string()),
                 now,
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
+            // Modal is NOT opened - user must press Enter in Explorer to see details
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn enter_in_explorer_with_error_opens_modal() {
+            let mut state = create_test_state();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+        }
+    }
+
+    mod connection_error_actions {
+        use super::*;
+        use crate::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+
+        fn state_with_error() -> AppState {
+            let mut state = create_test_state();
+            let info = ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::HostUnreachable,
+                "psql: error: could not translate host",
+            );
+            state.connection_error.set_error(info);
+            state.ui.input_mode = InputMode::ConnectionError;
+            state
+        }
+
+        #[test]
+        fn close_keeps_error_info_for_reopen() {
+            let mut state = state_with_error();
+            state.connection_error.details_expanded = true;
+            state.connection_error.scroll_offset = 5;
+            let now = Instant::now();
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            // error_info is kept so Enter can re-open modal
+            assert!(state.connection_error.error_info.is_some());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            // UI state is reset
+            assert!(!state.connection_error.details_expanded);
+            assert_eq!(state.connection_error.scroll_offset, 0);
+        }
+
+        #[test]
+        fn close_clears_copied_feedback() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.is_copied_visible_at(now));
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            // Copied feedback is cleared on close
+            assert!(!state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
+        fn reopen_modal_after_close_shows_same_error() {
+            let mut state = state_with_error();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            // Close modal
+            reduce(&mut state, Action::CloseConnectionError, now);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+
+            // Re-open with Enter
+            reduce(&mut state, Action::ConfirmSelection, now);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_some());
+        }
+
+        #[test]
+        fn toggle_details_flips_expanded_state() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            assert!(!state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(state.connection_error.details_expanded);
+
+            reduce(&mut state, Action::ToggleConnectionErrorDetails, now);
+            assert!(!state.connection_error.details_expanded);
+        }
+
+        #[test]
+        fn copy_returns_clipboard_effect() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::CopyConnectionError, now);
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::CopyToClipboard { .. }));
+        }
+
+        #[test]
+        fn copied_marks_feedback_visible() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+
+            reduce(&mut state, Action::ConnectionErrorCopied, now);
+
+            assert!(state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
+        fn retry_clears_error_and_fetches_metadata() {
+            let mut state = state_with_error();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
     }
 
@@ -1722,6 +2148,214 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
             );
+        }
+    }
+
+    mod connection_setup_validation {
+        use super::*;
+        use rstest::rstest;
+
+        fn setup_state() -> ConnectionSetupState {
+            ConnectionSetupState::default()
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Host, "", true)]
+        #[case(ConnectionField::Host, "  ", true)]
+        #[case(ConnectionField::Host, "localhost", false)]
+        #[case(ConnectionField::Database, "", true)]
+        #[case(ConnectionField::Database, "mydb", false)]
+        #[case(ConnectionField::User, "", true)]
+        #[case(ConnectionField::User, "postgres", false)]
+        fn required_field_validation(
+            #[case] field: ConnectionField,
+            #[case] value: &str,
+            #[case] has_error: bool,
+        ) {
+            let mut state = setup_state();
+            match field {
+                ConnectionField::Host => state.host = value.to_string(),
+                ConnectionField::Database => state.database = value.to_string(),
+                ConnectionField::User => state.user = value.to_string(),
+                _ => {}
+            }
+
+            validate_field(&mut state, field);
+
+            assert_eq!(state.validation_errors.contains_key(&field), has_error);
+        }
+
+        #[rstest]
+        #[case("", true)]
+        #[case("abc", true)]
+        #[case("0", true)]
+        #[case("1", false)]
+        #[case("5432", false)]
+        #[case("65535", false)]
+        #[case("65536", true)]
+        #[case("99999", true)]
+        fn port_validation(#[case] value: &str, #[case] has_error: bool) {
+            let mut state = setup_state();
+            state.port = value.to_string();
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert_eq!(
+                state.validation_errors.contains_key(&ConnectionField::Port),
+                has_error
+            );
+        }
+
+        #[rstest]
+        #[case(ConnectionField::Password)]
+        #[case(ConnectionField::SslMode)]
+        fn optional_fields_never_error(#[case] field: ConnectionField) {
+            let mut state = setup_state();
+            state.password = String::new();
+
+            validate_field(&mut state, field);
+
+            assert!(!state.validation_errors.contains_key(&field));
+        }
+
+        #[test]
+        fn validate_all_checks_all_required_fields() {
+            let mut state = setup_state();
+            state.host = String::new();
+            state.port = "invalid".to_string();
+            state.database = String::new();
+            state.user = String::new();
+
+            validate_all(&mut state);
+
+            assert!(state.validation_errors.contains_key(&ConnectionField::Host));
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+            assert!(
+                state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Database)
+            );
+            assert!(state.validation_errors.contains_key(&ConnectionField::User));
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::Password)
+            );
+            assert!(
+                !state
+                    .validation_errors
+                    .contains_key(&ConnectionField::SslMode)
+            );
+        }
+    }
+
+    mod connection_setup_transitions {
+        use super::*;
+
+        #[test]
+        fn save_completed_sets_dsn_and_returns_fetch_effect() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = true;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                },
+                now,
+            );
+
+            assert!(!state.connection_setup.is_first_run);
+            assert_eq!(
+                state.runtime.dsn,
+                Some("postgres://localhost/test".to_string())
+            );
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn save_failed_sets_error_message() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveFailed("Write error".to_string()),
+                now,
+            );
+
+            assert!(state.messages.last_error.is_some());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn cancel_on_first_run_opens_confirm_dialog() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = true;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::Quit));
+            assert!(matches!(
+                state.confirm_dialog.on_cancel,
+                Action::OpenConnectionSetup
+            ));
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn cancel_after_save_returns_to_normal() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = false;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+    }
+
+    mod confirm_dialog_transitions {
+        use super::*;
+
+        #[test]
+        fn confirm_executes_on_confirm_action() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.confirm_dialog.on_confirm = Action::Quit;
+            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmDialogConfirm, now);
+
+            assert!(state.should_quit);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
+            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+        }
+
+        #[test]
+        fn cancel_executes_on_cancel_action() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.confirm_dialog.on_confirm = Action::Quit;
+            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmDialogCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
+            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
         }
     }
 }

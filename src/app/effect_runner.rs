@@ -25,9 +25,10 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use crate::app::ports::{
-    ConfigWriter, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
+    ConfigWriter, ConnectionStore, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
 
 pub struct EffectRunner {
@@ -35,6 +36,7 @@ pub struct EffectRunner {
     query_executor: Arc<dyn QueryExecutor>,
     er_exporter: Arc<dyn ErDiagramExporter>,
     config_writer: Arc<dyn ConfigWriter>,
+    connection_store: Arc<dyn ConnectionStore>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -45,6 +47,7 @@ impl EffectRunner {
         query_executor: Arc<dyn QueryExecutor>,
         er_exporter: Arc<dyn ErDiagramExporter>,
         config_writer: Arc<dyn ConfigWriter>,
+        connection_store: Arc<dyn ConnectionStore>,
         metadata_cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
     ) -> Self {
@@ -53,6 +56,7 @@ impl EffectRunner {
             query_executor,
             er_exporter,
             config_writer,
+            connection_store,
             metadata_cache,
             action_tx,
         }
@@ -108,6 +112,31 @@ impl EffectRunner {
                 state.ui.result_viewport_plan = output.result_viewport_plan;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
+                Ok(())
+            }
+
+            Effect::SaveAndConnect {
+                host,
+                port,
+                database,
+                user,
+                password,
+                ssl_mode,
+            } => {
+                let profile =
+                    ConnectionProfile::new(host, port, database, user, password, ssl_mode);
+                let dsn = profile.to_dsn();
+                let store = Arc::clone(&self.connection_store);
+                let tx = self.action_tx.clone();
+
+                tokio::task::spawn_blocking(move || match store.save(&profile) {
+                    Ok(()) => {
+                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn });
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                    }
+                });
                 Ok(())
             }
 
@@ -378,6 +407,18 @@ impl EffectRunner {
                 for action in actions {
                     let _ = self.action_tx.send(action).await;
                 }
+                Ok(())
+            }
+
+            Effect::CopyToClipboard { content } => {
+                let tx = self.action_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Ok(mut clipboard) = arboard::Clipboard::new()
+                        && clipboard.set_text(&content).is_ok()
+                    {
+                        let _ = tx.blocking_send(Action::ConnectionErrorCopied);
+                    }
+                });
                 Ok(())
             }
         }

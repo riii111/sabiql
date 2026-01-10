@@ -7,4 +7,7 @@ pub enum InputMode {
     CommandPalette,
     Help,
     SqlModal,
+    ConnectionSetup,
+    ConnectionError,
+    ConfirmDialog,
 }

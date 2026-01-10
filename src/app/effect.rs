@@ -2,11 +2,21 @@
 
 use crate::app::action::Action;
 use crate::domain::Table;
+use crate::domain::connection::SslMode;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Effect {
     Render,
+
+    SaveAndConnect {
+        host: String,
+        port: u16,
+        database: String,
+        user: String,
+        password: String,
+        ssl_mode: SslMode,
+    },
 
     CacheInvalidate {
         dsn: String,
@@ -48,6 +58,10 @@ pub enum Effect {
         table: Box<Table>,
     },
     ClearCompletionEngineCache,
+
+    CopyToClipboard {
+        content: String,
+    },
 
     GenerateErDiagramFromCache {
         total_tables: usize,

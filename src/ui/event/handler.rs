@@ -28,6 +28,9 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
                 && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
+        InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
+        InputMode::ConnectionError => handle_connection_error_keys(key),
+        InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
     }
 }
 
@@ -217,6 +220,71 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
         (KeyCode::Tab, _, false) => Action::SqlModalTab,
         (KeyCode::Char('l'), m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalClear,
         (KeyCode::Char(c), _, _) => Action::SqlModalInput(c),
+        _ => Action::None,
+    }
+}
+
+fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::connection_setup_state::ConnectionField;
+
+    let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
+
+    match (key.code, key.modifiers, dropdown_open) {
+        // Dropdown navigation
+        (KeyCode::Up, _, true) => Action::ConnectionSetupDropdownPrev,
+        (KeyCode::Down, _, true) => Action::ConnectionSetupDropdownNext,
+        (KeyCode::Enter, _, true) => Action::ConnectionSetupDropdownConfirm,
+        (KeyCode::Esc, _, true) => Action::ConnectionSetupDropdownCancel,
+
+        // Form navigation
+        (KeyCode::Tab, _, false) => Action::ConnectionSetupNextField,
+        (KeyCode::BackTab, _, false) => Action::ConnectionSetupPrevField,
+
+        // Save & Cancel
+        (KeyCode::Char('s'), m, false) if m.contains(KeyModifiers::CONTROL) => {
+            Action::ConnectionSetupSave
+        }
+        (KeyCode::Esc, _, false) => Action::ConnectionSetupCancel,
+
+        // SSL Mode toggle (Enter on SslMode field)
+        (KeyCode::Enter, _, false)
+            if state.connection_setup.focused_field == ConnectionField::SslMode =>
+        {
+            Action::ConnectionSetupToggleDropdown
+        }
+
+        // Text input (allow Alt for international keyboards, block Ctrl-only)
+        (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
+        (KeyCode::Char(c), m, false)
+            if !m.contains(KeyModifiers::CONTROL) || m.contains(KeyModifiers::ALT) =>
+        {
+            Action::ConnectionSetupInput(c)
+        }
+
+        _ => Action::None,
+    }
+}
+
+fn handle_connection_error_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Esc => Action::CloseConnectionError,
+        KeyCode::Char('r') => Action::RetryConnection,
+        KeyCode::Char('e') => Action::ReenterConnectionSetup,
+        KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
+        KeyCode::Char('c') => Action::CopyConnectionError,
+        KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
+        KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
+        _ => Action::None,
+    }
+}
+
+fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Enter => Action::ConfirmDialogConfirm,
+        KeyCode::Esc => Action::ConfirmDialogCancel,
+        KeyCode::Char('y') | KeyCode::Char('Y') => Action::ConfirmDialogConfirm,
+        KeyCode::Char('n') | KeyCode::Char('N') => Action::ConfirmDialogCancel,
         _ => Action::None,
     }
 }
@@ -879,6 +947,55 @@ mod tests {
         }
     }
 
+    mod connection_error {
+        use super::*;
+        use rstest::rstest;
+
+        enum Expected {
+            Quit,
+            Close,
+            Retry,
+            Reenter,
+            ToggleDetails,
+            Copy,
+            ScrollUp,
+            ScrollDown,
+            None,
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('q'), Expected::Quit)]
+        #[case(KeyCode::Esc, Expected::Close)]
+        #[case(KeyCode::Char('r'), Expected::Retry)]
+        #[case(KeyCode::Char('e'), Expected::Reenter)]
+        #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
+        #[case(KeyCode::Char('c'), Expected::Copy)]
+        #[case(KeyCode::Up, Expected::ScrollUp)]
+        #[case(KeyCode::Char('k'), Expected::ScrollUp)]
+        #[case(KeyCode::Down, Expected::ScrollDown)]
+        #[case(KeyCode::Char('j'), Expected::ScrollDown)]
+        #[case(KeyCode::Tab, Expected::None)]
+        fn connection_error_keys(#[case] code: KeyCode, #[case] expected: Expected) {
+            let result = handle_connection_error_keys(key(code));
+
+            match expected {
+                Expected::Quit => assert!(matches!(result, Action::Quit)),
+                Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
+                Expected::Retry => assert!(matches!(result, Action::RetryConnection)),
+                Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
+                Expected::ToggleDetails => {
+                    assert!(matches!(result, Action::ToggleConnectionErrorDetails))
+                }
+                Expected::Copy => assert!(matches!(result, Action::CopyConnectionError)),
+                Expected::ScrollUp => assert!(matches!(result, Action::ScrollConnectionErrorUp)),
+                Expected::ScrollDown => {
+                    assert!(matches!(result, Action::ScrollConnectionErrorDown))
+                }
+                Expected::None => assert!(matches!(result, Action::None)),
+            }
+        }
+    }
+
     /// Smoke tests for mode dispatch: verify handle_key_event routes to correct handler
     mod mode_dispatch {
         use super::*;
@@ -907,6 +1024,170 @@ mod tests {
             let result = handle_key_event(key(KeyCode::Esc), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
+        }
+    }
+
+    mod connection_setup_keys {
+        use super::*;
+        use crate::app::connection_setup_state::ConnectionField;
+        use rstest::rstest;
+
+        fn setup_state() -> AppState {
+            let mut state = AppState::new("test".to_string(), "default".to_string());
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state
+        }
+
+        #[test]
+        fn tab_moves_to_next_field() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Tab), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupNextField));
+        }
+
+        #[test]
+        fn backtab_moves_to_prev_field() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::BackTab), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupPrevField));
+        }
+
+        #[test]
+        fn ctrl_s_saves() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('s'), KeyModifiers::CONTROL);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupSave));
+        }
+
+        #[test]
+        fn esc_cancels() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Esc), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupCancel));
+        }
+
+        #[test]
+        fn char_input_sends_input_action() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Char('a')), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('a')));
+        }
+
+        #[test]
+        fn backspace_sends_backspace_action() {
+            let state = setup_state();
+
+            let result = handle_connection_setup_keys(key(KeyCode::Backspace), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupBackspace));
+        }
+
+        #[test]
+        fn ctrl_c_is_ignored() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn alt_char_is_allowed_for_international_keyboards() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('q'), KeyModifiers::ALT);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('q')));
+        }
+
+        #[test]
+        fn altgr_char_is_allowed() {
+            let state = setup_state();
+            let key = key_with_mod(
+                KeyCode::Char('@'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            );
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('@')));
+        }
+
+        #[test]
+        fn enter_on_ssl_field_toggles_dropdown() {
+            let mut state = setup_state();
+            state.connection_setup.focused_field = ConnectionField::SslMode;
+
+            let result = handle_connection_setup_keys(key(KeyCode::Enter), &state);
+
+            assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
+        }
+
+        mod dropdown_open {
+            use super::*;
+
+            fn dropdown_state() -> AppState {
+                let mut state = setup_state();
+                state.connection_setup.ssl_dropdown.is_open = true;
+                state
+            }
+
+            #[rstest]
+            #[case(KeyCode::Up, Action::ConnectionSetupDropdownPrev)]
+            #[case(KeyCode::Down, Action::ConnectionSetupDropdownNext)]
+            #[case(KeyCode::Enter, Action::ConnectionSetupDropdownConfirm)]
+            #[case(KeyCode::Esc, Action::ConnectionSetupDropdownCancel)]
+            fn dropdown_navigation(#[case] code: KeyCode, #[case] expected: Action) {
+                let state = dropdown_state();
+
+                let result = handle_connection_setup_keys(key(code), &state);
+
+                assert_eq!(
+                    std::mem::discriminant(&result),
+                    std::mem::discriminant(&expected)
+                );
+            }
+        }
+    }
+
+    mod confirm_dialog_keys {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Char('y'), Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Char('Y'), Action::ConfirmDialogConfirm)]
+        #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
+        #[case(KeyCode::Char('n'), Action::ConfirmDialogCancel)]
+        #[case(KeyCode::Char('N'), Action::ConfirmDialogCancel)]
+        fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
+            let result = handle_confirm_dialog_keys(key(code));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_confirm_dialog_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::None));
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
@@ -28,6 +29,42 @@ pub enum Action {
     CloseCommandPalette,
     OpenHelp,
     CloseHelp,
+
+    // Connection Setup
+    OpenConnectionSetup,
+    CloseConnectionSetup,
+    ConnectionSetupInput(char),
+    ConnectionSetupBackspace,
+    ConnectionSetupNextField,
+    ConnectionSetupPrevField,
+    ConnectionSetupToggleDropdown,
+    ConnectionSetupDropdownNext,
+    ConnectionSetupDropdownPrev,
+    ConnectionSetupDropdownConfirm,
+    ConnectionSetupDropdownCancel,
+    ConnectionSetupSave,
+    ConnectionSetupCancel,
+    ConnectionSaveCompleted {
+        dsn: String,
+    },
+    ConnectionSaveFailed(String),
+
+    // Connection Error
+    ShowConnectionError(ConnectionErrorInfo),
+    CloseConnectionError,
+    ToggleConnectionErrorDetails,
+    ScrollConnectionErrorUp,
+    ScrollConnectionErrorDown,
+    CopyConnectionError,
+    ConnectionErrorCopied,
+    RetryConnection,
+    ReenterConnectionSetup,
+
+    // Confirm Dialog
+    OpenConfirmDialog,
+    CloseConfirmDialog,
+    ConfirmDialogConfirm,
+    ConfirmDialogCancel,
 
     // Command line actions
     EnterCommandLine,
