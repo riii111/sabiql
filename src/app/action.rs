@@ -29,6 +29,18 @@ pub enum Action {
     OpenHelp,
     CloseHelp,
 
+    // Connection Setup
+    OpenConnectionSetup,
+    CloseConnectionSetup,
+
+    // Connection Error
+    OpenConnectionError,
+    CloseConnectionError,
+
+    // Confirm Dialog
+    OpenConfirmDialog,
+    CloseConfirmDialog,
+
     // Command line actions
     EnterCommandLine,
     ExitCommandLine,
