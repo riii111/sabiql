@@ -1,7 +1,8 @@
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -17,15 +18,7 @@ impl Explorer {
             !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
 
-        let title = match &state.cache.state {
-            MetadataState::Loading => " [1] Explorer [Loading...] ".to_string(),
-            MetadataState::Error(_) => " [1] Explorer [Error] ".to_string(),
-            MetadataState::Loaded => {
-                let count = state.tables().len();
-                format!(" [1] Explorer [{} tables] ", count)
-            }
-            MetadataState::NotLoaded => " [1] Explorer ".to_string(),
-        };
+        let title = " [1] Explorer ";
 
         let border_style = if is_focused {
             Style::default().fg(Color::Cyan)
@@ -38,13 +31,67 @@ impl Explorer {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        // Calculate inner area first
         let inner = block.inner(area);
+        frame.render_widget(block, area);
 
-        // Calculate content width (reserve space for highlight symbol and scrollbar)
+        let [connections_area, separator_area, tables_area] = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .areas(inner);
+
+        Self::render_connections_section(frame, connections_area, state);
+        frame.render_widget(Paragraph::new(""), separator_area);
+        Self::render_tables_section(frame, tables_area, state, has_cached_data);
+    }
+
+    fn render_connections_section(frame: &mut Frame, area: Rect, state: &AppState) {
+        let header_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let content_style = Style::default().fg(Color::Gray);
+
+        let connection_display = if let Some(ref name) = state.runtime.active_connection_name {
+            format!(" Current: {}", name)
+        } else {
+            " Current: (not connected)".to_string()
+        };
+
+        let lines = vec![
+            Line::from(Span::styled("Connections", header_style)),
+            Line::from(Span::styled(connection_display, content_style)),
+        ];
+
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
+    fn render_tables_section(
+        frame: &mut Frame,
+        area: Rect,
+        state: &mut AppState,
+        has_cached_data: bool,
+    ) {
+        let tables_header = match &state.cache.state {
+            MetadataState::Loaded => format!("Tables [{}]", state.tables().len()),
+            _ => "Tables".to_string(),
+        };
+
+        let header_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+
+        let [header_area, list_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(tables_header, header_style))),
+            header_area,
+        );
+
         let highlight_symbol_width: u16 = 2; // "> "
         let scrollbar_reserved: u16 = 1;
-        let content_width = inner
+        let content_width = list_area
             .width
             .saturating_sub(highlight_symbol_width + scrollbar_reserved)
             as usize;
@@ -68,25 +115,24 @@ impl Explorer {
         } else {
             match &state.cache.state {
                 MetadataState::Loading => {
-                    vec![ListItem::new("Loading metadata...")]
+                    vec![ListItem::new(" Loading metadata...")]
                 }
                 MetadataState::Error(_) => {
                     vec![
-                        ListItem::new("Metadata load failed"),
-                        ListItem::new("(r: retry, Enter: details)"),
+                        ListItem::new(" Metadata load failed"),
+                        ListItem::new(" (r: retry, Enter: details)"),
                     ]
                 }
                 MetadataState::Loaded => {
-                    vec![ListItem::new("No tables found")]
+                    vec![ListItem::new(" No tables found")]
                 }
                 MetadataState::NotLoaded => {
-                    vec![ListItem::new("Press 'r' to load metadata")]
+                    vec![ListItem::new(" Press 'r' to load metadata")]
                 }
             }
         };
 
         let list = List::new(items)
-            .block(block)
             .highlight_style(
                 Style::default()
                     .fg(Color::Yellow)
@@ -94,12 +140,12 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, area, &mut state.ui.explorer_list_state);
+        frame.render_stateful_widget(list, list_area, &mut state.ui.explorer_list_state);
 
         // Render scrollbars
         if has_cached_data {
             let total_items = state.tables().len();
-            let viewport_size = inner.height.saturating_sub(2) as usize; // Reserve for horizontal scrollbar
+            let viewport_size = list_area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
                 let scroll_offset = state.ui.explorer_list_state.offset();
@@ -109,7 +155,7 @@ impl Explorer {
                 };
                 render_vertical_scroll_indicator_bar(
                     frame,
-                    inner,
+                    list_area,
                     VerticalScrollParams {
                         position: scroll_offset,
                         viewport_size,
@@ -125,7 +171,7 @@ impl Explorer {
                 };
                 render_horizontal_scroll_indicator(
                     frame,
-                    inner,
+                    list_area,
                     HorizontalScrollParams {
                         position: h_offset,
                         viewport_size: content_width,

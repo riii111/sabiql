@@ -4,11 +4,11 @@ expression: output
 ---
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│Press 'r' to l│┌ [2] Inspector ───────────────────────────────────────────────┐
-│              ││(select a table)                                              │
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
 │              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
+│Tables        ││                                                              │
+│ Press 'r' to ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │

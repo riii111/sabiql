@@ -4,13 +4,13 @@ expression: output
 ---
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│public.post   ││(select a table)                                              │
-│public.comm   ││                                                              │
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
 │              ││                                                              │
-│              ││   ╭ Command Palette ─────────────────────╮                   │
-│              ││   │  q / :quit          Quit application │                   │
-│              ││   │  ? / :help          Show help        │                   │
+│Tables [3]    ││                                                              │
+│public.user   ││   ╭ Command Palette ─────────────────────╮                   │
+│public.post   ││   │  q / :quit          Quit application │                   │
+│public.comm   ││   │  ? / :help          Show help        │                   │
 │              ││   │  :sql               Open SQL Editor  │                   │
 │              ││   │  e / :erd           Open ER Diagram  │                   │
 │              │└───│  Ctrl+P             Open Table Picker│───────────────────┘

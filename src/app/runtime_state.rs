@@ -4,6 +4,7 @@ pub struct RuntimeState {
     pub project_name: String,
     pub profile_name: String,
     pub database_name: Option<String>,
+    pub active_connection_name: Option<String>,
 }
 
 impl RuntimeState {
@@ -13,6 +14,7 @@ impl RuntimeState {
             project_name,
             profile_name,
             database_name: None,
+            active_connection_name: None,
         }
     }
 }
@@ -29,6 +31,7 @@ mod tests {
         assert_eq!(state.profile_name, "production");
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
+        assert!(state.active_connection_name.is_none());
     }
 
     #[test]
@@ -39,5 +42,6 @@ mod tests {
         assert!(state.profile_name.is_empty());
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
+        assert!(state.active_connection_name.is_none());
     }
 }

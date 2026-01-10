@@ -4,13 +4,13 @@ expression: output
 ---
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│public.post   ││(select a table)                                              │
-│public.comm   │╭ Table Picker ────────────────────────────────╮               │
-│              ││  > user█                                     │               │
-│              ││▸   public.users                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
+│              │╭ Table Picker ────────────────────────────────╮               │
+│Tables [3]    ││  > user█                                     │               │
+│public.user   ││▸   public.users                              │               │
+│public.post   ││                                              │               │
+│public.comm   ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │───────────────┘

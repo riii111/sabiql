@@ -4,13 +4,13 @@ expression: output
 ---
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│public.user╭ Help ────────────────────────────────────────────────╮───────────┐
-│public.post│▸ Global Keys                                         │           │
-│public.comm│   q           Quit application                       │           │
-│           │   ?           Toggle this help                       │           │
-│           │   Ctrl+P      Open Table Picker                      │           │
-│           │   Ctrl+K      Open Command Palette                   │           │
-│           │   :           Enter command line                     │           │
+│Connections╭ Help ────────────────────────────────────────────────╮───────────┐
+│ Current: l│▸ Global Keys                                         │           │
+│           │   q           Quit application                       │           │
+│Tables [3] │   ?           Toggle this help                       │           │
+│public.user│   Ctrl+P      Open Table Picker                      │           │
+│public.post│   Ctrl+K      Open Command Palette                   │           │
+│public.comm│   :           Enter command line                     │           │
 │           │   f           Toggle Focus mode (Result fullscreen)  │           │
 │           │  1/2/3        Switch pane focus (exits Focus first)  │           │
 │           │  Tab/⇧Tab     Inspector prev/next tab (Inspector     │───────────┘
