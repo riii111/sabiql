@@ -1,4 +1,5 @@
 pub mod config_writer;
+pub mod connection_store;
 pub mod er_exporter;
 pub mod graphviz;
 pub mod metadata;
@@ -6,6 +7,7 @@ pub mod query_executor;
 pub mod renderer;
 
 pub use config_writer::ConfigWriter;
+pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use er_exporter::{ErDiagramExporter, ErExportResult};
 pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::{MetadataError, MetadataProvider};
