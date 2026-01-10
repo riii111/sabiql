@@ -18,7 +18,6 @@ impl Explorer {
             !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
 
-        // Title without table count (moved to Tables section header)
         let title = " [1] Explorer ";
 
         let border_style = if is_focused {
@@ -35,21 +34,15 @@ impl Explorer {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        // Split inner area: Connections (2 lines) + separator (1 line) + Tables (remaining)
         let [connections_area, separator_area, tables_area] = Layout::vertical([
-            Constraint::Length(2), // Connections header + current
-            Constraint::Length(1), // Empty separator
-            Constraint::Min(1),    // Tables section
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
         ])
         .areas(inner);
 
-        // === Render Connections Section ===
         Self::render_connections_section(frame, connections_area, state);
-
-        // === Render Separator ===
         frame.render_widget(Paragraph::new(""), separator_area);
-
-        // === Render Tables Section ===
         Self::render_tables_section(frame, tables_area, state, has_cached_data);
     }
 
@@ -79,12 +72,8 @@ impl Explorer {
         state: &mut AppState,
         has_cached_data: bool,
     ) {
-        // Tables section header
         let tables_header = match &state.cache.state {
-            MetadataState::Loaded => {
-                let count = state.tables().len();
-                format!("Tables [{}]", count)
-            }
+            MetadataState::Loaded => format!("Tables [{}]", state.tables().len()),
             _ => "Tables".to_string(),
         };
 
@@ -92,20 +81,17 @@ impl Explorer {
             .fg(Color::White)
             .add_modifier(Modifier::BOLD);
 
-        // Split tables area: header (1 line) + list (remaining)
         let [header_area, list_area] = Layout::vertical([
-            Constraint::Length(1), // Tables header
-            Constraint::Min(1),    // Table list
+            Constraint::Length(1),
+            Constraint::Min(1),
         ])
         .areas(area);
 
-        // Render tables header
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(tables_header, header_style))),
             header_area,
         );
 
-        // Calculate content width for table names
         let highlight_symbol_width: u16 = 2; // "> "
         let scrollbar_reserved: u16 = 1;
         let content_width = list_area

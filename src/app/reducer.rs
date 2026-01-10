@@ -2258,12 +2258,15 @@ mod tests {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConnectionSetup;
             state.connection_setup.is_first_run = true;
+            state.connection_setup.host = "db.example.com".to_string();
+            state.connection_setup.port = "5432".to_string();
+            state.connection_setup.database = "mydb".to_string();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
                 Action::ConnectionSaveCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
+                    dsn: "postgres://db.example.com/mydb".to_string(),
                 },
                 now,
             );
@@ -2271,7 +2274,11 @@ mod tests {
             assert!(!state.connection_setup.is_first_run);
             assert_eq!(
                 state.runtime.dsn,
-                Some("postgres://localhost/test".to_string())
+                Some("postgres://db.example.com/mydb".to_string())
+            );
+            assert_eq!(
+                state.runtime.active_connection_name,
+                Some("db.example.com:5432/mydb".to_string())
             );
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(effects.len(), 1);
