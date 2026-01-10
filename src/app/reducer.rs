@@ -1845,6 +1845,19 @@ mod tests {
         }
 
         #[test]
+        fn close_clears_copied_feedback() {
+            let mut state = state_with_error();
+            let now = Instant::now();
+            state.connection_error.mark_copied_at(now);
+            assert!(state.connection_error.is_copied_visible_at(now));
+
+            reduce(&mut state, Action::CloseConnectionError, now);
+
+            // Copied feedback is cleared on close
+            assert!(!state.connection_error.is_copied_visible_at(now));
+        }
+
+        #[test]
         fn reopen_modal_after_close_shows_same_error() {
             let mut state = state_with_error();
             state.cache.state = MetadataState::Error("error".to_string());
