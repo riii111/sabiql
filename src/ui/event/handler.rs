@@ -28,7 +28,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
                 && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
-        InputMode::ConnectionSetup => handle_connection_setup_keys(key),
+        InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
         InputMode::ConnectionError => handle_connection_error_keys(key),
         InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
     }
@@ -224,9 +224,39 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
     }
 }
 
-fn handle_connection_setup_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseConnectionSetup,
+fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::connection_setup_state::ConnectionField;
+
+    let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
+
+    match (key.code, key.modifiers, dropdown_open) {
+        // Dropdown navigation
+        (KeyCode::Up, _, true) => Action::ConnectionSetupDropdownPrev,
+        (KeyCode::Down, _, true) => Action::ConnectionSetupDropdownNext,
+        (KeyCode::Enter, _, true) => Action::ConnectionSetupDropdownConfirm,
+        (KeyCode::Esc, _, true) => Action::ConnectionSetupDropdownCancel,
+
+        // Form navigation
+        (KeyCode::Tab, _, false) => Action::ConnectionSetupNextField,
+        (KeyCode::BackTab, _, false) => Action::ConnectionSetupPrevField,
+
+        // Save & Cancel
+        (KeyCode::Char('s'), m, false) if m.contains(KeyModifiers::CONTROL) => {
+            Action::ConnectionSetupSave
+        }
+        (KeyCode::Esc, _, false) => Action::ConnectionSetupCancel,
+
+        // SSL Mode toggle (Enter on SslMode field)
+        (KeyCode::Enter, _, false)
+            if state.connection_setup.focused_field == ConnectionField::SslMode =>
+        {
+            Action::ConnectionSetupToggleDropdown
+        }
+
+        // Text input
+        (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
+        (KeyCode::Char(c), _, false) => Action::ConnectionSetupInput(c),
+
         _ => Action::None,
     }
 }
@@ -240,7 +270,10 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
 
 fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
     match key.code {
-        KeyCode::Esc => Action::CloseConfirmDialog,
+        KeyCode::Enter => Action::ConfirmDialogConfirm,
+        KeyCode::Esc => Action::ConfirmDialogCancel,
+        KeyCode::Char('y') | KeyCode::Char('Y') => Action::ConfirmDialogConfirm,
+        KeyCode::Char('n') | KeyCode::Char('N') => Action::ConfirmDialogCancel,
         _ => Action::None,
     }
 }
