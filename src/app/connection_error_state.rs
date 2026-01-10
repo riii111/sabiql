@@ -61,6 +61,10 @@ impl ConnectionErrorState {
         }
     }
 
+    pub fn clear_copied_feedback(&mut self) {
+        self.copied_feedback_expires = None;
+    }
+
     pub fn masked_details(&self) -> Option<&str> {
         self.error_info
             .as_ref()

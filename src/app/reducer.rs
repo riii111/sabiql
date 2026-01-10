@@ -12,6 +12,7 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_setup_state::ConnectionField;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
@@ -116,7 +117,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
         Action::CloseConnectionError => {
-            state.connection_error.clear();
+            // Keep error_info so Enter can re-open modal
+            state.connection_error.details_expanded = false;
+            state.connection_error.scroll_offset = 0;
+            state.connection_error.clear_copied_feedback();
             state.ui.input_mode = InputMode::Normal;
             vec![]
         }
@@ -706,6 +710,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.connection_error.clear();
             state
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
@@ -718,7 +723,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
         }
         Action::MetadataFailed(error) => {
+            let error_info = ConnectionErrorInfo::new(&error);
+            state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -1049,6 +1057,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             } else if state.ui.input_mode == InputMode::Normal
                 && state.ui.focused_pane == FocusedPane::Explorer
             {
+                if matches!(state.cache.state, MetadataState::Error(_)) {
+                    state.ui.input_mode = InputMode::ConnectionError;
+                    return effects;
+                }
+
                 let tables = state.tables();
                 if let Some(table) = tables.get(state.ui.explorer_selected).cloned() {
                     let schema = table.schema.clone();
