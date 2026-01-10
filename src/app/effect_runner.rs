@@ -25,9 +25,10 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
 use crate::app::ports::{
-    ConfigWriter, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
+    ConfigWriter, ConnectionStore, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
 
 pub struct EffectRunner {
@@ -35,6 +36,7 @@ pub struct EffectRunner {
     query_executor: Arc<dyn QueryExecutor>,
     er_exporter: Arc<dyn ErDiagramExporter>,
     config_writer: Arc<dyn ConfigWriter>,
+    connection_store: Arc<dyn ConnectionStore>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -45,6 +47,7 @@ impl EffectRunner {
         query_executor: Arc<dyn QueryExecutor>,
         er_exporter: Arc<dyn ErDiagramExporter>,
         config_writer: Arc<dyn ConfigWriter>,
+        connection_store: Arc<dyn ConnectionStore>,
         metadata_cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
     ) -> Self {
@@ -53,6 +56,7 @@ impl EffectRunner {
             query_executor,
             er_exporter,
             config_writer,
+            connection_store,
             metadata_cache,
             action_tx,
         }
@@ -111,8 +115,31 @@ impl EffectRunner {
                 Ok(())
             }
 
-            // SaveAndConnect is implemented in Phase F
-            Effect::SaveAndConnect { .. } => Ok(()),
+            Effect::SaveAndConnect {
+                host,
+                port,
+                database,
+                user,
+                password,
+                ssl_mode,
+            } => {
+                let profile = ConnectionProfile::new(host, port, database, user, password, ssl_mode);
+                let dsn = profile.to_dsn();
+                let store = Arc::clone(&self.connection_store);
+                let tx = self.action_tx.clone();
+
+                tokio::task::spawn_blocking(move || {
+                    match store.save(&profile) {
+                        Ok(()) => {
+                            let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn });
+                        }
+                        Err(e) => {
+                            let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                        }
+                    }
+                });
+                Ok(())
+            }
 
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;

@@ -106,8 +106,8 @@ impl ConnectionSetup {
         frame.render_widget(auto_name_para, chunks[7]);
 
         let notice = "Note: Connection info is stored locally in plain text";
-        let notice_para = Paragraph::new(notice)
-            .style(Style::default().fg(Theme::MODAL_HINT).dim());
+        let notice_para =
+            Paragraph::new(notice).style(Style::default().fg(Theme::MODAL_HINT).dim());
         frame.render_widget(notice_para, chunks[9]);
 
         if form_state.ssl_dropdown.is_open {
@@ -168,16 +168,15 @@ impl ConnectionSetup {
             Style::default().fg(Theme::MODAL_BORDER)
         };
 
-        let input_block = Block::default()
-            .borders(Borders::NONE)
-            .style(border_style);
+        let input_block = Block::default().borders(Borders::NONE).style(border_style);
         let input_para = Paragraph::new(format!("[ {} ]", input_content))
             .style(input_style)
             .block(input_block);
         frame.render_widget(input_para, chunks[1]);
 
         if let Some(err) = error {
-            let err_para = Paragraph::new(format!(" {}", err)).style(Style::default().fg(Color::Red));
+            let err_para =
+                Paragraph::new(format!(" {}", err)).style(Style::default().fg(Color::Red));
             frame.render_widget(err_para, chunks[2]);
         }
     }

@@ -12,8 +12,10 @@ use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::reducer::reduce;
 use sabiql::app::state::AppState;
+use sabiql::app::input_mode::InputMode;
+use sabiql::app::ports::ConnectionStore;
 use sabiql::error;
-use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter};
+use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
 use sabiql::infra::config::{
     dbx_toml::DbxConfig,
     project_root::{find_project_root, get_project_name},
@@ -53,19 +55,52 @@ async fn main() -> Result<()> {
     let adapter = Arc::new(PostgresAdapter::new());
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
+    let connection_store = TomlConnectionStore::new()?;
+    let loaded_profile = connection_store.load();
+    let connection_store = Arc::new(connection_store);
 
     let effect_runner = EffectRunner::new(
         Arc::clone(&adapter) as _,
         Arc::clone(&adapter) as _,
         Arc::new(DotExporter::new()),
         Arc::new(FileConfigWriter::new()),
+        Arc::clone(&connection_store) as _,
         metadata_cache.clone(),
         action_tx.clone(),
     );
 
     let mut state = AppState::new(project_name, args.profile);
-    state.runtime.database_name = dsn.as_ref().and_then(|d| extract_database_name(d));
-    state.runtime.dsn = dsn.clone();
+
+    // Load existing connection profile or show setup form
+    match loaded_profile {
+        Ok(Some(profile)) => {
+            state.runtime.dsn = Some(profile.to_dsn());
+            state.runtime.database_name = Some(profile.database.clone());
+            state.connection_setup.host = profile.host;
+            state.connection_setup.port = profile.port.to_string();
+            state.connection_setup.database = profile.database;
+            state.connection_setup.user = profile.username;
+            state.connection_setup.password = profile.password;
+            state.connection_setup.ssl_mode = profile.ssl_mode;
+            state.connection_setup.is_first_run = false;
+        }
+        Ok(None) => {
+            state.connection_setup.is_first_run = true;
+            state.ui.input_mode = InputMode::ConnectionSetup;
+        }
+        Err(_) => {
+            state.connection_setup.is_first_run = true;
+            state.ui.input_mode = InputMode::ConnectionSetup;
+        }
+    }
+
+    // Legacy dbx.toml DSN support (overrides connection profile if present)
+    if let Some(ref legacy_dsn) = dsn {
+        state.runtime.database_name = extract_database_name(legacy_dsn);
+        state.runtime.dsn = Some(legacy_dsn.clone());
+        state.ui.input_mode = InputMode::Normal;
+    }
+
     state.action_tx = Some(action_tx.clone());
 
     let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);

@@ -256,10 +256,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
             vec![]
         }
-        Action::ConnectionSaveCompleted => {
+        Action::ConnectionSaveCompleted { dsn } => {
             state.connection_setup.is_first_run = false;
+            state.runtime.dsn = Some(dsn.clone());
             state.ui.input_mode = InputMode::Normal;
-            vec![]
+            vec![Effect::FetchMetadata { dsn }]
         }
         Action::ConnectionSaveFailed(msg) => {
             state.messages.set_error_at(msg, now);
