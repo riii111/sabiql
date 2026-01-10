@@ -99,6 +99,32 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
+        // ===== Connection Modes =====
+        Action::OpenConnectionSetup => {
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            vec![]
+        }
+        Action::CloseConnectionSetup => {
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::OpenConnectionError => {
+            state.ui.input_mode = InputMode::ConnectionError;
+            vec![]
+        }
+        Action::CloseConnectionError => {
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::OpenConfirmDialog => {
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            vec![]
+        }
+        Action::CloseConfirmDialog => {
+            state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+
         // ===== Filter Input =====
         Action::FilterInput(c) => {
             state.ui.filter_input.push(c);
