@@ -3,6 +3,7 @@ pub mod cache;
 pub mod command;
 pub mod completion;
 pub mod confirm_dialog_state;
+pub mod connection_error;
 pub mod connection_error_state;
 pub mod connection_setup_state;
 pub mod ddl;
