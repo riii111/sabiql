@@ -5,7 +5,10 @@ use crate::domain::connection::ConnectionProfile;
 #[derive(Debug, Clone)]
 pub enum ConnectionStoreError {
     /// Config file version doesn't match current version
-    VersionMismatch { found: u32, expected: u32 },
+    VersionMismatch {
+        found: u32,
+        expected: u32,
+    },
     ReadError(String),
     WriteError(String),
     InvalidFormat(String),
@@ -32,9 +35,8 @@ impl std::fmt::Display for ConnectionStoreError {
 
 impl std::error::Error for ConnectionStoreError {}
 
-/// Port for persisting connection profiles to OS-standard config directory
 pub trait ConnectionStore: Send + Sync {
-    /// Returns None if no profile exists yet (first run)
+    /// Returns None if no profile exists (first run)
     fn load(&self) -> Result<Option<ConnectionProfile>, ConnectionStoreError>;
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError>;
