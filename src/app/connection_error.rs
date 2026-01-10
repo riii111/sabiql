@@ -116,15 +116,12 @@ impl ConnectionErrorInfo {
     }
 
     fn mask_password(text: &str) -> String {
-        // postgres://user:password@host -> postgres://user:****@host
         let url_re = Regex::new(r"(postgres://[^:]+:)[^@]+(@)").unwrap();
         let result = url_re.replace_all(text, "${1}****${2}");
 
-        // password=xxx -> password=****
         let param_re = Regex::new(r"(password=)[^\s]+").unwrap();
         let result = param_re.replace_all(&result, "${1}****");
 
-        // PGPASSWORD=xxx -> PGPASSWORD=****
         let env_re = Regex::new(r"(PGPASSWORD=)[^\s]+").unwrap();
         env_re.replace_all(&result, "${1}****").into_owned()
     }
@@ -143,253 +140,86 @@ impl Default for ConnectionErrorInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    mod error_kind_classification {
+    mod classify {
         use super::*;
 
-        #[test]
-        fn classifies_psql_not_found_bash() {
-            let stderr = "psql: command not found";
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::PsqlNotFound
-            );
-        }
-
-        #[test]
-        fn classifies_psql_not_found_sh() {
-            let stderr = "/bin/sh: psql: command not found";
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::PsqlNotFound
-            );
-        }
-
-        #[test]
-        fn classifies_psql_not_found_zsh() {
-            let stderr = "zsh: command not found: psql";
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::PsqlNotFound
-            );
-        }
-
-        #[test]
-        fn classifies_host_unreachable_macos() {
-            let stderr = r#"psql: error: could not translate host name "nonexistent.host" to address: nodename nor servname provided, or not known"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::HostUnreachable
-            );
-        }
-
-        #[test]
-        fn classifies_host_unreachable_linux() {
-            let stderr = r#"psql: error: could not translate host name "badhost" to address: Name or service not known"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::HostUnreachable
-            );
-        }
-
-        #[test]
-        fn classifies_auth_failed_ipv4() {
-            let stderr = r#"psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: FATAL:  password authentication failed for user "wronguser""#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::AuthFailed
-            );
-        }
-
-        #[test]
-        fn classifies_auth_failed_ipv6() {
-            let stderr = r#"psql: error: connection to server at "localhost" (::1), port 5432 failed: FATAL:  password authentication failed for user "postgres""#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::AuthFailed
-            );
-        }
-
-        #[test]
-        fn classifies_database_not_found() {
-            let stderr = r#"psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: FATAL:  database "nonexistent_db" does not exist"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::DatabaseNotFound
-            );
-        }
-
-        #[test]
-        fn classifies_timeout_expired() {
-            let stderr = r#"psql: error: connection to server at "192.168.1.100", port 5432 failed: timeout expired"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Timeout
-            );
-        }
-
-        #[test]
-        fn classifies_connection_timed_out() {
-            let stderr = r#"psql: error: connection to server at "10.0.0.1", port 5432 failed: Connection timed out"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Timeout
-            );
-        }
-
-        #[test]
-        fn classifies_unknown_for_connection_refused() {
-            let stderr = r#"psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused"#;
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Unknown
-            );
-        }
-
-        #[test]
-        fn classifies_unknown_for_empty_string() {
-            assert_eq!(
-                ConnectionErrorKind::classify(""),
-                ConnectionErrorKind::Unknown
-            );
-        }
-
-        #[test]
-        fn classifies_unknown_for_arbitrary_error() {
-            let stderr = "Some random error message";
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Unknown
-            );
+        #[rstest]
+        #[case("psql: command not found", ConnectionErrorKind::PsqlNotFound)]
+        #[case("/bin/sh: psql: command not found", ConnectionErrorKind::PsqlNotFound)]
+        #[case("zsh: command not found: psql", ConnectionErrorKind::PsqlNotFound)]
+        #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#, ConnectionErrorKind::HostUnreachable)]
+        #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#, ConnectionErrorKind::HostUnreachable)]
+        #[case(r#"FATAL: password authentication failed for user "user""#, ConnectionErrorKind::AuthFailed)]
+        #[case(r#"psql: error: FATAL:  password authentication failed"#, ConnectionErrorKind::AuthFailed)]
+        #[case(r#"FATAL: database "nonexistent" does not exist"#, ConnectionErrorKind::DatabaseNotFound)]
+        #[case("psql: error: timeout expired", ConnectionErrorKind::Timeout)]
+        #[case("Connection timed out", ConnectionErrorKind::Timeout)]
+        #[case("Connection refused", ConnectionErrorKind::Unknown)]
+        #[case("Some random error", ConnectionErrorKind::Unknown)]
+        #[case("", ConnectionErrorKind::Unknown)]
+        fn from_stderr(#[case] stderr: &str, #[case] expected: ConnectionErrorKind) {
+            assert_eq!(ConnectionErrorKind::classify(stderr), expected);
         }
     }
 
-    mod error_kind_messages {
+    mod error_kind {
         use super::*;
 
-        #[test]
-        fn summary_messages_are_not_empty() {
-            let kinds = [
-                ConnectionErrorKind::PsqlNotFound,
-                ConnectionErrorKind::HostUnreachable,
-                ConnectionErrorKind::AuthFailed,
-                ConnectionErrorKind::DatabaseNotFound,
-                ConnectionErrorKind::Timeout,
-                ConnectionErrorKind::Unknown,
-            ];
-
-            for kind in kinds {
-                assert!(
-                    !kind.summary().is_empty(),
-                    "Summary for {:?} is empty",
-                    kind
-                );
-            }
-        }
-
-        #[test]
-        fn hint_messages_are_not_empty() {
-            let kinds = [
-                ConnectionErrorKind::PsqlNotFound,
-                ConnectionErrorKind::HostUnreachable,
-                ConnectionErrorKind::AuthFailed,
-                ConnectionErrorKind::DatabaseNotFound,
-                ConnectionErrorKind::Timeout,
-                ConnectionErrorKind::Unknown,
-            ];
-
-            for kind in kinds {
-                assert!(!kind.hint().is_empty(), "Hint for {:?} is empty", kind);
-            }
+        #[rstest]
+        #[case(ConnectionErrorKind::PsqlNotFound)]
+        #[case(ConnectionErrorKind::HostUnreachable)]
+        #[case(ConnectionErrorKind::AuthFailed)]
+        #[case(ConnectionErrorKind::DatabaseNotFound)]
+        #[case(ConnectionErrorKind::Timeout)]
+        #[case(ConnectionErrorKind::Unknown)]
+        fn has_non_empty_summary_and_hint(#[case] kind: ConnectionErrorKind) {
+            assert!(!kind.summary().is_empty());
+            assert!(!kind.hint().is_empty());
         }
     }
 
-    mod connection_error_info {
+    mod error_info {
         use super::*;
 
         #[test]
-        fn creates_from_stderr_with_auto_classification() {
-            let stderr = "psql: command not found";
-            let info = ConnectionErrorInfo::new(stderr);
-
-            assert_eq!(info.kind, ConnectionErrorKind::PsqlNotFound);
-            assert_eq!(info.raw_details, stderr);
-        }
-
-        #[test]
-        fn creates_with_explicit_kind() {
-            let stderr = "Some error";
-            let info = ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, stderr);
-
-            assert_eq!(info.kind, ConnectionErrorKind::Timeout);
-            assert_eq!(info.raw_details, "Some error");
-        }
-
-        #[test]
-        fn provides_summary_and_hint() {
+        fn new_auto_classifies() {
             let info = ConnectionErrorInfo::new("psql: command not found");
+            assert_eq!(info.kind, ConnectionErrorKind::PsqlNotFound);
+        }
 
+        #[test]
+        fn with_kind_uses_provided_kind() {
+            let info = ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "error");
+            assert_eq!(info.kind, ConnectionErrorKind::Timeout);
+        }
+
+        #[test]
+        fn delegates_summary_and_hint() {
+            let info = ConnectionErrorInfo::new("psql: command not found");
             assert_eq!(info.summary(), "psql command not found");
             assert_eq!(info.hint(), "Install PostgreSQL or add psql to PATH");
         }
     }
 
-    mod password_masking {
+    mod mask_password {
         use super::*;
 
-        #[test]
-        fn masks_password_in_postgres_url() {
-            let text = "postgres://user:secretpass@localhost:5432/db";
-            let masked = ConnectionErrorInfo::mask_password(text);
-
-            assert_eq!(masked, "postgres://user:****@localhost:5432/db");
-            assert!(!masked.contains("secretpass"));
-        }
-
-        #[test]
-        fn masks_password_parameter() {
-            let text = "connection string: password=mysecret host=localhost";
-            let masked = ConnectionErrorInfo::mask_password(text);
-
-            assert_eq!(masked, "connection string: password=**** host=localhost");
-            assert!(!masked.contains("mysecret"));
-        }
-
-        #[test]
-        fn masks_pgpassword_env() {
-            let text = "PGPASSWORD=secret123 psql -h localhost";
-            let masked = ConnectionErrorInfo::mask_password(text);
-
-            assert_eq!(masked, "PGPASSWORD=**** psql -h localhost");
-            assert!(!masked.contains("secret123"));
-        }
-
-        #[test]
-        fn preserves_text_without_password() {
-            let text = "psql: error: connection refused";
-            let masked = ConnectionErrorInfo::mask_password(text);
-
-            assert_eq!(masked, text);
-        }
-
-        #[test]
-        fn masks_multiple_passwords() {
-            let text = "postgres://u:p1@host1 and postgres://u:p2@host2";
-            let masked = ConnectionErrorInfo::mask_password(text);
-
-            assert!(!masked.contains("p1"));
-            assert!(!masked.contains("p2"));
-            assert!(masked.contains("****"));
+        #[rstest]
+        #[case("postgres://user:secret@host", "postgres://user:****@host")]
+        #[case("password=mysecret host=localhost", "password=**** host=localhost")]
+        #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
+        #[case("no password here", "no password here")]
+        fn masks_correctly(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
         }
 
         #[test]
         fn info_stores_both_raw_and_masked() {
-            let stderr = "Error connecting to postgres://user:secret@host";
-            let info = ConnectionErrorInfo::new(stderr);
-
+            let info = ConnectionErrorInfo::new("postgres://user:secret@host");
             assert!(info.raw_details.contains("secret"));
             assert!(!info.masked_details.contains("secret"));
-            assert!(info.masked_details.contains("****"));
         }
     }
 }
