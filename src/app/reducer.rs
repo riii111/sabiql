@@ -2067,4 +2067,114 @@ mod tests {
             );
         }
     }
+
+    mod connection_setup_transitions {
+        use super::*;
+
+        #[test]
+        fn save_completed_sets_dsn_and_returns_fetch_effect() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = true;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                },
+                now,
+            );
+
+            assert!(!state.connection_setup.is_first_run);
+            assert_eq!(
+                state.runtime.dsn,
+                Some("postgres://localhost/test".to_string())
+            );
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn save_failed_sets_error_message() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveFailed("Write error".to_string()),
+                now,
+            );
+
+            assert!(state.messages.last_error.is_some());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn cancel_on_first_run_opens_confirm_dialog() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = true;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::Quit));
+            assert!(matches!(
+                state.confirm_dialog.on_cancel,
+                Action::OpenConnectionSetup
+            ));
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn cancel_after_save_returns_to_normal() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.is_first_run = false;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+    }
+
+    mod confirm_dialog_transitions {
+        use super::*;
+
+        #[test]
+        fn confirm_executes_on_confirm_action() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.confirm_dialog.on_confirm = Action::Quit;
+            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmDialogConfirm, now);
+
+            assert!(state.should_quit);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
+            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+        }
+
+        #[test]
+        fn cancel_executes_on_cancel_action() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.confirm_dialog.on_confirm = Action::Quit;
+            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmDialogCancel, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
+            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+        }
+    }
 }
