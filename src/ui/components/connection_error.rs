@@ -65,9 +65,7 @@ impl ConnectionError {
             Span::styled("✗ ", Style::default().fg(Color::Red)),
             Span::styled(
                 summary,
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
         ]);
         frame.render_widget(Paragraph::new(line), area);
@@ -88,8 +86,7 @@ impl ConnectionError {
         expanded: bool,
     ) {
         if expanded {
-            let chunks =
-                Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
+            let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
 
             let toggle_line = Line::from(vec![Span::styled(
                 "▼ Details",
