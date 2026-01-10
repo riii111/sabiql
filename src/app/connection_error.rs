@@ -151,9 +151,18 @@ mod tests {
         #[case("zsh: command not found: psql", ConnectionErrorKind::PsqlNotFound)]
         #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#, ConnectionErrorKind::HostUnreachable)]
         #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#, ConnectionErrorKind::HostUnreachable)]
-        #[case(r#"FATAL: password authentication failed for user "user""#, ConnectionErrorKind::AuthFailed)]
-        #[case(r#"psql: error: FATAL:  password authentication failed"#, ConnectionErrorKind::AuthFailed)]
-        #[case(r#"FATAL: database "nonexistent" does not exist"#, ConnectionErrorKind::DatabaseNotFound)]
+        #[case(
+            r#"FATAL: password authentication failed for user "user""#,
+            ConnectionErrorKind::AuthFailed
+        )]
+        #[case(
+            r#"psql: error: FATAL:  password authentication failed"#,
+            ConnectionErrorKind::AuthFailed
+        )]
+        #[case(
+            r#"FATAL: database "nonexistent" does not exist"#,
+            ConnectionErrorKind::DatabaseNotFound
+        )]
         #[case("psql: error: timeout expired", ConnectionErrorKind::Timeout)]
         #[case("Connection timed out", ConnectionErrorKind::Timeout)]
         #[case("Connection refused", ConnectionErrorKind::Unknown)]

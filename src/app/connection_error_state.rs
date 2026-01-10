@@ -45,8 +45,7 @@ impl ConnectionErrorState {
     }
 
     pub fn mark_copied_at(&mut self, now: Instant) {
-        self.copied_feedback_expires =
-            Some(now + Duration::from_secs(Self::FEEDBACK_TIMEOUT_SECS));
+        self.copied_feedback_expires = Some(now + Duration::from_secs(Self::FEEDBACK_TIMEOUT_SECS));
     }
 
     pub fn is_copied_visible_at(&self, now: Instant) -> bool {
