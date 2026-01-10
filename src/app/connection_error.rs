@@ -122,9 +122,8 @@ impl ConnectionErrorInfo {
     }
 
     fn mask_password(text: &str) -> String {
-        let url_re = URL_RE.get_or_init(|| {
-            Regex::new(r"(?i)(postgres(?:ql)?://[^:]+:)[^@]+(@)").unwrap()
-        });
+        let url_re =
+            URL_RE.get_or_init(|| Regex::new(r"(?i)(postgres(?:ql)?://[^:]+:)[^@]+(@)").unwrap());
         let result = url_re.replace_all(text, "${1}****${2}");
 
         let param_re = PARAM_RE.get_or_init(|| Regex::new(r"(?i)(password=)[^\s]+").unwrap());

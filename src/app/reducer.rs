@@ -1828,14 +1828,37 @@ mod tests {
         }
 
         #[test]
-        fn close_clears_error_and_returns_to_normal() {
+        fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
+            state.connection_error.details_expanded = true;
+            state.connection_error.scroll_offset = 5;
             let now = Instant::now();
 
             reduce(&mut state, Action::CloseConnectionError, now);
 
-            assert!(state.connection_error.error_info.is_none());
+            // error_info is kept so Enter can re-open modal
+            assert!(state.connection_error.error_info.is_some());
             assert_eq!(state.ui.input_mode, InputMode::Normal);
+            // UI state is reset
+            assert!(!state.connection_error.details_expanded);
+            assert_eq!(state.connection_error.scroll_offset, 0);
+        }
+
+        #[test]
+        fn reopen_modal_after_close_shows_same_error() {
+            let mut state = state_with_error();
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let now = Instant::now();
+
+            // Close modal
+            reduce(&mut state, Action::CloseConnectionError, now);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+
+            // Re-open with Enter
+            reduce(&mut state, Action::ConfirmSelection, now);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_some());
         }
 
         #[test]
