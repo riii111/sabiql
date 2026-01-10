@@ -24,6 +24,7 @@ csv = "1"
 uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
 regex = "1"
+arboard = "3"
 
 [dev-dependencies]
 pretty_assertions = "1"

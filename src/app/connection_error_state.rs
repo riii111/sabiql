@@ -55,10 +55,10 @@ impl ConnectionErrorState {
     }
 
     pub fn clear_expired_feedback_at(&mut self, now: Instant) {
-        if let Some(expires) = self.copied_feedback_expires {
-            if expires <= now {
-                self.copied_feedback_expires = None;
-            }
+        if let Some(expires) = self.copied_feedback_expires
+            && expires <= now
+        {
+            self.copied_feedback_expires = None;
         }
     }
 

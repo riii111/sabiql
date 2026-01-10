@@ -59,6 +59,10 @@ pub enum Effect {
     },
     ClearCompletionEngineCache,
 
+    CopyToClipboard {
+        content: String,
+    },
+
     GenerateErDiagramFromCache {
         total_tables: usize,
         project_name: String,

@@ -409,6 +409,18 @@ impl EffectRunner {
                 }
                 Ok(())
             }
+
+            Effect::CopyToClipboard { content } => {
+                let tx = self.action_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Ok(mut clipboard) = arboard::Clipboard::new()
+                        && clipboard.set_text(&content).is_ok()
+                    {
+                        let _ = tx.blocking_send(Action::ConnectionErrorCopied);
+                    }
+                });
+                Ok(())
+            }
         }
     }
 }

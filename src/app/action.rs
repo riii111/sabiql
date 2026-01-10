@@ -1,3 +1,4 @@
+use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::domain::{DatabaseMetadata, QueryResult, Table};
@@ -49,8 +50,15 @@ pub enum Action {
     ConnectionSaveFailed(String),
 
     // Connection Error
-    OpenConnectionError,
+    ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
+    ToggleConnectionErrorDetails,
+    ScrollConnectionErrorUp,
+    ScrollConnectionErrorDown,
+    CopyConnectionError,
+    ConnectionErrorCopied,
+    RetryConnection,
+    ReenterConnectionSetup,
 
     // Confirm Dialog
     OpenConfirmDialog,
