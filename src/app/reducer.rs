@@ -271,11 +271,15 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         // ===== Confirm Dialog =====
         Action::ConfirmDialogConfirm => {
             let action = state.confirm_dialog.on_confirm.clone();
+            state.confirm_dialog.on_confirm = Action::None;
+            state.confirm_dialog.on_cancel = Action::None;
             state.ui.input_mode = InputMode::Normal;
             reduce(state, action, now)
         }
         Action::ConfirmDialogCancel => {
             let action = state.confirm_dialog.on_cancel.clone();
+            state.confirm_dialog.on_confirm = Action::None;
+            state.confirm_dialog.on_cancel = Action::None;
             state.ui.input_mode = InputMode::Normal;
             reduce(state, action, now)
         }

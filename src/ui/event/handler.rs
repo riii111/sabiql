@@ -253,10 +253,10 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
             Action::ConnectionSetupToggleDropdown
         }
 
-        // Text input (ignore Ctrl/Alt modified keys to prevent accidental input)
+        // Text input (allow Alt for international keyboards, block Ctrl-only)
         (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
         (KeyCode::Char(c), m, false)
-            if !m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::ALT) =>
+            if !m.contains(KeyModifiers::CONTROL) || m.contains(KeyModifiers::ALT) =>
         {
             Action::ConnectionSetupInput(c)
         }
@@ -1045,6 +1045,26 @@ mod tests {
             let result = handle_connection_setup_keys(key, &state);
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn alt_char_is_allowed_for_international_keyboards() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('q'), KeyModifiers::ALT);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('q')));
+        }
+
+        #[test]
+        fn altgr_char_is_allowed() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::ConnectionSetupInput('@')));
         }
 
         #[test]
