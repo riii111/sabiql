@@ -39,12 +39,16 @@ impl ConnectionProfile {
         format!("{}:{}/{}", self.host, self.port, self.database)
     }
 
-    /// Password is URL-encoded for special characters
+    /// Special characters in credentials are URL-encoded
     pub fn to_dsn(&self) -> String {
-        let encoded_password = urlencoding::encode(&self.password);
         format!(
             "postgres://{}:{}@{}:{}/{}?sslmode={}",
-            self.username, encoded_password, self.host, self.port, self.database, self.ssl_mode
+            urlencoding::encode(&self.username),
+            urlencoding::encode(&self.password),
+            &self.host,
+            self.port,
+            urlencoding::encode(&self.database),
+            self.ssl_mode
         )
     }
 
@@ -110,17 +114,19 @@ mod tests {
         }
 
         #[test]
-        fn encodes_special_chars_in_password() {
+        fn encodes_special_chars_in_credentials() {
             let profile = ConnectionProfile::new(
                 "localhost",
                 5432,
-                "testdb",
-                "user",
-                "p@ss:word/with#special%chars",
+                "my/db",
+                "user@org",
+                "p@ss:word",
                 SslMode::Prefer,
             );
             let dsn = profile.to_dsn();
-            assert!(dsn.contains("p%40ss%3Aword%2Fwith%23special%25chars"));
+            assert!(dsn.contains("user%40org"));
+            assert!(dsn.contains("p%40ss%3Aword"));
+            assert!(dsn.contains("my%2Fdb"));
         }
     }
 

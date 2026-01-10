@@ -26,12 +26,6 @@ impl TomlConnectionStore {
     }
 }
 
-impl Default for TomlConnectionStore {
-    fn default() -> Self {
-        Self::new().expect("Failed to initialize connection store")
-    }
-}
-
 impl ConnectionStore for TomlConnectionStore {
     fn load(&self) -> Result<Option<ConnectionProfile>, ConnectionStoreError> {
         let path = self.config_file_path();
