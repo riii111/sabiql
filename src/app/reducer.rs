@@ -176,6 +176,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::ConnectionSetupPrevField => {
             let setup = &mut state.connection_setup;
+            validate_field(setup, setup.focused_field);
             if let Some(prev) = setup.focused_field.prev() {
                 setup.focused_field = prev;
             }
