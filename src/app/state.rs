@@ -1,6 +1,9 @@
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
+use super::confirm_dialog_state::ConfirmDialogState;
+use super::connection_error_state::ConnectionErrorState;
+use super::connection_setup_state::ConnectionSetupState;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
 use super::query_execution::QueryExecution;
@@ -21,6 +24,9 @@ pub struct AppState {
     pub sql_modal: SqlModalContext,
     pub messages: MessageState,
     pub er_preparation: super::er_state::ErPreparationState,
+    pub connection_setup: ConnectionSetupState,
+    pub connection_error: ConnectionErrorState,
+    pub confirm_dialog: ConfirmDialogState,
 }
 
 impl AppState {
@@ -36,6 +42,9 @@ impl AppState {
             sql_modal: SqlModalContext::default(),
             messages: MessageState::default(),
             er_preparation: super::er_state::ErPreparationState::default(),
+            connection_setup: ConnectionSetupState::default(),
+            connection_error: ConnectionErrorState::default(),
+            confirm_dialog: ConfirmDialogState::default(),
         }
     }
 
