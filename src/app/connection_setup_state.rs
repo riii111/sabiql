@@ -145,62 +145,51 @@ impl ConnectionSetupState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     mod connection_field {
         use super::*;
 
-        #[test]
-        fn next_returns_correct_field() {
-            assert_eq!(ConnectionField::Host.next(), Some(ConnectionField::Port));
-            assert_eq!(
-                ConnectionField::Port.next(),
-                Some(ConnectionField::Database)
-            );
-            assert_eq!(
-                ConnectionField::Database.next(),
-                Some(ConnectionField::User)
-            );
-            assert_eq!(
-                ConnectionField::User.next(),
-                Some(ConnectionField::Password)
-            );
-            assert_eq!(
-                ConnectionField::Password.next(),
-                Some(ConnectionField::SslMode)
-            );
-            assert_eq!(ConnectionField::SslMode.next(), None);
+        #[rstest]
+        #[case(ConnectionField::Host, Some(ConnectionField::Port))]
+        #[case(ConnectionField::Port, Some(ConnectionField::Database))]
+        #[case(ConnectionField::Database, Some(ConnectionField::User))]
+        #[case(ConnectionField::User, Some(ConnectionField::Password))]
+        #[case(ConnectionField::Password, Some(ConnectionField::SslMode))]
+        #[case(ConnectionField::SslMode, None)]
+        fn next_returns_correct_field(
+            #[case] field: ConnectionField,
+            #[case] expected: Option<ConnectionField>,
+        ) {
+            assert_eq!(field.next(), expected);
         }
 
-        #[test]
-        fn prev_returns_correct_field() {
-            assert_eq!(ConnectionField::Host.prev(), None);
-            assert_eq!(ConnectionField::Port.prev(), Some(ConnectionField::Host));
-            assert_eq!(
-                ConnectionField::Database.prev(),
-                Some(ConnectionField::Port)
-            );
-            assert_eq!(
-                ConnectionField::User.prev(),
-                Some(ConnectionField::Database)
-            );
-            assert_eq!(
-                ConnectionField::Password.prev(),
-                Some(ConnectionField::User)
-            );
-            assert_eq!(
-                ConnectionField::SslMode.prev(),
-                Some(ConnectionField::Password)
-            );
+        #[rstest]
+        #[case(ConnectionField::Host, None)]
+        #[case(ConnectionField::Port, Some(ConnectionField::Host))]
+        #[case(ConnectionField::Database, Some(ConnectionField::Port))]
+        #[case(ConnectionField::User, Some(ConnectionField::Database))]
+        #[case(ConnectionField::Password, Some(ConnectionField::User))]
+        #[case(ConnectionField::SslMode, Some(ConnectionField::Password))]
+        fn prev_returns_correct_field(
+            #[case] field: ConnectionField,
+            #[case] expected: Option<ConnectionField>,
+        ) {
+            assert_eq!(field.prev(), expected);
         }
 
-        #[test]
-        fn is_required_returns_true_for_required_fields() {
-            assert!(ConnectionField::Host.is_required());
-            assert!(ConnectionField::Port.is_required());
-            assert!(ConnectionField::Database.is_required());
-            assert!(ConnectionField::User.is_required());
-            assert!(!ConnectionField::Password.is_required());
-            assert!(!ConnectionField::SslMode.is_required());
+        #[rstest]
+        #[case(ConnectionField::Host, true)]
+        #[case(ConnectionField::Port, true)]
+        #[case(ConnectionField::Database, true)]
+        #[case(ConnectionField::User, true)]
+        #[case(ConnectionField::Password, false)]
+        #[case(ConnectionField::SslMode, false)]
+        fn is_required_returns_correct_value(
+            #[case] field: ConnectionField,
+            #[case] expected: bool,
+        ) {
+            assert_eq!(field.is_required(), expected);
         }
 
         #[test]
@@ -252,10 +241,7 @@ mod tests {
         #[test]
         fn has_errors_returns_true_when_errors_exist() {
             let state = ConnectionSetupState {
-                validation_errors: HashMap::from([(
-                    ConnectionField::Host,
-                    "Required".to_string(),
-                )]),
+                validation_errors: HashMap::from([(ConnectionField::Host, "Required".to_string())]),
                 ..Default::default()
             };
             assert!(state.has_errors());
