@@ -253,9 +253,13 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
             Action::ConnectionSetupToggleDropdown
         }
 
-        // Text input
+        // Text input (ignore Ctrl/Alt modified keys to prevent accidental input)
         (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
-        (KeyCode::Char(c), _, false) => Action::ConnectionSetupInput(c),
+        (KeyCode::Char(c), m, false)
+            if !m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::ALT) =>
+        {
+            Action::ConnectionSetupInput(c)
+        }
 
         _ => Action::None,
     }
@@ -1031,6 +1035,16 @@ mod tests {
             let result = handle_connection_setup_keys(key(KeyCode::Backspace), &state);
 
             assert!(matches!(result, Action::ConnectionSetupBackspace));
+        }
+
+        #[test]
+        fn ctrl_c_is_ignored() {
+            let state = setup_state();
+            let key = key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+            let result = handle_connection_setup_keys(key, &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
