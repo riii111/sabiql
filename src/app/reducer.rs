@@ -110,12 +110,54 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.ui.input_mode = InputMode::Normal;
             vec![]
         }
-        Action::OpenConnectionError => {
+        Action::ShowConnectionError(info) => {
+            state.connection_error.set_error(info);
             state.ui.input_mode = InputMode::ConnectionError;
             vec![]
         }
         Action::CloseConnectionError => {
+            state.connection_error.clear();
             state.ui.input_mode = InputMode::Normal;
+            vec![]
+        }
+        Action::ToggleConnectionErrorDetails => {
+            state.connection_error.toggle_details();
+            vec![]
+        }
+        Action::ScrollConnectionErrorUp => {
+            state.connection_error.scroll_up();
+            vec![]
+        }
+        Action::ScrollConnectionErrorDown => {
+            // TODO: Calculate max_scroll from UI viewport in Phase 6b
+            state.connection_error.scroll_down(100);
+            vec![]
+        }
+        Action::CopyConnectionError => {
+            if let Some(content) = state.connection_error.masked_details() {
+                vec![Effect::CopyToClipboard {
+                    content: content.to_string(),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ConnectionErrorCopied => {
+            state.connection_error.mark_copied_at(now);
+            vec![]
+        }
+        Action::RetryConnection => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::Normal;
+            if let Some(dsn) = &state.runtime.dsn {
+                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            } else {
+                vec![]
+            }
+        }
+        Action::ReenterConnectionSetup => {
+            state.connection_error.clear();
+            state.ui.input_mode = InputMode::ConnectionSetup;
             vec![]
         }
         Action::OpenConfirmDialog => {
