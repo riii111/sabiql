@@ -62,6 +62,16 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
 4. **Domain is pure data**: No business logic in domain models, just structure.
 
+## UI Design Rules
+
+### Footer Hint Ordering
+
+All input modes must follow this ordering:
+
+```
+Actions → Navigation → Help → Close/Cancel → Quit
+```
+
 ## Build Commands
 
 ```bash
