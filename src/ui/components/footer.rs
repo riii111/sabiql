@@ -8,6 +8,7 @@ use super::atoms::spinner_char;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
+use crate::app::keybindings::footer as hints;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -57,65 +58,65 @@ impl Footer {
             InputMode::Normal => {
                 if state.ui.focus_mode {
                     vec![
-                        ("f", "Exit Focus"),
-                        ("j/k", "Scroll"),
-                        ("h/l", "H-Scroll"),
-                        ("g/G", "Top/Bottom"),
-                        ("?", "Help"),
-                        ("q", "Quit"),
+                        hints::EXIT_FOCUS,
+                        hints::SCROLL_SHORT,
+                        hints::H_SCROLL,
+                        hints::TOP_BOTTOM,
+                        hints::HELP,
+                        hints::QUIT,
                     ]
                 } else {
-                    let mut hints = vec![
-                        ("r", "Reload"),
-                        ("s", "SQL"),
-                        ("e", "ER Diagram"),
-                        ("c", "Connect"),
-                        ("^P", "Tables"),
-                        ("^K", "Palette"),
+                    let mut list = vec![
+                        hints::RELOAD,
+                        hints::SQL,
+                        hints::ER_DIAGRAM,
+                        hints::CONNECT,
+                        hints::TABLE_PICKER,
+                        hints::PALETTE,
                     ];
                     if state.connection_error.error_info.is_some() {
-                        hints.push(("Enter", "Error"));
+                        list.push(hints::ERROR_OPEN);
                     }
-                    hints.push(("1/2/3", "Pane"));
-                    hints.push(("f", "Focus"));
+                    list.push(hints::PANE_SWITCH);
+                    list.push(hints::FOCUS);
                     if state.ui.focused_pane == FocusedPane::Result {
-                        hints.push(("j/k/g/G", "Scroll"));
-                        hints.push(("h/l", "H-Scroll"));
+                        list.push(hints::SCROLL);
+                        list.push(hints::H_SCROLL);
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
-                        hints.push(("Tab/⇧Tab", "InsTabs"));
+                        list.push(hints::INSPECTOR_TABS);
                     }
-                    hints.push(("?", "Help"));
-                    hints.push(("q", "Quit"));
-                    hints
+                    list.push(hints::HELP);
+                    list.push(hints::QUIT);
+                    list
                 }
             }
-            InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
+            InputMode::CommandLine => vec![hints::ENTER_EXECUTE, hints::ESC_CANCEL],
             InputMode::TablePicker => vec![
-                ("Enter", "Select"),
-                ("type", "Filter"),
-                ("↑↓", "Navigate"),
-                ("Esc", "Close"),
+                hints::ENTER_SELECT,
+                hints::TYPE_FILTER,
+                hints::NAVIGATE,
+                hints::ESC_CLOSE,
             ],
             InputMode::CommandPalette => {
-                vec![("Enter", "Execute"), ("↑↓", "Navigate"), ("Esc", "Close")]
+                vec![hints::ENTER_EXECUTE, hints::NAVIGATE, hints::ESC_CLOSE]
             }
-            InputMode::Help => vec![("?/Esc", "Close"), ("q", "Quit")],
-            InputMode::SqlModal => vec![("⌥Enter", "Run"), ("↑↓←→", "Move"), ("Esc", "Close")],
+            InputMode::Help => vec![hints::HELP_CLOSE, hints::QUIT],
+            InputMode::SqlModal => vec![hints::SQL_RUN, hints::SQL_MOVE, hints::ESC_CLOSE],
             InputMode::ConnectionSetup => vec![
-                ("^S", "Save"),
-                ("Tab", "Next"),
-                ("⇧Tab", "Prev"),
-                ("Esc", "Cancel"),
+                hints::SAVE,
+                hints::TAB_NEXT,
+                hints::TAB_PREV,
+                hints::ESC_CANCEL,
             ],
             InputMode::ConnectionError => vec![
-                ("e", "Edit"),
-                ("d", "Details"),
-                ("c", "Copy"),
-                ("Esc", "Close"),
-                ("q", "Quit"),
+                hints::EDIT,
+                hints::DETAILS,
+                hints::COPY,
+                hints::ESC_CLOSE,
+                hints::QUIT,
             ],
-            InputMode::ConfirmDialog => vec![("Esc", "Close")],
+            InputMode::ConfirmDialog => vec![hints::ESC_CLOSE],
         }
     }
 
