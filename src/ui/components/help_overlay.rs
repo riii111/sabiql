@@ -6,12 +6,12 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::keybindings::{
     COMMAND_LINE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
-    GLOBAL_KEYS, NAVIGATION_KEYS, SQL_MODAL_KEYS,
+    GLOBAL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::molecules::{chip_hint_line, render_modal};
+use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 
 pub struct HelpOverlay;
@@ -45,8 +45,9 @@ impl HelpOverlay {
 
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Overlays"));
-        help_lines.push(chip_hint_line("Esc", "Close overlay / Cancel"));
-        help_lines.push(chip_hint_line("Enter", "Confirm selection"));
+        for kb in OVERLAY_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
 
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Command Line"));
