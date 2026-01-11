@@ -1,5 +1,6 @@
 pub mod action;
 pub mod cache;
+pub mod keybindings;
 pub mod command;
 pub mod completion;
 pub mod confirm_dialog_state;
