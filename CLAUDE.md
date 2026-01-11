@@ -90,7 +90,7 @@ mise exec -- cargo insta accept    # Accept all pending snapshots
 
 ## Configuration
 
-- Project config: `.dbx.toml` (in project root)
+- Connection config: `~/.config/sabiql/connections.toml`
 - Cache directory: `~/.cache/sabiql/<project>/`
 
 ## Testing
