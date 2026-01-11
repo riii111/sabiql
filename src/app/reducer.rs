@@ -171,13 +171,16 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
-            state.ui.input_mode = InputMode::Normal;
             if let Some(dsn) = state.runtime.dsn.clone() {
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
+                state.ui.input_mode = InputMode::Normal;
                 vec![Effect::FetchMetadata { dsn }]
             } else {
+                // No dsn available - redirect to setup
                 state.runtime.connection_state = ConnectionState::NotConnected;
+                state.cache.state = MetadataState::NotLoaded;
+                state.ui.input_mode = InputMode::ConnectionSetup;
                 vec![]
             }
         }
@@ -2599,6 +2602,23 @@ mod tests {
             assert!(matches!(state.cache.state, MetadataState::Loading));
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn retry_connection_without_dsn_redirects_to_setup() {
+            let mut state = create_test_state();
+            state.runtime.dsn = None;
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(matches!(state.cache.state, MetadataState::NotLoaded));
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(effects.is_empty());
         }
     }
 }
