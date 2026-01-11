@@ -1188,24 +1188,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         }
                     }
                     Action::ReloadMetadata => {
-                        // Will be handled in Phase 4 (needs cache invalidation)
-                        if let Some(dsn) = &state.runtime.dsn {
-                            effects.push(Effect::Sequence(vec![
-                                Effect::CacheInvalidate { dsn: dsn.clone() },
-                                Effect::ClearCompletionEngineCache,
-                                Effect::FetchMetadata { dsn: dsn.clone() },
-                            ]));
-
-                            // Reset prefetch state
-                            state.sql_modal.prefetch_started = false;
-                            state.sql_modal.prefetch_queue.clear();
-                            state.sql_modal.prefetching_tables.clear();
-                            state.sql_modal.failed_prefetch_tables.clear();
-                            state.er_preparation.reset();
-                            state.messages.last_error = None;
-                            state.messages.last_success = None;
-                            state.messages.expires_at = None;
-                        }
+                        effects.push(Effect::DispatchActions(vec![Action::ReloadMetadata]));
                     }
                     _ => {}
                 }
@@ -2012,6 +1995,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
+        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
@@ -2054,6 +2038,44 @@ mod tests {
                 assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
                 assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
             }
+        }
+
+        #[test]
+        fn reload_metadata_sets_is_reloading_flag() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReloadMetadata, now);
+
+            assert!(state.runtime.is_reloading);
+        }
+
+        #[test]
+        fn reload_then_metadata_loaded_shows_reloaded_message() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            // Trigger reload
+            let _ = reduce(&mut state, Action::ReloadMetadata, now);
+            assert!(state.runtime.is_reloading);
+
+            // Metadata loaded
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: now,
+            };
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            // Check reloading flag is cleared and message is shown
+            assert!(!state.runtime.is_reloading);
+            assert_eq!(
+                state.messages.last_success,
+                Some("Reloaded!".to_string())
+            );
         }
 
         #[test]
