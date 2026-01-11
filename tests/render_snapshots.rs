@@ -5,6 +5,9 @@ use harness::{create_test_state, create_test_terminal, render_to_string, test_in
 
 use std::time::Duration;
 
+use sabiql::app::action::Action;
+use sabiql::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+use sabiql::app::connection_setup_state::ConnectionField;
 use sabiql::app::er_state::ErStatus;
 use sabiql::app::focused_pane::FocusedPane;
 use sabiql::app::input_mode::InputMode;
@@ -217,6 +220,100 @@ fn command_line_input() {
     state.cache.state = MetadataState::Loaded;
     state.ui.input_mode = InputMode::CommandLine;
     state.command_line_input = "sql".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_form() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConnectionSetup;
+    state.connection_setup.database = "mydb".to_string();
+    state.connection_setup.user = "postgres".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_with_validation_errors() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConnectionSetup;
+    state.connection_setup.host = String::new();
+    state.connection_setup.database = String::new();
+    state.connection_setup.user = String::new();
+    state
+        .connection_setup
+        .validation_errors
+        .insert(ConnectionField::Host, "Required".to_string());
+    state
+        .connection_setup
+        .validation_errors
+        .insert(ConnectionField::Database, "Required".to_string());
+    state
+        .connection_setup
+        .validation_errors
+        .insert(ConnectionField::User, "Required".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_error_collapsed() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConnectionError;
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::HostUnreachable,
+            "psql: error: could not translate host name \"db.example.com\" to address",
+        ));
+    state.connection_error.details_expanded = false;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_error_expanded() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConnectionError;
+    state.connection_error.set_error(ConnectionErrorInfo::with_kind(
+        ConnectionErrorKind::Timeout,
+        "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
+    ));
+    state.connection_error.details_expanded = true;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Confirm".to_string();
+    state.confirm_dialog.message =
+        "No connection configured.\nAre you sure you want to quit?".to_string();
+    state.confirm_dialog.on_confirm = Action::Quit;
+    state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
 
     let output = render_to_string(&mut terminal, &mut state);
 

@@ -2,13 +2,16 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
-use crate::app::connection_setup_state::ConnectionField;
+use crate::app::connection_setup_state::{
+    CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
+};
 use crate::app::state::AppState;
 use crate::domain::connection::SslMode;
 use crate::ui::theme::Theme;
 
 const LABEL_WIDTH: u16 = 12;
-const INPUT_WIDTH: u16 = 40;
+const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
+const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
 
@@ -18,8 +21,8 @@ impl ConnectionSetup {
     pub fn render(frame: &mut Frame, state: &AppState) {
         let form_state = &state.connection_setup;
 
-        let modal_width = LABEL_WIDTH + INPUT_WIDTH + 6;
-        let modal_height = 14;
+        let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
+        let modal_height = 12;
 
         let area = centered_rect(
             frame.area(),
@@ -33,7 +36,7 @@ impl ConnectionSetup {
         let block = modal_block_with_hint(" Connection Setup ".to_string(), hint.to_string());
         frame.render_widget(block, area);
 
-        let inner = area.inner(Margin::new(2, 1));
+        let inner = area.inner(Margin::new(3, 2));
         let chunks = Layout::vertical([
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),
@@ -42,55 +45,25 @@ impl ConnectionSetup {
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(1), // spacer
-            Constraint::Length(1), // auto name
-            Constraint::Length(1), // spacer
             Constraint::Length(1), // notice
         ])
         .split(inner);
 
-        Self::render_text_field(
-            frame,
-            chunks[0],
-            ConnectionField::Host,
-            &form_state.host,
-            form_state.focused_field,
-            form_state.validation_errors.get(&ConnectionField::Host),
-            false,
-        );
-        Self::render_text_field(
-            frame,
-            chunks[1],
-            ConnectionField::Port,
-            &form_state.port,
-            form_state.focused_field,
-            form_state.validation_errors.get(&ConnectionField::Port),
-            false,
-        );
+        Self::render_text_field(frame, chunks[0], form_state, ConnectionField::Host, false);
+        Self::render_text_field(frame, chunks[1], form_state, ConnectionField::Port, false);
         Self::render_text_field(
             frame,
             chunks[2],
+            form_state,
             ConnectionField::Database,
-            &form_state.database,
-            form_state.focused_field,
-            form_state.validation_errors.get(&ConnectionField::Database),
             false,
         );
-        Self::render_text_field(
-            frame,
-            chunks[3],
-            ConnectionField::User,
-            &form_state.user,
-            form_state.focused_field,
-            form_state.validation_errors.get(&ConnectionField::User),
-            false,
-        );
+        Self::render_text_field(frame, chunks[3], form_state, ConnectionField::User, false);
         Self::render_text_field(
             frame,
             chunks[4],
+            form_state,
             ConnectionField::Password,
-            &form_state.password,
-            form_state.focused_field,
-            form_state.validation_errors.get(&ConnectionField::Password),
             true,
         );
         Self::render_ssl_field(
@@ -100,15 +73,9 @@ impl ConnectionSetup {
             form_state.focused_field == ConnectionField::SslMode,
         );
 
-        let auto_name = format!("Name (auto): {}", form_state.auto_name());
-        let auto_name_para =
-            Paragraph::new(auto_name).style(Style::default().fg(Theme::MODAL_HINT));
-        frame.render_widget(auto_name_para, chunks[7]);
-
         let notice = "Note: Connection info is stored locally in plain text";
-        let notice_para =
-            Paragraph::new(notice).style(Style::default().fg(Theme::MODAL_HINT).dim());
-        frame.render_widget(notice_para, chunks[9]);
+        let notice_para = Paragraph::new(notice).style(Style::default().fg(Theme::NOTE_TEXT));
+        frame.render_widget(notice_para, chunks[7]);
 
         if form_state.ssl_dropdown.is_open {
             Self::render_dropdown(frame, chunks[5], form_state.ssl_dropdown.selected_index);
@@ -118,47 +85,59 @@ impl ConnectionSetup {
     fn render_text_field(
         frame: &mut Frame,
         area: Rect,
+        state: &ConnectionSetupState,
         field: ConnectionField,
-        value: &str,
-        focused: ConnectionField,
-        error: Option<&String>,
         mask: bool,
     ) {
-        let is_focused = field == focused;
-        let label = field.label();
+        let is_focused = field == state.focused_field;
+        let value = state.field_value(field);
+        let error = state.validation_errors.get(&field);
 
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(area);
 
         let label_style = if is_focused {
-            Style::default().fg(Color::White).bold()
+            Style::default().fg(Color::Gray).bold()
         } else {
-            Style::default().fg(Theme::MODAL_HINT)
+            Style::default().fg(Color::Gray)
         };
-        let label_para = Paragraph::new(label).style(label_style);
+        let label_para = Paragraph::new(field.label()).style(label_style);
         frame.render_widget(label_para, chunks[0]);
 
         let display_value = if mask {
-            "*".repeat(value.len())
+            "*".repeat(value.chars().count())
         } else {
             value.to_string()
         };
 
+        let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
         let input_content = if is_focused {
-            format!("{}█", display_value)
+            let viewport = state.viewport_offset;
+            let cursor = state.cursor_position;
+            let char_count = display_value.chars().count();
+            let visible_chars = content_width - 1; // Reserve 1 char for cursor
+            let visible_end = (viewport + visible_chars).min(char_count);
+            let visible_start = viewport.min(char_count);
+            let visible_text: String = display_value
+                .chars()
+                .skip(visible_start)
+                .take(visible_end - visible_start)
+                .collect();
+            let cursor_in_visible = cursor.saturating_sub(viewport);
+            let before_cursor: String = visible_text.chars().take(cursor_in_visible).collect();
+            let after_cursor: String = visible_text.chars().skip(cursor_in_visible).collect();
+            let with_cursor = format!("{}█{}", before_cursor, after_cursor);
+            format!("{:<1$}", with_cursor, content_width)
         } else {
-            display_value
+            let truncated: String = display_value.chars().take(content_width).collect();
+            format!("{:<1$}", truncated, content_width)
         };
 
-        let input_style = if is_focused {
-            Style::default().fg(Color::White)
-        } else {
-            Style::default().fg(Color::Gray)
-        };
+        let input_style = Style::default().fg(Color::White);
 
         let border_style = if error.is_some() {
             Style::default().fg(Color::Red)
@@ -185,24 +164,22 @@ impl ConnectionSetup {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(area);
 
+        // Label: gray (like Explorer content), bold when focused
         let label_style = if is_focused {
-            Style::default().fg(Color::White).bold()
+            Style::default().fg(Color::Gray).bold()
         } else {
-            Style::default().fg(Theme::MODAL_HINT)
+            Style::default().fg(Color::Gray)
         };
         let label_para = Paragraph::new("SSL Mode:").style(label_style);
         frame.render_widget(label_para, chunks[0]);
 
+        // Value: white (emphasized)
         let display = format!("[ {} ▼ ]", ssl_mode);
-        let input_style = if is_focused {
-            Style::default().fg(Color::White)
-        } else {
-            Style::default().fg(Color::Gray)
-        };
+        let input_style = Style::default().fg(Color::White);
         let input_para = Paragraph::new(display).style(input_style);
         frame.render_widget(input_para, chunks[1]);
     }
@@ -211,7 +188,7 @@ impl ConnectionSetup {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(ssl_field_area);
 

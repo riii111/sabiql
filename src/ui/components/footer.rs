@@ -48,6 +48,7 @@ impl Footer {
         Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
     }
 
+    /// Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::focused_pane::FocusedPane;
 
@@ -63,39 +64,57 @@ impl Footer {
                         ("q", "Quit"),
                     ]
                 } else {
-                    let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
+                    let mut hints = vec![
+                        ("r", "Reload"),
+                        ("s", "SQL"),
+                        ("e", "ER Diagram"),
+                        ("c", "Connect"),
+                        ("^P", "Tables"),
+                        ("^K", "Palette"),
+                    ];
+                    if state.connection_error.error_info.is_some() {
+                        hints.push(("Enter", "Error"));
+                    }
+                    hints.push(("1/2/3", "Pane"));
                     hints.push(("f", "Focus"));
-                    // Show scroll hint when Result pane is focused
                     if state.ui.focused_pane == FocusedPane::Result {
                         hints.push(("j/k/g/G", "Scroll"));
                         hints.push(("h/l", "H-Scroll"));
                     }
-                    // Show Inspector tab switching hint when Inspector is focused
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
                     }
-                    hints.push(("r", "Reload"));
-                    hints.push(("s", "SQL"));
-                    hints.push(("e", "ER Diagram"));
-                    hints.push(("^P", "Tables"));
-                    hints.push(("^K", "Palette"));
+                    hints.push(("?", "Help"));
+                    hints.push(("q", "Quit"));
                     hints
                 }
             }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![
-                ("Esc", "Close"),
                 ("Enter", "Select"),
-                ("↑↓", "Navigate"),
                 ("type", "Filter"),
+                ("↑↓", "Navigate"),
+                ("Esc", "Close"),
             ],
             InputMode::CommandPalette => {
-                vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
+                vec![("Enter", "Execute"), ("↑↓", "Navigate"), ("Esc", "Close")]
             }
-            InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
-            InputMode::SqlModal => vec![("⌥Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
-            InputMode::ConnectionSetup => vec![("Esc", "Close")],
-            InputMode::ConnectionError => vec![("Esc", "Close"), ("q", "Quit")],
+            InputMode::Help => vec![("?/Esc", "Close"), ("q", "Quit")],
+            InputMode::SqlModal => vec![("⌥Enter", "Run"), ("↑↓←→", "Move"), ("Esc", "Close")],
+            InputMode::ConnectionSetup => vec![
+                ("^S", "Save"),
+                ("Tab", "Next"),
+                ("⇧Tab", "Prev"),
+                ("Esc", "Cancel"),
+            ],
+            InputMode::ConnectionError => vec![
+                ("Enter/r", "Retry"),
+                ("e", "Edit"),
+                ("d", "Details"),
+                ("c", "Copy"),
+                ("Esc", "Close"),
+                ("q", "Quit"),
+            ],
             InputMode::ConfirmDialog => vec![("Esc", "Close")],
         }
     }

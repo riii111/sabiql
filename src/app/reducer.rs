@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_setup_state::ConnectionField;
+use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
@@ -171,13 +171,15 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
+            state.messages.clear();
             if let Some(dsn) = state.runtime.dsn.clone() {
+                state.runtime.is_reconnecting = true;
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
                 state.ui.input_mode = InputMode::Normal;
                 vec![Effect::FetchMetadata { dsn }]
             } else {
-                // No dsn available - redirect to setup
+                state.runtime.is_reconnecting = false;
                 state.runtime.connection_state = ConnectionState::NotConnected;
                 state.cache.state = MetadataState::NotLoaded;
                 state.ui.input_mode = InputMode::ConnectionSetup;
@@ -201,41 +203,58 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
 
         // ===== Connection Setup Form =====
+        // Note: cursor_position is character-based (not byte-based) for multi-byte safety
         Action::ConnectionSetupInput(c) => {
             let setup = &mut state.connection_setup;
             match setup.focused_field {
-                ConnectionField::Host => setup.host.push(c),
+                ConnectionField::Host => {
+                    insert_char_at_cursor(&mut setup.host, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.len() < 5 {
-                        setup.port.push(c);
+                    if c.is_ascii_digit() && setup.port.chars().count() < 5 {
+                        insert_char_at_cursor(&mut setup.port, setup.cursor_position, c);
+                        let new_cursor = setup.cursor_position + 1;
+                        setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::Database => setup.database.push(c),
-                ConnectionField::User => setup.user.push(c),
-                ConnectionField::Password => setup.password.push(c),
+                ConnectionField::Database => {
+                    insert_char_at_cursor(&mut setup.database, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
+                ConnectionField::User => {
+                    insert_char_at_cursor(&mut setup.user, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
+                ConnectionField::Password => {
+                    insert_char_at_cursor(&mut setup.password, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
                 ConnectionField::SslMode => {}
             }
             vec![]
         }
         Action::ConnectionSetupBackspace => {
             let setup = &mut state.connection_setup;
-            match setup.focused_field {
-                ConnectionField::Host => {
-                    setup.host.pop();
-                }
-                ConnectionField::Port => {
-                    setup.port.pop();
-                }
-                ConnectionField::Database => {
-                    setup.database.pop();
-                }
-                ConnectionField::User => {
-                    setup.user.pop();
-                }
-                ConnectionField::Password => {
-                    setup.password.pop();
-                }
-                ConnectionField::SslMode => {}
+            if setup.cursor_position == 0 {
+                return vec![];
+            }
+            let field_str = match setup.focused_field {
+                ConnectionField::Host => &mut setup.host,
+                ConnectionField::Port => &mut setup.port,
+                ConnectionField::Database => &mut setup.database,
+                ConnectionField::User => &mut setup.user,
+                ConnectionField::Password => &mut setup.password,
+                ConnectionField::SslMode => return vec![],
+            };
+            let char_pos = setup.cursor_position - 1;
+            if let Some((byte_idx, _)) = field_str.char_indices().nth(char_pos) {
+                field_str.remove(byte_idx);
+                setup.update_cursor(char_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
             }
             vec![]
         }
@@ -244,6 +263,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             validate_field(setup, setup.focused_field);
             if let Some(next) = setup.focused_field.next() {
                 setup.focused_field = next;
+                setup.cursor_to_end();
             }
             vec![]
         }
@@ -252,6 +272,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             validate_field(setup, setup.focused_field);
             if let Some(prev) = setup.focused_field.prev() {
                 setup.focused_field = prev;
+                setup.cursor_to_end();
             }
             vec![]
         }
@@ -747,6 +768,13 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
 
+            if state.runtime.is_reconnecting {
+                state
+                    .messages
+                    .set_success_at("Reconnected!".to_string(), now);
+                state.runtime.is_reconnecting = false;
+            }
+
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
                 vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
@@ -758,12 +786,13 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            state.runtime.is_reconnecting = false;
             // Only set Failed if not already Connected (preserve connection on metadata-only failures)
             // This handles the case where connection succeeds but metadata reload fails
             if !state.runtime.connection_state.is_connected() {
                 state.runtime.connection_state = ConnectionState::Failed;
+                state.ui.input_mode = InputMode::ConnectionError;
             }
-            // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -1091,11 +1120,14 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         });
                     }
                 }
-            } else if state.ui.input_mode == InputMode::Normal
-                && state.ui.focused_pane == FocusedPane::Explorer
-            {
-                if matches!(state.cache.state, MetadataState::Error(_)) {
+            } else if state.ui.input_mode == InputMode::Normal {
+                // Open error modal if connection error exists (from any pane)
+                if state.connection_error.error_info.is_some() {
                     state.ui.input_mode = InputMode::ConnectionError;
+                    return effects;
+                }
+
+                if state.ui.focused_pane != FocusedPane::Explorer {
                     return effects;
                 }
 
@@ -1465,6 +1497,11 @@ fn char_count(s: &str) -> usize {
     s.chars().count()
 }
 
+fn insert_char_at_cursor(s: &mut String, char_pos: usize, c: char) {
+    let byte_idx = char_to_byte_index(s, char_pos);
+    s.insert(byte_idx, c);
+}
+
 // ===== Connection Setup Validation =====
 
 use crate::app::connection_setup_state::ConnectionSetupState;
@@ -1819,7 +1856,7 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state_without_opening_modal() {
+        fn metadata_failed_opens_error_modal_automatically() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -1830,17 +1867,18 @@ mod tests {
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
-            // Modal is NOT opened - user must press Enter in Explorer to see details
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn enter_in_explorer_with_error_opens_modal() {
+        fn enter_with_error_info_opens_modal() {
             let mut state = create_test_state();
-            state.cache.state = MetadataState::Error("error".to_string());
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::new("error"));
+            state.ui.focused_pane = FocusedPane::Result; // Any pane works
             let now = Instant::now();
 
             reduce(&mut state, Action::ConfirmSelection, now);
