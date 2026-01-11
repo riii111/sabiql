@@ -788,8 +788,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             // This handles the case where connection succeeds but metadata reload fails
             if !state.runtime.connection_state.is_connected() {
                 state.runtime.connection_state = ConnectionState::Failed;
+                state.ui.input_mode = InputMode::ConnectionError;
             }
-            // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -1117,11 +1117,14 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         });
                     }
                 }
-            } else if state.ui.input_mode == InputMode::Normal
-                && state.ui.focused_pane == FocusedPane::Explorer
-            {
-                if matches!(state.cache.state, MetadataState::Error(_)) {
+            } else if state.ui.input_mode == InputMode::Normal {
+                // Open error modal if connection error exists (from any pane)
+                if state.connection_error.error_info.is_some() {
                     state.ui.input_mode = InputMode::ConnectionError;
+                    return effects;
+                }
+
+                if state.ui.focused_pane != FocusedPane::Explorer {
                     return effects;
                 }
 
@@ -1845,7 +1848,7 @@ mod tests {
         }
 
         #[test]
-        fn metadata_failed_sets_error_state_without_opening_modal() {
+        fn metadata_failed_opens_error_modal_automatically() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -1856,17 +1859,16 @@ mod tests {
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
-            // Modal is NOT opened - user must press Enter in Explorer to see details
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn enter_in_explorer_with_error_opens_modal() {
+        fn enter_with_error_info_opens_modal() {
             let mut state = create_test_state();
-            state.cache.state = MetadataState::Error("error".to_string());
-            state.ui.focused_pane = FocusedPane::Explorer;
+            state.connection_error.set_error(ConnectionErrorInfo::new("error"));
+            state.ui.focused_pane = FocusedPane::Result; // Any pane works
             let now = Instant::now();
 
             reduce(&mut state, Action::ConfirmSelection, now);
