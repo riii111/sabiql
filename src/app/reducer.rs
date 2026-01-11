@@ -2072,10 +2072,7 @@ mod tests {
 
             // Check reloading flag is cleared and message is shown
             assert!(!state.runtime.is_reloading);
-            assert_eq!(
-                state.messages.last_success,
-                Some("Reloaded!".to_string())
-            );
+            assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
         }
 
         #[test]
