@@ -1,33 +1,25 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Clear, List, ListItem};
+use ratatui::widgets::{List, ListItem};
 
 use crate::app::palette::PALETTE_COMMANDS;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 
 pub struct CommandPalette;
 
 impl CommandPalette {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let area = centered_rect(
-            frame.area(),
+        let (_, inner) = render_modal(
+            frame,
             Constraint::Percentage(50),
             Constraint::Percentage(50),
+            " Command Palette ",
+            " ↑↓ Navigate │ Enter Select │ Esc Close ",
         );
-
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
-        let block = modal_block_with_hint(
-            " Command Palette ".to_string(),
-            " ↑↓ Navigate │ Enter Select │ Esc Close ".to_string(),
-        );
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
 
         let items: Vec<ListItem> = PALETTE_COMMANDS
             .iter()

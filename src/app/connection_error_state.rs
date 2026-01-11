@@ -7,7 +7,6 @@ pub struct ConnectionErrorState {
     pub error_info: Option<ConnectionErrorInfo>,
     pub details_expanded: bool,
     pub scroll_offset: usize,
-    pub is_retrying: bool,
     copied_feedback_expires: Option<Instant>,
 }
 
@@ -18,7 +17,6 @@ impl ConnectionErrorState {
         self.error_info = Some(info);
         self.details_expanded = false;
         self.scroll_offset = 0;
-        self.is_retrying = false;
         self.copied_feedback_expires = None;
     }
 
@@ -26,7 +24,6 @@ impl ConnectionErrorState {
         self.error_info = None;
         self.details_expanded = false;
         self.scroll_offset = 0;
-        self.is_retrying = false;
         self.copied_feedback_expires = None;
     }
 

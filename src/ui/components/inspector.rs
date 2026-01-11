@@ -2,7 +2,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{Cell, Paragraph, Row, Table, Wrap};
+
+use super::atoms::panel_block;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::ddl::generate_ddl_postgres;
@@ -60,16 +62,7 @@ impl Inspector {
         state: &AppState,
         is_focused: bool,
     ) -> ViewportPlan {
-        let border_style = if is_focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-
-        let block = Block::default()
-            .title(" [2] Inspector ")
-            .borders(Borders::ALL)
-            .border_style(border_style);
+        let block = panel_block(" [2] Inspector ", is_focused);
 
         if let Some(table) = &state.cache.table_detail {
             let inner = block.inner(area);
