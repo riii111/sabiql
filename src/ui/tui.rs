@@ -106,7 +106,7 @@ impl TuiRunner {
                     crossterm_event = event_stream.next().fuse() => {
                         match crossterm_event {
                             Some(Ok(evt)) => match evt {
-                                CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
+                                CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat => {
                                     Event::Key(key)
                                 }
                                 CrosstermEvent::Resize(x, y) => Event::Resize(x, y),
