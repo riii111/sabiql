@@ -1,3 +1,5 @@
+use super::connection_state::ConnectionState;
+
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
     pub dsn: Option<String>,
@@ -5,6 +7,7 @@ pub struct RuntimeState {
     pub profile_name: String,
     pub database_name: Option<String>,
     pub active_connection_name: Option<String>,
+    pub connection_state: ConnectionState,
 }
 
 impl RuntimeState {
@@ -15,6 +18,7 @@ impl RuntimeState {
             profile_name,
             database_name: None,
             active_connection_name: None,
+            connection_state: ConnectionState::default(),
         }
     }
 }
@@ -32,6 +36,7 @@ mod tests {
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
         assert!(state.active_connection_name.is_none());
+        assert!(state.connection_state.is_not_connected());
     }
 
     #[test]
@@ -43,5 +48,6 @@ mod tests {
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
         assert!(state.active_connection_name.is_none());
+        assert!(state.connection_state.is_not_connected());
     }
 }

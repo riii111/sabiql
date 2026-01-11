@@ -110,8 +110,9 @@ async fn main() -> Result<()> {
     let initial_size = tui.terminal().size()?;
     state.ui.terminal_height = initial_size.height;
 
-    if state.runtime.dsn.is_some() {
-        let _ = action_tx.send(Action::LoadMetadata).await;
+    // TryConnect is idempotent, so safe even if called multiple times
+    if state.runtime.dsn.is_some() && state.ui.input_mode == InputMode::Normal {
+        let _ = action_tx.send(Action::TryConnect).await;
     }
 
     let cache_cleanup_interval = Duration::from_secs(150);

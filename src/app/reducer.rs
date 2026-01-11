@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use crate::app::action::{Action, CursorMove};
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_setup_state::ConnectionField;
+use crate::app::connection_state::ConnectionState;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
@@ -102,6 +103,24 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
+        // ===== Connection Lifecycle =====
+        Action::TryConnect => {
+            // Idempotency: only connect if NotConnected and in Normal mode
+            if state.runtime.connection_state.is_not_connected()
+                && state.ui.input_mode == InputMode::Normal
+            {
+                if let Some(dsn) = state.runtime.dsn.clone() {
+                    state.runtime.connection_state = ConnectionState::Connecting;
+                    state.cache.state = MetadataState::Loading;
+                    vec![Effect::FetchMetadata { dsn }]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            }
+        }
+
         // ===== Connection Modes =====
         Action::OpenConnectionSetup => {
             state.ui.input_mode = InputMode::ConnectionSetup;
@@ -152,15 +171,23 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
-            state.ui.input_mode = InputMode::Normal;
-            if let Some(dsn) = &state.runtime.dsn {
-                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            if let Some(dsn) = state.runtime.dsn.clone() {
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                state.ui.input_mode = InputMode::Normal;
+                vec![Effect::FetchMetadata { dsn }]
             } else {
+                // No dsn available - redirect to setup
+                state.runtime.connection_state = ConnectionState::NotConnected;
+                state.cache.state = MetadataState::NotLoaded;
+                state.ui.input_mode = InputMode::ConnectionSetup;
                 vec![]
             }
         }
         Action::ReenterConnectionSetup => {
             state.connection_error.clear();
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
             state.ui.input_mode = InputMode::ConnectionSetup;
             vec![]
         }
@@ -298,15 +325,18 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 state.confirm_dialog.on_confirm = Action::Quit;
                 state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
                 state.ui.input_mode = InputMode::ConfirmDialog;
+                vec![]
             } else {
                 state.ui.input_mode = InputMode::Normal;
+                vec![Effect::DispatchActions(vec![Action::TryConnect])]
             }
-            vec![]
         }
         Action::ConnectionSaveCompleted { dsn } => {
             state.connection_setup.is_first_run = false;
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(state.connection_setup.auto_name());
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;
             vec![Effect::FetchMetadata { dsn }]
         }
@@ -711,6 +741,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.runtime.connection_state = ConnectionState::Connected;
             state.connection_error.clear();
             state
                 .ui
@@ -727,6 +758,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            // Only set Failed if not already Connected (preserve connection on metadata-only failures)
+            // This handles the case where connection succeeds but metadata reload fails
+            if !state.runtime.connection_state.is_connected() {
+                state.runtime.connection_state = ConnectionState::Failed;
+            }
             // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
@@ -2320,7 +2356,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_returns_to_normal() {
+        fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConnectionSetup;
             state.connection_setup.is_first_run = false;
@@ -2329,7 +2365,8 @@ mod tests {
             let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert!(effects.is_empty());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::DispatchActions(_)));
         }
     }
 
@@ -2364,6 +2401,226 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
             assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
             assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+        }
+    }
+
+    mod connection_state_tests {
+        use super::*;
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn try_connect_with_dsn_starts_connecting() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn try_connect_without_dsn_does_nothing() {
+            let mut state = create_test_state();
+            state.runtime.dsn = None;
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_already_connecting_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_already_connected_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_not_in_normal_mode_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn metadata_loaded_sets_connected() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connecting;
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            };
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            assert!(state.runtime.connection_state.is_connected());
+            assert!(matches!(state.cache.state, MetadataState::Loaded));
+        }
+
+        #[test]
+        fn metadata_failed_sets_failed() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connecting;
+            let now = Instant::now();
+
+            let _ = reduce(
+                &mut state,
+                Action::MetadataFailed("connection refused".to_string()),
+                now,
+            );
+
+            assert!(state.runtime.connection_state.is_failed());
+            assert!(matches!(state.cache.state, MetadataState::Error(_)));
+        }
+
+        #[test]
+        fn metadata_failed_preserves_connected_state() {
+            // When already connected, metadata failure should preserve connection state
+            // (metadata-only failure, e.g., permission denied on schema)
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.cache.state = MetadataState::Loaded;
+            let now = Instant::now();
+
+            let _ = reduce(
+                &mut state,
+                Action::MetadataFailed("permission denied".to_string()),
+                now,
+            );
+
+            // Connection state should remain Connected
+            assert!(state.runtime.connection_state.is_connected());
+            // But metadata state should be Error
+            assert!(matches!(state.cache.state, MetadataState::Error(_)));
+        }
+
+        #[test]
+        fn reenter_connection_setup_resets_all_states() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReenterConnectionSetup, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(matches!(state.cache.state, MetadataState::NotLoaded));
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn reenter_connection_setup_preserves_form_values() {
+            let mut state = create_test_state();
+            state.connection_setup.host = "custom-host".to_string();
+            state.connection_setup.port = "5433".to_string();
+            state.connection_setup.database = "mydb".to_string();
+            state.connection_setup.user = "admin".to_string();
+            state.connection_setup.password = "secret".to_string();
+            state.runtime.connection_state = ConnectionState::Failed;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReenterConnectionSetup, now);
+
+            assert_eq!(state.connection_setup.host, "custom-host");
+            assert_eq!(state.connection_setup.port, "5433");
+            assert_eq!(state.connection_setup.database, "mydb");
+            assert_eq!(state.connection_setup.user, "admin");
+            assert_eq!(state.connection_setup.password, "secret");
+        }
+
+        #[test]
+        fn connection_save_completed_sets_connecting_and_loading() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                },
+                now,
+            );
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn retry_connection_sets_connecting() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Failed;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn retry_connection_without_dsn_redirects_to_setup() {
+            let mut state = create_test_state();
+            state.runtime.dsn = None;
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(matches!(state.cache.state, MetadataState::NotLoaded));
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(effects.is_empty());
         }
     }
 }
