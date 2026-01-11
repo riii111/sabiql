@@ -400,7 +400,8 @@ pub const HELP_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 /// Total lines in help overlay content (8 sections + 7 blank lines + key entries)
-pub const HELP_TOTAL_LINES: usize = 8 + 7
+pub const HELP_TOTAL_LINES: usize = 8
+    + 7
     + GLOBAL_KEYS.len()
     + NAVIGATION_KEYS.len()
     + SQL_MODAL_KEYS.len()
