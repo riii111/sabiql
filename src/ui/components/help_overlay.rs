@@ -12,6 +12,7 @@ use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
 use super::molecules::{chip_hint_line, render_modal};
+use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 
 pub struct HelpOverlay;
 
@@ -71,13 +72,27 @@ impl HelpOverlay {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 
-        let scroll_offset = state.ui.help_scroll_offset as u16;
+        let total_lines = help_lines.len();
+        let viewport_height = inner.height as usize;
+        let max_scroll = total_lines.saturating_sub(viewport_height);
+        let scroll_offset = state.ui.help_scroll_offset.min(max_scroll);
+
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
             .style(Style::default().bg(Theme::MODAL_BG))
-            .scroll((scroll_offset, 0));
+            .scroll((scroll_offset as u16, 0));
 
         frame.render_widget(help, inner);
+
+        render_vertical_scroll_indicator_bar(
+            frame,
+            inner,
+            VerticalScrollParams {
+                position: scroll_offset,
+                viewport_size: viewport_height,
+                total_items: total_lines,
+            },
+        );
     }
 
     fn section(title: &str) -> Line<'static> {

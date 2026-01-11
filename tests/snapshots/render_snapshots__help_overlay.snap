@@ -5,23 +5,23 @@ expression: output
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
 │Connections╭ Help ────────────────────────────────────────────────╮───────────┐
-│ Current: l│▸ Global Keys                                         │           │
-│           │  q            Quit application                       │           │
-│Tables [3] │  ?            Toggle help                            │           │
-│public.user│  Ctrl+P       Open Table Picker                      │           │
-│public.post│  Ctrl+K       Open Command Palette                   │           │
-│public.comm│  :            Enter command line                     │           │
-│           │  f            Toggle Focus mode                      │           │
-│           │  1/2/3        Switch pane focus                      │           │
-│           │  Tab/⇧Tab     Inspector prev/next tab                │───────────┘
-│           │  r            Reload metadata                        │───────────┐
-│           │  s            Open SQL Editor                        │           │
-│           │  e            Open ER Diagram                        │           │
-│           │  c            Open connection settings               │           │
-│           │                                                      │           │
-│           │▸ Navigation                                          │           │
-│           │  j / ↓        Move down / scroll                     │           │
-│           │  k / ↑        Move up / scroll                       │           │
-│           │  g / Home     First item / top                       │           │
+│ Current: l│▸ Global Keys                                        ▲│           │
+│           │  q            Quit application                      ┃│           │
+│Tables [3] │  ?            Toggle help                           ┃│           │
+│public.user│  Ctrl+P       Open Table Picker                     ┃│           │
+│public.post│  Ctrl+K       Open Command Palette                  ┃│           │
+│public.comm│  :            Enter command line                    ┃│           │
+│           │  f            Toggle Focus mode                     ││           │
+│           │  1/2/3        Switch pane focus                     ││           │
+│           │  Tab/⇧Tab     Inspector prev/next tab               ││───────────┘
+│           │  r            Reload metadata                       ││───────────┐
+│           │  s            Open SQL Editor                       ││           │
+│           │  e            Open ER Diagram                       ││           │
+│           │  c            Open connection settings              ││           │
+│           │                                                     ││           │
+│           │▸ Navigation                                         ││           │
+│           │  j / ↓        Move down / scroll                    ││           │
+│           │  k / ↑        Move up / scroll                      ▼│           │
+│           │  g / Home     First item / top               row   0%│           │
 └───────────╰ j/k to scroll, ? or Esc to close ────────────────────╯───────────┘
 j/k:Scroll  ?/Esc:Close  q:Quit
