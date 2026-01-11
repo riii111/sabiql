@@ -1,4 +1,5 @@
 use ratatui::prelude::*;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::molecules::render_modal;
@@ -14,6 +15,14 @@ const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
+
+fn bracketed_input(content: &str, border_style: Style) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("[", border_style),
+        Span::styled(format!(" {} ", content), Style::default().fg(Color::White)),
+        Span::styled("]", border_style),
+    ])
+}
 
 pub struct ConnectionSetup;
 
@@ -134,8 +143,6 @@ impl ConnectionSetup {
             format!("{:<1$}", truncated, content_width)
         };
 
-        let input_style = Style::default().fg(Color::White);
-
         let border_style = if error.is_some() {
             Style::default().fg(Color::Red)
         } else if is_focused {
@@ -144,10 +151,7 @@ impl ConnectionSetup {
             Style::default().fg(Theme::MODAL_BORDER)
         };
 
-        let input_block = Block::default().borders(Borders::NONE).style(border_style);
-        let input_para = Paragraph::new(format!("[ {} ]", input_content))
-            .style(input_style)
-            .block(input_block);
+        let input_para = Paragraph::new(bracketed_input(&input_content, border_style));
         frame.render_widget(input_para, chunks[1]);
 
         if let Some(err) = error {
@@ -174,10 +178,18 @@ impl ConnectionSetup {
         let label_para = Paragraph::new("SSL Mode:").style(label_style);
         frame.render_widget(label_para, chunks[0]);
 
-        // Value: white (emphasized)
-        let display = format!("[ {} ▼ ]", ssl_mode);
-        let input_style = Style::default().fg(Color::White);
-        let input_para = Paragraph::new(display).style(input_style);
+        // Value: white (emphasized), same width as text fields
+        let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
+        let ssl_mode_str = ssl_mode.to_string();
+        let display_content = format!("{:<1$} ▼", ssl_mode_str, content_width - 2);
+
+        let border_style = if is_focused {
+            Style::default().fg(Theme::MODAL_BORDER_HIGHLIGHT)
+        } else {
+            Style::default().fg(Theme::MODAL_BORDER)
+        };
+
+        let input_para = Paragraph::new(bracketed_input(&display_content, border_style));
         frame.render_widget(input_para, chunks[1]);
     }
 
@@ -192,7 +204,7 @@ impl ConnectionSetup {
         let dropdown_area = Rect {
             x: chunks[1].x,
             y: chunks[1].y + 1,
-            width: 20,
+            width: INPUT_WIDTH,
             height: DROPDOWN_ITEM_COUNT as u16 + 2,
         };
 
@@ -200,7 +212,7 @@ impl ConnectionSetup {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::MODAL_BORDER_HIGHLIGHT))
+            .border_style(Style::default().fg(Color::DarkGray))
             .style(Style::default().bg(Theme::MODAL_BG));
         frame.render_widget(block, dropdown_area);
 
@@ -218,7 +230,8 @@ impl ConnectionSetup {
                 height: 1,
             };
 
-            let style = if i == selected_index {
+            let is_selected = i == selected_index;
+            let item_style = if is_selected {
                 Style::default()
                     .bg(Theme::COMPLETION_SELECTED_BG)
                     .fg(Color::White)
@@ -226,8 +239,8 @@ impl ConnectionSetup {
                 Style::default().fg(Color::Gray)
             };
 
-            let item = Paragraph::new(variant.to_string()).style(style);
-            frame.render_widget(item, item_area);
+            let item_para = Paragraph::new(variant.to_string()).style(item_style);
+            frame.render_widget(item_para, item_area);
         }
     }
 }
