@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_setup_state::ConnectionField;
+use crate::app::connection_setup_state::{ConnectionField, CONNECTION_INPUT_VISIBLE_WIDTH};
 use crate::app::connection_state::ConnectionState;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
@@ -25,9 +25,6 @@ use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
-
-/// Visible character width for connection form input fields (INPUT_WIDTH - 4 for brackets)
-const CONNECTION_INPUT_VISIBLE_WIDTH: usize = 36;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
@@ -206,35 +203,35 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
 
         // ===== Connection Setup Form =====
+        // Note: cursor_position is character-based (not byte-based) for multi-byte safety
         Action::ConnectionSetupInput(c) => {
             let setup = &mut state.connection_setup;
-            let char_len = c.len_utf8();
             match setup.focused_field {
                 ConnectionField::Host => {
-                    setup.host.push(c);
-                    let new_cursor = setup.cursor_position + char_len;
+                    insert_char_at_cursor(&mut setup.host, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
                     setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                 }
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.len() < 5 {
-                        setup.port.push(c);
-                        let new_cursor = setup.cursor_position + char_len;
+                    if c.is_ascii_digit() && setup.port.chars().count() < 5 {
+                        insert_char_at_cursor(&mut setup.port, setup.cursor_position, c);
+                        let new_cursor = setup.cursor_position + 1;
                         setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::Database => {
-                    setup.database.push(c);
-                    let new_cursor = setup.cursor_position + char_len;
+                    insert_char_at_cursor(&mut setup.database, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
                     setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                 }
                 ConnectionField::User => {
-                    setup.user.push(c);
-                    let new_cursor = setup.cursor_position + char_len;
+                    insert_char_at_cursor(&mut setup.user, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
                     setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                 }
                 ConnectionField::Password => {
-                    setup.password.push(c);
-                    let new_cursor = setup.cursor_position + char_len;
+                    insert_char_at_cursor(&mut setup.password, setup.cursor_position, c);
+                    let new_cursor = setup.cursor_position + 1;
                     setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                 }
                 ConnectionField::SslMode => {}
@@ -254,14 +251,10 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 ConnectionField::Password => &mut setup.password,
                 ConnectionField::SslMode => return vec![],
             };
-            if let Some((idx, _)) = field_str
-                .char_indices()
-                .take_while(|(i, _)| *i < setup.cursor_position)
-                .last()
-            {
-                let new_cursor = idx;
-                field_str.remove(idx);
-                setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+            let char_pos = setup.cursor_position - 1;
+            if let Some((byte_idx, _)) = field_str.char_indices().nth(char_pos) {
+                field_str.remove(byte_idx);
+                setup.update_cursor(char_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
             }
             vec![]
         }
@@ -1502,6 +1495,11 @@ fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
 
 fn char_count(s: &str) -> usize {
     s.chars().count()
+}
+
+fn insert_char_at_cursor(s: &mut String, char_pos: usize, c: char) {
+    let byte_idx = char_to_byte_index(s, char_pos);
+    s.insert(byte_idx, c);
 }
 
 // ===== Connection Setup Validation =====

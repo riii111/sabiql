@@ -2,13 +2,15 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
-use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
+use crate::app::connection_setup_state::{
+    ConnectionField, ConnectionSetupState, CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH,
+};
 use crate::app::state::AppState;
 use crate::domain::connection::SslMode;
 use crate::ui::theme::Theme;
 
 const LABEL_WIDTH: u16 = 12;
-const INPUT_WIDTH: u16 = 40;
+const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
@@ -107,22 +109,27 @@ impl ConnectionSetup {
         frame.render_widget(label_para, chunks[0]);
 
         let display_value = if mask {
-            "*".repeat(value.len())
+            "*".repeat(value.chars().count())
         } else {
             value.to_string()
         };
 
-        let content_width = INPUT_WIDTH as usize - 4;
+        let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
         let input_content = if is_focused {
             let viewport = state.viewport_offset;
             let cursor = state.cursor_position;
+            let char_count = display_value.chars().count();
             let visible_chars = content_width - 1; // Reserve 1 char for cursor
-            let visible_end = (viewport + visible_chars).min(display_value.len());
-            let visible_start = viewport.min(display_value.len());
-            let visible_text = &display_value[visible_start..visible_end];
+            let visible_end = (viewport + visible_chars).min(char_count);
+            let visible_start = viewport.min(char_count);
+            let visible_text: String = display_value
+                .chars()
+                .skip(visible_start)
+                .take(visible_end - visible_start)
+                .collect();
             let cursor_in_visible = cursor.saturating_sub(viewport);
-            let (before_cursor, after_cursor) =
-                visible_text.split_at(cursor_in_visible.min(visible_text.len()));
+            let before_cursor: String = visible_text.chars().take(cursor_in_visible).collect();
+            let after_cursor: String = visible_text.chars().skip(cursor_in_visible).collect();
             let with_cursor = format!("{}█{}", before_cursor, after_cursor);
             format!("{:<1$}", with_cursor, content_width)
         } else {
