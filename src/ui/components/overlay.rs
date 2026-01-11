@@ -1,10 +1,8 @@
-#![allow(dead_code)]
-
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols::border;
-use ratatui::widgets::{Block, Borders, Clear};
+use ratatui::widgets::{Block, Borders};
 
 use crate::ui::theme::Theme;
 
@@ -21,12 +19,6 @@ pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect 
     let [area] = Layout::horizontal([width]).flex(Flex::Center).areas(area);
     let [area] = Layout::vertical([height]).flex(Flex::Center).areas(area);
     area
-}
-
-/// Clears the given area by rendering a Clear widget.
-/// This should be called before rendering overlay content.
-pub fn clear_area(frame: &mut Frame, area: Rect) {
-    frame.render_widget(Clear, area);
 }
 
 /// Dims the background to make the modal "float" visually.

@@ -280,9 +280,11 @@ impl SqlModal {
 
         (row, col)
     }
+}
 
+#[cfg(test)]
+impl SqlModal {
     /// Convert (row, col) position to character index
-    #[allow(dead_code)]
     pub fn position_to_cursor(content: &str, row: usize, col: usize) -> usize {
         let mut current_row = 0;
         let mut current_col = 0;
@@ -309,7 +311,6 @@ impl SqlModal {
     }
 
     /// Get the line lengths for cursor movement
-    #[allow(dead_code)]
     pub fn line_lengths(content: &str) -> Vec<usize> {
         content.lines().map(|l| l.chars().count()).collect()
     }

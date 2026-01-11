@@ -18,7 +18,6 @@ pub mod inspector_tab;
 pub mod keybindings;
 pub mod message_state;
 pub mod metadata_cache;
-pub mod mode;
 pub mod palette;
 pub mod ports;
 pub mod query_execution;

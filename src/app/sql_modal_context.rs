@@ -52,8 +52,8 @@ pub struct SqlModalContext {
     pub prefetch_started: bool,
 }
 
+#[cfg(test)]
 impl SqlModalContext {
-    #[allow(dead_code)]
     pub fn reset_prefetch(&mut self) {
         self.prefetch_started = false;
         self.prefetch_queue.clear();
@@ -61,7 +61,6 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
-    #[allow(dead_code)]
     pub fn clear_content(&mut self) {
         self.content.clear();
         self.cursor = 0;
