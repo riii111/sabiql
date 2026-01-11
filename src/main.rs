@@ -22,19 +22,17 @@ use sabiql::ui::adapters::TuiAdapter;
 use sabiql::ui::event::handler::handle_event;
 use sabiql::ui::tui::TuiRunner;
 
+/// CLI arguments (empty, but needed for --help and --version)
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(short, long, default_value = "default")]
-    profile: String,
-}
+struct Args {}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     error::install_hooks()?;
 
-    let args = Args::parse();
+    Args::parse(); // --help, --version
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
 
@@ -57,7 +55,7 @@ async fn main() -> Result<()> {
         action_tx.clone(),
     );
 
-    let mut state = AppState::new(project_name, args.profile);
+    let mut state = AppState::new(project_name);
 
     // Load existing connection profile or show setup form
     match loaded_profile {

@@ -2,7 +2,7 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | default | - | - | no dsn | -                                     
+test_project | - | - | no dsn | -                                               
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
 │ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
 │              ││(select a table)                                              │

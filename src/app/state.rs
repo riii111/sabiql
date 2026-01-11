@@ -30,12 +30,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(project_name: String, profile_name: String) -> Self {
+    pub fn new(project_name: String) -> Self {
         Self {
             should_quit: false,
             command_line_input: String::new(),
             action_tx: None,
-            runtime: RuntimeState::new(project_name, profile_name),
+            runtime: RuntimeState::new(project_name),
             ui: UiState::new(),
             cache: MetadataCache::default(),
             query: QueryExecution::default(),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn default_result_pane_height_returns_zero_visible_rows() {
-        let state = AppState::new("test".to_string(), "default".to_string());
+        let state = AppState::new("test".to_string());
 
         let visible = state.result_visible_rows();
 
@@ -121,7 +121,7 @@ mod tests {
         #[case] pane_height: u16,
         #[case] expected: usize,
     ) {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.result_pane_height = pane_height;
 
         let visible = state.result_visible_rows();
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn small_result_pane_height_does_not_underflow() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.result_pane_height = 2;
 
         let visible = state.result_visible_rows();
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn very_small_result_pane_returns_zero_rows() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.result_pane_height = 1;
 
         let visible = state.result_visible_rows();
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn large_result_pane_height_returns_proportional_rows() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.result_pane_height = 50;
 
         let visible = state.result_visible_rows();
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn filtered_tables_with_empty_filter_returns_all() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn filtered_tables_with_matching_filter_returns_subset() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn filtered_tables_is_case_insensitive() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.cache.metadata = Some(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
@@ -221,14 +221,14 @@ mod tests {
 
     #[test]
     fn selection_generation_starts_at_zero() {
-        let state = AppState::new("test".to_string(), "default".to_string());
+        let state = AppState::new("test".to_string());
 
         assert_eq!(state.cache.selection_generation, 0);
     }
 
     #[test]
     fn selection_generation_increments_prevent_race_conditions() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
 
         let gen1 = state.cache.selection_generation;
         state.cache.selection_generation += 1;
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn selection_generation_can_detect_stale_responses() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
 
         let initial_gen = state.cache.selection_generation;
         state.cache.selection_generation += 1;
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn toggle_focus_enters_focus_mode() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.focused_pane = FocusedPane::Explorer;
 
         let result = state.toggle_focus();
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn toggle_focus_exits_focus_mode_and_restores_pane() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state.ui.focused_pane = FocusedPane::Inspector;
         state.toggle_focus();
 
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn prefetch_queue_starts_empty() {
-        let state = AppState::new("test".to_string(), "default".to_string());
+        let state = AppState::new("test".to_string());
 
         assert!(state.sql_modal.prefetch_queue.is_empty());
         assert!(!state.sql_modal.prefetch_started);
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn prefetch_queue_pop_returns_fifo_order() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         state
             .sql_modal
             .prefetch_queue
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn prefetching_tables_tracks_in_flight() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
 
         state
             .sql_modal
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn failed_prefetch_tables_tracks_failure_time_and_error() {
-        let mut state = AppState::new("test".to_string(), "default".to_string());
+        let mut state = AppState::new("test".to_string());
         let now = Instant::now();
 
         state.sql_modal.failed_prefetch_tables.insert(
@@ -353,14 +353,14 @@ mod tests {
 
         #[test]
         fn new_state_defaults_to_idle() {
-            let state = AppState::new("test".to_string(), "default".to_string());
+            let state = AppState::new("test".to_string());
 
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
 
         #[test]
         fn status_can_be_set_to_waiting() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
 
             state.er_preparation.status = ErStatus::Waiting;
 
@@ -369,7 +369,7 @@ mod tests {
 
         #[test]
         fn status_can_be_set_to_rendering() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
 
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -382,7 +382,7 @@ mod tests {
 
         #[test]
         fn clears_prefetch_state() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.sql_modal.prefetch_started = true;
             state
                 .sql_modal
@@ -410,7 +410,7 @@ mod tests {
         fn resets_er_preparation() {
             use crate::app::er_state::ErStatus;
 
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.er_preparation.status = ErStatus::Waiting;
 
             state.er_preparation.reset();
@@ -420,7 +420,7 @@ mod tests {
 
         #[test]
         fn clears_stale_messages() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.set_error("Old error".to_string());
 
             // Simulate ReloadMetadata reset
@@ -437,7 +437,7 @@ mod tests {
 
         #[test]
         fn scroll_offset_resets_to_zero_on_table_switch() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.inspector_scroll_offset = 42;
 
             // Simulate table switch (TableDetailLoaded action)
@@ -448,7 +448,7 @@ mod tests {
 
         #[test]
         fn scroll_offset_stays_zero_when_no_table_detail() {
-            let state = AppState::new("test".to_string(), "default".to_string());
+            let state = AppState::new("test".to_string());
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);
             assert!(state.cache.table_detail.is_none());
@@ -460,7 +460,7 @@ mod tests {
 
         #[test]
         fn ddl_visible_rows_is_greater_than_standard() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = 20;
 
             let standard = state.inspector_visible_rows();
@@ -478,7 +478,7 @@ mod tests {
             #[case] pane_height: u16,
             #[case] expected: usize,
         ) {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = pane_height;
 
             let visible = state.inspector_ddl_visible_rows();
@@ -488,7 +488,7 @@ mod tests {
 
         #[test]
         fn small_pane_height_does_not_underflow() {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = 2;
 
             let visible = state.inspector_ddl_visible_rows();

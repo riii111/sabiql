@@ -34,21 +34,16 @@ impl Header {
         let line = Line::from(vec![
             Span::styled(
                 &state.runtime.project_name,
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(Color::Gray),
             ),
-            Span::raw(" | "),
-            Span::styled(
-                &state.runtime.profile_name,
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::raw(" | "),
-            Span::raw(db_name),
-            Span::raw(" | "),
-            Span::raw(table),
-            Span::raw(" | "),
+            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+            Span::styled(db_name, Style::default().fg(Color::Gray)),
+            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+            Span::styled(table, Style::default().fg(Color::Yellow)),
+            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
             Span::styled(status_text, Style::default().fg(status_color)),
-            Span::raw(" | "),
-            Span::styled(connection_name, Style::default().fg(Color::Magenta)),
+            Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+            Span::styled(connection_name, Style::default().fg(Color::Gray)),
         ]);
 
         frame.render_widget(Paragraph::new(line), area);

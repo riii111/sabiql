@@ -311,7 +311,7 @@ mod tests {
         use rstest::rstest;
 
         fn browse_state() -> AppState {
-            AppState::new("test".to_string(), "default".to_string())
+            AppState::new("test".to_string())
         }
 
         // Important keys with special handling: keep individual tests
@@ -939,7 +939,7 @@ mod tests {
         #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
         fn ctrl_h_should_open_result_history() {
             let key = key_with_mod(KeyCode::Char('h'), KeyModifiers::CONTROL);
-            let state = AppState::new("test".to_string(), "default".to_string());
+            let state = AppState::new("test".to_string());
 
             let result = handle_normal_mode(key, &state);
 
@@ -1003,7 +1003,7 @@ mod tests {
         use super::*;
 
         fn make_state(mode: InputMode) -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.input_mode = mode;
             state
         }
@@ -1035,7 +1035,7 @@ mod tests {
         use rstest::rstest;
 
         fn setup_state() -> AppState {
-            let mut state = AppState::new("test".to_string(), "default".to_string());
+            let mut state = AppState::new("test".to_string());
             state.ui.input_mode = InputMode::ConnectionSetup;
             state
         }

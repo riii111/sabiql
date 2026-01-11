@@ -168,7 +168,7 @@ mod tests {
     use super::*;
 
     fn create_test_state() -> AppState {
-        AppState::new("test_project".to_string(), "default".to_string())
+        AppState::new("test_project".to_string())
     }
 
     mod pure_actions {
