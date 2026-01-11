@@ -42,12 +42,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::Render => {
             state.clear_expired_messages();
-            if state.ui.input_mode == InputMode::ConnectionError
-                && state.connection_error.should_auto_close_at(now)
-            {
-                state.connection_error.clear();
-                state.ui.input_mode = InputMode::Normal;
-            }
             vec![Effect::Render]
         }
 
@@ -782,15 +776,19 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
             let mut effects = vec![];
 
+            state.connection_error.clear();
+
             if state.runtime.is_reconnecting {
-                state.connection_error.mark_reconnected_at(now);
+                state.ui.input_mode = InputMode::Normal;
                 state
                     .messages
                     .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
-                effects.push(Effect::Render);
-            } else {
-                state.connection_error.clear();
+            } else if state.runtime.is_reloading {
+                state
+                    .messages
+                    .set_success_at("Reloaded!".to_string(), now);
+                state.runtime.is_reloading = false;
             }
 
             // If SqlModal is already open and prefetch hasn't started, start it now
@@ -805,6 +803,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
             state.runtime.is_reconnecting = false;
+            state.runtime.is_reloading = false;
             // Only set Failed if not already Connected (preserve connection on metadata-only failures)
             // This handles the case where connection succeeds but metadata reload fails
             if !state.runtime.connection_state.is_connected() {
@@ -1226,6 +1225,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.runtime.dsn {
+                state.runtime.is_reloading = true;
                 state.sql_modal.prefetch_started = false;
                 state.sql_modal.prefetch_queue.clear();
                 state.sql_modal.prefetching_tables.clear();
@@ -2678,9 +2678,7 @@ mod tests {
         }
 
         #[test]
-        fn retry_then_success_shows_success_then_auto_closes() {
-            use std::time::Duration;
-
+        fn retry_then_success_closes_modal_and_shows_footer_message() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::Failed;
@@ -2696,37 +2694,23 @@ mod tests {
             assert!(state.connection_error.is_retrying);
             assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
 
-            // Step 2: Metadata loaded (modal shows success, stays open)
+            // Step 2: Metadata loaded (modal closes, footer shows success)
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: now,
             };
-            let effects = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
-            // Modal stays open with success state
+            // Modal is closed, footer shows success message
             assert!(!state.runtime.is_reconnecting);
-            assert!(state.connection_error.is_reconnected());
-            assert!(state.connection_error.error_info.is_some()); // Modal still showing
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(
                 state.messages.last_success,
                 Some("Reconnected!".to_string())
             );
-            assert!(!effects.is_empty()); // Should trigger render
-
-            // Step 3: Render before timeout (modal stays open)
-            let before_timeout = now + Duration::from_millis(500);
-            let _ = reduce(&mut state, Action::Render, before_timeout);
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
-
-            // Step 4: Render after timeout (modal closes)
-            let after_timeout = now + Duration::from_millis(1001);
-            let _ = reduce(&mut state, Action::Render, after_timeout);
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert!(state.connection_error.error_info.is_none());
         }
     }
 }

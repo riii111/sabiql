@@ -9,6 +9,7 @@ pub struct RuntimeState {
     pub active_connection_name: Option<String>,
     pub connection_state: ConnectionState,
     pub is_reconnecting: bool,
+    pub is_reloading: bool,
 }
 
 impl RuntimeState {
@@ -21,6 +22,7 @@ impl RuntimeState {
             active_connection_name: None,
             connection_state: ConnectionState::default(),
             is_reconnecting: false,
+            is_reloading: false,
         }
     }
 }
@@ -40,6 +42,7 @@ mod tests {
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reconnecting);
+        assert!(!state.is_reloading);
     }
 
     #[test]
@@ -53,5 +56,6 @@ mod tests {
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reconnecting);
+        assert!(!state.is_reloading);
     }
 }
