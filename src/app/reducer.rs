@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use crate::app::action::{Action, CursorMove};
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_setup_state::ConnectionField;
+use crate::app::connection_state::ConnectionState;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
@@ -104,8 +105,21 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         // ===== Connection Lifecycle =====
         Action::TryConnect => {
-            // Placeholder: Full implementation in Phase 3
-            vec![]
+            // Idempotency: only connect if NotConnected
+            if state.runtime.dsn.is_some()
+                && state.runtime.connection_state.is_not_connected()
+                && state.ui.input_mode == InputMode::Normal
+            {
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                if let Some(dsn) = &state.runtime.dsn {
+                    vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![] // Already connecting/connected/failed - do nothing
+            }
         }
 
         // ===== Connection Modes =====
@@ -158,6 +172,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;
             if let Some(dsn) = &state.runtime.dsn {
                 vec![Effect::FetchMetadata { dsn: dsn.clone() }]
@@ -167,6 +183,8 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::ReenterConnectionSetup => {
             state.connection_error.clear();
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
             state.ui.input_mode = InputMode::ConnectionSetup;
             vec![]
         }
@@ -313,6 +331,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.connection_setup.is_first_run = false;
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(state.connection_setup.auto_name());
+            state.runtime.connection_state = ConnectionState::Connecting;
             state.ui.input_mode = InputMode::Normal;
             vec![Effect::FetchMetadata { dsn }]
         }
@@ -717,6 +736,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
+            state.runtime.connection_state = ConnectionState::Connected;
             state.connection_error.clear();
             state
                 .ui
@@ -733,6 +753,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            state.runtime.connection_state = ConnectionState::Failed;
             // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
