@@ -33,10 +33,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
-                    state.query.result_history.push((*result.clone()).clone());
+                    state.query.result_history.push((**result).clone());
                 }
 
-                state.query.current_result = Some(*result.clone());
+                state.query.current_result = Some((**result).clone());
             }
             Some(vec![])
         }

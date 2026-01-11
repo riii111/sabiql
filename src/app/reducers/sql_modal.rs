@@ -218,14 +218,7 @@ pub fn reduce_sql_modal(
         }
 
         // Completion trigger/update
-        Action::CompletionTrigger => {
-            if state.sql_modal.completion_debounce.is_some() {
-                state.sql_modal.completion_debounce = None;
-                Some(vec![Effect::TriggerCompletion])
-            } else {
-                Some(vec![])
-            }
-        }
+        Action::CompletionTrigger => Some(vec![Effect::TriggerCompletion]),
         Action::CompletionUpdated {
             candidates,
             trigger_position,
