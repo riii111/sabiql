@@ -2393,4 +2393,184 @@ mod tests {
             assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
         }
     }
+
+    mod connection_state_tests {
+        use super::*;
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn try_connect_with_dsn_starts_connecting() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn try_connect_without_dsn_does_nothing() {
+            let mut state = create_test_state();
+            state.runtime.dsn = None;
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_already_connecting_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_already_connected_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn try_connect_when_not_in_normal_mode_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::TryConnect, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn metadata_loaded_sets_connected() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connecting;
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            };
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            assert!(state.runtime.connection_state.is_connected());
+            assert!(matches!(state.cache.state, MetadataState::Loaded));
+        }
+
+        #[test]
+        fn metadata_failed_sets_failed() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connecting;
+            let now = Instant::now();
+
+            let _ = reduce(
+                &mut state,
+                Action::MetadataFailed("connection refused".to_string()),
+                now,
+            );
+
+            assert!(state.runtime.connection_state.is_failed());
+            assert!(matches!(state.cache.state, MetadataState::Error(_)));
+        }
+
+        #[test]
+        fn reenter_connection_setup_resets_all_states() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.cache.state = MetadataState::Error("error".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReenterConnectionSetup, now);
+
+            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(matches!(state.cache.state, MetadataState::NotLoaded));
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn reenter_connection_setup_preserves_form_values() {
+            let mut state = create_test_state();
+            state.connection_setup.host = "custom-host".to_string();
+            state.connection_setup.port = "5433".to_string();
+            state.connection_setup.database = "mydb".to_string();
+            state.connection_setup.user = "admin".to_string();
+            state.connection_setup.password = "secret".to_string();
+            state.runtime.connection_state = ConnectionState::Failed;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReenterConnectionSetup, now);
+
+            assert_eq!(state.connection_setup.host, "custom-host");
+            assert_eq!(state.connection_setup.port, "5433");
+            assert_eq!(state.connection_setup.database, "mydb");
+            assert_eq!(state.connection_setup.user, "admin");
+            assert_eq!(state.connection_setup.password, "secret");
+        }
+
+        #[test]
+        fn connection_save_completed_sets_connecting() {
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ConnectionSaveCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                },
+                now,
+            );
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+
+        #[test]
+        fn retry_connection_sets_connecting() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Failed;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::RetryConnection, now);
+
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
+        }
+    }
 }
