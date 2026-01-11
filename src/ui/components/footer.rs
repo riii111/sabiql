@@ -8,7 +8,10 @@ use super::atoms::spinner_char;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
-use crate::app::keybindings::footer as hints;
+use crate::app::keybindings::{
+    COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
+    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -58,65 +61,83 @@ impl Footer {
             InputMode::Normal => {
                 if state.ui.focus_mode {
                     vec![
-                        hints::EXIT_FOCUS,
-                        hints::SCROLL_SHORT,
-                        hints::H_SCROLL,
-                        hints::TOP_BOTTOM,
-                        hints::HELP,
-                        hints::QUIT,
+                        GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::SCROLL_SHORT].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::TOP_BOTTOM].as_hint(),
+                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                     ]
                 } else {
                     let mut list = vec![
-                        hints::RELOAD,
-                        hints::SQL,
-                        hints::ER_DIAGRAM,
-                        hints::CONNECT,
-                        hints::TABLE_PICKER,
-                        hints::PALETTE,
+                        GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
+                        GLOBAL_KEYS[idx::global::SQL].as_hint(),
+                        GLOBAL_KEYS[idx::global::ER_DIAGRAM].as_hint(),
+                        GLOBAL_KEYS[idx::global::CONNECT].as_hint(),
+                        GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint(),
+                        GLOBAL_KEYS[idx::global::PALETTE].as_hint(),
                     ];
                     if state.connection_error.error_info.is_some() {
-                        list.push(hints::ERROR_OPEN);
+                        list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
-                    list.push(hints::PANE_SWITCH);
-                    list.push(hints::FOCUS);
+                    list.push(GLOBAL_KEYS[idx::global::PANE_SWITCH].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
-                        list.push(hints::SCROLL);
-                        list.push(hints::H_SCROLL);
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
-                        list.push(hints::INSPECTOR_TABS);
+                        list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
-                    list.push(hints::HELP);
-                    list.push(hints::QUIT);
+                    list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list
                 }
             }
-            InputMode::CommandLine => vec![hints::ENTER_EXECUTE, hints::ESC_CANCEL],
+            InputMode::CommandLine => vec![
+                OVERLAY_KEYS[idx::overlay::ENTER_EXECUTE].as_hint(),
+                OVERLAY_KEYS[idx::overlay::ESC_CANCEL].as_hint(),
+            ],
             InputMode::TablePicker => vec![
-                hints::ENTER_SELECT,
-                hints::TYPE_FILTER,
-                hints::NAVIGATE,
-                hints::ESC_CLOSE,
+                TABLE_PICKER_KEYS[idx::table_picker::ENTER_SELECT].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::TYPE_FILTER].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::NAVIGATE].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::CommandPalette => {
-                vec![hints::ENTER_EXECUTE, hints::NAVIGATE_JK, hints::ESC_CLOSE]
+                vec![
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::ENTER_EXECUTE].as_hint(),
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::NAVIGATE_JK].as_hint(),
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::ESC_CLOSE].as_hint(),
+                ]
             }
-            InputMode::Help => vec![hints::HELP_SCROLL, hints::HELP_CLOSE, hints::QUIT],
-            InputMode::SqlModal => vec![hints::SQL_RUN, hints::SQL_MOVE, hints::ESC_CLOSE],
+            InputMode::Help => vec![
+                HELP_KEYS[idx::help::SCROLL].as_hint(),
+                HELP_KEYS[idx::help::CLOSE].as_hint(),
+                HELP_KEYS[idx::help::QUIT].as_hint(),
+            ],
+            InputMode::SqlModal => vec![
+                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
+                SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
+                SQL_MODAL_KEYS[idx::sql_modal::ESC_CLOSE].as_hint(),
+            ],
             InputMode::ConnectionSetup => vec![
-                hints::SAVE,
-                hints::TAB_NEXT,
-                hints::TAB_PREV,
-                hints::ESC_CANCEL,
+                CONNECTION_SETUP_KEYS[idx::conn_setup::SAVE].as_hint(),
+                CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_NEXT].as_hint(),
+                CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_PREV].as_hint(),
+                CONNECTION_SETUP_KEYS[idx::conn_setup::ESC_CANCEL].as_hint(),
             ],
             InputMode::ConnectionError => vec![
-                hints::EDIT,
-                hints::DETAILS,
-                hints::COPY,
-                hints::ESC_CLOSE,
-                hints::QUIT,
+                CONNECTION_ERROR_KEYS[idx::conn_error::EDIT].as_hint(),
+                CONNECTION_ERROR_KEYS[idx::conn_error::DETAILS].as_hint(),
+                CONNECTION_ERROR_KEYS[idx::conn_error::COPY].as_hint(),
+                CONNECTION_ERROR_KEYS[idx::conn_error::ESC_CLOSE].as_hint(),
+                CONNECTION_ERROR_KEYS[idx::conn_error::QUIT].as_hint(),
             ],
-            InputMode::ConfirmDialog => vec![hints::ESC_CLOSE],
+            InputMode::ConfirmDialog => vec![
+                CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
+                CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
+            ],
         }
     }
 
