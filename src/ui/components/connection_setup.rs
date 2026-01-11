@@ -9,6 +9,7 @@ use crate::ui::theme::Theme;
 
 const LABEL_WIDTH: u16 = 12;
 const INPUT_WIDTH: u16 = 40;
+const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
 
@@ -18,8 +19,8 @@ impl ConnectionSetup {
     pub fn render(frame: &mut Frame, state: &AppState) {
         let form_state = &state.connection_setup;
 
-        let modal_width = LABEL_WIDTH + INPUT_WIDTH + 6;
-        let modal_height = 14;
+        let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
+        let modal_height = 12;
 
         let area = centered_rect(
             frame.area(),
@@ -33,7 +34,7 @@ impl ConnectionSetup {
         let block = modal_block_with_hint(" Connection Setup ".to_string(), hint.to_string());
         frame.render_widget(block, area);
 
-        let inner = area.inner(Margin::new(2, 1));
+        let inner = area.inner(Margin::new(3, 2));
         let chunks = Layout::vertical([
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),
@@ -41,8 +42,6 @@ impl ConnectionSetup {
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(1), // spacer
-            Constraint::Length(1), // auto name
             Constraint::Length(1), // spacer
             Constraint::Length(1), // notice
         ])
@@ -100,15 +99,9 @@ impl ConnectionSetup {
             form_state.focused_field == ConnectionField::SslMode,
         );
 
-        let auto_name = format!("Name (auto): {}", form_state.auto_name());
-        let auto_name_para =
-            Paragraph::new(auto_name).style(Style::default().fg(Theme::MODAL_HINT));
-        frame.render_widget(auto_name_para, chunks[7]);
-
         let notice = "Note: Connection info is stored locally in plain text";
-        let notice_para =
-            Paragraph::new(notice).style(Style::default().fg(Theme::MODAL_HINT).dim());
-        frame.render_widget(notice_para, chunks[9]);
+        let notice_para = Paragraph::new(notice).style(Style::default().fg(Color::Gray));
+        frame.render_widget(notice_para, chunks[7]);
 
         if form_state.ssl_dropdown.is_open {
             Self::render_dropdown(frame, chunks[5], form_state.ssl_dropdown.selected_index);
@@ -130,7 +123,7 @@ impl ConnectionSetup {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(area);
 
@@ -148,10 +141,12 @@ impl ConnectionSetup {
             value.to_string()
         };
 
+        // Pad the content to ensure minimum width inside brackets
+        let padded_content = format!("{:<1$}", display_value, INPUT_WIDTH as usize - 4);
         let input_content = if is_focused {
             format!("{}█", display_value)
         } else {
-            display_value
+            padded_content
         };
 
         let input_style = if is_focused {
@@ -185,7 +180,7 @@ impl ConnectionSetup {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(area);
 
@@ -211,7 +206,7 @@ impl ConnectionSetup {
         let chunks = Layout::horizontal([
             Constraint::Length(LABEL_WIDTH),
             Constraint::Length(INPUT_WIDTH),
-            Constraint::Min(0),
+            Constraint::Length(ERROR_WIDTH),
         ])
         .split(ssl_field_area);
 
