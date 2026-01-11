@@ -338,4 +338,3 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
     },
 ];
-

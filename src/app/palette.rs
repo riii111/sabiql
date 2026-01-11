@@ -18,7 +18,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         action: Action::OpenHelp,
     },
     PaletteCommand {
-        key: ":sql",
+        key: "s / :sql",
         description: "Open SQL Editor",
         action: Action::OpenSqlModal,
     },
@@ -26,6 +26,16 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         key: "e / :erd",
         description: "Open ER Diagram",
         action: Action::ErOpenDiagram,
+    },
+    PaletteCommand {
+        key: "c",
+        description: "Open connection settings",
+        action: Action::OpenConnectionSetup,
+    },
+    PaletteCommand {
+        key: "f",
+        description: "Toggle Focus mode",
+        action: Action::ToggleFocus,
     },
     PaletteCommand {
         key: "Ctrl+P",
