@@ -22,6 +22,7 @@ pub mod palette;
 pub mod ports;
 pub mod query_execution;
 pub mod reducer;
+pub mod reducers;
 pub mod result_history;
 pub mod runtime_state;
 pub mod sql_lexer;
