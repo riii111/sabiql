@@ -26,6 +26,9 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
 
+/// Visible character width for connection form input fields (INPUT_WIDTH - 4 for brackets)
+const CONNECTION_INPUT_VISIBLE_WIDTH: usize = 36;
+
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     match action {
         Action::None => vec![],
@@ -203,39 +206,60 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         // ===== Connection Setup Form =====
         Action::ConnectionSetupInput(c) => {
             let setup = &mut state.connection_setup;
+            let char_len = c.len_utf8();
             match setup.focused_field {
-                ConnectionField::Host => setup.host.push(c),
+                ConnectionField::Host => {
+                    setup.host.push(c);
+                    let new_cursor = setup.cursor_position + char_len;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
                 ConnectionField::Port => {
                     if c.is_ascii_digit() && setup.port.len() < 5 {
                         setup.port.push(c);
+                        let new_cursor = setup.cursor_position + char_len;
+                        setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::Database => setup.database.push(c),
-                ConnectionField::User => setup.user.push(c),
-                ConnectionField::Password => setup.password.push(c),
+                ConnectionField::Database => {
+                    setup.database.push(c);
+                    let new_cursor = setup.cursor_position + char_len;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
+                ConnectionField::User => {
+                    setup.user.push(c);
+                    let new_cursor = setup.cursor_position + char_len;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
+                ConnectionField::Password => {
+                    setup.password.push(c);
+                    let new_cursor = setup.cursor_position + char_len;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
                 ConnectionField::SslMode => {}
             }
             vec![]
         }
         Action::ConnectionSetupBackspace => {
             let setup = &mut state.connection_setup;
-            match setup.focused_field {
-                ConnectionField::Host => {
-                    setup.host.pop();
-                }
-                ConnectionField::Port => {
-                    setup.port.pop();
-                }
-                ConnectionField::Database => {
-                    setup.database.pop();
-                }
-                ConnectionField::User => {
-                    setup.user.pop();
-                }
-                ConnectionField::Password => {
-                    setup.password.pop();
-                }
-                ConnectionField::SslMode => {}
+            if setup.cursor_position == 0 {
+                return vec![];
+            }
+            let field_str = match setup.focused_field {
+                ConnectionField::Host => &mut setup.host,
+                ConnectionField::Port => &mut setup.port,
+                ConnectionField::Database => &mut setup.database,
+                ConnectionField::User => &mut setup.user,
+                ConnectionField::Password => &mut setup.password,
+                ConnectionField::SslMode => return vec![],
+            };
+            if let Some((idx, _)) = field_str
+                .char_indices()
+                .take_while(|(i, _)| *i < setup.cursor_position)
+                .last()
+            {
+                let new_cursor = idx;
+                field_str.remove(idx);
+                setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
             }
             vec![]
         }
@@ -244,6 +268,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             validate_field(setup, setup.focused_field);
             if let Some(next) = setup.focused_field.next() {
                 setup.focused_field = next;
+                setup.cursor_to_end();
             }
             vec![]
         }
@@ -252,6 +277,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             validate_field(setup, setup.focused_field);
             if let Some(prev) = setup.focused_field.prev() {
                 setup.focused_field = prev;
+                setup.cursor_to_end();
             }
             vec![]
         }

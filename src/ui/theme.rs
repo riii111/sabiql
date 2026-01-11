@@ -44,4 +44,10 @@ impl Theme {
 
     // Table header/alternating row backgrounds
     pub const TABLE_HEADER_BG: Color = Color::Rgb(0x2a, 0x2a, 0x2e);
+
+    // Form input values (non-focused, readable against dark bg)
+    pub const INPUT_VALUE: Color = Color::Rgb(0xaa, 0xaa, 0xaa);
+
+    // Note/disclaimer text (subtle but readable)
+    pub const NOTE_TEXT: Color = Color::Rgb(0x66, 0x66, 0x77);
 }
