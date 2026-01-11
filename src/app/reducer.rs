@@ -12,16 +12,13 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::Action;
-use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
-    reduce_connection, reduce_modal, reduce_navigation, reduce_sql_modal,
+    reduce_connection, reduce_metadata, reduce_modal, reduce_navigation, reduce_sql_modal,
 };
 use crate::app::state::AppState;
-use crate::domain::MetadataState;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     if let Some(effects) = reduce_connection(state, &action, now) {
@@ -34,6 +31,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         return effects;
     }
     if let Some(effects) = reduce_sql_modal(state, &action, now) {
+        return effects;
+    }
+    if let Some(effects) = reduce_metadata(state, &action, now) {
         return effects;
     }
 
@@ -52,65 +52,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![Effect::Render]
         }
 
-        // Response Handlers
-        Action::MetadataLoaded(metadata) => {
-            let has_tables = !metadata.tables.is_empty();
-            state.cache.metadata = Some(*metadata);
-            state.cache.state = MetadataState::Loaded;
-            state.runtime.connection_state = ConnectionState::Connected;
-            state
-                .ui
-                .set_explorer_selection(if has_tables { Some(0) } else { None });
-
-            let mut effects = vec![];
-
-            state.connection_error.clear();
-
-            if state.runtime.is_reconnecting {
-                state.ui.input_mode = InputMode::Normal;
-                state
-                    .messages
-                    .set_success_at("Reconnected!".to_string(), now);
-                state.runtime.is_reconnecting = false;
-            } else if state.runtime.is_reloading {
-                state.messages.set_success_at("Reloaded!".to_string(), now);
-                state.runtime.is_reloading = false;
-            }
-
-            // If SqlModal is already open and prefetch hasn't started, start it now
-            if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-            }
-
-            effects
-        }
-        Action::MetadataFailed(error) => {
-            let error_info = ConnectionErrorInfo::new(&error);
-            state.connection_error.set_error(error_info);
-            state.cache.state = MetadataState::Error(error);
-            state.runtime.is_reconnecting = false;
-            state.runtime.is_reloading = false;
-            // Only set Failed if not already Connected (preserve connection on metadata-only failures)
-            // This handles the case where connection succeeds but metadata reload fails
-            if !state.runtime.connection_state.is_connected() {
-                state.runtime.connection_state = ConnectionState::Failed;
-                state.ui.input_mode = InputMode::ConnectionError;
-            }
-            vec![]
-        }
-        Action::TableDetailLoaded(detail, generation) => {
-            if generation == state.cache.selection_generation {
-                state.cache.table_detail = Some(*detail);
-                state.ui.inspector_scroll_offset = 0;
-            }
-            vec![]
-        }
-        Action::TableDetailFailed(error, generation) => {
-            if generation == state.cache.selection_generation {
-                state.set_error(error);
-            }
-            vec![]
-        }
         Action::QueryCompleted(result, generation) => {
             if generation == 0 || generation == state.cache.selection_generation {
                 state.query.status = crate::app::query_execution::QueryStatus::Idle;
@@ -208,33 +149,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
         }
 
-        Action::LoadMetadata => {
-            // Note: Cache check is done in EffectRunner
-            if let Some(dsn) = &state.runtime.dsn {
-                state.cache.state = MetadataState::Loading;
-                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
-            } else {
-                vec![]
-            }
-        }
-
-        Action::LoadTableDetail {
-            schema,
-            table,
-            generation,
-        } => {
-            if let Some(dsn) = &state.runtime.dsn {
-                vec![Effect::FetchTableDetail {
-                    dsn: dsn.clone(),
-                    schema,
-                    table,
-                    generation,
-                }]
-            } else {
-                vec![]
-            }
-        }
-
         Action::ExecutePreview {
             schema,
             table,
@@ -278,59 +192,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 }]
             } else {
                 vec![]
-            }
-        }
-
-        Action::StartPrefetchAll => {
-            if !state.sql_modal.prefetch_started
-                && let Some(metadata) = &state.cache.metadata
-            {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.er_preparation.pending_tables.clear();
-                state.er_preparation.fetching_tables.clear();
-                state.er_preparation.failed_tables.clear();
-                state.er_preparation.total_tables = metadata.tables.len();
-
-                // Queue all tables; EffectRunner skips already-cached ones.
-                // Pre-filtering here would require completion_engine access, breaking reducer purity.
-                for table_summary in &metadata.tables {
-                    let qualified_name = table_summary.qualified_name();
-                    state
-                        .sql_modal
-                        .prefetch_queue
-                        .push_back(qualified_name.clone());
-                    state.er_preparation.pending_tables.insert(qualified_name);
-                }
-                vec![Effect::ProcessPrefetchQueue]
-            } else {
-                vec![]
-            }
-        }
-
-        Action::ProcessPrefetchQueue => {
-            const MAX_CONCURRENT_PREFETCH: usize = 4;
-            let current_in_flight = state.sql_modal.prefetching_tables.len();
-            let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
-
-            // Dispatch Action::PrefetchTableDetail for each slot
-            // This ensures in-flight management and backoff are applied
-            let mut actions = Vec::new();
-            for _ in 0..available_slots {
-                if let Some(qualified_name) = state.sql_modal.prefetch_queue.pop_front()
-                    && let Some((schema, table)) = qualified_name.split_once('.')
-                {
-                    actions.push(Action::PrefetchTableDetail {
-                        schema: schema.to_string(),
-                        table: table.to_string(),
-                    });
-                }
-            }
-
-            if actions.is_empty() {
-                vec![]
-            } else {
-                vec![Effect::DispatchActions(actions)]
             }
         }
 
@@ -433,168 +294,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             effects
         }
 
-        Action::ReloadMetadata => {
-            if let Some(dsn) = &state.runtime.dsn {
-                state.runtime.is_reloading = true;
-                state.sql_modal.prefetch_started = false;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.prefetching_tables.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
-                state.er_preparation.reset();
-                state.messages.last_error = None;
-                state.messages.last_success = None;
-                state.messages.expires_at = None;
-
-                vec![Effect::Sequence(vec![
-                    Effect::CacheInvalidate { dsn: dsn.clone() },
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
-                ])]
-            } else {
-                vec![]
-            }
-        }
-
-        Action::TableDetailCached {
-            schema,
-            table,
-            detail,
-        } => {
-            use crate::app::er_state::ErStatus;
-
-            let qualified_name = format!("{}.{}", schema, table);
-            state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state
-                .sql_modal
-                .failed_prefetch_tables
-                .remove(&qualified_name);
-            state.er_preparation.on_table_cached(&qualified_name);
-
-            let mut effects = vec![Effect::CacheTableInCompletionEngine {
-                qualified_name,
-                table: detail,
-            }];
-
-            if !state.sql_modal.prefetch_queue.is_empty() {
-                effects.push(Effect::ProcessPrefetchQueue);
-            }
-
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                state.er_preparation.status = ErStatus::Idle;
-                if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
-                } else {
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
-
-            effects
-        }
-
-        Action::TableDetailCacheFailed {
-            schema,
-            table,
-            error,
-        } => {
-            use crate::app::er_state::ErStatus;
-
-            let qualified_name = format!("{}.{}", schema, table);
-            state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state
-                .sql_modal
-                .failed_prefetch_tables
-                .insert(qualified_name.clone(), (now, error.clone()));
-            state.er_preparation.on_table_failed(&qualified_name, error);
-
-            let mut effects = Vec::new();
-
-            if !state.sql_modal.prefetch_queue.is_empty() {
-                effects.push(Effect::ProcessPrefetchQueue);
-            }
-
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                state.er_preparation.status = ErStatus::Idle;
-                let failed_count = state.er_preparation.failed_tables.len();
-                let failed_data: Vec<(String, String)> = state
-                    .er_preparation
-                    .failed_tables
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                effects.push(Effect::WriteErFailureLog {
-                    failed_tables: failed_data,
-                });
-                state.set_error(format!(
-                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
-                    failed_count
-                ));
-            }
-
-            effects
-        }
-
-        Action::TableDetailAlreadyCached { schema, table } => {
-            use crate::app::er_state::ErStatus;
-
-            let qualified_name = format!("{}.{}", schema, table);
-            state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state
-                .sql_modal
-                .failed_prefetch_tables
-                .remove(&qualified_name);
-            state.er_preparation.on_table_cached(&qualified_name);
-
-            let mut effects = Vec::new();
-
-            if !state.sql_modal.prefetch_queue.is_empty() {
-                effects.push(Effect::ProcessPrefetchQueue);
-            }
-
-            // Check if ER preparation is complete (same logic as TableDetailCached)
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                state.er_preparation.status = ErStatus::Idle;
-                if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
-                } else {
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
-
-            effects
-        }
-
         Action::ErOpenDiagram => {
             use crate::app::er_state::ErStatus;
 
@@ -652,50 +351,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
             }]
-        }
-
-        // PrefetchTableDetail handled in reducer (state update) + EffectRunner (cache check + spawn)
-        Action::PrefetchTableDetail { schema, table } => {
-            let qualified_name = format!("{}.{}", schema, table);
-
-            // Skip if already in flight
-            if state.sql_modal.prefetching_tables.contains(&qualified_name) {
-                return vec![];
-            }
-
-            // Check backoff for recently failed tables
-            const PREFETCH_BACKOFF_SECS: u64 = 30;
-            let recently_failed = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get(&qualified_name)
-                .map(|(t, _): &(Instant, String)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
-                .unwrap_or(false);
-
-            if recently_failed {
-                return vec![];
-            }
-
-            // Mark as in-flight and update ER state
-            state
-                .sql_modal
-                .prefetching_tables
-                .insert(qualified_name.clone());
-            state.er_preparation.pending_tables.remove(&qualified_name);
-            state
-                .er_preparation
-                .fetching_tables
-                .insert(qualified_name.clone());
-
-            if let Some(dsn) = &state.runtime.dsn {
-                vec![Effect::PrefetchTableDetail {
-                    dsn: dsn.clone(),
-                    schema,
-                    table,
-                }]
-            } else {
-                vec![]
-            }
         }
 
         // Handled by sub-reducers
@@ -948,7 +603,8 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::app::connection_error::ConnectionErrorInfo;
+        use crate::domain::{DatabaseMetadata, MetadataState, TableSummary};
 
         #[test]
         fn metadata_loaded_with_empty_tables_selects_none() {
@@ -1029,6 +685,7 @@ mod tests {
     mod connection_error_actions {
         use super::*;
         use crate::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::domain::MetadataState;
 
         fn state_with_error() -> AppState {
             let mut state = create_test_state();
@@ -1142,7 +799,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::domain::{DatabaseMetadata, MetadataState};
 
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
@@ -1623,7 +1280,8 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::app::connection_state::ConnectionState;
+        use crate::domain::{DatabaseMetadata, MetadataState};
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
