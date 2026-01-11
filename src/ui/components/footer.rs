@@ -102,7 +102,7 @@ impl Footer {
                 ("Esc", "Cancel"),
             ],
             InputMode::ConnectionError => vec![
-                ("r", "Retry"),
+                ("Enter/r", "Retry"),
                 ("e", "Edit"),
                 ("d", "Details"),
                 ("c", "Copy"),

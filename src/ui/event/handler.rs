@@ -270,7 +270,7 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
-        KeyCode::Char('r') => Action::RetryConnection,
+        KeyCode::Enter | KeyCode::Char('r') => Action::RetryConnection,
         KeyCode::Char('e') => Action::ReenterConnectionSetup,
         KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
         KeyCode::Char('c') => Action::CopyConnectionError,
