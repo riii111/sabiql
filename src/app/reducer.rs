@@ -2693,7 +2693,10 @@ mod tests {
 
             // Verify success message is set
             assert!(!state.runtime.is_reconnecting);
-            assert_eq!(state.messages.last_success, Some("Reconnected!".to_string()));
+            assert_eq!(
+                state.messages.last_success,
+                Some("Reconnected!".to_string())
+            );
         }
     }
 }
