@@ -2,33 +2,25 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 
 pub struct TablePicker;
 
 impl TablePicker {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let area = centered_rect(
-            frame.area(),
+        let filtered = state.filtered_tables();
+        let (_, inner) = render_modal(
+            frame,
             Constraint::Percentage(60),
             Constraint::Percentage(70),
+            " Table Picker ",
+            &format!(" {} tables │ ↑↓ Navigate │ Enter Select ", filtered.len()),
         );
-
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
-        let filtered = state.filtered_tables();
-        let block = modal_block_with_hint(
-            " Table Picker ".to_string(),
-            format!(" {} tables │ ↑↓ Navigate │ Enter Select ", filtered.len()),
-        );
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
 
         let [filter_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);

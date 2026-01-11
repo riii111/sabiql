@@ -2,34 +2,24 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
+
+use super::atoms::panel_block;
 
 pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let is_error = matches!(state.cache.state, MetadataState::Error(_));
-        // Don't show stale tables when in error state - keeps Enter behavior consistent
         let has_cached_data =
             !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
 
-        let title = " [1] Explorer ";
-
-        let border_style = if is_focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(border_style);
+        let block = panel_block(" [1] Explorer ", is_focused);
 
         let inner = block.inner(area);
         frame.render_widget(block, area);

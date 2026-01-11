@@ -8,27 +8,20 @@ use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::atoms::spinner_char;
+use super::molecules::render_modal;
 
 pub struct SqlModal;
 
 impl SqlModal {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let area = centered_rect(
-            frame.area(),
+        let (area, inner) = render_modal(
+            frame,
             Constraint::Percentage(80),
             Constraint::Percentage(60),
+            " SQL Editor ",
+            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close",
         );
-
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
-        let block = modal_block_with_hint(
-            " SQL Editor ".to_string(),
-            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close".to_string(),
-        );
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
 
         // Split into editor area and status line
         let [editor_area, status_area] =
@@ -126,14 +119,12 @@ impl SqlModal {
         let (status_text, status_style) = match state.sql_modal.status {
             SqlModalStatus::Editing => ("Ready".to_string(), Style::default().fg(Color::DarkGray)),
             SqlModalStatus::Running => {
-                let spinner_frames = ["◐", "◓", "◑", "◒"];
                 let elapsed = state
                     .query
                     .start_time
                     .map(|t| t.elapsed())
                     .unwrap_or_default();
-                let frame_idx = (elapsed.as_millis() / 300) as usize % spinner_frames.len();
-                let spinner = spinner_frames[frame_idx];
+                let spinner = spinner_char(elapsed.as_millis());
                 let elapsed_secs = elapsed.as_secs_f32();
                 let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
                 (status, Style::default().fg(Color::Yellow))
