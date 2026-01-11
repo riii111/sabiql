@@ -1,3 +1,4 @@
+pub mod atoms;
 pub mod command_line;
 pub mod command_palette;
 pub mod confirm_dialog;
