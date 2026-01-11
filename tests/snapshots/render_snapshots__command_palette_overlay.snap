@@ -11,12 +11,12 @@ test_project | default | - | - | no dsn
 │public.user   ││   ╭ Command Palette ─────────────────────╮                   │
 │public.post   ││   │  q / :quit          Quit application │                   │
 │public.comm   ││   │  ? / :help          Show help        │                   │
-│              ││   │  :sql               Open SQL Editor  │                   │
+│              ││   │  s / :sql           Open SQL Editor  │                   │
 │              ││   │  e / :erd           Open ER Diagram  │                   │
-│              │└───│  Ctrl+P             Open Table Picker│───────────────────┘
-│              │┌ [3│  r                  Reload metadata  │───────────────────┐
-│              ││(se│                                      │                   │
-│              ││   │                                      │                   │
+│              │└───│  c                  Open connection s│───────────────────┘
+│              │┌ [3│  f                  Toggle Focus mode│───────────────────┐
+│              ││(se│  Ctrl+P             Open Table Picker│                   │
+│              ││   │  r                  Reload metadata  │                   │
 │              ││   │                                      │                   │
 │              ││   │                                      │                   │
 │              ││   ╰ ↑↓ Navigate │ Enter Select │ Esc Clos╯                   │
