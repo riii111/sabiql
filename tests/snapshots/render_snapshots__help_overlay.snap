@@ -2,15 +2,15 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | default | - | - | no dsn                                         
+test_project | default | - | - | no dsn | localhost:5432/test                   
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│Connections╭ Help ────────────────────────────────────────────────╮───────────┐
-│ Current: l│▸ Global Keys                                        ▲│           │
-│           │  q              Quit application                    ┃│           │
-│Tables [3] │  ?              Toggle help                         ┃│           │
-│public.user│  Ctrl+P         Open Table Picker                   ┃│           │
-│public.post│  Ctrl+K         Open Command Palette                ┃│           │
-│public.comm│  :              Enter command line                  ││           │
+│public.user╭ Help ────────────────────────────────────────────────╮───────────┐
+│public.post│▸ Global Keys                                        ▲│           │
+│public.comm│  q              Quit application                    ┃│           │
+│           │  ?              Toggle help                         ┃│           │
+│           │  Ctrl+P         Open Table Picker                   ┃│           │
+│           │  Ctrl+K         Open Command Palette                ┃│           │
+│           │  :              Enter command line                  ││           │
 │           │  f              Toggle Focus mode                   ││           │
 │           │  f              Exit Focus mode                     ││           │
 │           │  1/2/3          Switch pane focus                   ││───────────┘

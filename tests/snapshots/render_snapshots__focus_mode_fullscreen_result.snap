@@ -2,7 +2,7 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | default | - | - | no dsn                                         
+test_project | default | - | - | no dsn | localhost:5432/test                   
 ┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────────────────────┐
 │id   name    email                                                            │
 │1    Alice   alice@example.com                                                │

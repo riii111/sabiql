@@ -2,13 +2,13 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | default | - | - | no dsn                                         
+test_project | default | - | - | no dsn | -                                     
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│ Current: (not││(select a table)                                              │
+│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
+│              ││(select a table)                                              │
 │              ││                                                              │
-│Tables        ││                                                              │
-│ Press 'r' to ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
