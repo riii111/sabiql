@@ -753,7 +753,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
-            state.runtime.connection_state = ConnectionState::Failed;
+            // Only set Failed if not already Connected (preserve connection on metadata-only failures)
+            // This handles the case where connection succeeds but metadata reload fails
+            if !state.runtime.connection_state.is_connected() {
+                state.runtime.connection_state = ConnectionState::Failed;
+            }
             // Don't open modal - Explorer will show error message with Enter to open details
             vec![]
         }
@@ -2501,6 +2505,27 @@ mod tests {
             );
 
             assert!(state.runtime.connection_state.is_failed());
+            assert!(matches!(state.cache.state, MetadataState::Error(_)));
+        }
+
+        #[test]
+        fn metadata_failed_preserves_connected_state() {
+            // When already connected, metadata failure should preserve connection state
+            // (metadata-only failure, e.g., permission denied on schema)
+            let mut state = create_test_state();
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.cache.state = MetadataState::Loaded;
+            let now = Instant::now();
+
+            let _ = reduce(
+                &mut state,
+                Action::MetadataFailed("permission denied".to_string()),
+                now,
+            );
+
+            // Connection state should remain Connected
+            assert!(state.runtime.connection_state.is_connected());
+            // But metadata state should be Error
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
         }
 
