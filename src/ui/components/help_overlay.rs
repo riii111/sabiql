@@ -7,7 +7,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::molecules::render_modal;
+use super::molecules::{chip_hint_line, render_modal};
 
 pub struct HelpOverlay;
 
@@ -23,12 +23,12 @@ impl HelpOverlay {
 
         let help_lines = vec![
             Self::section("Global Keys"),
-            Self::chip_line("q", "Quit application"),
-            Self::chip_line("?", "Toggle this help"),
-            Self::chip_line("Ctrl+P", "Open Table Picker"),
-            Self::chip_line("Ctrl+K", "Open Command Palette"),
-            Self::chip_line(":", "Enter command line"),
-            Self::chip_line("f", "Toggle Focus mode (Result fullscreen)"),
+            chip_hint_line("q", "Quit application"),
+            chip_hint_line("?", "Toggle this help"),
+            chip_hint_line("Ctrl+P", "Open Table Picker"),
+            chip_hint_line("Ctrl+K", "Open Command Palette"),
+            chip_hint_line(":", "Enter command line"),
+            chip_hint_line("f", "Toggle Focus mode (Result fullscreen)"),
             Self::key_line("1/2/3", "Switch pane focus (exits Focus first)"),
             Self::key_line("Tab/⇧Tab", "Inspector prev/next tab (Inspector focus)"),
             Self::key_line("r", "Reload metadata"),
@@ -44,12 +44,12 @@ impl HelpOverlay {
             Line::from(""),
             Self::section("SQL Editor"),
             Self::key_line("Alt+Enter", "Execute query"),
-            Self::chip_line("Esc", "Close editor"),
+            chip_hint_line("Esc", "Close editor"),
             Self::key_line("↑↓←→", "Move cursor"),
             Line::from(""),
             Self::section("Overlays"),
-            Self::chip_line("Esc", "Close overlay / Cancel"),
-            Self::chip_line("Enter", "Confirm selection (Explorer/Picker)"),
+            chip_hint_line("Esc", "Close overlay / Cancel"),
+            chip_hint_line("Enter", "Confirm selection (Explorer/Picker)"),
             Line::from(""),
             Self::section("Command Line"),
             Self::key_line(":quit", "Quit application"),
@@ -58,8 +58,8 @@ impl HelpOverlay {
             Line::from(""),
             Self::section("Connection Setup"),
             Self::key_line("Tab/⇧Tab", "Next/Previous field"),
-            Self::chip_line("Ctrl+S", "Save and connect"),
-            Self::chip_line("Esc", "Cancel"),
+            chip_hint_line("Ctrl+S", "Save and connect"),
+            chip_hint_line("Esc", "Cancel"),
             Line::from(""),
             Self::section("Connection Error"),
             Self::key_line("r", "Retry connection"),
@@ -84,23 +84,6 @@ impl HelpOverlay {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-        ])
-    }
-
-    fn chip_line(key: &str, desc: &str) -> Line<'static> {
-        let chip = format!(" {} ", key);
-        let padding_len = 15usize.saturating_sub(chip.len() + 2);
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                chip,
-                Style::default()
-                    .bg(Theme::KEY_CHIP_BG)
-                    .fg(Theme::KEY_CHIP_FG)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" ".repeat(padding_len)),
-            Span::styled(desc.to_string(), Style::default().fg(Color::Gray)),
         ])
     }
 
