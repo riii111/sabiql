@@ -86,20 +86,20 @@ impl Footer {
             }
             InputMode::CommandLine => vec![("Enter", "Execute"), ("Esc", "Cancel")],
             InputMode::TablePicker => vec![
-                ("Esc", "Close"),
                 ("Enter", "Select"),
-                ("↑↓", "Navigate"),
                 ("type", "Filter"),
+                ("↑↓", "Navigate"),
+                ("Esc", "Close"),
             ],
             InputMode::CommandPalette => {
-                vec![("Esc", "Close"), ("Enter", "Execute"), ("↑↓", "Navigate")]
+                vec![("Enter", "Execute"), ("↑↓", "Navigate"), ("Esc", "Close")]
             }
-            InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
-            InputMode::SqlModal => vec![("⌥Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
+            InputMode::Help => vec![("?/Esc", "Close"), ("q", "Quit")],
+            InputMode::SqlModal => vec![("⌥Enter", "Run"), ("↑↓←→", "Move"), ("Esc", "Close")],
             InputMode::ConnectionSetup => vec![
+                ("^S", "Save"),
                 ("Tab", "Next"),
                 ("⇧Tab", "Prev"),
-                ("^S", "Save"),
                 ("Esc", "Cancel"),
             ],
             InputMode::ConnectionError => vec![
