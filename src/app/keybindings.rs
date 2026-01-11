@@ -3,18 +3,6 @@
 
 use super::action::Action;
 
-/// Total lines in help overlay content (sections + blank lines + key entries)
-pub const HELP_TOTAL_LINES: usize = 8  // section headers
-    + 7  // blank lines between sections
-    + 12 // GLOBAL_KEYS
-    + 5  // NAVIGATION_KEYS
-    + 7  // SQL_MODAL_KEYS
-    + 2  // OVERLAY_KEYS
-    + 4  // COMMAND_LINE_KEYS
-    + 5  // CONNECTION_SETUP_KEYS
-    + 6  // CONNECTION_ERROR_KEYS
-    + 2; // CONFIRM_DIALOG_KEYS
-
 #[derive(Clone)]
 pub struct KeyBinding {
     /// Display key for Help/Palette (e.g., "Ctrl+P")
@@ -406,3 +394,18 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
     },
 ];
+
+// =============================================================================
+// Help Overlay Layout
+// =============================================================================
+
+/// Total lines in help overlay content (8 sections + 7 blank lines + key entries)
+pub const HELP_TOTAL_LINES: usize = 8 + 7
+    + GLOBAL_KEYS.len()
+    + NAVIGATION_KEYS.len()
+    + SQL_MODAL_KEYS.len()
+    + OVERLAY_KEYS.len()
+    + COMMAND_LINE_KEYS.len()
+    + CONNECTION_SETUP_KEYS.len()
+    + CONNECTION_ERROR_KEYS.len()
+    + CONFIRM_DIALOG_KEYS.len();
