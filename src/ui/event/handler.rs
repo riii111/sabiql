@@ -272,7 +272,6 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
-        KeyCode::Enter | KeyCode::Char('r') => Action::RetryConnection,
         KeyCode::Char('e') => Action::ReenterConnectionSetup,
         KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
         KeyCode::Char('c') => Action::CopyConnectionError,
@@ -957,7 +956,6 @@ mod tests {
         enum Expected {
             Quit,
             Close,
-            Retry,
             Reenter,
             ToggleDetails,
             Copy,
@@ -969,7 +967,6 @@ mod tests {
         #[rstest]
         #[case(KeyCode::Char('q'), Expected::Quit)]
         #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Char('r'), Expected::Retry)]
         #[case(KeyCode::Char('e'), Expected::Reenter)]
         #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
         #[case(KeyCode::Char('c'), Expected::Copy)]
@@ -984,7 +981,6 @@ mod tests {
             match expected {
                 Expected::Quit => assert!(matches!(result, Action::Quit)),
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
-                Expected::Retry => assert!(matches!(result, Action::RetryConnection)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
                 Expected::ToggleDetails => {
                     assert!(matches!(result, Action::ToggleConnectionErrorDetails))
