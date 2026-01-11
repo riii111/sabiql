@@ -776,7 +776,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
 
             if state.runtime.is_reconnecting {
-                state.messages.set_success_at("Reconnected!".to_string(), now);
+                state
+                    .messages
+                    .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
             }
 
@@ -1875,7 +1877,9 @@ mod tests {
         #[test]
         fn enter_with_error_info_opens_modal() {
             let mut state = create_test_state();
-            state.connection_error.set_error(ConnectionErrorInfo::new("error"));
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::new("error"));
             state.ui.focused_pane = FocusedPane::Result; // Any pane works
             let now = Instant::now();
 

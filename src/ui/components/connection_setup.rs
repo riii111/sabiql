@@ -49,9 +49,21 @@ impl ConnectionSetup {
 
         Self::render_text_field(frame, chunks[0], form_state, ConnectionField::Host, false);
         Self::render_text_field(frame, chunks[1], form_state, ConnectionField::Port, false);
-        Self::render_text_field(frame, chunks[2], form_state, ConnectionField::Database, false);
+        Self::render_text_field(
+            frame,
+            chunks[2],
+            form_state,
+            ConnectionField::Database,
+            false,
+        );
         Self::render_text_field(frame, chunks[3], form_state, ConnectionField::User, false);
-        Self::render_text_field(frame, chunks[4], form_state, ConnectionField::Password, true);
+        Self::render_text_field(
+            frame,
+            chunks[4],
+            form_state,
+            ConnectionField::Password,
+            true,
+        );
         Self::render_ssl_field(
             frame,
             chunks[5],
