@@ -174,13 +174,15 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
+            state.messages.clear();
             if let Some(dsn) = state.runtime.dsn.clone() {
+                state.runtime.is_reconnecting = true;
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
                 state.ui.input_mode = InputMode::Normal;
                 vec![Effect::FetchMetadata { dsn }]
             } else {
-                // No dsn available - redirect to setup
+                state.runtime.is_reconnecting = false;
                 state.runtime.connection_state = ConnectionState::NotConnected;
                 state.cache.state = MetadataState::NotLoaded;
                 state.ui.input_mode = InputMode::ConnectionSetup;
@@ -773,6 +775,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
 
+            if state.runtime.is_reconnecting {
+                state.messages.set_success_at("Reconnected!".to_string(), now);
+                state.runtime.is_reconnecting = false;
+            }
+
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
                 vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
@@ -784,6 +791,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
+            state.runtime.is_reconnecting = false;
             // Only set Failed if not already Connected (preserve connection on metadata-only failures)
             // This handles the case where connection succeeds but metadata reload fails
             if !state.runtime.connection_state.is_connected() {
