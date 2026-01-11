@@ -28,13 +28,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             state.connection_error.clear();
 
-            if state.runtime.is_reconnecting {
-                state.ui.input_mode = InputMode::Normal;
-                state
-                    .messages
-                    .set_success_at("Reconnected!".to_string(), now);
-                state.runtime.is_reconnecting = false;
-            } else if state.runtime.is_reloading {
+            if state.runtime.is_reloading {
                 state.messages.set_success_at("Reloaded!".to_string(), now);
                 state.runtime.is_reloading = false;
             }
@@ -49,7 +43,6 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             let error_info = ConnectionErrorInfo::new(error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error.clone());
-            state.runtime.is_reconnecting = false;
             state.runtime.is_reloading = false;
             if !state.runtime.connection_state.is_connected() {
                 state.runtime.connection_state = ConnectionState::Failed;

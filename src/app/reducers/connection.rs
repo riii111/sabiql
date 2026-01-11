@@ -83,23 +83,6 @@ pub fn reduce_connection(
             state.connection_error.mark_copied_at(now);
             Some(vec![])
         }
-        Action::RetryConnection => {
-            if state.runtime.connection_state.is_connecting() || state.runtime.is_reconnecting {
-                return Some(vec![]);
-            }
-            if let Some(dsn) = state.runtime.dsn.clone() {
-                state.runtime.is_reconnecting = true;
-                state.connection_error.is_retrying = true;
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                Some(vec![Effect::FetchMetadata { dsn }])
-            } else {
-                state.runtime.connection_state = ConnectionState::NotConnected;
-                state.cache.state = MetadataState::NotLoaded;
-                state.ui.input_mode = InputMode::ConnectionSetup;
-                Some(vec![])
-            }
-        }
         Action::ReenterConnectionSetup => {
             state.connection_error.clear();
             state.runtime.connection_state = ConnectionState::NotConnected;
