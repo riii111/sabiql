@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-q:Quit  ?:Help  1/2/3:Pane  f:Focus  r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^
+q:Quit  ?:Help  1/2/3:Pane  f:Focus  r:Reload  s:SQL  e:ER Diagram  c:Connect  ^

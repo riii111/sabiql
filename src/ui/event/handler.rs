@@ -132,6 +132,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
+        KeyCode::Char('c') => Action::OpenConnectionSetup,
 
         KeyCode::Enter => {
             if state.ui.focused_pane == FocusedPane::Explorer {
