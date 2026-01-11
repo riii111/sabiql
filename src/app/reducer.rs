@@ -775,19 +775,22 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
 
+            let mut effects = vec![];
+
             if state.runtime.is_reconnecting {
                 state
                     .messages
                     .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
+                effects.push(Effect::Render);
             }
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
-                vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
-            } else {
-                vec![]
+                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
+
+            effects
         }
         Action::MetadataFailed(error) => {
             let error_info = ConnectionErrorInfo::new(&error);
