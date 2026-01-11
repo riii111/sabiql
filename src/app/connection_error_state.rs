@@ -8,20 +8,17 @@ pub struct ConnectionErrorState {
     pub details_expanded: bool,
     pub scroll_offset: usize,
     pub is_retrying: bool,
-    reconnected_at: Option<Instant>,
     copied_feedback_expires: Option<Instant>,
 }
 
 impl ConnectionErrorState {
     const FEEDBACK_TIMEOUT_SECS: u64 = 3;
-    const RECONNECTED_DISPLAY_MS: u64 = 1000;
 
     pub fn set_error(&mut self, info: ConnectionErrorInfo) {
         self.error_info = Some(info);
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.is_retrying = false;
-        self.reconnected_at = None;
         self.copied_feedback_expires = None;
     }
 
@@ -30,22 +27,7 @@ impl ConnectionErrorState {
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.is_retrying = false;
-        self.reconnected_at = None;
         self.copied_feedback_expires = None;
-    }
-
-    pub fn mark_reconnected_at(&mut self, now: Instant) {
-        self.is_retrying = false;
-        self.reconnected_at = Some(now);
-    }
-
-    pub fn is_reconnected(&self) -> bool {
-        self.reconnected_at.is_some()
-    }
-
-    pub fn should_auto_close_at(&self, now: Instant) -> bool {
-        self.reconnected_at
-            .is_some_and(|t| now.duration_since(t).as_millis() >= Self::RECONNECTED_DISPLAY_MS as u128)
     }
 
     pub fn toggle_details(&mut self) {
