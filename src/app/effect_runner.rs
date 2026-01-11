@@ -261,7 +261,7 @@ impl EffectRunner {
                     match executor.execute_preview(&dsn, &schema, &table, limit).await {
                         Ok(result) => {
                             let _ = tx
-                                .send(Action::QueryCompleted(Box::new(result), generation))
+                                .send(Action::QueryCompleted(Arc::new(result), generation))
                                 .await;
                         }
                         Err(e) => {
@@ -281,7 +281,7 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     match executor.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
-                            let _ = tx.send(Action::QueryCompleted(Box::new(result), 0)).await;
+                            let _ = tx.send(Action::QueryCompleted(Arc::new(result), 0)).await;
                         }
                         Err(e) => {
                             let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
