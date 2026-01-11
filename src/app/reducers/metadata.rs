@@ -13,11 +13,7 @@ use crate::domain::MetadataState;
 
 /// Handles metadata loading, table detail, and prefetch actions.
 /// Returns Some(effects) if action was handled, None otherwise.
-pub fn reduce_metadata(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> Option<Vec<Effect>> {
+pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.tables.is_empty();

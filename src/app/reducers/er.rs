@@ -42,7 +42,9 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 state.er_preparation.total_tables = metadata.tables.len();
                 state.er_preparation.status = ErStatus::Waiting;
                 state.set_success("Starting table prefetch for ER diagram...".to_string());
-                return Some(vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]);
+                return Some(vec![Effect::DispatchActions(vec![
+                    Action::StartPrefetchAll,
+                ])]);
             }
 
             if state.cache.metadata.is_none() {

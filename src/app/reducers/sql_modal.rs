@@ -61,8 +61,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.status = SqlModalStatus::Editing;
             if state.sql_modal.cursor > 0 {
                 state.sql_modal.cursor -= 1;
-                let byte_idx =
-                    char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
@@ -72,8 +71,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.status = SqlModalStatus::Editing;
             let total_chars = char_count(&state.sql_modal.content);
             if state.sql_modal.cursor < total_chars {
-                let byte_idx =
-                    char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
                 state.sql_modal.content.remove(byte_idx);
             }
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
@@ -168,7 +166,9 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
             if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                Some(vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])])
+                Some(vec![Effect::DispatchActions(vec![
+                    Action::StartPrefetchAll,
+                ])])
             } else {
                 Some(vec![])
             }

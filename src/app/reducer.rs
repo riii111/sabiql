@@ -16,8 +16,8 @@ use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
-    reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation,
-    reduce_query, reduce_sql_modal,
+    reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation, reduce_query,
+    reduce_sql_modal,
 };
 use crate::app::state::AppState;
 

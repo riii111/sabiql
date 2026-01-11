@@ -3,14 +3,14 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
-use crate::app::connection_setup_state::{ConnectionField, CONNECTION_INPUT_VISIBLE_WIDTH};
+use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{insert_char_at_cursor, validate_all, validate_field};
 use crate::app::state::AppState;
-use crate::domain::connection::SslMode;
 use crate::domain::MetadataState;
+use crate::domain::connection::SslMode;
 
 /// Handles connection lifecycle, setup form, and error handling.
 /// Returns Some(effects) if action was handled, None otherwise.

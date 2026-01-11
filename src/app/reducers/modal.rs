@@ -10,11 +10,7 @@ use crate::app::state::AppState;
 
 /// Handles modal/overlay toggles and confirm dialog actions.
 /// Returns Some(effects) if action was handled, None otherwise.
-pub fn reduce_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-) -> Option<Vec<Effect>> {
+pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenTablePicker => {
             state.ui.input_mode = InputMode::TablePicker;
