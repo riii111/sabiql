@@ -273,10 +273,12 @@ fn connection_error_collapsed() {
     let mut terminal = create_test_terminal();
 
     state.ui.input_mode = InputMode::ConnectionError;
-    state.connection_error.set_error(ConnectionErrorInfo::with_kind(
-        ConnectionErrorKind::HostUnreachable,
-        "psql: error: could not translate host name \"db.example.com\" to address",
-    ));
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::HostUnreachable,
+            "psql: error: could not translate host name \"db.example.com\" to address",
+        ));
     state.connection_error.details_expanded = false;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -308,7 +310,8 @@ fn confirm_dialog() {
 
     state.ui.input_mode = InputMode::ConfirmDialog;
     state.confirm_dialog.title = "Confirm".to_string();
-    state.confirm_dialog.message = "No connection configured.\nAre you sure you want to quit?".to_string();
+    state.confirm_dialog.message =
+        "No connection configured.\nAre you sure you want to quit?".to_string();
     state.confirm_dialog.on_confirm = Action::Quit;
     state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
 
