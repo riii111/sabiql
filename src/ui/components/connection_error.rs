@@ -4,11 +4,11 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::atoms::key_chip;
+use super::molecules::render_modal;
 use crate::app::state::AppState;
-use crate::ui::theme::Theme;
 
 pub struct ConnectionError;
 
@@ -30,18 +30,18 @@ impl ConnectionError {
             Constraint::Length(12)
         };
 
-        let area = centered_rect(frame.area(), Constraint::Percentage(70), height);
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
         let hint_text = if details_expanded {
             " Scroll: ↑/↓/j/k  Esc to close  q to quit "
         } else {
             " Esc to close  q to quit "
         };
-        let block = modal_block_with_hint(" Connection Error ".to_string(), hint_text.to_string());
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let (_, inner) = render_modal(
+            frame,
+            Constraint::Percentage(70),
+            height,
+            " Connection Error ",
+            hint_text,
+        );
 
         let chunks = Layout::vertical([
             Constraint::Length(1), // Summary
@@ -123,13 +123,13 @@ impl ConnectionError {
     ) {
         let mut spans = vec![
             Span::styled("Actions: ", Style::default().fg(Color::DarkGray)),
-            Self::action_key("e"),
+            key_chip("e"),
             Span::raw(" Re-enter  "),
-            Self::action_key("d"),
+            key_chip("d"),
             Span::raw(" Details  "),
-            Self::action_key("c"),
+            key_chip("c"),
             Span::raw(" Copy  "),
-            Self::action_key("q"),
+            key_chip("q"),
             Span::raw(" Quit"),
         ];
 
@@ -145,15 +145,5 @@ impl ConnectionError {
 
         let line = Line::from(spans);
         frame.render_widget(Paragraph::new(line), area);
-    }
-
-    fn action_key(key: &str) -> Span<'static> {
-        Span::styled(
-            format!(" {} ", key),
-            Style::default()
-                .bg(Theme::KEY_CHIP_BG)
-                .fg(Theme::KEY_CHIP_FG)
-                .add_modifier(Modifier::BOLD),
-        )
     }
 }

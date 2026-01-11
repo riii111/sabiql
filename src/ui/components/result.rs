@@ -3,7 +3,9 @@ use std::time::Instant;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
+
+use super::atoms::panel_block_highlight;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
@@ -18,28 +20,16 @@ pub struct ResultPane;
 impl ResultPane {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
-
         let should_highlight = state
             .query
             .result_highlight_until
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
 
-        let border_style = if is_focused {
-            Style::default().fg(Color::Cyan)
-        } else if should_highlight {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
-
         let result = Self::current_result(state);
         let title = Self::build_title(result, state);
 
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(border_style);
+        let block = panel_block_highlight(&title, is_focused, should_highlight);
 
         if let Some(result) = result {
             if result.is_error() {
