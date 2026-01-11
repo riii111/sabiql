@@ -94,6 +94,22 @@ All input modes must follow this ordering:
 Actions → Navigation → Help → Close/Cancel → Quit
 ```
 
+### Keybindings & Commands
+
+Keybinding and command definitions follow this architecture:
+
+| Concept | Location | Responsibility |
+|---------|----------|----------------|
+| Data definitions | `app/keybindings.rs` | Single source of truth for key/description/Action |
+| Display logic | `ui/components/footer.rs` | Context-sensitive hint selection by InputMode/state |
+| Full reference | `ui/components/help_overlay.rs` | Complete keybinding reference |
+| Command list | `app/palette.rs` | Commands shown in Command Palette |
+
+When adding a new keybinding:
+1. Add data to `keybindings.rs`
+2. Implement event handler in `handler.rs`
+3. Update Footer/Help/Palette as needed
+
 ## Build Commands
 
 ```bash

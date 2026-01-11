@@ -29,6 +29,8 @@ pub enum Action {
     CloseCommandPalette,
     OpenHelp,
     CloseHelp,
+    HelpScrollUp,
+    HelpScrollDown,
 
     // Connection lifecycle
     TryConnect,
