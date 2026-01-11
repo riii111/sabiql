@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::domain::connection::SslMode;
 
 /// Input field width including brackets "[ ]" (4 chars)
-pub const CONNECTION_INPUT_WIDTH: u16 = 40;
+pub const CONNECTION_INPUT_WIDTH: u16 = 30;
 /// Visible character width for input content (INPUT_WIDTH - 4)
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;
 
