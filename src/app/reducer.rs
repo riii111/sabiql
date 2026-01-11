@@ -325,10 +325,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 state.confirm_dialog.on_confirm = Action::Quit;
                 state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
                 state.ui.input_mode = InputMode::ConfirmDialog;
+                vec![]
             } else {
                 state.ui.input_mode = InputMode::Normal;
+                vec![Effect::DispatchActions(vec![Action::TryConnect])]
             }
-            vec![]
         }
         Action::ConnectionSaveCompleted { dsn } => {
             state.connection_setup.is_first_run = false;
@@ -2355,7 +2356,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_returns_to_normal() {
+        fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConnectionSetup;
             state.connection_setup.is_first_run = false;
@@ -2364,7 +2365,8 @@ mod tests {
             let effects = reduce(&mut state, Action::ConnectionSetupCancel, now);
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert!(effects.is_empty());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::DispatchActions(_)));
         }
     }
 
