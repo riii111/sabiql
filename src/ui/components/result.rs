@@ -58,7 +58,7 @@ impl ResultPane {
 
     fn current_result(state: &AppState) -> Option<&QueryResult> {
         match state.query.history_index {
-            None => state.query.current_result.as_ref(),
+            None => state.query.current_result.as_deref(),
             Some(i) => state.query.result_history.get(i),
         }
     }
