@@ -65,14 +65,15 @@ impl Footer {
                 } else {
                     let mut hints = vec![("q", "Quit"), ("?", "Help"), ("1/2/3", "Pane")];
                     hints.push(("f", "Focus"));
-                    // Show scroll hint when Result pane is focused
                     if state.ui.focused_pane == FocusedPane::Result {
                         hints.push(("j/k/g/G", "Scroll"));
                         hints.push(("h/l", "H-Scroll"));
                     }
-                    // Show Inspector tab switching hint when Inspector is focused
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
+                    }
+                    if state.connection_error.error_info.is_some() {
+                        hints.push(("Enter", "Error"));
                     }
                     hints.push(("r", "Reload"));
                     hints.push(("s", "SQL"));

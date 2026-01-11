@@ -135,7 +135,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('c') => Action::OpenConnectionSetup,
 
         KeyCode::Enter => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.connection_error.error_info.is_some()
+                || state.ui.focused_pane == FocusedPane::Explorer
+            {
                 Action::ConfirmSelection
             } else {
                 Action::None
