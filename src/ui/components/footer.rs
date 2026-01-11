@@ -4,6 +4,8 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use super::atoms::spinner_char;
+use super::molecules::hint_line;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
@@ -24,7 +26,7 @@ impl Footer {
             frame.render_widget(Paragraph::new(line), area);
         } else {
             let hints = Self::get_context_hints(state);
-            let line = Self::build_hint_line(&hints);
+            let line = hint_line(&hints);
             frame.render_widget(Paragraph::new(line), area);
         }
     }
@@ -36,7 +38,7 @@ impl Footer {
                 .map(|d| d.as_millis())
                 .unwrap_or(0)
         });
-        let spinner = spinner_frame(now_ms);
+        let spinner = spinner_char(now_ms);
 
         let total = state.er_preparation.total_tables;
         let failed_count = state.er_preparation.failed_tables.len();
@@ -118,25 +120,4 @@ impl Footer {
             InputMode::ConfirmDialog => vec![("Esc", "Close")],
         }
     }
-
-    fn build_hint_line(hints: &[(&str, &str)]) -> Line<'static> {
-        let mut spans = Vec::new();
-        for (i, (key, desc)) in hints.iter().enumerate() {
-            if i > 0 {
-                spans.push(Span::raw("  "));
-            }
-            spans.push(Span::styled(
-                (*key).to_string(),
-                Style::default().fg(Color::Yellow),
-            ));
-            spans.push(Span::raw(format!(":{}", desc)));
-        }
-        Line::from(spans)
-    }
-}
-
-const SPINNER_FRAMES: [&str; 4] = ["◐", "◓", "◑", "◒"];
-
-fn spinner_frame(time_ms: u128) -> &'static str {
-    SPINNER_FRAMES[(time_ms / 300) as usize % SPINNER_FRAMES.len()]
 }
