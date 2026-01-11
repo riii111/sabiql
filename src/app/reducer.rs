@@ -173,6 +173,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
         Action::RetryConnection => {
+            if state.runtime.connection_state.is_connecting() || state.runtime.is_reconnecting {
+                return vec![];
+            }
             state.connection_error.clear();
             state.messages.clear();
             if let Some(dsn) = state.runtime.dsn.clone() {
