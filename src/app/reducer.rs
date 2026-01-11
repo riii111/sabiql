@@ -118,7 +118,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     vec![]
                 }
             } else {
-                vec![] // Already connecting/connected/failed - do nothing
+                vec![]
             }
         }
 
