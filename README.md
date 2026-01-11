@@ -50,18 +50,14 @@ cargo install --git https://github.com/riii111/sabiql
 
 ## Quick Start
 
-1. Create `.dbx.toml` in your project root:
-
-```toml
-[profiles.default]
-dsn = "postgres://user:password@localhost:5432/database"
-```
-
-2. Run sabiql:
+1. Run sabiql:
 
 ```bash
 sabiql
 ```
+
+2. Enter your connection details in the setup screen (first run only)
+   - Connection info is saved to `~/.config/sabiql/connections.toml`
 
 3. Press `?` for help.
 
