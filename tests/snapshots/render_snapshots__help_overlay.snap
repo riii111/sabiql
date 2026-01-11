@@ -21,7 +21,7 @@ test_project | default | - | - | no dsn
 │           │  c            Open connection settings              ││           │
 │           │                                                     ││           │
 │           │▸ Navigation                                         ││           │
-│           │  j / k / g / GMove down/up/top/bottom               ▼│           │
-│           │  j / k        Move down / scroll             row   0%│           │
+│           │  j / k / ↑ / ↓Move down/up                          ▼│           │
+│           │  j / k / ↑ / ↓Move down / scroll             row   0%│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
 j/k / ↑↓:Scroll  ?/Esc:Close  q:Quit
