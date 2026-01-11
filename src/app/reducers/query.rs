@@ -1,5 +1,6 @@
 //! Query sub-reducer: query execution and command line.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app::action::Action;
@@ -33,10 +34,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
-                    state.query.result_history.push((**result).clone());
+                    state.query.result_history.push(Arc::clone(result));
                 }
 
-                state.query.current_result = Some((**result).clone());
+                state.query.current_result = Some(Arc::clone(result));
             }
             Some(vec![])
         }
@@ -47,12 +48,12 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.set_error(error.clone());
                 if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = SqlModalStatus::Error;
-                    let error_result = QueryResult::error(
+                    let error_result = Arc::new(QueryResult::error(
                         state.sql_modal.content.clone(),
                         error.clone(),
                         0,
                         QuerySource::Adhoc,
-                    );
+                    ));
                     state.query.current_result = Some(error_result);
                 }
             }

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::result_history::ResultHistory;
@@ -14,7 +15,7 @@ pub enum QueryStatus {
 pub struct QueryExecution {
     pub status: QueryStatus,
     pub start_time: Option<Instant>,
-    pub current_result: Option<QueryResult>,
+    pub current_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
     pub history_index: Option<usize>,
     pub result_highlight_until: Option<Instant>,
