@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Tab:Next  ⇧Tab:Prev  ^S:Save  Esc:Cancel
+^S:Save  Tab:Next  ⇧Tab:Prev  Esc:Cancel

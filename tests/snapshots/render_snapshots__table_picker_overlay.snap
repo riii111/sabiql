@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │              │╰ 1 tables │ ↑↓ Navigate │ Enter Select ───────╯               │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Esc:Close  Enter:Select  ↑↓:Navigate  type:Filter
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

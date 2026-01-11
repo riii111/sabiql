@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │           │  k / ↑        Move up (scroll in Result/Focus)       │           │
 │           │  g / Home     First item (top in Result/Focus)       │           │
 └───────────╰ ? or Esc to close ───────────────────────────────────╯───────────┘
-q:Quit  ?/Esc:Close
+?/Esc:Close  q:Quit
