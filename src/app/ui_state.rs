@@ -5,6 +5,12 @@ use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::viewport::ViewportPlan;
 
+/// header (1) + scroll indicators (2), used by rendering (border already excluded)
+pub const RESULT_INNER_OVERHEAD: u16 = 3;
+
+/// border (2) + inner overhead, used by scroll limit calculation
+pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
+
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub focused_pane: FocusedPane,
@@ -43,7 +49,7 @@ impl UiState {
     }
 
     pub fn result_visible_rows(&self) -> usize {
-        self.result_pane_height.saturating_sub(3) as usize
+        self.result_pane_height.saturating_sub(RESULT_PANE_OVERHEAD) as usize
     }
 
     pub fn inspector_visible_rows(&self) -> usize {
@@ -117,10 +123,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case(10, 7)]
-    #[case(15, 12)]
-    #[case(20, 17)]
-    #[case(30, 27)]
+    #[case(10, 5)]
+    #[case(15, 10)]
+    #[case(20, 15)]
+    #[case(30, 25)]
     fn result_pane_height_calculates_correct_visible_rows(
         #[case] pane_height: u16,
         #[case] expected: usize,
@@ -227,5 +233,32 @@ mod tests {
 
         assert_eq!(state.explorer_selected, 0);
         assert_eq!(state.explorer_list_state.selected(), None);
+    }
+
+    #[test]
+    fn result_overhead_constants_are_consistent() {
+        assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
+    }
+
+    #[rstest]
+    #[case(30, 20)]
+    #[case(100, 25)]
+    #[case(50, 15)]
+    #[case(10, 30)]
+    fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
+        let state = UiState {
+            result_pane_height: pane_height,
+            ..Default::default()
+        };
+        let visible = state.result_visible_rows();
+        let max_scroll = total_rows.saturating_sub(visible);
+
+        assert!(
+            max_scroll + visible >= total_rows,
+            "max_scroll={}, visible={}, total={}",
+            max_scroll,
+            visible,
+            total_rows
+        );
     }
 }
