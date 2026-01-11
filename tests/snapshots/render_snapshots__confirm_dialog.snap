@@ -5,23 +5,23 @@ expression: output
 test_project | default | - | - | no dsn                                         
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
 │Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│ Current: loca││Name    Type           Null   PK   Default                    │
-│              ││id      integer               ✓                               │
-│Tables [3]    ││name    varchar(255)                                          │
-│> public.user ││email   varchar(255)   ✓                                      │
-│  public.post ││                                                              │
-│  public.comm ││                                                              │
+│ Current: loca││(select a table)                                              │
 │              ││                                                              │
+│Tables        ││                                                              │
+│ Press 'r' to ││                                                              │
 │              ││                                                              │
-│              │└──────────────────────────────────────────────────────────────┘
-│              │┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────┐
-│              ││id   name    email                                            │
-│              ││1    Alice   alice@example.com                                │
-│              ││2    Bob     bob@example.com                                  │
+│              ││ ╭ Confirm ──────────────────────────────────╮                │
+│              ││ │         No connection configured.         │                │
+│              ││ │      Are you sure you want to quit?       │                │
+│              │└─│                                           │────────────────┘
+│              │┌ │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
+│              ││(│                                           │                │
+│              ││ │                                           │                │
+│              ││ ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connect  ^P:Tables  ^K:Palette  1/2/3:Pane  f:F
+Esc:Close

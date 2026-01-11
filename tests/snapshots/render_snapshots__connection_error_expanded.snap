@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
+│              ││                                                              │
+│Tables     ╭ Connection Error ────────────────────────────────────╮           │
+│ Press 'r' │✗ Connection timed out                                │           │
+│           │                                                      │           │
+│           │Hint: Check network connectivity                      │           │
+│           │                                                      │           │
+│           │▼ Details                                             │           │
+│           │psql: error: connection to server at "192.168.1.100", │───────────┘
+│           │port 5432 failed: timeout expired                     │───────────┐
+│           │                                                      │           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           │Actions:  r  Retry   e  Re-enter   d  Details   c  Cop│           │
+│           ╰ Scroll: ↑/↓/j/k  Esc to close  q to quit ────────────╯           │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter/r:Retry  e:Edit  d:Details  c:Copy  Esc:Close  q:Quit

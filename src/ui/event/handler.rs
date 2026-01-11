@@ -132,9 +132,12 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
+        KeyCode::Char('c') => Action::OpenConnectionSetup,
 
         KeyCode::Enter => {
-            if state.ui.focused_pane == FocusedPane::Explorer {
+            if state.connection_error.error_info.is_some()
+                || state.ui.focused_pane == FocusedPane::Explorer
+            {
                 Action::ConfirmSelection
             } else {
                 Action::None
@@ -269,7 +272,7 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
-        KeyCode::Char('r') => Action::RetryConnection,
+        KeyCode::Enter | KeyCode::Char('r') => Action::RetryConnection,
         KeyCode::Char('e') => Action::ReenterConnectionSetup,
         KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
         KeyCode::Char('c') => Action::CopyConnectionError,
