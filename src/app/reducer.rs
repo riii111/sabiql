@@ -17,12 +17,17 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
-use crate::app::reducers::{char_count, char_to_byte_index, reduce_connection, reduce_navigation};
+use crate::app::reducers::{
+    char_count, char_to_byte_index, reduce_connection, reduce_modal, reduce_navigation,
+};
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     if let Some(effects) = reduce_connection(state, &action, now) {
+        return effects;
+    }
+    if let Some(effects) = reduce_modal(state, &action, now) {
         return effects;
     }
     if let Some(effects) = reduce_navigation(state, &action, now) {
@@ -42,71 +47,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::Render => {
             state.clear_expired_messages();
             vec![Effect::Render]
-        }
-
-        // Modal/Overlay
-        Action::OpenTablePicker => {
-            state.ui.input_mode = InputMode::TablePicker;
-            state.ui.filter_input.clear();
-            state.ui.picker_selected = 0;
-            vec![]
-        }
-        Action::CloseTablePicker => {
-            state.ui.input_mode = InputMode::Normal;
-            vec![]
-        }
-        Action::OpenCommandPalette => {
-            state.ui.input_mode = InputMode::CommandPalette;
-            state.ui.picker_selected = 0;
-            vec![]
-        }
-        Action::CloseCommandPalette => {
-            state.ui.input_mode = InputMode::Normal;
-            vec![]
-        }
-        Action::OpenHelp => {
-            state.ui.input_mode = if state.ui.input_mode == InputMode::Help {
-                InputMode::Normal
-            } else {
-                InputMode::Help
-            };
-            vec![]
-        }
-        Action::CloseHelp => {
-            state.ui.input_mode = InputMode::Normal;
-            vec![]
-        }
-        Action::CloseSqlModal => {
-            state.ui.input_mode = InputMode::Normal;
-            state.sql_modal.completion.visible = false;
-            state.sql_modal.completion_debounce = None;
-            vec![]
-        }
-        Action::Escape => {
-            state.ui.input_mode = InputMode::Normal;
-            vec![]
-        }
-
-        // ===== Confirm Dialog =====
-        Action::OpenConfirmDialog => {
-            state.ui.input_mode = InputMode::ConfirmDialog;
-            vec![]
-        }
-        Action::CloseConfirmDialog => {
-            state.ui.input_mode = InputMode::Normal;
-            vec![]
-        }
-        Action::ConfirmDialogConfirm => {
-            let action = std::mem::replace(&mut state.confirm_dialog.on_confirm, Action::None);
-            state.confirm_dialog.on_cancel = Action::None;
-            state.ui.input_mode = InputMode::Normal;
-            reduce(state, action, now)
-        }
-        Action::ConfirmDialogCancel => {
-            let action = std::mem::replace(&mut state.confirm_dialog.on_cancel, Action::None);
-            state.confirm_dialog.on_confirm = Action::None;
-            state.ui.input_mode = InputMode::Normal;
-            reduce(state, action, now)
         }
 
         // Completion
