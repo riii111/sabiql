@@ -50,4 +50,38 @@ impl Theme {
 
     // Note/disclaimer text (subtle but readable)
     pub const NOTE_TEXT: Color = Color::Rgb(0x66, 0x66, 0x77);
+
+    // ============ Panel/Border Colors ============
+
+    // Panel border states
+    pub const FOCUS_BORDER: Color = Color::Cyan;
+    pub const UNFOCUS_BORDER: Color = Color::DarkGray;
+    pub const HIGHLIGHT_BORDER: Color = Color::Green;
+
+    // ============ Text Colors ============
+
+    // Semantic text colors
+    pub const TEXT_PRIMARY: Color = Color::White;
+    pub const TEXT_SECONDARY: Color = Color::Gray;
+    pub const TEXT_MUTED: Color = Color::DarkGray;
+    pub const TEXT_ACCENT: Color = Color::Yellow;
+
+    // ============ Status Colors ============
+
+    // Status indicators
+    pub const STATUS_SUCCESS: Color = Color::Green;
+    pub const STATUS_ERROR: Color = Color::Red;
+    pub const STATUS_WARNING: Color = Color::Yellow;
+
+    // ============ Component Colors ============
+
+    // Cursor
+    pub const CURSOR_FG: Color = Color::White;
+
+    // Section headers
+    pub const SECTION_HEADER: Color = Color::Cyan;
+
+    // Scrollbar
+    pub const SCROLLBAR_ACTIVE: Color = Color::Yellow;
+    pub const SCROLLBAR_INACTIVE: Color = Color::DarkGray;
 }
