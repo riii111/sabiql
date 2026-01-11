@@ -170,16 +170,16 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
         Action::RetryConnection => {
-            state.connection_error.clear();
-            state.messages.clear();
+            if state.runtime.connection_state.is_connecting() || state.runtime.is_reconnecting {
+                return vec![];
+            }
             if let Some(dsn) = state.runtime.dsn.clone() {
                 state.runtime.is_reconnecting = true;
+                state.connection_error.is_retrying = true;
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
-                state.ui.input_mode = InputMode::Normal;
                 vec![Effect::FetchMetadata { dsn }]
             } else {
-                state.runtime.is_reconnecting = false;
                 state.runtime.connection_state = ConnectionState::NotConnected;
                 state.cache.state = MetadataState::NotLoaded;
                 state.ui.input_mode = InputMode::ConnectionSetup;
@@ -763,30 +763,38 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
             state.runtime.connection_state = ConnectionState::Connected;
-            state.connection_error.clear();
             state
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
 
+            let mut effects = vec![];
+
+            state.connection_error.clear();
+
             if state.runtime.is_reconnecting {
+                state.ui.input_mode = InputMode::Normal;
                 state
                     .messages
                     .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
+            } else if state.runtime.is_reloading {
+                state.messages.set_success_at("Reloaded!".to_string(), now);
+                state.runtime.is_reloading = false;
             }
 
             // If SqlModal is already open and prefetch hasn't started, start it now
             if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
-                vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
-            } else {
-                vec![]
+                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
+
+            effects
         }
         Action::MetadataFailed(error) => {
             let error_info = ConnectionErrorInfo::new(&error);
             state.connection_error.set_error(error_info);
             state.cache.state = MetadataState::Error(error);
             state.runtime.is_reconnecting = false;
+            state.runtime.is_reloading = false;
             // Only set Failed if not already Connected (preserve connection on metadata-only failures)
             // This handles the case where connection succeeds but metadata reload fails
             if !state.runtime.connection_state.is_connected() {
@@ -1180,24 +1188,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                         }
                     }
                     Action::ReloadMetadata => {
-                        // Will be handled in Phase 4 (needs cache invalidation)
-                        if let Some(dsn) = &state.runtime.dsn {
-                            effects.push(Effect::Sequence(vec![
-                                Effect::CacheInvalidate { dsn: dsn.clone() },
-                                Effect::ClearCompletionEngineCache,
-                                Effect::FetchMetadata { dsn: dsn.clone() },
-                            ]));
-
-                            // Reset prefetch state
-                            state.sql_modal.prefetch_started = false;
-                            state.sql_modal.prefetch_queue.clear();
-                            state.sql_modal.prefetching_tables.clear();
-                            state.sql_modal.failed_prefetch_tables.clear();
-                            state.er_preparation.reset();
-                            state.messages.last_error = None;
-                            state.messages.last_success = None;
-                            state.messages.expires_at = None;
-                        }
+                        effects.push(Effect::DispatchActions(vec![Action::ReloadMetadata]));
                     }
                     _ => {}
                 }
@@ -1208,6 +1199,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         Action::ReloadMetadata => {
             if let Some(dsn) = &state.runtime.dsn {
+                state.runtime.is_reloading = true;
                 state.sql_modal.prefetch_started = false;
                 state.sql_modal.prefetch_queue.clear();
                 state.sql_modal.prefetching_tables.clear();
@@ -1984,15 +1976,18 @@ mod tests {
         }
 
         #[test]
-        fn retry_clears_error_and_fetches_metadata() {
+        fn retry_keeps_modal_open_and_fetches_metadata() {
             let mut state = state_with_error();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::RetryConnection, now);
 
-            assert!(state.connection_error.error_info.is_none());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            // Error info is preserved during retry (modal stays open)
+            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.is_retrying);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
@@ -2000,6 +1995,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
+        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
@@ -2042,6 +2038,41 @@ mod tests {
                 assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
                 assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
             }
+        }
+
+        #[test]
+        fn reload_metadata_sets_is_reloading_flag() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ReloadMetadata, now);
+
+            assert!(state.runtime.is_reloading);
+        }
+
+        #[test]
+        fn reload_then_metadata_loaded_shows_reloaded_message() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            // Trigger reload
+            let _ = reduce(&mut state, Action::ReloadMetadata, now);
+            assert!(state.runtime.is_reloading);
+
+            // Metadata loaded
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: now,
+            };
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            // Check reloading flag is cleared and message is shown
+            assert!(!state.runtime.is_reloading);
+            assert_eq!(state.messages.last_success, Some("Reloaded!".to_string()));
         }
 
         #[test]
@@ -2659,6 +2690,42 @@ mod tests {
             assert!(matches!(state.cache.state, MetadataState::NotLoaded));
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn retry_then_success_closes_modal_and_shows_footer_message() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.ui.input_mode = InputMode::ConnectionError;
+            state.connection_error.error_info = Some(
+                crate::app::connection_error::ConnectionErrorInfo::new("test error"),
+            );
+            let now = Instant::now();
+
+            // Step 1: Retry connection (modal stays open, shows "Retrying...")
+            let _ = reduce(&mut state, Action::RetryConnection, now);
+            assert!(state.runtime.is_reconnecting);
+            assert!(state.connection_error.is_retrying);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+
+            // Step 2: Metadata loaded (modal closes, footer shows success)
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: now,
+            };
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            // Modal is closed, footer shows success message
+            assert!(!state.runtime.is_reconnecting);
+            assert!(state.connection_error.error_info.is_none());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(
+                state.messages.last_success,
+                Some("Reconnected!".to_string())
+            );
         }
     }
 }
