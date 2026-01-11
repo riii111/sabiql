@@ -106,14 +106,13 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         // ===== Connection Lifecycle =====
         Action::TryConnect => {
             // Idempotency: only connect if NotConnected
-            if state.runtime.dsn.is_some()
-                && state.runtime.connection_state.is_not_connected()
-                && state.ui.input_mode == InputMode::Normal
-            {
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                if let Some(dsn) = &state.runtime.dsn {
-                    vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            if let Some(dsn) = state.runtime.dsn.clone() {
+                if state.runtime.connection_state.is_not_connected()
+                    && state.ui.input_mode == InputMode::Normal
+                {
+                    state.runtime.connection_state = ConnectionState::Connecting;
+                    state.cache.state = MetadataState::Loading;
+                    vec![Effect::FetchMetadata { dsn }]
                 } else {
                     vec![]
                 }
@@ -332,6 +331,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(state.connection_setup.auto_name());
             state.runtime.connection_state = ConnectionState::Connecting;
+            state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;
             vec![Effect::FetchMetadata { dsn }]
         }
