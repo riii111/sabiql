@@ -1,6 +1,5 @@
 pub mod atoms;
 pub mod command_line;
-pub mod molecules;
 pub mod command_palette;
 pub mod confirm_dialog;
 pub mod connection_error;
@@ -11,6 +10,7 @@ pub mod header;
 pub mod help_overlay;
 pub mod inspector;
 pub mod layout;
+pub mod molecules;
 pub mod overlay;
 pub mod result;
 pub mod scroll_indicator;

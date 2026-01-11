@@ -18,8 +18,5 @@ pub fn key_chip(key: &str) -> Span<'static> {
 /// Creates a styled key text without background (e.g., for footer hints).
 /// Example: `Esc` in accent color
 pub fn key_text(key: &str) -> Span<'static> {
-    Span::styled(
-        key.to_string(),
-        Style::default().fg(Theme::TEXT_ACCENT),
-    )
+    Span::styled(key.to_string(), Style::default().fg(Theme::TEXT_ACCENT))
 }
