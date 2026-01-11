@@ -2662,5 +2662,32 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn retry_then_success_shows_reconnected_message() {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.connection_state = ConnectionState::Failed;
+            state.ui.input_mode = InputMode::ConnectionError;
+            let now = Instant::now();
+
+            // Step 1: Retry connection
+            let _ = reduce(&mut state, Action::RetryConnection, now);
+            assert!(state.runtime.is_reconnecting);
+            assert!(state.messages.last_success.is_none());
+
+            // Step 2: Metadata loaded (simulating successful connection)
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: now,
+            };
+            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            // Verify success message is set
+            assert!(!state.runtime.is_reconnecting);
+            assert_eq!(state.messages.last_success, Some("Reconnected!".to_string()));
+        }
     }
 }

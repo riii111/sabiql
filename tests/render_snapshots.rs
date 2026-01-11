@@ -319,3 +319,15 @@ fn confirm_dialog() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn footer_shows_success_message() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.messages.last_success = Some("Reconnected!".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
