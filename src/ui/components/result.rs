@@ -10,6 +10,7 @@ use super::atoms::panel_block_highlight;
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
+use crate::app::ui_state::RESULT_INNER_OVERHEAD;
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
@@ -188,8 +189,7 @@ impl ResultPane {
         )
         .height(1);
 
-        // -3: header (1) + scroll indicators (2)
-        let data_rows_visible = inner.height.saturating_sub(3) as usize;
+        let data_rows_visible = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
         let scroll_viewport_size = data_rows_visible;
         let rows: Vec<Row> = result
             .rows

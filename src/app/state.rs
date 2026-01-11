@@ -113,10 +113,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case(10, 7)]
-    #[case(15, 12)]
-    #[case(20, 17)]
-    #[case(30, 27)]
+    #[case(10, 5)]
+    #[case(15, 10)]
+    #[case(20, 15)]
+    #[case(30, 25)]
     fn result_pane_height_calculates_correct_visible_rows(
         #[case] pane_height: u16,
         #[case] expected: usize,
@@ -156,7 +156,7 @@ mod tests {
 
         let visible = state.result_visible_rows();
 
-        assert_eq!(visible, 47);
+        assert_eq!(visible, 45);
     }
 
     #[test]
