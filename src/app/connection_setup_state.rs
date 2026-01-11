@@ -2,6 +2,11 @@ use std::collections::HashMap;
 
 use crate::domain::connection::SslMode;
 
+/// Input field width including brackets "[ ]" (4 chars)
+pub const CONNECTION_INPUT_WIDTH: u16 = 40;
+/// Visible character width for input content (INPUT_WIDTH - 4)
+pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnectionField {
     Host,
@@ -158,7 +163,7 @@ impl ConnectionSetupState {
     }
 
     pub fn cursor_to_end(&mut self) {
-        let len = self.field_value(self.focused_field).len();
+        let len = self.field_value(self.focused_field).chars().count();
         self.cursor_position = len;
         self.viewport_offset = 0;
     }
