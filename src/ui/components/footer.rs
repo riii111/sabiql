@@ -48,6 +48,7 @@ impl Footer {
         Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
     }
 
+    /// Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::focused_pane::FocusedPane;
 
