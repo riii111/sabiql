@@ -64,6 +64,28 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 
 ## UI Design Rules
 
+### Component Structure (Atomic Design)
+
+UI components follow the Atomic Design pattern:
+
+```
+src/ui/components/
+├── atoms/       # Smallest reusable units (spinner, key_chip, panel_border)
+├── molecules/   # Compositions of atoms (modal_frame, hint_bar)
+└── *.rs         # Organisms: screen-level components (explorer, inspector, etc.)
+```
+
+| Layer | Purpose | Examples |
+|-------|---------|----------|
+| atoms | Single-purpose primitives | `spinner_char()`, `key_chip()`, `panel_block()` |
+| molecules | Reusable patterns combining atoms | `render_modal()`, `hint_line()` |
+| organisms | Screen sections, may use molecules/atoms | `Explorer`, `SqlModal`, `Footer` |
+
+When adding UI components:
+- Extract repeated visual patterns into atoms/molecules
+- Use `Theme::*` tokens instead of raw `Color::*` values
+- Organisms should compose molecules/atoms, not duplicate their logic
+
 ### Footer Hint Ordering
 
 All input modes must follow this ordering:

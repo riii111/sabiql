@@ -62,7 +62,6 @@ impl HelpOverlay {
             chip_hint_line("Esc", "Cancel"),
             Line::from(""),
             Self::section("Connection Error"),
-            Self::key_line("r", "Retry connection"),
             Self::key_line("e", "Edit connection settings"),
             Self::key_line("d", "Toggle error details"),
             Self::key_line("c", "Copy error to clipboard"),

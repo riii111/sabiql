@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Reconnected!
+✓ Reconnected!  r:Reload  s:SQL  e:ER Diagram  c:Connect  ^P:Tables  ^K:Palette

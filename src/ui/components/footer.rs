@@ -5,11 +5,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::atoms::spinner_char;
-use super::molecules::hint_line;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 pub struct Footer;
 
@@ -21,12 +21,11 @@ impl Footer {
         } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
-        } else if let Some(success) = &state.messages.last_success {
-            let line = StatusMessage::render_line(success, MessageType::Success);
-            frame.render_widget(Paragraph::new(line), area);
         } else {
+            // Show hints with optional inline success message
             let hints = Self::get_context_hints(state);
-            let line = hint_line(&hints);
+            let line =
+                Self::build_hint_line_with_success(&hints, state.messages.last_success.as_deref());
             frame.render_widget(Paragraph::new(line), area);
         }
     }
@@ -110,7 +109,6 @@ impl Footer {
                 ("Esc", "Cancel"),
             ],
             InputMode::ConnectionError => vec![
-                ("Enter/r", "Retry"),
                 ("e", "Edit"),
                 ("d", "Details"),
                 ("c", "Copy"),
@@ -119,5 +117,32 @@ impl Footer {
             ],
             InputMode::ConfirmDialog => vec![("Esc", "Close")],
         }
+    }
+
+    fn build_hint_line_with_success(
+        hints: &[(&str, &str)],
+        success_msg: Option<&str>,
+    ) -> Line<'static> {
+        let mut spans = Vec::new();
+
+        if let Some(msg) = success_msg {
+            spans.push(Span::styled(
+                format!("✓ {}  ", msg),
+                Style::default().fg(Color::Green),
+            ));
+        }
+
+        for (i, (key, desc)) in hints.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                (*key).to_string(),
+                Style::default().fg(Theme::TEXT_ACCENT),
+            ));
+            spans.push(Span::raw(format!(":{}", desc)));
+        }
+
+        Line::from(spans)
     }
 }
