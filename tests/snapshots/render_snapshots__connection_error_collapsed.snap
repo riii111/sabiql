@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
+│              ││                                                              │
+│Tables        ││                                                              │
+│ Press 'r' ╭ Connection Error ────────────────────────────────────╮           │
+│           │✗ Could not resolve host                              │           │
+│           │                                                      │           │
+│           │Hint: Check the hostname                              │           │
+│           │                                                      │           │
+│           │▶ Details (press d to expand)                         │───────────┘
+│           │                                                      │───────────┐
+│           │                                                      │           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           │Actions:  r  Retry   e  Re-enter   d  Details   c  Cop│           │
+│           ╰ Esc to close  q to quit ─────────────────────────────╯           │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Esc:Close  q:Quit

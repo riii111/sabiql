@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
+│              ││                                                              │
+│Tables    ╭ Connection Setup ──────────────────────────────────────╮          │
+│ Press 'r'│ Host:       [ █ ]                                    R │          │
+│          │ Port:       [ 5432 ]                                   │          │
+│          │ Database:   [  ]                                     R │          │
+│          │ User:       [  ]                                     R │          │
+│          │ Password:   [  ]                                       │          │
+│          │ SSL Mode:   [ prefer ▼ ]                               │──────────┘
+│          │                                                        │──────────┐
+│          │ Name (auto): :5432                                     │          │
+│          │                                                        │          │
+│          │ Note: Connection info is stored locally in plain text  │          │
+│          │                                                        │          │
+│          │                                                        │          │
+│          ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cance╯          │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Esc:Close
