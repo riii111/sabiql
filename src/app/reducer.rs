@@ -105,11 +105,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 
         // ===== Connection Lifecycle =====
         Action::TryConnect => {
-            // Idempotency: only connect if NotConnected
-            if let Some(dsn) = state.runtime.dsn.clone() {
-                if state.runtime.connection_state.is_not_connected()
-                    && state.ui.input_mode == InputMode::Normal
-                {
+            // Idempotency: only connect if NotConnected and in Normal mode
+            if state.runtime.connection_state.is_not_connected()
+                && state.ui.input_mode == InputMode::Normal
+            {
+                if let Some(dsn) = state.runtime.dsn.clone() {
                     state.runtime.connection_state = ConnectionState::Connecting;
                     state.cache.state = MetadataState::Loading;
                     vec![Effect::FetchMetadata { dsn }]
@@ -171,12 +171,13 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::RetryConnection => {
             state.connection_error.clear();
-            state.runtime.connection_state = ConnectionState::Connecting;
-            state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;
-            if let Some(dsn) = &state.runtime.dsn {
-                vec![Effect::FetchMetadata { dsn: dsn.clone() }]
+            if let Some(dsn) = state.runtime.dsn.clone() {
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                vec![Effect::FetchMetadata { dsn }]
             } else {
+                state.runtime.connection_state = ConnectionState::NotConnected;
                 vec![]
             }
         }
@@ -2565,9 +2566,10 @@ mod tests {
         }
 
         #[test]
-        fn connection_save_completed_sets_connecting() {
+        fn connection_save_completed_sets_connecting_and_loading() {
             let mut state = create_test_state();
             state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
             let now = Instant::now();
 
             let effects = reduce(
@@ -2579,6 +2581,7 @@ mod tests {
             );
 
             assert!(state.runtime.connection_state.is_connecting());
+            assert!(matches!(state.cache.state, MetadataState::Loading));
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }

@@ -6,7 +6,7 @@
 /// - Connecting → Failed (on connection error)
 /// - Failed → NotConnected (when re-entering connection setup)
 /// - Connected → NotConnected (when re-entering connection setup)
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionState {
     #[default]
     NotConnected,
