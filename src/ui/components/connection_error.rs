@@ -14,10 +14,10 @@ pub struct ConnectionError;
 
 impl ConnectionError {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        Self::render_at(frame, state, Instant::now(), None)
+        Self::render_at(frame, state, Instant::now())
     }
 
-    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, time_ms: Option<u128>) {
+    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant) {
         let error_state = &state.connection_error;
         let Some(ref error_info) = error_state.error_info else {
             return;
@@ -54,11 +54,7 @@ impl ConnectionError {
         ])
         .split(inner);
 
-        if error_state.is_retrying {
-            Self::render_retrying(frame, chunks[0], time_ms);
-        } else {
-            Self::render_summary(frame, chunks[0], error_info.kind.summary());
-        }
+        Self::render_summary(frame, chunks[0], error_info.kind.summary());
         Self::render_hint(frame, chunks[2], error_info.kind.hint());
         Self::render_details_section(frame, chunks[4], error_state, details_expanded);
         Self::render_actions(frame, chunks[6], error_state, now);
@@ -70,27 +66,6 @@ impl ConnectionError {
             Span::styled(
                 summary,
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-        ]);
-        frame.render_widget(Paragraph::new(line), area);
-    }
-
-    fn render_retrying(frame: &mut Frame, area: Rect, time_ms: Option<u128>) {
-        let now_ms = time_ms.unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        });
-        let spinner_frames = ["◐", "◓", "◑", "◒"];
-        let spinner = spinner_frames[(now_ms / 300) as usize % spinner_frames.len()];
-        let line = Line::from(vec![
-            Span::styled(format!("{} ", spinner), Style::default().fg(Color::Yellow)),
-            Span::styled(
-                "Retrying connection...",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
             ),
         ]);
         frame.render_widget(Paragraph::new(line), area);
@@ -146,19 +121,8 @@ impl ConnectionError {
         error_state: &crate::app::connection_error_state::ConnectionErrorState,
         now: Instant,
     ) {
-        if error_state.is_retrying {
-            let line = Line::from(vec![Span::styled(
-                "Please wait...",
-                Style::default().fg(Color::DarkGray),
-            )]);
-            frame.render_widget(Paragraph::new(line), area);
-            return;
-        }
-
         let mut spans = vec![
             Span::styled("Actions: ", Style::default().fg(Color::DarkGray)),
-            Self::action_key("r"),
-            Span::raw(" Retry  "),
             Self::action_key("e"),
             Span::raw(" Re-enter  "),
             Self::action_key("d"),
