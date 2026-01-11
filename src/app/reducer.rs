@@ -16,7 +16,8 @@ use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
-    reduce_connection, reduce_metadata, reduce_modal, reduce_navigation, reduce_sql_modal,
+    reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation,
+    reduce_sql_modal,
 };
 use crate::app::state::AppState;
 
@@ -34,6 +35,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         return effects;
     }
     if let Some(effects) = reduce_metadata(state, &action, now) {
+        return effects;
+    }
+    if let Some(effects) = reduce_er(state, &action, now) {
         return effects;
     }
 
@@ -97,23 +101,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
             vec![]
         }
-        Action::ErDiagramOpened {
-            path,
-            table_count,
-            total_tables,
-        } => {
-            state.er_preparation.status = crate::app::er_state::ErStatus::Idle;
-            state.set_success(format!(
-                "✓ Opened {} ({}/{} tables)",
-                path, table_count, total_tables
-            ));
-            vec![]
-        }
-        Action::ErDiagramFailed(error) => {
-            state.er_preparation.status = crate::app::er_state::ErStatus::Idle;
-            state.set_error(error);
-            vec![]
-        }
 
         Action::CommandLineSubmit => {
             use crate::app::command::{command_to_action, parse_command};
@@ -142,8 +129,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     }
                 }
                 Action::ErOpenDiagram => {
-                    // Will be handled in Phase 4
-                    vec![]
+                    vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])]
                 }
                 _ => vec![],
             }
@@ -292,65 +278,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             }
 
             effects
-        }
-
-        Action::ErOpenDiagram => {
-            use crate::app::er_state::ErStatus;
-
-            if matches!(
-                state.er_preparation.status,
-                ErStatus::Rendering | ErStatus::Waiting
-            ) {
-                return vec![];
-            }
-
-            // If prefetch hasn't started, start it now and wait
-            if !state.sql_modal.prefetch_started
-                && let Some(metadata) = &state.cache.metadata
-            {
-                state.er_preparation.total_tables = metadata.tables.len();
-                state.er_preparation.status = ErStatus::Waiting;
-                state.set_success("Starting table prefetch for ER diagram...".to_string());
-                return vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])];
-            }
-
-            // If no metadata yet, show error
-            if state.cache.metadata.is_none() {
-                state.set_error("Metadata not loaded yet".to_string());
-                return vec![];
-            }
-
-            if state.er_preparation.has_failures() {
-                let failed_tables: Vec<String> =
-                    state.er_preparation.failed_tables.keys().cloned().collect();
-                state.er_preparation.retry_failed();
-                state.sql_modal.failed_prefetch_tables.clear();
-
-                for qualified_name in failed_tables {
-                    state.sql_modal.prefetch_queue.push_back(qualified_name);
-                }
-
-                state.er_preparation.status = ErStatus::Waiting;
-                return vec![Effect::ProcessPrefetchQueue];
-            }
-
-            if !state.er_preparation.is_complete() {
-                state.er_preparation.status = ErStatus::Waiting;
-                return vec![];
-            }
-
-            state.er_preparation.status = ErStatus::Rendering;
-            let total_tables = state
-                .cache
-                .metadata
-                .as_ref()
-                .map(|m| m.tables.len())
-                .unwrap_or(0);
-
-            vec![Effect::GenerateErDiagramFromCache {
-                total_tables,
-                project_name: state.runtime.project_name.clone(),
-            }]
         }
 
         // Handled by sub-reducers
