@@ -4,9 +4,9 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -30,18 +30,18 @@ impl ConnectionError {
             Constraint::Length(12)
         };
 
-        let area = centered_rect(frame.area(), Constraint::Percentage(70), height);
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
         let hint_text = if details_expanded {
             " Scroll: ↑/↓/j/k  Esc to close  q to quit "
         } else {
             " Esc to close  q to quit "
         };
-        let block = modal_block_with_hint(" Connection Error ".to_string(), hint_text.to_string());
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let (_, inner) = render_modal(
+            frame,
+            Constraint::Percentage(70),
+            height,
+            " Connection Error ",
+            hint_text,
+        );
 
         let chunks = Layout::vertical([
             Constraint::Length(1), // Summary
