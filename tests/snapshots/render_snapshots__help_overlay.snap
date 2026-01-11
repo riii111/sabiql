@@ -6,22 +6,22 @@ test_project | default | - | - | no dsn
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
 │Connections╭ Help ────────────────────────────────────────────────╮───────────┐
 │ Current: l│▸ Global Keys                                         │           │
-│           │   q           Quit application                       │           │
-│Tables [3] │   ?           Toggle this help                       │           │
-│public.user│   Ctrl+P      Open Table Picker                      │           │
-│public.post│   Ctrl+K      Open Command Palette                   │           │
-│public.comm│   :           Enter command line                     │           │
-│           │   f           Toggle Focus mode (Result fullscreen)  │           │
-│           │  1/2/3        Switch pane focus (exits Focus first)  │           │
-│           │  Tab/⇧Tab     Inspector prev/next tab (Inspector     │───────────┘
-│           │focus)                                                │───────────┐
-│           │  r            Reload metadata                        │           │
-│           │  e            Open ER Diagram in browser             │           │
+│           │  q            Quit application                       │           │
+│Tables [3] │  ?            Toggle help                            │           │
+│public.user│  Ctrl+P       Open Table Picker                      │           │
+│public.post│  Ctrl+K       Open Command Palette                   │           │
+│public.comm│  :            Enter command line                     │           │
+│           │  f            Toggle Focus mode                      │           │
+│           │  1/2/3        Switch pane focus                      │           │
+│           │  Tab/⇧Tab     Inspector prev/next tab                │───────────┘
+│           │  r            Reload metadata                        │───────────┐
+│           │  s            Open SQL Editor                        │           │
+│           │  e            Open ER Diagram                        │           │
 │           │  c            Open connection settings               │           │
 │           │                                                      │           │
 │           │▸ Navigation                                          │           │
-│           │  j / ↓        Move down (scroll in Result/Focus)     │           │
-│           │  k / ↑        Move up (scroll in Result/Focus)       │           │
-│           │  g / Home     First item (top in Result/Focus)       │           │
+│           │  j / ↓        Move down / scroll                     │           │
+│           │  k / ↑        Move up / scroll                       │           │
+│           │  g / Home     First item / top                       │           │
 └───────────╰ ? or Esc to close ───────────────────────────────────╯───────────┘
 ?/Esc:Close  q:Quit
