@@ -19,9 +19,9 @@ test_project | default | - | - | no dsn
 │              ││   │  r                  Reload metadata  │                   │
 │              ││   │                                      │                   │
 │              ││   │                                      │                   │
-│              ││   ╰ ↑↓ Navigate │ Enter Select │ Esc Clos╯                   │
+│              ││   ╰ j/k / ↑↓ Navigate │ Enter Select │ Es╯                   │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Enter:Execute  ↑↓:Navigate  Esc:Close
+Enter:Execute  j/k / ↑↓:Navigate  Esc:Close

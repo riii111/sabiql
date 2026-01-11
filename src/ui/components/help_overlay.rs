@@ -23,7 +23,7 @@ impl HelpOverlay {
             Constraint::Percentage(70),
             Constraint::Percentage(80),
             " Help ",
-            " j/k to scroll, ? or Esc to close ",
+            " j/k / ↑↓ to scroll, ? or Esc to close ",
         );
 
         let mut help_lines = vec![Self::section("Global Keys")];

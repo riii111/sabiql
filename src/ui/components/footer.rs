@@ -99,7 +99,7 @@ impl Footer {
                 hints::ESC_CLOSE,
             ],
             InputMode::CommandPalette => {
-                vec![hints::ENTER_EXECUTE, hints::NAVIGATE, hints::ESC_CLOSE]
+                vec![hints::ENTER_EXECUTE, hints::NAVIGATE_JK, hints::ESC_CLOSE]
             }
             InputMode::Help => vec![hints::HELP_SCROLL, hints::HELP_CLOSE, hints::QUIT],
             InputMode::SqlModal => vec![hints::SQL_RUN, hints::SQL_MOVE, hints::ESC_CLOSE],

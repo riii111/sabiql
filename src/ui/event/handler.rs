@@ -174,8 +174,8 @@ fn handle_command_palette_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Esc => Action::CloseCommandPalette,
         KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Up => Action::SelectPrevious,
-        KeyCode::Down => Action::SelectNext,
+        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
+        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
         _ => Action::None,
     }
 }

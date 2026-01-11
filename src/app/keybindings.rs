@@ -54,8 +54,9 @@ pub mod footer {
     pub const ESC_CANCEL: (&str, &str) = ("Esc", "Cancel");
     pub const ESC_CLOSE: (&str, &str) = ("Esc", "Close");
     pub const NAVIGATE: (&str, &str) = ("↑↓", "Navigate");
+    pub const NAVIGATE_JK: (&str, &str) = ("j/k / ↑↓", "Navigate");
     pub const TYPE_FILTER: (&str, &str) = ("type", "Filter");
-    pub const HELP_SCROLL: (&str, &str) = ("j/k", "Scroll");
+    pub const HELP_SCROLL: (&str, &str) = ("j/k / ↑↓", "Scroll");
     pub const HELP_CLOSE: (&str, &str) = ("?/Esc", "Close");
 
     // SQL Modal
@@ -373,7 +374,7 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         action: Action::None,
     },
     KeyBinding {
-        key: "↑↓",
+        key: "j/k / ↑↓",
         description: "Navigate",
         action: Action::None,
     },

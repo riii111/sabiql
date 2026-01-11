@@ -23,5 +23,5 @@ test_project | default | - | - | no dsn
 │           │  j / ↓        Move down / scroll                    ││           │
 │           │  k / ↑        Move up / scroll                      ▼│           │
 │           │  g / Home     First item / top               row   0%│           │
-└───────────╰ j/k to scroll, ? or Esc to close ────────────────────╯───────────┘
-j/k:Scroll  ?/Esc:Close  q:Quit
+└───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
+j/k / ↑↓:Scroll  ?/Esc:Close  q:Quit

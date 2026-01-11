@@ -18,7 +18,7 @@ impl CommandPalette {
             Constraint::Percentage(50),
             Constraint::Percentage(50),
             " Command Palette ",
-            " ↑↓ Navigate │ Enter Select │ Esc Close ",
+            " j/k / ↑↓ Navigate │ Enter Select │ Esc Close ",
         );
 
         let items: Vec<ListItem> = PALETTE_COMMANDS
