@@ -4,6 +4,7 @@ mod helpers;
 mod metadata;
 mod modal;
 mod navigation;
+mod query;
 mod sql_modal;
 
 pub use connection::reduce_connection;
@@ -14,4 +15,5 @@ pub use helpers::{
 pub use metadata::reduce_metadata;
 pub use modal::reduce_modal;
 pub use navigation::reduce_navigation;
+pub use query::reduce_query;
 pub use sql_modal::reduce_sql_modal;

@@ -9,7 +9,7 @@
 //!
 //! This keeps the reducer testable without mocking time or I/O.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::app::action::Action;
 use crate::app::effect::Effect;
@@ -17,7 +17,7 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
     reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation,
-    reduce_sql_modal,
+    reduce_query, reduce_sql_modal,
 };
 use crate::app::state::AppState;
 
@@ -40,6 +40,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
     if let Some(effects) = reduce_er(state, &action, now) {
         return effects;
     }
+    if let Some(effects) = reduce_query(state, &action, now) {
+        return effects;
+    }
 
     match action {
         Action::None => vec![],
@@ -54,131 +57,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::Render => {
             state.clear_expired_messages();
             vec![Effect::Render]
-        }
-
-        Action::QueryCompleted(result, generation) => {
-            if generation == 0 || generation == state.cache.selection_generation {
-                state.query.status = crate::app::query_execution::QueryStatus::Idle;
-                state.query.start_time = None;
-                state.ui.result_scroll_offset = 0;
-                state.ui.result_horizontal_offset = 0;
-                state.query.result_highlight_until = Some(now + Duration::from_millis(500));
-                state.query.history_index = None;
-
-                if result.source == crate::domain::QuerySource::Adhoc {
-                    if result.is_error() {
-                        state.sql_modal.status =
-                            crate::app::sql_modal_context::SqlModalStatus::Error;
-                    } else {
-                        state.sql_modal.status =
-                            crate::app::sql_modal_context::SqlModalStatus::Success;
-                    }
-                }
-
-                if result.source == crate::domain::QuerySource::Adhoc && !result.is_error() {
-                    state.query.result_history.push((*result).clone());
-                }
-
-                state.query.current_result = Some(*result);
-            }
-            vec![]
-        }
-        Action::QueryFailed(error, generation) => {
-            if generation == 0 || generation == state.cache.selection_generation {
-                state.query.status = crate::app::query_execution::QueryStatus::Idle;
-                state.query.start_time = None;
-                state.set_error(error.clone());
-                if state.ui.input_mode == InputMode::SqlModal {
-                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Error;
-                    let error_result = crate::domain::QueryResult::error(
-                        state.sql_modal.content.clone(),
-                        error,
-                        0,
-                        crate::domain::QuerySource::Adhoc,
-                    );
-                    state.query.current_result = Some(error_result);
-                }
-            }
-            vec![]
-        }
-
-        Action::CommandLineSubmit => {
-            use crate::app::command::{command_to_action, parse_command};
-
-            let cmd = parse_command(&state.command_line_input);
-            let follow_up = command_to_action(cmd);
-            state.ui.input_mode = InputMode::Normal;
-            state.command_line_input.clear();
-
-            match follow_up {
-                Action::Quit => {
-                    state.should_quit = true;
-                    vec![]
-                }
-                Action::OpenHelp => {
-                    state.ui.input_mode = InputMode::Help;
-                    vec![]
-                }
-                Action::OpenSqlModal => {
-                    state.ui.input_mode = InputMode::SqlModal;
-                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-                    if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                        vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
-                    } else {
-                        vec![]
-                    }
-                }
-                Action::ErOpenDiagram => {
-                    vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])]
-                }
-                _ => vec![],
-            }
-        }
-
-        Action::ExecutePreview {
-            schema,
-            table,
-            generation,
-        } => {
-            if let Some(dsn) = &state.runtime.dsn {
-                state.query.status = crate::app::query_execution::QueryStatus::Running;
-                state.query.start_time = Some(now);
-
-                // Adaptive limit: fewer rows for wide tables to avoid UI lag
-                let limit = state.cache.table_detail.as_ref().map_or(100, |detail| {
-                    let col_count = detail.columns.len();
-                    if col_count >= 30 {
-                        20
-                    } else if col_count >= 20 {
-                        50
-                    } else {
-                        100
-                    }
-                });
-
-                vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
-                    schema,
-                    table,
-                    generation,
-                    limit,
-                }]
-            } else {
-                vec![]
-            }
-        }
-
-        Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.runtime.dsn {
-                state.query.status = crate::app::query_execution::QueryStatus::Running;
-                state.query.start_time = Some(now);
-                vec![Effect::ExecuteAdhoc {
-                    dsn: dsn.clone(),
-                    query,
-                }]
-            } else {
-                vec![]
-            }
         }
 
         Action::ConfirmSelection => {
