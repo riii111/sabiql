@@ -9,8 +9,8 @@ use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
-    idx, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS, GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS,
-    OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS,
+    CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS, GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS,
+    OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
