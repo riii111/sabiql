@@ -8,18 +8,19 @@ pub struct MessageState {
 }
 
 impl MessageState {
-    const TIMEOUT_SECS: u64 = 3;
+    const ERROR_TIMEOUT_SECS: u64 = 3;
+    const SUCCESS_TIMEOUT_SECS: u64 = 1;
 
     pub fn set_error_at(&mut self, msg: String, now: Instant) {
         self.last_error = Some(msg);
         self.last_success = None;
-        self.expires_at = Some(now + Duration::from_secs(Self::TIMEOUT_SECS));
+        self.expires_at = Some(now + Duration::from_secs(Self::ERROR_TIMEOUT_SECS));
     }
 
     pub fn set_success_at(&mut self, msg: String, now: Instant) {
         self.last_success = Some(msg);
         self.last_error = None;
-        self.expires_at = Some(now + Duration::from_secs(Self::TIMEOUT_SECS));
+        self.expires_at = Some(now + Duration::from_secs(Self::SUCCESS_TIMEOUT_SECS));
     }
 
     pub fn clear_expired_at(&mut self, now: Instant) {
@@ -97,7 +98,7 @@ mod tests {
         assert!(state.expires_at.is_some());
         assert_eq!(
             state.expires_at,
-            Some(now + Duration::from_secs(MessageState::TIMEOUT_SECS))
+            Some(now + Duration::from_secs(MessageState::ERROR_TIMEOUT_SECS))
         );
     }
 
