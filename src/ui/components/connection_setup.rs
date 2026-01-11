@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 use crate::app::connection_setup_state::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
@@ -24,19 +24,16 @@ impl ConnectionSetup {
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
         let modal_height = 12;
 
-        let area = centered_rect(
-            frame.area(),
+        let hint = " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ";
+        let (_, modal_inner) = render_modal(
+            frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
+            " Connection Setup ",
+            hint,
         );
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
 
-        let hint = " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ";
-        let block = modal_block_with_hint(" Connection Setup ".to_string(), hint.to_string());
-        frame.render_widget(block, area);
-
-        let inner = area.inner(Margin::new(3, 2));
+        let inner = modal_inner.inner(Margin::new(2, 1));
         let chunks = Layout::vertical([
             Constraint::Length(FIELD_HEIGHT),
             Constraint::Length(FIELD_HEIGHT),

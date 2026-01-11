@@ -8,27 +8,19 @@ use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 
 pub struct SqlModal;
 
 impl SqlModal {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let area = centered_rect(
-            frame.area(),
+        let (area, inner) = render_modal(
+            frame,
             Constraint::Percentage(80),
             Constraint::Percentage(60),
+            " SQL Editor ",
+            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close",
         );
-
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
-        let block = modal_block_with_hint(
-            " SQL Editor ".to_string(),
-            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close".to_string(),
-        );
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
 
         // Split into editor area and status line
         let [editor_area, status_area] =

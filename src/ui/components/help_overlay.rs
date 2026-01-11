@@ -2,29 +2,24 @@ use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 
 pub struct HelpOverlay;
 
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, _state: &AppState) {
-        let area = centered_rect(
-            frame.area(),
+        let (_, inner) = render_modal(
+            frame,
             Constraint::Percentage(70),
             Constraint::Percentage(80),
+            " Help ",
+            " ? or Esc to close ",
         );
-
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
-
-        let block = modal_block_with_hint(" Help ".to_string(), " ? or Esc to close ".to_string());
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
 
         let help_lines = vec![
             Self::section("Global Keys"),
