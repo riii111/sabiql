@@ -5,10 +5,59 @@ use super::action::Action;
 
 #[derive(Clone)]
 pub struct KeyBinding {
+    /// Display key for Help/Palette (e.g., "Ctrl+P")
     pub key: &'static str,
+    /// Full description for Help/Palette
     pub description: &'static str,
     #[allow(dead_code)]
     pub action: Action,
+}
+
+// =============================================================================
+// Footer Hints (short form for status bar)
+// =============================================================================
+
+pub mod footer {
+    pub const QUIT: (&str, &str) = ("q", "Quit");
+    pub const HELP: (&str, &str) = ("?", "Help");
+    pub const RELOAD: (&str, &str) = ("r", "Reload");
+    pub const SQL: (&str, &str) = ("s", "SQL");
+    pub const ER_DIAGRAM: (&str, &str) = ("e", "ER Diagram");
+    pub const CONNECT: (&str, &str) = ("c", "Connect");
+    pub const TABLE_PICKER: (&str, &str) = ("^P", "Tables");
+    pub const PALETTE: (&str, &str) = ("^K", "Palette");
+    pub const FOCUS: (&str, &str) = ("f", "Focus");
+    pub const EXIT_FOCUS: (&str, &str) = ("f", "Exit Focus");
+    pub const PANE_SWITCH: (&str, &str) = ("1/2/3", "Pane");
+    pub const SCROLL: (&str, &str) = ("j/k/g/G", "Scroll");
+    pub const SCROLL_SHORT: (&str, &str) = ("j/k", "Scroll");
+    pub const H_SCROLL: (&str, &str) = ("h/l", "H-Scroll");
+    pub const TOP_BOTTOM: (&str, &str) = ("g/G", "Top/Bottom");
+    pub const INSPECTOR_TABS: (&str, &str) = ("Tab/⇧Tab", "InsTabs");
+    pub const ERROR_OPEN: (&str, &str) = ("Enter", "Error");
+
+    // Overlays
+    pub const ENTER_EXECUTE: (&str, &str) = ("Enter", "Execute");
+    pub const ENTER_SELECT: (&str, &str) = ("Enter", "Select");
+    pub const ESC_CANCEL: (&str, &str) = ("Esc", "Cancel");
+    pub const ESC_CLOSE: (&str, &str) = ("Esc", "Close");
+    pub const NAVIGATE: (&str, &str) = ("↑↓", "Navigate");
+    pub const TYPE_FILTER: (&str, &str) = ("type", "Filter");
+    pub const HELP_CLOSE: (&str, &str) = ("?/Esc", "Close");
+
+    // SQL Modal
+    pub const SQL_RUN: (&str, &str) = ("⌥Enter", "Run");
+    pub const SQL_MOVE: (&str, &str) = ("↑↓←→", "Move");
+
+    // Connection Setup
+    pub const SAVE: (&str, &str) = ("^S", "Save");
+    pub const TAB_NEXT: (&str, &str) = ("Tab", "Next");
+    pub const TAB_PREV: (&str, &str) = ("⇧Tab", "Prev");
+
+    // Connection Error
+    pub const EDIT: (&str, &str) = ("e", "Edit");
+    pub const DETAILS: (&str, &str) = ("d", "Details");
+    pub const COPY: (&str, &str) = ("c", "Copy");
 }
 
 // =============================================================================
