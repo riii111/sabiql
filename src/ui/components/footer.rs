@@ -10,7 +10,7 @@ use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
-    GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -62,9 +62,9 @@ impl Footer {
                 if state.ui.focus_mode {
                     vec![
                         GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
-                        NAVIGATION_KEYS[idx::nav::SCROLL_SHORT].as_hint(),
-                        NAVIGATION_KEYS[idx::nav::H_SCROLL].as_hint(),
-                        NAVIGATION_KEYS[idx::nav::TOP_BOTTOM].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::SCROLL_SHORT].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::TOP_BOTTOM].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
                         GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                     ]
@@ -83,8 +83,8 @@ impl Footer {
                     list.push(GLOBAL_KEYS[idx::global::PANE_SWITCH].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
-                        list.push(NAVIGATION_KEYS[idx::nav::SCROLL].as_hint());
-                        list.push(NAVIGATION_KEYS[idx::nav::H_SCROLL].as_hint());
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());

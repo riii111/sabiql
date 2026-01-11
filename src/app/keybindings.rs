@@ -13,7 +13,6 @@ pub struct KeyBinding {
     pub desc_short: &'static str,
     /// Full description for Help/Palette (e.g., "Quit application")
     pub description: &'static str,
-    #[allow(dead_code)]
     pub action: Action,
 }
 
@@ -45,7 +44,8 @@ pub mod idx {
         pub const CONNECT: usize = 12;
     }
 
-    pub mod nav {
+    /// Indexes for FOOTER_NAV_KEYS
+    pub mod footer_nav {
         pub const SCROLL: usize = 0;
         pub const SCROLL_SHORT: usize = 1;
         pub const TOP_BOTTOM: usize = 2;
@@ -222,8 +222,48 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
+/// Navigation keys for Help overlay (individual key display)
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
-    // idx 0: SCROLL (full)
+    KeyBinding {
+        key_short: "j",
+        key: "j / ↓",
+        desc_short: "Down",
+        description: "Move down / scroll",
+        action: Action::None,
+    },
+    KeyBinding {
+        key_short: "k",
+        key: "k / ↑",
+        desc_short: "Up",
+        description: "Move up / scroll",
+        action: Action::None,
+    },
+    KeyBinding {
+        key_short: "g",
+        key: "g / Home",
+        desc_short: "Top",
+        description: "First item / top",
+        action: Action::None,
+    },
+    KeyBinding {
+        key_short: "G",
+        key: "G / End",
+        desc_short: "Bottom",
+        description: "Last item / bottom",
+        action: Action::None,
+    },
+    KeyBinding {
+        key_short: "h/l / ←→",
+        key: "h / l",
+        desc_short: "H-Scroll",
+        description: "Scroll left/right",
+        action: Action::None,
+    },
+];
+
+/// Navigation keys for Footer (combined key display)
+pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
+    // idx 0: SCROLL
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -231,12 +271,12 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         description: "Move down/up",
         action: Action::None,
     },
-    // idx 1: SCROLL_SHORT
+    // idx 1: SCROLL_SHORT (same as SCROLL for now)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
-        description: "Move down / scroll",
+        description: "Move down/up",
         action: Action::None,
     },
     // idx 2: TOP_BOTTOM
@@ -253,38 +293,6 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         key: "h / l / ← / →",
         desc_short: "H-Scroll",
         description: "Scroll left/right",
-        action: Action::None,
-    },
-    // idx 4: DOWN (for Help)
-    KeyBinding {
-        key_short: "j",
-        key: "j / ↓",
-        desc_short: "Down",
-        description: "Move down / scroll",
-        action: Action::None,
-    },
-    // idx 5: UP (for Help)
-    KeyBinding {
-        key_short: "k",
-        key: "k / ↑",
-        desc_short: "Up",
-        description: "Move up / scroll",
-        action: Action::None,
-    },
-    // idx 6: TOP (for Help)
-    KeyBinding {
-        key_short: "g",
-        key: "g / Home",
-        desc_short: "Top",
-        description: "First item / top",
-        action: Action::None,
-    },
-    // idx 7: BOTTOM (for Help)
-    KeyBinding {
-        key_short: "G",
-        key: "G / End",
-        desc_short: "Bottom",
-        description: "Last item / bottom",
         action: Action::None,
     },
 ];
@@ -719,3 +727,84 @@ pub const HELP_TOTAL_LINES: usize = 8
     + CONNECTION_SETUP_KEYS.len()
     + CONNECTION_ERROR_KEYS.len()
     + CONFIRM_DIALOG_KEYS.len();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that idx constants are valid indexes into their respective arrays.
+    /// This catches errors when array entries are reordered or removed.
+    #[test]
+    fn idx_constants_are_within_bounds() {
+        // GLOBAL_KEYS
+        assert!(idx::global::QUIT < GLOBAL_KEYS.len());
+        assert!(idx::global::HELP < GLOBAL_KEYS.len());
+        assert!(idx::global::TABLE_PICKER < GLOBAL_KEYS.len());
+        assert!(idx::global::PALETTE < GLOBAL_KEYS.len());
+        assert!(idx::global::COMMAND_LINE < GLOBAL_KEYS.len());
+        assert!(idx::global::FOCUS < GLOBAL_KEYS.len());
+        assert!(idx::global::EXIT_FOCUS < GLOBAL_KEYS.len());
+        assert!(idx::global::PANE_SWITCH < GLOBAL_KEYS.len());
+        assert!(idx::global::INSPECTOR_TABS < GLOBAL_KEYS.len());
+        assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
+        assert!(idx::global::SQL < GLOBAL_KEYS.len());
+        assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
+        assert!(idx::global::CONNECT < GLOBAL_KEYS.len());
+
+        // FOOTER_NAV_KEYS
+        assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
+        assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
+        assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
+        assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
+
+        // SQL_MODAL_KEYS
+        assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::ESC_CLOSE < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
+
+        // OVERLAY_KEYS
+        assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
+        assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
+        assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
+        assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
+        assert!(idx::overlay::NAVIGATE < OVERLAY_KEYS.len());
+        assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
+        assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
+        assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());
+
+        // CONNECTION_SETUP_KEYS
+        assert!(idx::conn_setup::TAB_NAV < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::TAB_NEXT < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
+
+        // CONNECTION_ERROR_KEYS
+        assert!(idx::conn_error::EDIT < CONNECTION_ERROR_KEYS.len());
+        assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_KEYS.len());
+        assert!(idx::conn_error::COPY < CONNECTION_ERROR_KEYS.len());
+        assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_KEYS.len());
+        assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_KEYS.len());
+        assert!(idx::conn_error::QUIT < CONNECTION_ERROR_KEYS.len());
+
+        // CONFIRM_DIALOG_KEYS
+        assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
+        assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
+
+        // TABLE_PICKER_KEYS
+        assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_KEYS.len());
+        assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_KEYS.len());
+        assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_KEYS.len());
+        assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_KEYS.len());
+
+        // COMMAND_PALETTE_KEYS
+        assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_KEYS.len());
+        assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_KEYS.len());
+        assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_KEYS.len());
+
+        // HELP_KEYS
+        assert!(idx::help::SCROLL < HELP_KEYS.len());
+        assert!(idx::help::CLOSE < HELP_KEYS.len());
+        assert!(idx::help::QUIT < HELP_KEYS.len());
+    }
+}
