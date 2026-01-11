@@ -225,16 +225,16 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     // idx 0: SCROLL (full)
     KeyBinding {
-        key_short: "j/k/g/G",
-        key: "j / k / g / G",
+        key_short: "j/k / ↑↓",
+        key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
-        description: "Move down/up/top/bottom",
+        description: "Move down/up",
         action: Action::None,
     },
     // idx 1: SCROLL_SHORT
     KeyBinding {
-        key_short: "j/k",
-        key: "j / k",
+        key_short: "j/k / ↑↓",
+        key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Move down / scroll",
         action: Action::None,
@@ -249,8 +249,8 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     },
     // idx 3: H_SCROLL
     KeyBinding {
-        key_short: "h/l",
-        key: "h / l",
+        key_short: "h/l / ←→",
+        key: "h / l / ← / →",
         desc_short: "H-Scroll",
         description: "Scroll left/right",
         action: Action::None,
