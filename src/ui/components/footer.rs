@@ -77,6 +77,7 @@ impl Footer {
                     hints.push(("r", "Reload"));
                     hints.push(("s", "SQL"));
                     hints.push(("e", "ER Diagram"));
+                    hints.push(("c", "Connect"));
                     hints.push(("^P", "Tables"));
                     hints.push(("^K", "Palette"));
                     hints
@@ -94,8 +95,20 @@ impl Footer {
             }
             InputMode::Help => vec![("q", "Quit"), ("?/Esc", "Close")],
             InputMode::SqlModal => vec![("⌥Enter", "Run"), ("Esc", "Close"), ("↑↓←→", "Move")],
-            InputMode::ConnectionSetup => vec![("Esc", "Close")],
-            InputMode::ConnectionError => vec![("Esc", "Close"), ("q", "Quit")],
+            InputMode::ConnectionSetup => vec![
+                ("Tab", "Next"),
+                ("⇧Tab", "Prev"),
+                ("^S", "Save"),
+                ("Esc", "Cancel"),
+            ],
+            InputMode::ConnectionError => vec![
+                ("r", "Retry"),
+                ("e", "Edit"),
+                ("d", "Details"),
+                ("c", "Copy"),
+                ("Esc", "Close"),
+                ("q", "Quit"),
+            ],
             InputMode::ConfirmDialog => vec![("Esc", "Close")],
         }
     }

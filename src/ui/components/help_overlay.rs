@@ -38,6 +38,7 @@ impl HelpOverlay {
             Self::key_line("Tab/⇧Tab", "Inspector prev/next tab (Inspector focus)"),
             Self::key_line("r", "Reload metadata"),
             Self::key_line("e", "Open ER Diagram in browser"),
+            Self::key_line("c", "Open connection settings"),
             Line::from(""),
             Self::section("Navigation"),
             Self::key_line("j / ↓", "Move down (scroll in Result/Focus)"),
@@ -59,6 +60,17 @@ impl HelpOverlay {
             Self::key_line(":quit", "Quit application"),
             Self::key_line(":help", "Show this help"),
             Self::key_line(":sql", "Open SQL Editor"),
+            Line::from(""),
+            Self::section("Connection Setup"),
+            Self::key_line("Tab/⇧Tab", "Next/Previous field"),
+            Self::chip_line("Ctrl+S", "Save and connect"),
+            Self::chip_line("Esc", "Cancel"),
+            Line::from(""),
+            Self::section("Connection Error"),
+            Self::key_line("r", "Retry connection"),
+            Self::key_line("e", "Edit connection settings"),
+            Self::key_line("d", "Toggle error details"),
+            Self::key_line("c", "Copy error to clipboard"),
         ];
 
         let help = Paragraph::new(help_lines)
