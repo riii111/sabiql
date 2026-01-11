@@ -17,8 +17,102 @@ pub struct KeyBinding {
     pub action: Action,
 }
 
+impl KeyBinding {
+    /// Returns (key_short, desc_short) tuple for Footer display
+    pub const fn as_hint(&self) -> (&'static str, &'static str) {
+        (self.key_short, self.desc_short)
+    }
+}
+
 // =============================================================================
-// Footer Hints (short form for status bar)
+// Index Constants for Footer Lookup
+// =============================================================================
+
+pub mod idx {
+    pub mod global {
+        pub const QUIT: usize = 0;
+        pub const HELP: usize = 1;
+        pub const TABLE_PICKER: usize = 2;
+        pub const PALETTE: usize = 3;
+        pub const COMMAND_LINE: usize = 4;
+        pub const FOCUS: usize = 5;
+        pub const EXIT_FOCUS: usize = 6;
+        pub const PANE_SWITCH: usize = 7;
+        pub const INSPECTOR_TABS: usize = 8;
+        pub const RELOAD: usize = 9;
+        pub const SQL: usize = 10;
+        pub const ER_DIAGRAM: usize = 11;
+        pub const CONNECT: usize = 12;
+    }
+
+    pub mod nav {
+        pub const SCROLL: usize = 0;
+        pub const SCROLL_SHORT: usize = 1;
+        pub const TOP_BOTTOM: usize = 2;
+        pub const H_SCROLL: usize = 3;
+    }
+
+    pub mod sql_modal {
+        pub const RUN: usize = 0;
+        pub const ESC_CLOSE: usize = 1;
+        pub const MOVE: usize = 2;
+    }
+
+    pub mod overlay {
+        pub const ESC_CANCEL: usize = 0;
+        pub const ESC_CLOSE: usize = 1;
+        pub const ENTER_EXECUTE: usize = 2;
+        pub const ENTER_SELECT: usize = 3;
+        pub const NAVIGATE: usize = 4;
+        pub const NAVIGATE_JK: usize = 5;
+        pub const TYPE_FILTER: usize = 6;
+        pub const ERROR_OPEN: usize = 7;
+    }
+
+    pub mod conn_setup {
+        pub const TAB_NAV: usize = 0;
+        pub const TAB_NEXT: usize = 1;
+        pub const TAB_PREV: usize = 2;
+        pub const SAVE: usize = 3;
+        pub const ESC_CANCEL: usize = 4;
+    }
+
+    pub mod conn_error {
+        pub const EDIT: usize = 0;
+        pub const DETAILS: usize = 1;
+        pub const COPY: usize = 2;
+        pub const SCROLL: usize = 3;
+        pub const ESC_CLOSE: usize = 4;
+        pub const QUIT: usize = 5;
+    }
+
+    pub mod confirm {
+        pub const YES: usize = 0;
+        pub const NO: usize = 1;
+    }
+
+    pub mod table_picker {
+        pub const ENTER_SELECT: usize = 0;
+        pub const NAVIGATE: usize = 1;
+        pub const TYPE_FILTER: usize = 2;
+        pub const ESC_CLOSE: usize = 3;
+    }
+
+    pub mod cmd_palette {
+        pub const ENTER_EXECUTE: usize = 0;
+        pub const NAVIGATE_JK: usize = 1;
+        pub const ESC_CLOSE: usize = 2;
+    }
+
+    pub mod help {
+        pub const SCROLL: usize = 0;
+        pub const CLOSE: usize = 1;
+        pub const QUIT: usize = 2;
+    }
+}
+
+// =============================================================================
+// Footer Hints (short form for status bar) [DEPRECATED - use *_KEYS arrays]
 // =============================================================================
 
 pub mod footer {
