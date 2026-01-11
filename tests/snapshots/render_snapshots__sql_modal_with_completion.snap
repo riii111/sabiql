@@ -24,4 +24,4 @@ test_project | default | - | - | no dsn
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-⌥Enter:Run  Esc:Close  ↑↓←→:Move
+⌥Enter:Run  ↑↓←→:Move  Esc:Close

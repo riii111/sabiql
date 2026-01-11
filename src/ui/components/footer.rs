@@ -63,7 +63,6 @@ impl Footer {
                         ("q", "Quit"),
                     ]
                 } else {
-                    // Primary actions
                     let mut hints = vec![
                         ("r", "Reload"),
                         ("s", "SQL"),
@@ -72,11 +71,9 @@ impl Footer {
                         ("^P", "Tables"),
                         ("^K", "Palette"),
                     ];
-                    // Conditional action
                     if state.connection_error.error_info.is_some() {
                         hints.push(("Enter", "Error"));
                     }
-                    // Navigation
                     hints.push(("1/2/3", "Pane"));
                     hints.push(("f", "Focus"));
                     if state.ui.focused_pane == FocusedPane::Result {
@@ -86,7 +83,6 @@ impl Footer {
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         hints.push(("Tab/⇧Tab", "InsTabs"));
                     }
-                    // Help and Quit last
                     hints.push(("?", "Help"));
                     hints.push(("q", "Quit"));
                     hints
