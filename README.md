@@ -92,7 +92,7 @@ sabiql
 
 ## Roadmap
 
-- [ ] **Connection UI** — Interactive database connection setup
+- [x] **Connection UI** — Interactive database connection setup
 - [ ] **Expanded viewport** — Wider display area with improved horizontal scrolling
 - [ ] **Focused ER diagrams** — Generate diagrams centered on a specific table
 - [ ] **MySQL support** — Extend driver-less architecture to MySQL

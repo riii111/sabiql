@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | default | - | - | no dsn                                         
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│ Current: loca││(select a table)                                              │
+│              ││                                                              │
+│Tables        ││                                                              │
+│ Press 'r' to ││                                                              │
+│              ││                                                              │
+│              ││ ╭ Confirm ──────────────────────────────────╮                │
+│              ││ │         No connection configured.         │                │
+│              ││ │      Are you sure you want to quit?       │                │
+│              │└─│                                           │────────────────┘
+│              │┌ │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
+│              ││(│                                           │                │
+│              ││ │                                           │                │
+│              ││ ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Esc:Close
