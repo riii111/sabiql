@@ -16,10 +16,7 @@ use sabiql::app::reducer::reduce;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
-use sabiql::infra::config::{
-    dbx_toml::DbxConfig,
-    project_root::{find_project_root, get_project_name},
-};
+use sabiql::infra::config::project_root::{find_project_root, get_project_name};
 use sabiql::infra::export::DotExporter;
 use sabiql::ui::adapters::TuiAdapter;
 use sabiql::ui::event::handler::handle_event;
@@ -40,15 +37,6 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
-
-    let config_path = project_root.join(".dbx.toml");
-    let config = if config_path.exists() {
-        Some(DbxConfig::load(&config_path)?)
-    } else {
-        None
-    };
-
-    let dsn = config.as_ref().and_then(|c| c.resolve_dsn(&args.profile));
 
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
@@ -93,13 +81,6 @@ async fn main() -> Result<()> {
             state.connection_setup.is_first_run = true;
             state.ui.input_mode = InputMode::ConnectionSetup;
         }
-    }
-
-    // Legacy dbx.toml DSN support (overrides connection profile if present)
-    if let Some(ref legacy_dsn) = dsn {
-        state.runtime.database_name = extract_database_name(legacy_dsn);
-        state.runtime.dsn = Some(legacy_dsn.clone());
-        state.ui.input_mode = InputMode::Normal;
     }
 
     state.action_tx = Some(action_tx.clone());
@@ -155,9 +136,4 @@ async fn main() -> Result<()> {
 
     tui.exit()?;
     Ok(())
-}
-
-fn extract_database_name(dsn: &str) -> Option<String> {
-    let name = PostgresAdapter::extract_database_name(dsn);
-    if name == "unknown" { None } else { Some(name) }
 }
