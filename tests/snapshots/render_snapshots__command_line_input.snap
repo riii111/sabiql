@@ -2,15 +2,15 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | default | - | - | no dsn                                         
+test_project | default | - | - | no dsn | localhost:5432/test                   
 ┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│ Current: loca││(select a table)                                              │
-│              ││                                                              │
-│Tables [3]    ││                                                              │
-│public.user   ││                                                              │
-│public.post   ││                                                              │
+│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│public.post   ││(select a table)                                              │
 │public.comm   ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 │              │└──────────────────────────────────────────────────────────────┘
