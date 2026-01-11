@@ -1,5 +1,6 @@
 pub mod atoms;
 pub mod command_line;
+pub mod molecules;
 pub mod command_palette;
 pub mod confirm_dialog;
 pub mod connection_error;
