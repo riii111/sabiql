@@ -3,7 +3,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
 use crate::app::connection_setup_state::{
-    ConnectionField, ConnectionSetupState, CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH,
+    CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::SslMode;

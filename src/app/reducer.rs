@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_setup_state::{ConnectionField, CONNECTION_INPUT_VISIBLE_WIDTH};
+use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
