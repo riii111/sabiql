@@ -1,8 +1,7 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem};
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
@@ -33,26 +32,9 @@ impl Explorer {
         state: &mut AppState,
         has_cached_data: bool,
     ) {
-        let tables_header = match &state.cache.state {
-            MetadataState::Loaded => format!("Tables [{}]", state.tables().len()),
-            _ => "Tables".to_string(),
-        };
-
-        let header_style = Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD);
-
-        let [header_area, list_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
-
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(tables_header, header_style))),
-            header_area,
-        );
-
         let highlight_symbol_width: u16 = 2; // "> "
         let scrollbar_reserved: u16 = 1;
-        let content_width = list_area
+        let content_width = area
             .width
             .saturating_sub(highlight_symbol_width + scrollbar_reserved)
             as usize;
@@ -101,12 +83,12 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, list_area, &mut state.ui.explorer_list_state);
+        frame.render_stateful_widget(list, area, &mut state.ui.explorer_list_state);
 
         // Render scrollbars
         if has_cached_data {
             let total_items = state.tables().len();
-            let viewport_size = list_area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
+            let viewport_size = area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
                 let scroll_offset = state.ui.explorer_list_state.offset();
@@ -116,7 +98,7 @@ impl Explorer {
                 };
                 render_vertical_scroll_indicator_bar(
                     frame,
-                    list_area,
+                    area,
                     VerticalScrollParams {
                         position: scroll_offset,
                         viewport_size,
@@ -132,7 +114,7 @@ impl Explorer {
                 };
                 render_horizontal_scroll_indicator(
                     frame,
-                    list_area,
+                    area,
                     HorizontalScrollParams {
                         position: h_offset,
                         viewport_size: content_width,
