@@ -30,6 +30,9 @@ pub enum Action {
     OpenHelp,
     CloseHelp,
 
+    // Connection lifecycle
+    TryConnect,
+
     // Connection Setup
     OpenConnectionSetup,
     CloseConnectionSetup,

@@ -102,6 +102,12 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![]
         }
 
+        // ===== Connection Lifecycle =====
+        Action::TryConnect => {
+            // Placeholder: Full implementation in Phase 3
+            vec![]
+        }
+
         // ===== Connection Modes =====
         Action::OpenConnectionSetup => {
             state.ui.input_mode = InputMode::ConnectionSetup;
