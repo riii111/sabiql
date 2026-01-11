@@ -778,9 +778,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                     .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
             } else if state.runtime.is_reloading {
-                state
-                    .messages
-                    .set_success_at("Reloaded!".to_string(), now);
+                state.messages.set_success_at("Reloaded!".to_string(), now);
                 state.runtime.is_reloading = false;
             }
 
