@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
@@ -178,7 +180,7 @@ pub enum Action {
         generation: u64,
     },
     ExecuteAdhoc(String),
-    QueryCompleted(Box<QueryResult>, u64),
+    QueryCompleted(Arc<QueryResult>, u64),
     QueryFailed(String, u64),
 
     // Result pane

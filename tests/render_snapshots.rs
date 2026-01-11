@@ -3,6 +3,7 @@ mod harness;
 use harness::fixtures;
 use harness::{create_test_state, create_test_terminal, render_to_string, test_instant};
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use sabiql::app::action::Action;
@@ -45,7 +46,7 @@ fn table_selection_with_preview() {
     state.cache.state = MetadataState::Loaded;
     state.ui.set_explorer_selection(Some(0));
     state.cache.table_detail = Some(fixtures::sample_table_detail());
-    state.query.current_result = Some(fixtures::sample_query_result(now));
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -61,7 +62,7 @@ fn focus_on_result_pane() {
     state.cache.metadata = Some(fixtures::sample_metadata(now));
     state.cache.state = MetadataState::Loaded;
     state.ui.set_explorer_selection(Some(0));
-    state.query.current_result = Some(fixtures::sample_query_result(now));
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
     state.ui.focused_pane = FocusedPane::Result;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -78,7 +79,7 @@ fn focus_mode_fullscreen_result() {
     state.cache.metadata = Some(fixtures::sample_metadata(now));
     state.cache.state = MetadataState::Loaded;
     state.ui.set_explorer_selection(Some(0));
-    state.query.current_result = Some(fixtures::sample_query_result(now));
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
     state.ui.focus_mode = true;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -187,7 +188,7 @@ fn empty_query_result() {
     state.cache.state = MetadataState::Loaded;
     state.ui.set_explorer_selection(Some(0));
     state.cache.table_detail = Some(fixtures::sample_table_detail());
-    state.query.current_result = Some(fixtures::empty_query_result(now));
+    state.query.current_result = Some(Arc::new(fixtures::empty_query_result(now)));
 
     let output = render_to_string(&mut terminal, &mut state);
 
