@@ -11,14 +11,14 @@
 
 use std::time::{Duration, Instant};
 
-use crate::app::action::{Action, CursorMove};
+use crate::app::action::Action;
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
-    char_count, char_to_byte_index, reduce_connection, reduce_modal, reduce_navigation,
+    reduce_connection, reduce_modal, reduce_navigation, reduce_sql_modal,
 };
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -31,6 +31,9 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         return effects;
     }
     if let Some(effects) = reduce_navigation(state, &action, now) {
+        return effects;
+    }
+    if let Some(effects) = reduce_sql_modal(state, &action, now) {
         return effects;
     }
 
@@ -49,147 +52,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             vec![Effect::Render]
         }
 
-        // Completion
-        Action::CompletionNext => {
-            if !state.sql_modal.completion.candidates.is_empty() {
-                let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index =
-                    if state.sql_modal.completion.selected_index >= max {
-                        0
-                    } else {
-                        state.sql_modal.completion.selected_index + 1
-                    };
-            }
-            vec![]
-        }
-        Action::CompletionPrev => {
-            if !state.sql_modal.completion.candidates.is_empty() {
-                let max = state.sql_modal.completion.candidates.len() - 1;
-                state.sql_modal.completion.selected_index =
-                    if state.sql_modal.completion.selected_index == 0 {
-                        max
-                    } else {
-                        state.sql_modal.completion.selected_index - 1
-                    };
-            }
-            vec![]
-        }
-        Action::CompletionDismiss => {
-            state.sql_modal.completion.visible = false;
-            state.sql_modal.completion_debounce = None;
-            vec![]
-        }
-
-        // ===== SQL Modal Text Editing =====
-        Action::SqlModalInput(c) => {
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert(byte_idx, c);
-            state.sql_modal.cursor += 1;
-            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            vec![]
-        }
-        Action::SqlModalBackspace => {
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            if state.sql_modal.cursor > 0 {
-                state.sql_modal.cursor -= 1;
-                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                state.sql_modal.content.remove(byte_idx);
-            }
-            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            vec![]
-        }
-        Action::SqlModalDelete => {
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            let total_chars = char_count(&state.sql_modal.content);
-            if state.sql_modal.cursor < total_chars {
-                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                state.sql_modal.content.remove(byte_idx);
-            }
-            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            vec![]
-        }
-        Action::SqlModalNewLine => {
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert(byte_idx, '\n');
-            state.sql_modal.cursor += 1;
-            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            vec![]
-        }
-        Action::SqlModalTab => {
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert_str(byte_idx, "    ");
-            state.sql_modal.cursor += 4;
-            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            vec![]
-        }
-        Action::SqlModalMoveCursor(movement) => {
-            let content = &state.sql_modal.content;
-            let cursor = state.sql_modal.cursor;
-            let total_chars = char_count(content);
-
-            let lines: Vec<(usize, usize)> = {
-                let mut result = Vec::new();
-                let mut start = 0;
-                for line in content.split('\n') {
-                    let len = line.chars().count();
-                    result.push((start, len));
-                    start += len + 1;
-                }
-                result
-            };
-
-            let (current_line, current_col) = {
-                let mut line_idx = 0;
-                let mut col = cursor;
-                for (i, (start, len)) in lines.iter().enumerate() {
-                    if cursor >= *start && cursor <= start + len {
-                        line_idx = i;
-                        col = cursor - start;
-                        break;
-                    }
-                }
-                (line_idx, col)
-            };
-
-            state.sql_modal.cursor = match movement {
-                CursorMove::Left => cursor.saturating_sub(1),
-                CursorMove::Right => (cursor + 1).min(total_chars),
-                CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
-                CursorMove::End => lines
-                    .get(current_line)
-                    .map(|(s, l)| s + l)
-                    .unwrap_or(total_chars),
-                CursorMove::Up => {
-                    if current_line == 0 {
-                        cursor
-                    } else {
-                        let (prev_start, prev_len) = lines[current_line - 1];
-                        prev_start + current_col.min(prev_len)
-                    }
-                }
-                CursorMove::Down => {
-                    if current_line + 1 >= lines.len() {
-                        cursor
-                    } else {
-                        let (next_start, next_len) = lines[current_line + 1];
-                        next_start + current_col.min(next_len)
-                    }
-                }
-            };
-            vec![]
-        }
-        Action::SqlModalClear => {
-            state.sql_modal.content.clear();
-            state.sql_modal.cursor = 0;
-            state.sql_modal.completion.visible = false;
-            state.sql_modal.completion.candidates.clear();
-            vec![]
-        }
-
-        // ===== Response Handlers (pure state updates) =====
+        // Response Handlers
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.tables.is_empty();
             state.cache.metadata = Some(*metadata);
@@ -308,65 +171,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         Action::ErDiagramFailed(error) => {
             state.er_preparation.status = crate::app::er_state::ErStatus::Idle;
             state.set_error(error);
-            vec![]
-        }
-
-        // ===== Phase 3: Async Actions =====
-        Action::OpenSqlModal => {
-            state.ui.input_mode = InputMode::SqlModal;
-            state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
-            state.sql_modal.completion.visible = false;
-            state.sql_modal.completion.candidates.clear();
-            state.sql_modal.completion.selected_index = 0;
-            state.sql_modal.completion_debounce = None;
-            // Dispatch StartPrefetchAll if not already started and metadata is loaded
-            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
-            } else {
-                vec![]
-            }
-        }
-
-        Action::SqlModalSubmit => {
-            let query = state.sql_modal.content.trim().to_string();
-            if !query.is_empty() {
-                state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Running;
-                state.sql_modal.completion.visible = false;
-                if let Some(dsn) = &state.runtime.dsn {
-                    vec![Effect::ExecuteAdhoc {
-                        dsn: dsn.clone(),
-                        query,
-                    }]
-                } else {
-                    vec![]
-                }
-            } else {
-                vec![]
-            }
-        }
-
-        Action::CompletionAccept => {
-            if state.sql_modal.completion.visible
-                && !state.sql_modal.completion.candidates.is_empty()
-            {
-                let selected_idx = state.sql_modal.completion.selected_index;
-                let trigger_pos = state.sql_modal.completion.trigger_position;
-                let candidates = std::mem::take(&mut state.sql_modal.completion.candidates);
-
-                if let Some(candidate) = candidates.into_iter().nth(selected_idx) {
-                    let start_byte = char_to_byte_index(&state.sql_modal.content, trigger_pos);
-                    let end_byte =
-                        char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                    state.sql_modal.content.drain(start_byte..end_byte);
-                    state
-                        .sql_modal
-                        .content
-                        .insert_str(start_byte, &candidate.text);
-                    state.sql_modal.cursor = trigger_pos + candidate.text.chars().count();
-                }
-                state.sql_modal.completion.visible = false;
-                state.sql_modal.completion_debounce = None;
-            }
             vec![]
         }
 
@@ -848,20 +652,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
             }]
-        }
-
-        Action::CompletionTrigger => vec![Effect::TriggerCompletion],
-
-        Action::CompletionUpdated {
-            candidates,
-            trigger_position,
-            visible,
-        } => {
-            state.sql_modal.completion.candidates = candidates;
-            state.sql_modal.completion.trigger_position = trigger_position;
-            state.sql_modal.completion.selected_index = 0;
-            state.sql_modal.completion.visible = visible;
-            vec![]
         }
 
         // PrefetchTableDetail handled in reducer (state update) + EffectRunner (cache check + spawn)
