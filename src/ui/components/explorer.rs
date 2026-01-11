@@ -24,36 +24,7 @@ impl Explorer {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let [connections_area, separator_area, tables_area] = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Length(1),
-            Constraint::Min(1),
-        ])
-        .areas(inner);
-
-        Self::render_connections_section(frame, connections_area, state);
-        frame.render_widget(Paragraph::new(""), separator_area);
-        Self::render_tables_section(frame, tables_area, state, has_cached_data);
-    }
-
-    fn render_connections_section(frame: &mut Frame, area: Rect, state: &AppState) {
-        let header_style = Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD);
-        let content_style = Style::default().fg(Color::Gray);
-
-        let connection_display = if let Some(ref name) = state.runtime.active_connection_name {
-            format!(" Current: {}", name)
-        } else {
-            " Current: (not connected)".to_string()
-        };
-
-        let lines = vec![
-            Line::from(Span::styled("Connections", header_style)),
-            Line::from(Span::styled(connection_display, content_style)),
-        ];
-
-        frame.render_widget(Paragraph::new(lines), area);
+        Self::render_tables_section(frame, inner, state, has_cached_data);
     }
 
     fn render_tables_section(
