@@ -54,13 +54,18 @@ impl ConnectionError {
         ])
         .split(inner);
 
-        if error_state.is_retrying {
+        if error_state.is_reconnected() {
+            Self::render_success(frame, chunks[0]);
+            Self::render_success_message(frame, chunks[2]);
+        } else if error_state.is_retrying {
             Self::render_retrying(frame, chunks[0]);
+            Self::render_hint(frame, chunks[2], error_info.kind.hint());
+            Self::render_details_section(frame, chunks[4], error_state, details_expanded);
         } else {
             Self::render_summary(frame, chunks[0], error_info.kind.summary());
+            Self::render_hint(frame, chunks[2], error_info.kind.hint());
+            Self::render_details_section(frame, chunks[4], error_state, details_expanded);
         }
-        Self::render_hint(frame, chunks[2], error_info.kind.hint());
-        Self::render_details_section(frame, chunks[4], error_state, details_expanded);
         Self::render_actions(frame, chunks[6], error_state, now);
     }
 
@@ -91,6 +96,27 @@ impl ConnectionError {
                     .add_modifier(Modifier::BOLD),
             ),
         ]);
+        frame.render_widget(Paragraph::new(line), area);
+    }
+
+    fn render_success(frame: &mut Frame, area: Rect) {
+        let line = Line::from(vec![
+            Span::styled("✓ ", Style::default().fg(Color::Green)),
+            Span::styled(
+                "Connected!",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]);
+        frame.render_widget(Paragraph::new(line), area);
+    }
+
+    fn render_success_message(frame: &mut Frame, area: Rect) {
+        let line = Line::from(vec![Span::styled(
+            "Connection restored. This dialog will close automatically.",
+            Style::default().fg(Color::DarkGray),
+        )]);
         frame.render_widget(Paragraph::new(line), area);
     }
 
@@ -144,6 +170,10 @@ impl ConnectionError {
         error_state: &crate::app::connection_error_state::ConnectionErrorState,
         now: Instant,
     ) {
+        if error_state.is_reconnected() {
+            return;
+        }
+
         if error_state.is_retrying {
             let line = Line::from(vec![Span::styled(
                 "Please wait...",

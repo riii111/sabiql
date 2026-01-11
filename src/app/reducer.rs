@@ -42,6 +42,12 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::Render => {
             state.clear_expired_messages();
+            if state.ui.input_mode == InputMode::ConnectionError
+                && state.connection_error.should_auto_close_at(now)
+            {
+                state.connection_error.clear();
+                state.ui.input_mode = InputMode::Normal;
+            }
             vec![Effect::Render]
         }
 
@@ -770,7 +776,6 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             state.cache.metadata = Some(*metadata);
             state.cache.state = MetadataState::Loaded;
             state.runtime.connection_state = ConnectionState::Connected;
-            state.connection_error.clear();
             state
                 .ui
                 .set_explorer_selection(if has_tables { Some(0) } else { None });
@@ -778,13 +783,14 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
             let mut effects = vec![];
 
             if state.runtime.is_reconnecting {
-                state.connection_error.clear();
-                state.ui.input_mode = InputMode::Normal;
+                state.connection_error.mark_reconnected_at(now);
                 state
                     .messages
                     .set_success_at("Reconnected!".to_string(), now);
                 state.runtime.is_reconnecting = false;
                 effects.push(Effect::Render);
+            } else {
+                state.connection_error.clear();
             }
 
             // If SqlModal is already open and prefetch hasn't started, start it now
@@ -2672,7 +2678,9 @@ mod tests {
         }
 
         #[test]
-        fn retry_then_success_closes_modal_and_shows_message() {
+        fn retry_then_success_shows_success_then_auto_closes() {
+            use std::time::Duration;
+
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::Failed;
@@ -2688,23 +2696,37 @@ mod tests {
             assert!(state.connection_error.is_retrying);
             assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
 
-            // Step 2: Metadata loaded (simulating successful connection)
+            // Step 2: Metadata loaded (modal shows success, stays open)
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: now,
             };
-            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+            let effects = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
 
-            // Verify modal is closed, error cleared, and success message is set
+            // Modal stays open with success state
             assert!(!state.runtime.is_reconnecting);
-            assert!(state.connection_error.error_info.is_none());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.connection_error.is_reconnected());
+            assert!(state.connection_error.error_info.is_some()); // Modal still showing
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
             assert_eq!(
                 state.messages.last_success,
                 Some("Reconnected!".to_string())
             );
+            assert!(!effects.is_empty()); // Should trigger render
+
+            // Step 3: Render before timeout (modal stays open)
+            let before_timeout = now + Duration::from_millis(500);
+            let _ = reduce(&mut state, Action::Render, before_timeout);
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert!(state.connection_error.error_info.is_some());
+
+            // Step 4: Render after timeout (modal closes)
+            let after_timeout = now + Duration::from_millis(1001);
+            let _ = reduce(&mut state, Action::Render, after_timeout);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.connection_error.error_info.is_none());
         }
     }
 }
