@@ -87,14 +87,19 @@ pub struct ConnectionSetupState {
     pub ssl_dropdown: SslModeDropdown,
     pub validation_errors: HashMap<ConnectionField, String>,
 
+    pub cursor_position: usize,
+    pub viewport_offset: usize,
+
     /// Determines cancel behavior: first run shows quit confirmation, otherwise returns to Normal
     pub is_first_run: bool,
 }
 
 impl Default for ConnectionSetupState {
     fn default() -> Self {
+        let host = "localhost".to_string();
+        let cursor_position = host.len();
         Self {
-            host: "localhost".to_string(),
+            host,
             port: "5432".to_string(),
             database: String::new(),
             user: String::new(),
@@ -103,6 +108,8 @@ impl Default for ConnectionSetupState {
             focused_field: ConnectionField::Host,
             ssl_dropdown: SslModeDropdown::default(),
             validation_errors: HashMap::new(),
+            cursor_position,
+            viewport_offset: 0,
             is_first_run: true,
         }
     }
@@ -139,6 +146,21 @@ impl ConnectionSetupState {
 
     pub fn has_errors(&self) -> bool {
         !self.validation_errors.is_empty()
+    }
+
+    pub fn update_cursor(&mut self, cursor: usize, visible_width: usize) {
+        self.cursor_position = cursor;
+        if cursor < self.viewport_offset {
+            self.viewport_offset = cursor;
+        } else if cursor >= self.viewport_offset + visible_width {
+            self.viewport_offset = cursor.saturating_sub(visible_width) + 1;
+        }
+    }
+
+    pub fn cursor_to_end(&mut self) {
+        let len = self.field_value(self.focused_field).len();
+        self.cursor_position = len;
+        self.viewport_offset = 0;
     }
 }
 

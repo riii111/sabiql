@@ -10,7 +10,7 @@ test_project | default | - | - | no dsn
 │Tables        ││                                                              │
 │ Pr╭ Connection Setup ────────────────────────────────────────────────────╮   │
 │   │                                                                      │   │
-│   │  Host:       [ █ ]                                    Required       │   │
+│   │  Host:       [ █                                    ] Required       │   │
 │   │  Port:       [ 5432                                 ]                │   │
 │   │  Database:   [                                      ] Required       │   │
 │   │  User:       [                                      ] Required       │───┘
