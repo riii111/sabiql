@@ -3,6 +3,7 @@ use ratatui::widgets::ListState;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
+use super::keybindings::HELP_TOTAL_LINES;
 use super::viewport::ViewportPlan;
 
 /// header (1) + scroll indicators (2), used by rendering (border already excluded)
@@ -60,6 +61,13 @@ impl UiState {
 
     pub fn inspector_ddl_visible_rows(&self) -> usize {
         self.inspector_pane_height.saturating_sub(3) as usize
+    }
+
+    /// Estimate max scroll for help overlay based on terminal height.
+    /// Modal is 80% height with 2-line border, so viewport ≈ terminal_height * 0.8 - 2
+    pub fn help_max_scroll(&self) -> usize {
+        let viewport = (self.terminal_height as usize * 80 / 100).saturating_sub(2);
+        HELP_TOTAL_LINES.saturating_sub(viewport)
     }
 
     pub fn toggle_focus(&mut self) -> bool {

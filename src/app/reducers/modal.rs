@@ -49,7 +49,10 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::HelpScrollDown => {
-            state.ui.help_scroll_offset = state.ui.help_scroll_offset.saturating_add(1);
+            let max_scroll = state.ui.help_max_scroll();
+            if state.ui.help_scroll_offset < max_scroll {
+                state.ui.help_scroll_offset += 1;
+            }
             Some(vec![])
         }
         Action::CloseSqlModal => {
