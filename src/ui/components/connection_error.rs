@@ -14,10 +14,10 @@ pub struct ConnectionError;
 
 impl ConnectionError {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        Self::render_at(frame, state, Instant::now())
+        Self::render_at(frame, state, Instant::now(), None)
     }
 
-    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant) {
+    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, time_ms: Option<u128>) {
         let error_state = &state.connection_error;
         let Some(ref error_info) = error_state.error_info else {
             return;
@@ -55,7 +55,7 @@ impl ConnectionError {
         .split(inner);
 
         if error_state.is_retrying {
-            Self::render_retrying(frame, chunks[0]);
+            Self::render_retrying(frame, chunks[0], time_ms);
         } else {
             Self::render_summary(frame, chunks[0], error_info.kind.summary());
         }
@@ -75,11 +75,13 @@ impl ConnectionError {
         frame.render_widget(Paragraph::new(line), area);
     }
 
-    fn render_retrying(frame: &mut Frame, area: Rect) {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+    fn render_retrying(frame: &mut Frame, area: Rect, time_ms: Option<u128>) {
+        let now_ms = time_ms.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        });
         let spinner_frames = ["◐", "◓", "◑", "◒"];
         let spinner = spinner_frames[(now_ms / 300) as usize % spinner_frames.len()];
         let line = Line::from(vec![
