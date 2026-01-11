@@ -6,9 +6,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use super::atoms::{key_chip, spinner_char};
 use super::molecules::render_modal;
 use crate::app::state::AppState;
-use crate::ui::theme::Theme;
 
 pub struct ConnectionError;
 
@@ -82,8 +82,7 @@ impl ConnectionError {
                 .map(|d| d.as_millis())
                 .unwrap_or(0)
         });
-        let spinner_frames = ["◐", "◓", "◑", "◒"];
-        let spinner = spinner_frames[(now_ms / 300) as usize % spinner_frames.len()];
+        let spinner = spinner_char(now_ms);
         let line = Line::from(vec![
             Span::styled(format!("{} ", spinner), Style::default().fg(Color::Yellow)),
             Span::styled(
@@ -157,15 +156,15 @@ impl ConnectionError {
 
         let mut spans = vec![
             Span::styled("Actions: ", Style::default().fg(Color::DarkGray)),
-            Self::action_key("r"),
+            key_chip("r"),
             Span::raw(" Retry  "),
-            Self::action_key("e"),
+            key_chip("e"),
             Span::raw(" Re-enter  "),
-            Self::action_key("d"),
+            key_chip("d"),
             Span::raw(" Details  "),
-            Self::action_key("c"),
+            key_chip("c"),
             Span::raw(" Copy  "),
-            Self::action_key("q"),
+            key_chip("q"),
             Span::raw(" Quit"),
         ];
 
@@ -181,15 +180,5 @@ impl ConnectionError {
 
         let line = Line::from(spans);
         frame.render_widget(Paragraph::new(line), area);
-    }
-
-    fn action_key(key: &str) -> Span<'static> {
-        Span::styled(
-            format!(" {} ", key),
-            Style::default()
-                .bg(Theme::KEY_CHIP_BG)
-                .fg(Theme::KEY_CHIP_FG)
-                .add_modifier(Modifier::BOLD),
-        )
     }
 }
