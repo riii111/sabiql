@@ -9,8 +9,8 @@ use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
-    CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS, GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS,
-    OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
+    GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -106,9 +106,9 @@ impl Footer {
             ],
             InputMode::CommandPalette => {
                 vec![
-                    OVERLAY_KEYS[idx::overlay::ENTER_EXECUTE].as_hint(),
-                    OVERLAY_KEYS[idx::overlay::NAVIGATE_JK].as_hint(),
-                    OVERLAY_KEYS[idx::overlay::ESC_CLOSE].as_hint(),
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::ENTER_EXECUTE].as_hint(),
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::NAVIGATE_JK].as_hint(),
+                    COMMAND_PALETTE_KEYS[idx::cmd_palette::ESC_CLOSE].as_hint(),
                 ]
             }
             InputMode::Help => vec![
@@ -134,7 +134,10 @@ impl Footer {
                 CONNECTION_ERROR_KEYS[idx::conn_error::ESC_CLOSE].as_hint(),
                 CONNECTION_ERROR_KEYS[idx::conn_error::QUIT].as_hint(),
             ],
-            InputMode::ConfirmDialog => vec![OVERLAY_KEYS[idx::overlay::ESC_CLOSE].as_hint()],
+            InputMode::ConfirmDialog => vec![
+                CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
+                CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
+            ],
         }
     }
 
