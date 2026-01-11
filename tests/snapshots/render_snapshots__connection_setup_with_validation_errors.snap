@@ -7,20 +7,20 @@ test_project | default | - | - | no dsn
 │Connections   │┌ [2] Inspector ───────────────────────────────────────────────┐
 │ Current: loca││(select a table)                                              │
 │              ││                                                              │
-│Tables    ╭ Connection Setup ──────────────────────────────────────╮          │
-│ Press 'r'│ Host:       [ █ ]                                    R │          │
-│          │ Port:       [ 5432 ]                                   │          │
-│          │ Database:   [  ]                                     R │          │
-│          │ User:       [  ]                                     R │          │
-│          │ Password:   [  ]                                       │          │
-│          │ SSL Mode:   [ prefer ▼ ]                               │──────────┘
-│          │                                                        │──────────┐
-│          │ Name (auto): :5432                                     │          │
-│          │                                                        │          │
-│          │ Note: Connection info is stored locally in plain text  │          │
-│          │                                                        │          │
-│          │                                                        │          │
-│          ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cance╯          │
+│Tables        ││                                                              │
+│ Pr╭ Connection Setup ────────────────────────────────────────────────────╮   │
+│   │                                                                      │   │
+│   │  Host:       [ █ ]                                    Required       │   │
+│   │  Port:       [ 5432                                 ]                │   │
+│   │  Database:   [                                      ] Required       │   │
+│   │  User:       [                                      ] Required       │───┘
+│   │  Password:   [                                      ]                │───┐
+│   │  SSL Mode:   [ prefer ▼ ]                                            │   │
+│   │                                                                      │   │
+│   │  Note: Connection info is stored locally in plain text               │   │
+│   │                                                                      │   │
+│   ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ────────────╯   │
+│              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
