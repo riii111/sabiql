@@ -37,6 +37,8 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_pane_height: u16,
 
+    pub help_scroll_offset: usize,
+
     pub terminal_height: u16,
 }
 

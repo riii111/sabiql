@@ -41,6 +41,15 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::CloseHelp => {
             state.ui.input_mode = InputMode::Normal;
+            state.ui.help_scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::HelpScrollUp => {
+            state.ui.help_scroll_offset = state.ui.help_scroll_offset.saturating_sub(1);
+            Some(vec![])
+        }
+        Action::HelpScrollDown => {
+            state.ui.help_scroll_offset = state.ui.help_scroll_offset.saturating_add(1);
             Some(vec![])
         }
         Action::CloseSqlModal => {

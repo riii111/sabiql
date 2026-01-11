@@ -16,13 +16,13 @@ use super::molecules::{chip_hint_line, render_modal};
 pub struct HelpOverlay;
 
 impl HelpOverlay {
-    pub fn render(frame: &mut Frame, _state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) {
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Percentage(80),
             " Help ",
-            " ? or Esc to close ",
+            " j/k to scroll, ? or Esc to close ",
         );
 
         let mut help_lines = vec![Self::section("Global Keys")];
@@ -71,9 +71,11 @@ impl HelpOverlay {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 
+        let scroll_offset = state.ui.help_scroll_offset as u16;
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Theme::MODAL_BG));
+            .style(Style::default().bg(Theme::MODAL_BG))
+            .scroll((scroll_offset, 0));
 
         frame.render_widget(help, inner);
     }

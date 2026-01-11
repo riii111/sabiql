@@ -184,6 +184,8 @@ fn handle_help_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
+        KeyCode::Char('j') | KeyCode::Down => Action::HelpScrollDown,
+        KeyCode::Char('k') | KeyCode::Up => Action::HelpScrollUp,
         _ => Action::None,
     }
 }

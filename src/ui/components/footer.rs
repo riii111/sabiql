@@ -101,7 +101,7 @@ impl Footer {
             InputMode::CommandPalette => {
                 vec![hints::ENTER_EXECUTE, hints::NAVIGATE, hints::ESC_CLOSE]
             }
-            InputMode::Help => vec![hints::HELP_CLOSE, hints::QUIT],
+            InputMode::Help => vec![hints::HELP_SCROLL, hints::HELP_CLOSE, hints::QUIT],
             InputMode::SqlModal => vec![hints::SQL_RUN, hints::SQL_MOVE, hints::ESC_CLOSE],
             InputMode::ConnectionSetup => vec![
                 hints::SAVE,
