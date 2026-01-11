@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
-use super::overlay::{centered_rect, modal_block_with_hint, render_scrim};
+use super::molecules::render_modal;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -13,22 +13,19 @@ impl ConfirmDialog {
 
         let message_lines: Vec<&str> = dialog.message.lines().collect();
         let message_height = message_lines.len() as u16;
-        let modal_height = message_height + 6; // title + message + spacer + buttons + borders
-
-        let area = centered_rect(
-            frame.area(),
-            Constraint::Length(45),
-            Constraint::Length(modal_height),
-        );
-        render_scrim(frame);
-        frame.render_widget(Clear, area);
+        let modal_height = message_height + 6;
 
         let hint = " Enter/Y: Yes │ Esc/N: No ";
         let title = format!(" {} ", dialog.title);
-        let block = modal_block_with_hint(title, hint.to_string());
-        frame.render_widget(block, area);
+        let (_, modal_inner) = render_modal(
+            frame,
+            Constraint::Length(45),
+            Constraint::Length(modal_height),
+            &title,
+            hint,
+        );
 
-        let inner = area.inner(Margin::new(2, 1));
+        let inner = modal_inner.inner(Margin::new(1, 0));
         let chunks = Layout::vertical([
             Constraint::Length(message_height),
             Constraint::Length(1),

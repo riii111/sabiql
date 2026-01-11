@@ -60,7 +60,6 @@ pub enum Action {
     ScrollConnectionErrorDown,
     CopyConnectionError,
     ConnectionErrorCopied,
-    RetryConnection,
     ReenterConnectionSetup,
 
     // Confirm Dialog

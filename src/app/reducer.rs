@@ -583,23 +583,6 @@ mod tests {
 
             assert!(state.connection_error.is_copied_visible_at(now));
         }
-
-        #[test]
-        fn retry_keeps_modal_open_and_fetches_metadata() {
-            let mut state = state_with_error();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.ui.input_mode = InputMode::ConnectionError;
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::RetryConnection, now);
-
-            // Error info is preserved during retry (modal stays open)
-            assert!(state.connection_error.error_info.is_some());
-            assert!(state.connection_error.is_retrying);
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
-        }
     }
 
     mod effect_producing_actions {
@@ -1269,74 +1252,6 @@ mod tests {
             assert!(matches!(state.cache.state, MetadataState::Loading));
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
-        }
-
-        #[test]
-        fn retry_connection_sets_connecting() {
-            let mut state = create_test_state();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.runtime.connection_state = ConnectionState::Failed;
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::RetryConnection, now);
-
-            assert!(state.runtime.connection_state.is_connecting());
-            assert!(matches!(state.cache.state, MetadataState::Loading));
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
-        }
-
-        #[test]
-        fn retry_connection_without_dsn_redirects_to_setup() {
-            let mut state = create_test_state();
-            state.runtime.dsn = None;
-            state.runtime.connection_state = ConnectionState::Failed;
-            state.cache.state = MetadataState::Error("error".to_string());
-            state.ui.input_mode = InputMode::ConnectionError;
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::RetryConnection, now);
-
-            assert!(state.runtime.connection_state.is_not_connected());
-            assert!(matches!(state.cache.state, MetadataState::NotLoaded));
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn retry_then_success_closes_modal_and_shows_footer_message() {
-            let mut state = create_test_state();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.runtime.connection_state = ConnectionState::Failed;
-            state.ui.input_mode = InputMode::ConnectionError;
-            state.connection_error.error_info = Some(
-                crate::app::connection_error::ConnectionErrorInfo::new("test error"),
-            );
-            let now = Instant::now();
-
-            // Step 1: Retry connection (modal stays open, shows "Retrying...")
-            let _ = reduce(&mut state, Action::RetryConnection, now);
-            assert!(state.runtime.is_reconnecting);
-            assert!(state.connection_error.is_retrying);
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
-
-            // Step 2: Metadata loaded (modal closes, footer shows success)
-            let metadata = DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: now,
-            };
-            let _ = reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
-
-            // Modal is closed, footer shows success message
-            assert!(!state.runtime.is_reconnecting);
-            assert!(state.connection_error.error_info.is_none());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert_eq!(
-                state.messages.last_success,
-                Some("Reconnected!".to_string())
-            );
         }
     }
 }
