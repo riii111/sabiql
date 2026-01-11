@@ -81,10 +81,3 @@ pub enum Effect {
     /// Dispatch actions to be processed by the reducer
     DispatchActions(Vec<Action>),
 }
-
-#[allow(dead_code)]
-impl Effect {
-    pub fn is_render(&self) -> bool {
-        matches!(self, Effect::Render)
-    }
-}

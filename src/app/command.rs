@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::action::Action;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

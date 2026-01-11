@@ -319,13 +319,6 @@ impl CompletionEngine {
         self.extract_current_token(&before_cursor).chars().count()
     }
 
-    #[allow(dead_code)] // Keep for backwards compatibility in tests
-    fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
-        let tokens = self.lexer.tokenize(content, cursor_pos);
-        let sql_context = SqlContext::default();
-        self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
-    }
-
     fn analyze_with_context(
         &self,
         content: &str,
@@ -821,6 +814,15 @@ impl CompletionEngine {
         } else {
             table_ref.table.clone()
         }
+    }
+}
+
+#[cfg(test)]
+impl CompletionEngine {
+    fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
+        let tokens = self.lexer.tokenize(content, cursor_pos);
+        let sql_context = SqlContext::default();
+        self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
     }
 }
 

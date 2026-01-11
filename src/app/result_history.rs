@@ -14,7 +14,6 @@ impl Default for ResultHistory {
     }
 }
 
-#[allow(dead_code)]
 impl ResultHistory {
     pub fn new(capacity: usize) -> Self {
         Self {
@@ -34,31 +33,6 @@ impl ResultHistory {
     pub fn get(&self, index: usize) -> Option<&QueryResult> {
         self.entries.get(index)
     }
-
-    pub fn latest(&self) -> Option<&QueryResult> {
-        self.entries.back()
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Iterator over results (oldest first)
-    pub fn iter(&self) -> impl Iterator<Item = &QueryResult> {
-        self.entries.iter()
-    }
-
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.capacity
-    }
 }
 
 #[cfg(test)]
@@ -77,39 +51,28 @@ mod tests {
     }
 
     #[test]
-    fn test_push_and_get() {
+    fn push_and_get_returns_entries_in_order() {
         let mut history = ResultHistory::new(3);
 
         history.push(make_result("SELECT 1"));
         history.push(make_result("SELECT 2"));
 
-        assert_eq!(history.len(), 2);
         assert_eq!(history.get(0).unwrap().query, "SELECT 1");
         assert_eq!(history.get(1).unwrap().query, "SELECT 2");
+        assert!(history.get(2).is_none());
     }
 
     #[test]
-    fn test_capacity_limit() {
+    fn push_evicts_oldest_when_at_capacity() {
         let mut history = ResultHistory::new(2);
 
         history.push(make_result("SELECT 1"));
         history.push(make_result("SELECT 2"));
         history.push(make_result("SELECT 3"));
 
-        assert_eq!(history.len(), 2);
+        // SELECT 1 should be evicted
         assert_eq!(history.get(0).unwrap().query, "SELECT 2");
         assert_eq!(history.get(1).unwrap().query, "SELECT 3");
-    }
-
-    #[test]
-    fn test_latest() {
-        let mut history = ResultHistory::new(3);
-
-        assert!(history.latest().is_none());
-
-        history.push(make_result("SELECT 1"));
-        history.push(make_result("SELECT 2"));
-
-        assert_eq!(history.latest().unwrap().query, "SELECT 2");
+        assert!(history.get(2).is_none());
     }
 }
