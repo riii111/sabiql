@@ -8,18 +8,18 @@ test_project | default | - | - | no dsn
 │ Current: loca││(select a table)                                              │
 │              ││                                                              │
 │Tables        ││                                                              │
-│ Pr╭ Connection Setup ────────────────────────────────────────────────────╮   │
-│   │                                                                      │   │
-│   │  Host:       [ localhost█                           ]                │   │
-│   │  Port:       [ 5432                                 ]                │   │
-│   │  Database:   [ mydb                                 ]                │   │
-│   │  User:       [ postgres                             ]                │───┘
-│   │  Password:   [                                      ]                │───┐
-│   │  SSL Mode:   [ prefer ▼ ]                                            │   │
-│   │                                                                      │   │
-│   │  Note: Connection info is stored locally in plain text               │   │
-│   │                                                                      │   │
-│   ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ────────────╯   │
+│ Press '╭ Connection Setup ──────────────────────────────────────────╮        │
+│        │                                                            │        │
+│        │  Host:       [ localhost█                 ]                │        │
+│        │  Port:       [ 5432                       ]                │        │
+│        │  Database:   [ mydb                       ]                │        │
+│        │  User:       [ postgres                   ]                │────────┘
+│        │  Password:   [                            ]                │────────┐
+│        │  SSL Mode:   [ prefer                   ▼ ]                │        │
+│        │                                                            │        │
+│        │  Note: Connection info is stored locally in plain text     │        │
+│        │                                                            │        │
+│        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ──╯        │
 │              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
