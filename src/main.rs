@@ -110,8 +110,11 @@ async fn main() -> Result<()> {
     let initial_size = tui.terminal().size()?;
     state.ui.terminal_height = initial_size.height;
 
-    if state.runtime.dsn.is_some() {
-        let _ = action_tx.send(Action::LoadMetadata).await;
+    // Trigger lazy connection on FIRST RENDER in Normal mode with DSN
+    // This happens after TUI enters and before first user interaction
+    // The TryConnect action is idempotent - safe to call multiple times
+    if state.runtime.dsn.is_some() && state.ui.input_mode == InputMode::Normal {
+        let _ = action_tx.send(Action::TryConnect).await;
     }
 
     let cache_cleanup_interval = Duration::from_secs(150);
