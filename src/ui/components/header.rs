@@ -25,6 +25,12 @@ impl Header {
             }
         };
 
+        let connection_name = state
+            .runtime
+            .active_connection_name
+            .as_deref()
+            .unwrap_or("-");
+
         let line = Line::from(vec![
             Span::styled(
                 &state.runtime.project_name,
@@ -41,6 +47,8 @@ impl Header {
             Span::raw(table),
             Span::raw(" | "),
             Span::styled(status_text, Style::default().fg(status_color)),
+            Span::raw(" | "),
+            Span::styled(connection_name, Style::default().fg(Color::Magenta)),
         ]);
 
         frame.render_widget(Paragraph::new(line), area);
