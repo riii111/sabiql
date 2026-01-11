@@ -16,6 +16,9 @@ impl Footer {
         if state.er_preparation.status == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms);
             frame.render_widget(Paragraph::new(line), area);
+        } else if state.runtime.connection_state.is_connecting() {
+            let line = Self::build_connecting_line(time_ms);
+            frame.render_widget(Paragraph::new(line), area);
         } else if let Some(error) = &state.messages.last_error {
             let line = StatusMessage::render_line(error, MessageType::Error);
             frame.render_widget(Paragraph::new(line), area);
@@ -45,6 +48,18 @@ impl Footer {
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
+        Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
+    }
+
+    fn build_connecting_line(time_ms: Option<u128>) -> Line<'static> {
+        let now_ms = time_ms.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        });
+        let spinner = spinner_frame(now_ms);
+        let text = format!("{} Connecting...", spinner);
         Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
     }
 
