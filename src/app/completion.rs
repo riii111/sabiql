@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-
+use crate::app::cache::BoundedLruCache;
 use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
+const TABLE_CACHE_CAPACITY: usize = 500;
 
 /// Context detected from SQL text at cursor position
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub enum CompletionContext {
 pub struct CompletionEngine {
     keywords: Vec<&'static str>,
     lexer: SqlLexer,
-    table_detail_cache: HashMap<String, Table>,
+    table_detail_cache: BoundedLruCache<String, Table>,
 }
 
 impl Default for CompletionEngine {
@@ -104,8 +104,15 @@ impl CompletionEngine {
                 "USING",
             ],
             lexer: SqlLexer::new(),
-            table_detail_cache: HashMap::new(),
+            table_detail_cache: BoundedLruCache::new(TABLE_CACHE_CAPACITY),
         }
+    }
+
+    #[cfg(test)]
+    pub fn new_with_capacity(capacity: usize) -> Self {
+        let mut engine = Self::new();
+        engine.table_detail_cache = BoundedLruCache::new(capacity);
+        engine
     }
 
     pub fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
@@ -113,7 +120,7 @@ impl CompletionEngine {
     }
 
     pub fn has_cached_table(&self, qualified_name: &str) -> bool {
-        self.table_detail_cache.contains_key(qualified_name)
+        self.table_detail_cache.contains(qualified_name)
     }
 
     pub fn clear_table_cache(&mut self) {
@@ -152,9 +159,7 @@ impl CompletionEngine {
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            if seen.contains(&qualified_name)
-                || self.table_detail_cache.contains_key(&qualified_name)
-            {
+            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
                 continue;
             }
 
@@ -236,7 +241,7 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
                 let use_all_cache = referenced_tables.is_empty();
-                for (qualified_name, cached_table) in &self.table_detail_cache {
+                for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
@@ -739,7 +744,7 @@ impl CompletionEngine {
         // Try to find the table in cache
         let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-        if let Some(table) = self.table_detail_cache.get(&qualified_name) {
+        if let Some(table) = self.table_detail_cache.peek(&qualified_name) {
             return self.column_candidates(Some(table), prefix);
         }
 
@@ -2595,6 +2600,146 @@ mod tests {
             let user_id = candidates.iter().find(|c| c.text == "user_id");
             assert!(name.is_some());
             assert!(user_id.is_none());
+        }
+    }
+
+    mod lru_cache_behavior {
+        use super::*;
+        use crate::domain::{Column, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| Column {
+                        name: c.to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: i as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn evicted_table_appears_in_missing_tables() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            // Cache 3 tables with capacity 2 - t1 will be evicted
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            let t3 = create_table("public", "t3", &["id"]);
+
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+            e.cache_table_detail("public.t3".to_string(), t3);
+
+            // t1 should be evicted
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+
+            // Create metadata with all tables
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "t1".to_string(), None, false),
+                TableSummary::new("public".to_string(), "t2".to_string(), None, false),
+                TableSummary::new("public".to_string(), "t3".to_string(), None, false),
+            ];
+
+            // SQL referencing evicted table should trigger re-fetch
+            let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+            assert_eq!(missing, vec!["public.t1".to_string()]);
+        }
+
+        #[test]
+        fn cached_table_not_in_missing_tables() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "t1".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+            assert!(missing.is_empty());
+        }
+
+        #[test]
+        fn table_details_iter_returns_all_cached() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+
+            let names: Vec<_> = e.table_details_iter().map(|(k, _)| k.clone()).collect();
+            assert_eq!(names.len(), 2);
+            assert!(names.contains(&"public.t1".to_string()));
+            assert!(names.contains(&"public.t2".to_string()));
+        }
+
+        #[test]
+        fn clear_removes_all_cached_tables() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+
+            assert!(e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+
+            e.clear_table_cache();
+
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(!e.has_cached_table("public.t2"));
+            assert_eq!(e.table_details_iter().count(), 0);
+        }
+
+        #[test]
+        fn lru_eviction_order_is_fifo_without_access() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            // Insert t1, t2, t3 in order - t1 should be evicted first
+            e.cache_table_detail(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            e.cache_table_detail(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+            // t1 is now LRU, will be evicted when t3 is added
+            e.cache_table_detail(
+                "public.t3".to_string(),
+                create_table("public", "t3", &["id"]),
+            );
+
+            assert!(!e.has_cached_table("public.t1")); // evicted
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
         }
     }
 }
