@@ -566,4 +566,88 @@ mod tests {
             assert_eq!(state.ui.connection_list_state.selected(), Some(0));
         }
     }
+
+    mod confirm_connection_selection {
+        use super::*;
+        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+        fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
+            ConnectionProfile {
+                id,
+                name: ConnectionName::new(name).unwrap(),
+                host: "localhost".to_string(),
+                port: 5432,
+                database: "test".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                ssl_mode: SslMode::Prefer,
+            }
+        }
+
+        #[test]
+        fn different_connection_dispatches_switch_action() {
+            let mut state = AppState::new("test".to_string());
+            let active_id = ConnectionId::new();
+            let other_id = ConnectionId::new();
+
+            state.connections = vec![
+                create_test_profile_with_id("active", active_id.clone()),
+                create_test_profile_with_id("other", other_id.clone()),
+            ];
+            state.runtime.active_connection_id = Some(active_id);
+            state.ui.explorer_mode = ExplorerMode::Connections;
+            state.ui.set_connection_list_selection(Some(1)); // Select "other"
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ConfirmConnectionSelection,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::DispatchActions(_)))
+            );
+        }
+
+        #[test]
+        fn stays_on_same_connection_returns_to_tables() {
+            let mut state = AppState::new("test".to_string());
+            let active_id = ConnectionId::new();
+
+            state.connections = vec![create_test_profile_with_id("active", active_id.clone())];
+            state.runtime.active_connection_id = Some(active_id);
+            state.ui.explorer_mode = ExplorerMode::Connections;
+            state.ui.set_connection_list_selection(Some(0)); // Select same connection
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ConfirmConnectionSelection,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(effects.is_empty()); // No SwitchConnection dispatched
+        }
+
+        #[test]
+        fn empty_connections_returns_to_tables() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_mode = ExplorerMode::Connections;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ConfirmConnectionSelection,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(effects.is_empty());
+        }
+    }
 }
