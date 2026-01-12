@@ -53,7 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_insert_and_get() {
+    fn get_returns_inserted_value() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    fn test_contains() {
+    fn contains_returns_true_for_existing_key() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
 
@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eviction_on_capacity() {
+    fn insert_beyond_capacity_evicts_lru_entry() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -84,15 +84,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_updates_lru_order() {
+    fn get_updates_lru_order_preventing_eviction() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
 
-        // Access "a" to make it recently used
+        // Access "a" so "b" becomes LRU
         let _ = cache.get(&"a");
-
-        // Insert "c", should evict "b" (LRU)
         cache.insert("c", 3);
 
         assert!(cache.contains(&"a"));
@@ -101,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn test_clear() {
+    fn clear_removes_all_entries() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
@@ -113,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iter() {
+    fn iter_returns_all_entries() {
         let mut cache = BoundedLruCache::new(3);
         cache.insert("a", 1);
         cache.insert("b", 2);
