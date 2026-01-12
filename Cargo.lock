@@ -1301,6 +1301,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "insta",
+ "lru",
  "pretty_assertions",
  "ratatui",
  "regex",
