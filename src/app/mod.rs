@@ -23,6 +23,7 @@ pub mod ports;
 pub mod query_execution;
 pub mod reducer;
 pub mod reducers;
+pub mod render_schedule;
 pub mod result_history;
 pub mod runtime_state;
 pub mod sql_lexer;

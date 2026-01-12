@@ -17,6 +17,10 @@ pub struct AppState {
     pub command_line_input: String,
     pub action_tx: Option<Sender<Action>>,
 
+    /// Dirty flag for event-driven rendering.
+    /// When true, a render is needed on the next event loop iteration.
+    pub render_dirty: bool,
+
     pub runtime: RuntimeState,
     pub ui: UiState,
     pub cache: MetadataCache,
@@ -35,6 +39,7 @@ impl AppState {
             should_quit: false,
             command_line_input: String::new(),
             action_tx: None,
+            render_dirty: true, // Initial render needed
             runtime: RuntimeState::new(project_name),
             ui: UiState::new(),
             cache: MetadataCache::default(),
@@ -48,6 +53,19 @@ impl AppState {
         }
     }
 
+    /// Mark the state as needing a render.
+    /// Call this after any state change that affects the UI.
+    #[inline]
+    pub fn mark_dirty(&mut self) {
+        self.render_dirty = true;
+    }
+
+    /// Clear the dirty flag after rendering.
+    #[inline]
+    pub fn clear_dirty(&mut self) {
+        self.render_dirty = false;
+    }
+
     pub fn set_error(&mut self, msg: String) {
         self.messages.set_error(msg);
     }
@@ -58,6 +76,16 @@ impl AppState {
 
     pub fn clear_expired_messages(&mut self) {
         self.messages.clear_expired();
+    }
+
+    /// Clear all expired timers (messages, highlight, etc.)
+    pub fn clear_expired_timers(&mut self, now: std::time::Instant) {
+        self.messages.clear_expired();
+        if let Some(until) = self.query.result_highlight_until
+            && now >= until
+        {
+            self.query.result_highlight_until = None;
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {

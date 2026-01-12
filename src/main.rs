@@ -5,14 +5,17 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
+use tokio::time::sleep_until;
 
 use sabiql::app::action::Action;
 use sabiql::app::cache::TtlCache;
 use sabiql::app::completion::CompletionEngine;
+use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::ports::ConnectionStore;
 use sabiql::app::reducer::reduce;
+use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
@@ -57,7 +60,6 @@ async fn main() -> Result<()> {
 
     let mut state = AppState::new(project_name);
 
-    // Load existing connection profile or show setup form
     match loaded_profile {
         Ok(Some(profile)) => {
             state.runtime.dsn = Some(profile.to_dsn());
@@ -83,7 +85,7 @@ async fn main() -> Result<()> {
 
     state.action_tx = Some(action_tx.clone());
 
-    let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
+    let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
@@ -98,6 +100,9 @@ async fn main() -> Result<()> {
     let mut last_cache_cleanup = Instant::now();
 
     loop {
+        let now = Instant::now();
+        let deadline = next_animation_deadline(&state, now);
+
         tokio::select! {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
@@ -107,13 +112,33 @@ async fn main() -> Result<()> {
             }
             Some(action) = action_rx.recv() => {
                 let now = Instant::now();
-                let effects = reduce(&mut state, action, now);
+                let mut effects = reduce(&mut state, action, now);
+
+                if state.render_dirty {
+                    state.clear_expired_timers(now);
+                    effects.push(Effect::Render);
+                }
+
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                state.clear_dirty();
+            }
+            // Animation deadline reached (spinner, cursor blink, message timeout)
+            _ = async {
+                match deadline {
+                    Some(d) => sleep_until(d.into()).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                let now = Instant::now();
+                state.clear_expired_timers(now);
+                let effects = reduce(&mut state, Action::Render, now);
+                let mut tui_adapter = TuiAdapter::new(&mut tui);
+                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                state.clear_dirty();
             }
         }
 
-        // Handle completion debounce
         if let Some(debounce_until) = state.sql_modal.completion_debounce
             && Instant::now() >= debounce_until
         {
@@ -121,7 +146,6 @@ async fn main() -> Result<()> {
             let _ = action_tx.send(Action::CompletionTrigger).await;
         }
 
-        // Periodic cache cleanup
         if last_cache_cleanup.elapsed() >= cache_cleanup_interval {
             metadata_cache.cleanup_expired().await;
             last_cache_cleanup = Instant::now();

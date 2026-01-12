@@ -10,6 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Target DB**: PostgreSQL (MVP), MySQL (future)
 - **No DB Driver Required**: Uses `psql`/`mysql` CLI for queries (driver-less architecture)
 
+## Setup
+
+```bash
+mise install                       # Install tools (Rust, lefthook, etc.)
+mise exec -- lefthook install      # Set up Git hooks (runs cargo fmt on commit)
+```
+
 ## Architecture
 
 ### Layer Structure (Hexagonal / Ports & Adapters)
@@ -61,6 +68,20 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 2. **Ports invert dependencies**: app defines what it needs, adapters provide implementations.
 3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
 4. **Domain is pure data**: No business logic in domain models, just structure.
+
+### Rendering Strategy
+
+Ratatui requires explicit render control. This app uses **event-driven rendering** (not fixed FPS):
+
+| Trigger | When to render |
+|---------|----------------|
+| State change | Reducer sets `render_dirty = true`; main loop adds `Effect::Render` |
+| Animation deadline | Spinner (150ms), cursor blink (500ms), message timeout, result highlight |
+| No activity | Sleep indefinitely until input or deadline |
+
+**Architecture split:**
+- `app/render_schedule.rs`: Pure function calculates next deadline (no I/O)
+- `main.rs`: UI layer handles `tokio::select!` with `sleep_until(deadline)`
 
 ## UI Design Rules
 
