@@ -364,3 +364,206 @@ pub fn reduce_navigation(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::effect::Effect;
+    use std::time::Instant;
+
+    mod explorer_mode {
+        use super::*;
+
+        #[test]
+        fn toggle_from_tables_switches_to_connections() {
+            let mut state = AppState::new("test".to_string());
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ToggleExplorerMode, Instant::now());
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Connections);
+            assert!(effects.is_some());
+            let effects = effects.unwrap();
+            assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
+        }
+
+        #[test]
+        fn toggle_from_connections_switches_to_tables() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_mode = ExplorerMode::Connections;
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ToggleExplorerMode, Instant::now());
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            assert!(effects.is_some());
+        }
+
+        #[test]
+        fn set_explorer_mode_to_connections_loads_connections() {
+            let mut state = AppState::new("test".to_string());
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::SetExplorerMode(ExplorerMode::Connections),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Connections);
+            let effects = effects.unwrap();
+            assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
+        }
+
+        #[test]
+        fn set_explorer_mode_to_tables_does_not_load_connections() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_mode = ExplorerMode::Connections;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::SetExplorerMode(ExplorerMode::Tables),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(effects.is_empty());
+        }
+    }
+
+    mod connection_list_navigation {
+        use super::*;
+        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+        fn create_test_profile(name: &str) -> ConnectionProfile {
+            ConnectionProfile {
+                id: ConnectionId::new(),
+                name: ConnectionName::new(name).unwrap(),
+                host: "localhost".to_string(),
+                port: 5432,
+                database: "test".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                ssl_mode: SslMode::Prefer,
+            }
+        }
+
+        #[test]
+        fn select_next_increments_selection() {
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![
+                create_test_profile("conn1"),
+                create_test_profile("conn2"),
+                create_test_profile("conn3"),
+            ];
+            state.ui.set_connection_list_selection(Some(0));
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionListSelectNext,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.connection_list_selected, 1);
+        }
+
+        #[test]
+        fn select_next_stops_at_last() {
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![create_test_profile("conn1"), create_test_profile("conn2")];
+            state.ui.set_connection_list_selection(Some(1));
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionListSelectNext,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.connection_list_selected, 1);
+        }
+
+        #[test]
+        fn select_previous_decrements_selection() {
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![create_test_profile("conn1"), create_test_profile("conn2")];
+            state.ui.set_connection_list_selection(Some(1));
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionListSelectPrevious,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.connection_list_selected, 0);
+        }
+
+        #[test]
+        fn select_previous_stops_at_first() {
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![create_test_profile("conn1")];
+            state.ui.set_connection_list_selection(Some(0));
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionListSelectPrevious,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.connection_list_selected, 0);
+        }
+    }
+
+    mod connections_loaded {
+        use super::*;
+        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+        fn create_test_profile(name: &str) -> ConnectionProfile {
+            ConnectionProfile {
+                id: ConnectionId::new(),
+                name: ConnectionName::new(name).unwrap(),
+                host: "localhost".to_string(),
+                port: 5432,
+                database: "test".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                ssl_mode: SslMode::Prefer,
+            }
+        }
+
+        #[test]
+        fn sorts_connections_by_name_case_insensitive() {
+            let mut state = AppState::new("test".to_string());
+            let profiles = vec![
+                create_test_profile("Zebra"),
+                create_test_profile("alpha"),
+                create_test_profile("Beta"),
+            ];
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionsLoaded(profiles),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connections[0].display_name(), "alpha");
+            assert_eq!(state.connections[1].display_name(), "Beta");
+            assert_eq!(state.connections[2].display_name(), "Zebra");
+        }
+
+        #[test]
+        fn initializes_selection_when_not_empty() {
+            let mut state = AppState::new("test".to_string());
+            let profiles = vec![create_test_profile("conn1")];
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionsLoaded(profiles),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.connection_list_selected, 0);
+            assert_eq!(state.ui.connection_list_state.selected(), Some(0));
+        }
+    }
+}
