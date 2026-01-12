@@ -64,7 +64,19 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Required".to_string());
             }
         }
-        ConnectionField::Name | ConnectionField::Password | ConnectionField::SslMode => {
+        ConnectionField::Name => {
+            let name = state.name.trim();
+            if name.is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Name is required".to_string());
+            } else if name.chars().count() > 50 {
+                state
+                    .validation_errors
+                    .insert(field, "Name must be 50 characters or less".to_string());
+            }
+        }
+        ConnectionField::Password | ConnectionField::SslMode => {
             // Optional fields, no validation needed
         }
     }
@@ -73,5 +85,81 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
 pub fn validate_all(state: &mut ConnectionSetupState) {
     for field in ConnectionField::all() {
         validate_field(state, *field);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    mod validate_field_name {
+        use super::*;
+
+        #[test]
+        fn empty_name_sets_error() {
+            let mut state = ConnectionSetupState {
+                name: "".to_string(),
+                ..Default::default()
+            };
+
+            validate_field(&mut state, ConnectionField::Name);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::Name),
+                Some(&"Name is required".to_string())
+            );
+        }
+
+        #[test]
+        fn whitespace_only_name_sets_error() {
+            let mut state = ConnectionSetupState {
+                name: "   ".to_string(),
+                ..Default::default()
+            };
+
+            validate_field(&mut state, ConnectionField::Name);
+
+            assert_eq!(
+                state.validation_errors.get(&ConnectionField::Name),
+                Some(&"Name is required".to_string())
+            );
+        }
+
+        #[rstest]
+        #[case("a".repeat(50), false)]
+        #[case("a".repeat(51), true)]
+        fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
+            let mut state = ConnectionSetupState {
+                name,
+                ..Default::default()
+            };
+
+            validate_field(&mut state, ConnectionField::Name);
+
+            if expect_error {
+                assert_eq!(
+                    state.validation_errors.get(&ConnectionField::Name),
+                    Some(&"Name must be 50 characters or less".to_string())
+                );
+            } else {
+                assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+            }
+        }
+
+        #[test]
+        fn valid_name_clears_previous_error() {
+            let mut state = ConnectionSetupState {
+                name: "".to_string(),
+                ..Default::default()
+            };
+            validate_field(&mut state, ConnectionField::Name);
+            assert!(state.validation_errors.contains_key(&ConnectionField::Name));
+
+            state.name = "Valid Name".to_string();
+            validate_field(&mut state, ConnectionField::Name);
+
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+        }
     }
 }

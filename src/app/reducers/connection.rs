@@ -70,7 +70,21 @@ pub fn reduce_connection(
 
         // ===== Connection Modes =====
         Action::OpenConnectionSetup => {
+            state.connection_setup.reset();
             state.ui.input_mode = InputMode::ConnectionSetup;
+            Some(vec![])
+        }
+        Action::StartEditConnection(id) => {
+            Some(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
+        }
+        Action::ConnectionEditLoaded(profile) => {
+            state.connection_setup =
+                crate::app::connection_setup_state::ConnectionSetupState::from_profile(profile);
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            Some(vec![])
+        }
+        Action::ConnectionEditLoadFailed(msg) => {
+            state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }
         Action::CloseConnectionSetup => {
@@ -251,13 +265,9 @@ pub fn reduce_connection(
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.parse().unwrap_or(5432);
-                let name = if setup.name.trim().is_empty() {
-                    setup.default_name()
-                } else {
-                    setup.name.clone()
-                };
                 Some(vec![Effect::SaveAndConnect {
-                    name,
+                    id: setup.editing_id.clone(),
+                    name: setup.name.clone(),
                     host: setup.host.clone(),
                     port,
                     database: setup.database.clone(),
@@ -283,15 +293,25 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted { id, dsn, name } => {
+        Action::ConnectionSaveCompleted {
+            id,
+            dsn,
+            name,
+            is_edit,
+        } => {
             state.connection_setup.is_first_run = false;
-            state.runtime.active_connection_id = Some(id.clone());
-            state.runtime.dsn = Some(dsn.clone());
-            state.runtime.active_connection_name = Some(name.clone());
-            state.runtime.connection_state = ConnectionState::Connecting;
-            state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;
-            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+
+            if *is_edit {
+                Some(vec![])
+            } else {
+                state.runtime.active_connection_id = Some(id.clone());
+                state.runtime.dsn = Some(dsn.clone());
+                state.runtime.active_connection_name = Some(name.clone());
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+            }
         }
         Action::ConnectionSaveFailed(msg) => {
             state.messages.set_error_at(msg.clone(), now);
