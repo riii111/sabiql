@@ -1270,5 +1270,87 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
+
+        #[test]
+        fn switch_connection_saves_current_and_fetches_new() {
+            let mut state = create_test_state();
+            let conn_a = ConnectionId::new();
+            let conn_b = ConnectionId::new();
+
+            state.runtime.active_connection_id = Some(conn_a.clone());
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.ui.explorer_selected = 5;
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection {
+                    id: conn_b.clone(),
+                    dsn: "postgres://localhost/other".to_string(),
+                    name: "Other".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.runtime.active_connection_id, Some(conn_b));
+            assert!(state.runtime.connection_state.is_connecting());
+            assert!(state.connection_caches.get(&conn_a).is_some());
+            assert_eq!(
+                state
+                    .connection_caches
+                    .get(&conn_a)
+                    .unwrap()
+                    .explorer_selected,
+                5
+            );
+            assert_eq!(effects.len(), 2);
+        }
+
+        #[test]
+        fn switch_connection_restores_from_cache() {
+            use crate::app::inspector_tab::InspectorTab;
+
+            let mut state = create_test_state();
+            let conn_a = ConnectionId::new();
+            let conn_b = ConnectionId::new();
+
+            state.runtime.active_connection_id = Some(conn_a.clone());
+            state.runtime.connection_state = ConnectionState::Connected;
+            state.ui.explorer_selected = 3;
+
+            let cached = crate::app::connection_cache::ConnectionCache {
+                explorer_selected: 10,
+                inspector_tab: InspectorTab::Indexes,
+                metadata: Some(DatabaseMetadata {
+                    database_name: "cached_db".to_string(),
+                    schemas: vec![],
+                    tables: vec![],
+                    fetched_at: Instant::now(),
+                }),
+                ..Default::default()
+            };
+            state.connection_caches.save(&conn_b, cached);
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection {
+                    id: conn_b.clone(),
+                    dsn: "postgres://localhost/cached".to_string(),
+                    name: "Cached".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.runtime.active_connection_id, Some(conn_b));
+            assert!(state.runtime.connection_state.is_connected());
+            assert_eq!(state.ui.explorer_selected, 10);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::Indexes);
+            assert_eq!(
+                state.cache.metadata.as_ref().unwrap().database_name,
+                "cached_db"
+            );
+            assert_eq!(effects.len(), 1);
+        }
     }
 }
