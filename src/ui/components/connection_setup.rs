@@ -41,7 +41,7 @@ impl ConnectionSetup {
         } else {
             (
                 " New Connection ",
-                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save & Connect │ Esc: Cancel ",
+                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel ",
             )
         };
         let (_, modal_inner) = render_modal(
