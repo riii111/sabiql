@@ -1,3 +1,5 @@
+rc: .lefthookrc
+
 pre-commit:
   commands:
     fmt:
