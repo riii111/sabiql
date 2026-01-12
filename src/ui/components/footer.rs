@@ -154,7 +154,7 @@ impl Footer {
             ],
             InputMode::ConnectionSelector => vec![
                 ("Enter", "Confirm"),
-                ("j/k", "Select"),
+                ("↑/↓", "Select"),
                 ("n", "New"),
                 ("q", "Quit"),
             ],

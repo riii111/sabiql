@@ -1218,4 +1218,33 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
     }
+
+    mod connection_selector_keys {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(KeyCode::Char('q'), Action::Quit)]
+        #[case(KeyCode::Char('j'), Action::ConnectionListSelectNext)]
+        #[case(KeyCode::Down, Action::ConnectionListSelectNext)]
+        #[case(KeyCode::Char('k'), Action::ConnectionListSelectPrevious)]
+        #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
+        #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
+        #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
+        fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
+            let result = handle_connection_selector_keys(key(code));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
 }

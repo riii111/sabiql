@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Enter:Confirm  j/k:Select  n:New  q:Quit
+Enter:Confirm  ↑/↓:Select  n:New  q:Quit

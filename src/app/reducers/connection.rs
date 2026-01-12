@@ -75,6 +75,9 @@ pub fn reduce_connection(
         }
         Action::OpenConnectionSetup => {
             state.connection_setup.reset();
+            if !state.connections.is_empty() || state.runtime.dsn.is_some() {
+                state.connection_setup.is_first_run = false;
+            }
             state.ui.input_mode = InputMode::ConnectionSetup;
             Some(vec![])
         }
@@ -380,6 +383,50 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
             let effects = effects.unwrap();
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
+        }
+    }
+
+    mod open_connection_setup {
+        use super::*;
+        use crate::domain::connection::ConnectionProfile;
+
+        #[test]
+        fn is_first_run_true_when_no_connections() {
+            let mut state = AppState::new("test".to_string());
+
+            reduce_connection(&mut state, &Action::OpenConnectionSetup, Instant::now());
+
+            assert!(state.connection_setup.is_first_run);
+        }
+
+        #[test]
+        fn is_first_run_false_when_connections_exist() {
+            let mut state = AppState::new("test".to_string());
+            let profile = ConnectionProfile::new(
+                "test".to_string(),
+                "localhost".to_string(),
+                5432,
+                "db".to_string(),
+                "user".to_string(),
+                "pass".to_string(),
+                Default::default(),
+            )
+            .unwrap();
+            state.connections = vec![profile];
+
+            reduce_connection(&mut state, &Action::OpenConnectionSetup, Instant::now());
+
+            assert!(!state.connection_setup.is_first_run);
+        }
+
+        #[test]
+        fn is_first_run_false_when_already_connected() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+
+            reduce_connection(&mut state, &Action::OpenConnectionSetup, Instant::now());
+
+            assert!(!state.connection_setup.is_first_run);
         }
     }
 }
