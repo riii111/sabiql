@@ -30,6 +30,18 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
         InputMode::ConnectionError => handle_connection_error_keys(key),
         InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
+        InputMode::ConnectionSelector => handle_connection_selector_keys(key),
+    }
+}
+
+fn handle_connection_selector_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Char('j') | KeyCode::Down => Action::ConnectionListSelectNext,
+        KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
+        KeyCode::Enter => Action::ConfirmConnectionSelection,
+        KeyCode::Char('n') => Action::OpenConnectionSetup,
+        _ => Action::None,
     }
 }
 

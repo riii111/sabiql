@@ -10,4 +10,5 @@ pub enum InputMode {
     ConnectionSetup,
     ConnectionError,
     ConfirmDialog,
+    ConnectionSelector,
 }
