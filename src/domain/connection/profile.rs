@@ -38,6 +38,28 @@ impl ConnectionProfile {
         })
     }
 
+    pub fn with_id(
+        id: ConnectionId,
+        name: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        database: impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: SslMode,
+    ) -> Result<Self, ConnectionNameError> {
+        Ok(Self {
+            id,
+            name: ConnectionName::new(name)?,
+            host: host.into(),
+            port,
+            database: database.into(),
+            username: username.into(),
+            password: password.into(),
+            ssl_mode,
+        })
+    }
+
     pub fn display_name(&self) -> &str {
         self.name.as_str()
     }

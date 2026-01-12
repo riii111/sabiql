@@ -2,7 +2,7 @@
 
 use crate::app::action::Action;
 use crate::domain::Table;
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{ConnectionId, SslMode};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -10,6 +10,7 @@ pub enum Effect {
     Render,
 
     SaveAndConnect {
+        id: Option<ConnectionId>,
         name: String,
         host: String,
         port: u16,
@@ -17,6 +18,10 @@ pub enum Effect {
         user: String,
         password: String,
         ssl_mode: SslMode,
+    },
+
+    LoadConnectionForEdit {
+        id: ConnectionId,
     },
 
     CacheInvalidate {

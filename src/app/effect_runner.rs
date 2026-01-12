@@ -116,6 +116,7 @@ impl EffectRunner {
             }
 
             Effect::SaveAndConnect {
+                id,
                 name,
                 host,
                 port,
@@ -124,15 +125,42 @@ impl EffectRunner {
                 password,
                 ssl_mode,
             } => {
-                let profile = match ConnectionProfile::new(
-                    name, host, port, database, user, password, ssl_mode,
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        let _ = self
-                            .action_tx
-                            .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
-                        return Ok(());
+                let is_edit = id.is_some();
+                let profile = match id {
+                    Some(existing_id) => {
+                        // Edit mode: use existing ID
+                        match ConnectionProfile::with_id(
+                            existing_id,
+                            name,
+                            host,
+                            port,
+                            database,
+                            user,
+                            password,
+                            ssl_mode,
+                        ) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                let _ = self
+                                    .action_tx
+                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                                return Ok(());
+                            }
+                        }
+                    }
+                    None => {
+                        // New connection: generate new ID
+                        match ConnectionProfile::new(
+                            name, host, port, database, user, password, ssl_mode,
+                        ) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                let _ = self
+                                    .action_tx
+                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                                return Ok(());
+                            }
+                        }
                     }
                 };
                 let id = profile.id.clone();
@@ -143,10 +171,35 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || match store.save(&profile) {
                     Ok(()) => {
-                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { id, dsn, name });
+                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted {
+                            id,
+                            dsn,
+                            name,
+                            is_edit,
+                        });
                     }
                     Err(e) => {
                         let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::LoadConnectionForEdit { id } => {
+                let store = Arc::clone(&self.connection_store);
+                let tx = self.action_tx.clone();
+
+                tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
+                    Ok(Some(profile)) => {
+                        let _ = tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)));
+                    }
+                    Ok(None) => {
+                        let _ = tx.blocking_send(Action::ConnectionEditLoadFailed(
+                            "Connection not found".to_string(),
+                        ));
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()));
                     }
                 });
                 Ok(())
