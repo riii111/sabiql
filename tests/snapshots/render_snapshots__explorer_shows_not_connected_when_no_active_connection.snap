@@ -24,4 +24,4 @@ test_project | - | - | no dsn | -
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connect  ^P:Tables  ^K:Palette  1/2/3:Pane  f:F
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^K:Palette  1/2/3:Pane

@@ -73,7 +73,7 @@ impl Footer {
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
                         GLOBAL_KEYS[idx::global::ER_DIAGRAM].as_hint(),
-                        GLOBAL_KEYS[idx::global::CONNECT].as_hint(),
+                        GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint(),
                         GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint(),
                         GLOBAL_KEYS[idx::global::PALETTE].as_hint(),
                     ];

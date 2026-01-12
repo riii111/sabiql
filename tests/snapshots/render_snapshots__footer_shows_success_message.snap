@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-✓ Reconnected!  r:Reload  s:SQL  e:ER Diagram  c:Connect  ^P:Tables  ^K:Palette
+✓ Reconnected!  r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^K:Pale
