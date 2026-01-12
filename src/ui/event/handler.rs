@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::action::Action;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 
@@ -47,6 +48,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
     let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
     let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
+    let connections_mode = state.ui.explorer_mode == ExplorerMode::Connections
+        && state.ui.focused_pane == FocusedPane::Explorer;
 
     match key.code {
         KeyCode::Char('q') => Action::Quit,
@@ -54,13 +57,21 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char(':') => Action::EnterCommandLine,
         KeyCode::Char('r') => Action::ReloadMetadata,
         KeyCode::Char('f') => Action::ToggleFocus,
-        KeyCode::Esc => Action::Escape,
+        KeyCode::Esc => {
+            if connections_mode {
+                Action::SetExplorerMode(ExplorerMode::Tables)
+            } else {
+                Action::Escape
+            }
+        }
 
         KeyCode::Up | KeyCode::Char('k') => {
             if result_navigation {
                 Action::ResultScrollUp
             } else if inspector_navigation {
                 Action::InspectorScrollUp
+            } else if connections_mode {
+                Action::ConnectionListSelectPrevious
             } else {
                 Action::SelectPrevious
             }
@@ -70,6 +81,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollDown
             } else if inspector_navigation {
                 Action::InspectorScrollDown
+            } else if connections_mode {
+                Action::ConnectionListSelectNext
             } else {
                 Action::SelectNext
             }
@@ -130,12 +143,14 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
-        KeyCode::Char('c') => Action::OpenConnectionSetup,
+        KeyCode::Char('c') => Action::ToggleExplorerMode,
 
         KeyCode::Enter => {
-            if state.connection_error.error_info.is_some()
-                || state.ui.focused_pane == FocusedPane::Explorer
-            {
+            if state.connection_error.error_info.is_some() {
+                Action::ConfirmSelection
+            } else if connections_mode {
+                Action::ConfirmConnectionSelection
+            } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection
             } else {
                 Action::None
