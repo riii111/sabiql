@@ -60,7 +60,6 @@ async fn main() -> Result<()> {
 
     let mut state = AppState::new(project_name);
 
-    // Load existing connection profile or show setup form
     match loaded_profile {
         Ok(Some(profile)) => {
             state.runtime.dsn = Some(profile.to_dsn());
@@ -140,7 +139,6 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Handle completion debounce
         if let Some(debounce_until) = state.sql_modal.completion_debounce
             && Instant::now() >= debounce_until
         {
@@ -148,7 +146,6 @@ async fn main() -> Result<()> {
             let _ = action_tx.send(Action::CompletionTrigger).await;
         }
 
-        // Periodic cache cleanup
         if last_cache_cleanup.elapsed() >= cache_cleanup_interval {
             metadata_cache.cleanup_expired().await;
             last_cache_cleanup = Instant::now();
