@@ -31,7 +31,7 @@ impl ConnectionSetup {
         let form_state = &state.connection_setup;
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = 12;
+        let modal_height = 13;
 
         let hint = " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ";
         let (_, modal_inner) = render_modal(
@@ -44,47 +44,49 @@ impl ConnectionSetup {
 
         let inner = modal_inner.inner(Margin::new(2, 1));
         let chunks = Layout::vertical([
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(FIELD_HEIGHT),
-            Constraint::Length(1), // spacer
-            Constraint::Length(1), // notice
+            Constraint::Length(FIELD_HEIGHT), // Name
+            Constraint::Length(FIELD_HEIGHT), // Host
+            Constraint::Length(FIELD_HEIGHT), // Port
+            Constraint::Length(FIELD_HEIGHT), // Database
+            Constraint::Length(FIELD_HEIGHT), // User
+            Constraint::Length(FIELD_HEIGHT), // Password
+            Constraint::Length(FIELD_HEIGHT), // SslMode
+            Constraint::Length(1),            // spacer
+            Constraint::Length(1),            // notice
         ])
         .split(inner);
 
-        Self::render_text_field(frame, chunks[0], form_state, ConnectionField::Host, false);
-        Self::render_text_field(frame, chunks[1], form_state, ConnectionField::Port, false);
+        Self::render_text_field(frame, chunks[0], form_state, ConnectionField::Name, false);
+        Self::render_text_field(frame, chunks[1], form_state, ConnectionField::Host, false);
+        Self::render_text_field(frame, chunks[2], form_state, ConnectionField::Port, false);
         Self::render_text_field(
             frame,
-            chunks[2],
+            chunks[3],
             form_state,
             ConnectionField::Database,
             false,
         );
-        Self::render_text_field(frame, chunks[3], form_state, ConnectionField::User, false);
+        Self::render_text_field(frame, chunks[4], form_state, ConnectionField::User, false);
         Self::render_text_field(
             frame,
-            chunks[4],
+            chunks[5],
             form_state,
             ConnectionField::Password,
             true,
         );
         Self::render_ssl_field(
             frame,
-            chunks[5],
+            chunks[6],
             form_state.ssl_mode,
             form_state.focused_field == ConnectionField::SslMode,
         );
 
         let notice = "Note: Connection info is stored locally in plain text";
         let notice_para = Paragraph::new(notice).style(Style::default().fg(Theme::NOTE_TEXT));
-        frame.render_widget(notice_para, chunks[7]);
+        frame.render_widget(notice_para, chunks[8]);
 
         if form_state.ssl_dropdown.is_open {
-            Self::render_dropdown(frame, chunks[5], form_state.ssl_dropdown.selected_index);
+            Self::render_dropdown(frame, chunks[6], form_state.ssl_dropdown.selected_index);
         }
     }
 

@@ -53,6 +53,7 @@ pub enum Action {
     ConnectionSetupCancel,
     ConnectionSaveCompleted {
         dsn: String,
+        name: String,
     },
     ConnectionSaveFailed(String),
 
