@@ -359,3 +359,27 @@ fn reset_connection_state(state: &mut AppState) {
     state.query.result_history = Default::default();
     state.ui.set_explorer_selection(None);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::action::Action;
+    use crate::app::effect::Effect;
+
+    mod open_connection_selector {
+        use super::*;
+
+        #[test]
+        fn sets_mode_and_loads_connections() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::Normal;
+
+            let effects =
+                reduce_connection(&mut state, &Action::OpenConnectionSelector, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
+            let effects = effects.unwrap();
+            assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
+        }
+    }
+}

@@ -657,5 +657,57 @@ mod tests {
             let effects = effects.unwrap();
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn from_selector_mode_switches_to_normal() {
+            let mut state = AppState::new("test".to_string());
+            let active_id = ConnectionId::new();
+            let other_id = ConnectionId::new();
+
+            state.connections = vec![
+                create_test_profile_with_id("active", active_id.clone()),
+                create_test_profile_with_id("other", other_id.clone()),
+            ];
+            state.runtime.active_connection_id = Some(active_id);
+            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.ui.set_connection_list_selection(Some(1));
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ConfirmConnectionSelection,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::DispatchActions(_)))
+            );
+        }
+
+        #[test]
+        fn from_selector_same_connection_returns_to_normal() {
+            let mut state = AppState::new("test".to_string());
+            let active_id = ConnectionId::new();
+
+            state.connections = vec![create_test_profile_with_id("active", active_id.clone())];
+            state.runtime.active_connection_id = Some(active_id);
+            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.ui.set_connection_list_selection(Some(0));
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ConfirmConnectionSelection,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+            let effects = effects.unwrap();
+            assert!(effects.is_empty());
+        }
     }
 }
