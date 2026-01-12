@@ -7,6 +7,7 @@ use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{insert_char_at_cursor, validate_all, validate_field};
 use crate::app::state::AppState;
@@ -304,6 +305,7 @@ pub fn reduce_connection(
         Action::ConnectionSaveCompleted { id, dsn, name } => {
             state.connection_setup.is_first_run = false;
             state.ui.input_mode = InputMode::Normal;
+            state.ui.explorer_mode = ExplorerMode::Tables;
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
