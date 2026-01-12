@@ -3,6 +3,7 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
+use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
@@ -34,6 +35,36 @@ pub fn reduce_connection(
                 }
             } else {
                 Some(vec![])
+            }
+        }
+
+        Action::SwitchConnection { id, dsn, name } => {
+            // Save current connection's state
+            if let Some(current_id) = state.runtime.active_connection_id.clone() {
+                let cache = save_current_cache(state);
+                state.connection_caches.save(&current_id, cache);
+            }
+
+            // Update active connection
+            state.runtime.active_connection_id = Some(id.clone());
+            state.runtime.dsn = Some(dsn.clone());
+            state.runtime.active_connection_name = Some(name.clone());
+
+            // Try to restore from cache
+            if let Some(cached) = state.connection_caches.get(id).cloned() {
+                restore_cache(state, &cached);
+                state.runtime.connection_state = ConnectionState::Connected;
+                state.cache.state = MetadataState::Loaded;
+                Some(vec![Effect::ClearCompletionEngineCache])
+            } else {
+                // No cache: fetch metadata
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                reset_connection_state(state);
+                Some(vec![
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata { dsn: dsn.clone() },
+                ])
             }
         }
 
@@ -252,8 +283,9 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted { dsn, name } => {
+        Action::ConnectionSaveCompleted { id, dsn, name } => {
             state.connection_setup.is_first_run = false;
+            state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
             state.runtime.connection_state = ConnectionState::Connecting;
@@ -268,4 +300,38 @@ pub fn reduce_connection(
 
         _ => None,
     }
+}
+
+fn save_current_cache(state: &AppState) -> ConnectionCache {
+    ConnectionCache {
+        metadata: state.cache.metadata.clone(),
+        table_detail: state.cache.table_detail.clone(),
+        current_table: state.cache.current_table.clone(),
+        query_result: state.query.current_result.clone(),
+        result_history: state.query.result_history.clone(),
+        explorer_selected: state.ui.explorer_selected,
+        inspector_tab: state.ui.inspector_tab,
+    }
+}
+
+fn restore_cache(state: &mut AppState, cache: &ConnectionCache) {
+    state.cache.metadata = cache.metadata.clone();
+    state.cache.table_detail = cache.table_detail.clone();
+    state.cache.current_table = cache.current_table.clone();
+    state.query.current_result = cache.query_result.clone();
+    state.query.result_history = cache.result_history.clone();
+    state.ui.explorer_selected = cache.explorer_selected;
+    state.ui.inspector_tab = cache.inspector_tab;
+    state
+        .ui
+        .set_explorer_selection(Some(cache.explorer_selected));
+}
+
+fn reset_connection_state(state: &mut AppState) {
+    state.cache.metadata = None;
+    state.cache.table_detail = None;
+    state.cache.current_table = None;
+    state.query.current_result = None;
+    state.query.result_history = Default::default();
+    state.ui.set_explorer_selection(None);
 }

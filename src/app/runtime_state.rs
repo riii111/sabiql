@@ -1,10 +1,12 @@
 use super::connection_state::ConnectionState;
+use crate::domain::ConnectionId;
 
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
     pub dsn: Option<String>,
     pub project_name: String,
     pub database_name: Option<String>,
+    pub active_connection_id: Option<ConnectionId>,
     pub active_connection_name: Option<String>,
     pub connection_state: ConnectionState,
     pub is_reloading: bool,
@@ -16,6 +18,7 @@ impl RuntimeState {
             dsn: None,
             project_name,
             database_name: None,
+            active_connection_id: None,
             active_connection_name: None,
             connection_state: ConnectionState::default(),
             is_reloading: false,
@@ -34,6 +37,7 @@ mod tests {
         assert_eq!(state.project_name, "my_project");
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
+        assert!(state.active_connection_id.is_none());
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reloading);
@@ -46,6 +50,7 @@ mod tests {
         assert!(state.project_name.is_empty());
         assert!(state.dsn.is_none());
         assert!(state.database_name.is_none());
+        assert!(state.active_connection_id.is_none());
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reloading);
