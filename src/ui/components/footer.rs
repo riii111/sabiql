@@ -76,6 +76,7 @@ impl Footer {
                     vec![
                         ("Enter", "Connect"),
                         ("n", "New"),
+                        ("d", "Delete"),
                         ("j/k", "Navigate"),
                         ("?", "Help"),
                         ("c", "Tables"),
@@ -156,6 +157,7 @@ impl Footer {
                 ("Enter", "Confirm"),
                 ("↑/↓", "Select"),
                 ("n", "New"),
+                ("d", "Delete"),
                 ("q", "Quit"),
             ],
         }

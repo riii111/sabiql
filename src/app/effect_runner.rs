@@ -254,6 +254,21 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::DeleteConnection { id } => {
+                let store = Arc::clone(&self.connection_store);
+                let tx = self.action_tx.clone();
+
+                tokio::task::spawn_blocking(move || match store.delete(&id) {
+                    Ok(()) => {
+                        let _ = tx.blocking_send(Action::ConnectionDeleted(id));
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()));
+                    }
+                });
+                Ok(())
+            }
+
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;
                 Ok(())

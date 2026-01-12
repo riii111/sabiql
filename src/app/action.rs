@@ -88,6 +88,12 @@ pub enum Action {
     ConfirmDialogConfirm,
     ConfirmDialogCancel,
 
+    // Connection deletion
+    RequestDeleteSelectedConnection,
+    DeleteConnection(ConnectionId),
+    ConnectionDeleted(ConnectionId),
+    ConnectionDeleteFailed(String),
+
     // Command line actions
     EnterCommandLine,
     ExitCommandLine,

@@ -11,7 +11,7 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let hint = " ↑/↓ Select  Enter Confirm  n New  q Quit ";
+        let hint = " ↑/↓ Select  Enter Confirm  n New  d Delete  q Quit ";
         let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),

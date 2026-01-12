@@ -26,6 +26,10 @@ pub enum Effect {
 
     LoadConnections,
 
+    DeleteConnection {
+        id: ConnectionId,
+    },
+
     CacheInvalidate {
         dsn: String,
     },
