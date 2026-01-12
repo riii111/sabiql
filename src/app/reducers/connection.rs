@@ -69,6 +69,10 @@ pub fn reduce_connection(
         }
 
         // ===== Connection Modes =====
+        Action::OpenConnectionSelector => {
+            state.ui.input_mode = InputMode::ConnectionSelector;
+            Some(vec![Effect::LoadConnections])
+        }
         Action::OpenConnectionSetup => {
             state.connection_setup.reset();
             state.ui.input_mode = InputMode::ConnectionSetup;
