@@ -62,6 +62,20 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
 4. **Domain is pure data**: No business logic in domain models, just structure.
 
+### Rendering Strategy
+
+Ratatui requires explicit render control. This app uses **event-driven rendering** (not fixed FPS):
+
+| Trigger | When to render |
+|---------|----------------|
+| State change | Reducer sets `render_dirty = true`; main loop adds `Effect::Render` |
+| Animation deadline | Spinner (150ms), cursor blink (500ms), message timeout, result highlight |
+| No activity | Sleep indefinitely until input or deadline |
+
+**Architecture split:**
+- `app/render_schedule.rs`: Pure function calculates next deadline (no I/O)
+- `main.rs`: UI layer handles `tokio::select!` with `sleep_until(deadline)`
+
 ## UI Design Rules
 
 ### Component Structure (Atomic Design)
