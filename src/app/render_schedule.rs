@@ -215,14 +215,13 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            // Set up multiple animation sources
-            state.query.status = QueryStatus::Running; // 150ms
-            state.messages.expires_at = Some(now + Duration::from_secs(2)); // 2000ms
-            state.query.result_highlight_until = Some(now + Duration::from_millis(100)); // 100ms
+            state.query.status = QueryStatus::Running;
+            state.messages.expires_at = Some(now + Duration::from_secs(2));
+            state.query.result_highlight_until = Some(now + Duration::from_millis(100));
 
             let deadline = next_animation_deadline(&state, now);
 
-            // Result highlight (100ms) is earliest
+            // Result highlight (100ms) < Spinner (150ms) < Message (2000ms)
             assert_eq!(deadline, Some(now + Duration::from_millis(100)));
         }
     }
