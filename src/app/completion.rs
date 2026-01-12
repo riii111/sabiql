@@ -2750,5 +2750,63 @@ mod tests {
             let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
             assert!(missing.is_empty());
         }
+
+        #[test]
+        fn table_details_iter_returns_all_cached() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+
+            let names: Vec<_> = e.table_details_iter().map(|(k, _)| k.clone()).collect();
+            assert_eq!(names.len(), 2);
+            assert!(names.contains(&"public.t1".to_string()));
+            assert!(names.contains(&"public.t2".to_string()));
+        }
+
+        #[test]
+        fn clear_removes_all_cached_tables() {
+            let mut e = CompletionEngine::new_with_capacity(3);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+
+            assert!(e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+
+            e.clear_table_cache();
+
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(!e.has_cached_table("public.t2"));
+            assert_eq!(e.table_details_iter().count(), 0);
+        }
+
+        #[test]
+        fn lru_eviction_order_is_fifo_without_access() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            // Insert t1, t2, t3 in order - t1 should be evicted first
+            e.cache_table_detail(
+                "public.t1".to_string(),
+                create_table("public", "t1", &["id"]),
+            );
+            e.cache_table_detail(
+                "public.t2".to_string(),
+                create_table("public", "t2", &["id"]),
+            );
+            // t1 is now LRU, will be evicted when t3 is added
+            e.cache_table_detail(
+                "public.t3".to_string(),
+                create_table("public", "t3", &["id"]),
+            );
+
+            assert!(!e.has_cached_table("public.t1")); // evicted
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+        }
     }
 }
