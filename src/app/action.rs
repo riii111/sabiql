@@ -94,6 +94,9 @@ pub enum Action {
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(String),
 
+    // Connection edit (from list)
+    RequestEditSelectedConnection,
+
     // Command line actions
     EnterCommandLine,
     ExitCommandLine,

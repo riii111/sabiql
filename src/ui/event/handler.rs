@@ -41,6 +41,7 @@ fn handle_connection_selector_keys(key: KeyEvent) -> Action {
         KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
         KeyCode::Enter => Action::ConfirmConnectionSelection,
         KeyCode::Char('n') => Action::OpenConnectionSetup,
+        KeyCode::Char('e') => Action::RequestEditSelectedConnection,
         KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
         _ => Action::None,
     }
@@ -155,6 +156,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
         KeyCode::Char('s') => Action::OpenSqlModal,
+        KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::ErOpenDiagram,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
@@ -1235,6 +1237,7 @@ mod tests {
         #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
         #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
         #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
+        #[case(KeyCode::Char('e'), Action::RequestEditSelectedConnection)]
         #[case(KeyCode::Char('d'), Action::RequestDeleteSelectedConnection)]
         fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
             let result = handle_connection_selector_keys(key(code));
@@ -1275,6 +1278,15 @@ mod tests {
             let result = handle_normal_mode(key(code), &state);
 
             assert!(matches!(result, Action::RequestDeleteSelectedConnection));
+        }
+
+        #[test]
+        fn e_key_requests_edit() {
+            let state = connections_mode_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+
+            assert!(matches!(result, Action::RequestEditSelectedConnection));
         }
     }
 }

@@ -393,6 +393,17 @@ pub fn reduce_connection(
             Some(vec![])
         }
 
+        // ===== Connection Edit =====
+        Action::RequestEditSelectedConnection => {
+            let selected_idx = state.ui.connection_list_selected;
+            if let Some(connection) = state.connections.get(selected_idx) {
+                let id = connection.id.clone();
+                Some(vec![Effect::LoadConnectionForEdit { id }])
+            } else {
+                Some(vec![])
+            }
+        }
+
         _ => None,
     }
 }
