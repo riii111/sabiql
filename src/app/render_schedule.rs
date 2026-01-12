@@ -16,16 +16,17 @@ const SPINNER_INTERVAL: Duration = Duration::from_millis(150);
 /// Interval for cursor blink updates (500ms for standard blink rate)
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
-/// Calculates the next animation deadline based on the current state.
+/// Calculates the next wake deadline based on the current state.
 ///
-/// Returns `Some(Instant)` when an animation is active and needs a timed update.
-/// Returns `None` when no animations are active (caller can wait indefinitely for input).
+/// Returns `Some(Instant)` when a timed event needs processing.
+/// Returns `None` when no timers are active (caller can wait indefinitely for input).
 ///
-/// # Animation sources (in priority order):
-/// 1. Spinner: Query execution or ER diagram preparation
-/// 2. Message timeout: Error/success messages with expiration
-/// 3. Result highlight: Temporary border highlight after query completion
-/// 4. Cursor blink: Active in modal input modes (SqlModal, TablePicker, CommandLine)
+/// # Wake sources:
+/// - Spinner animation (query running, ER preparing)
+/// - Message timeout expiration
+/// - Result highlight expiration
+/// - Completion debounce trigger
+/// - Cursor blink (only if no faster timers)
 pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant> {
     let mut earliest: Option<Instant> = None;
 
@@ -41,7 +42,11 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(highlight_until));
     }
 
-    // Cursor blink is the slowest animation; skip if faster ones are active
+    if let Some(debounce_until) = state.sql_modal.completion_debounce {
+        earliest = min_instant(earliest, Some(debounce_until));
+    }
+
+    // Cursor blink is the slowest; skip if faster timers are active
     if has_blinking_cursor(state) && earliest.is_none() {
         earliest = Some(now + CURSOR_BLINK_INTERVAL);
     }
@@ -223,6 +228,18 @@ mod tests {
 
             // Result highlight (100ms) < Spinner (150ms) < Message (2000ms)
             assert_eq!(deadline, Some(now + Duration::from_millis(100)));
+        }
+
+        #[test]
+        fn completion_debounce_returns_expiration() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let debounce_until = now + Duration::from_millis(100);
+            state.sql_modal.completion_debounce = Some(debounce_until);
+
+            let deadline = next_animation_deadline(&state, now);
+
+            assert_eq!(deadline, Some(debounce_until));
         }
     }
 

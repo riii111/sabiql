@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
 
     state.action_tx = Some(action_tx.clone());
 
-    let mut tui = TuiRunner::new()?.tick_rate(4.0);
+    let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
@@ -115,14 +115,14 @@ async fn main() -> Result<()> {
                 let now = Instant::now();
                 let mut effects = reduce(&mut state, action, now);
 
-                // Auto-render if dirty
                 if state.render_dirty {
+                    state.clear_expired_messages();
                     effects.push(Effect::Render);
-                    state.clear_dirty();
                 }
 
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                state.clear_dirty();
             }
             _ = async {
                 match deadline {
@@ -130,11 +130,13 @@ async fn main() -> Result<()> {
                     None => std::future::pending::<()>().await,
                 }
             } => {
-                // Animation deadline reached: trigger render if needed
+                let now = Instant::now();
+                state.clear_expired_messages();
                 state.mark_dirty();
-                let effects = reduce(&mut state, Action::Render, Instant::now());
+                let effects = reduce(&mut state, Action::Render, now);
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                state.clear_dirty();
             }
         }
 
