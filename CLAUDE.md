@@ -42,7 +42,7 @@ Skills are stored in `.claude/skills/` and must be **manually invoked**.
 |------|-----------|-------------|
 | **architecture** | `**/src/**/*.rs` | Hexagonal architecture, layer structure, dependency rules, ports & adapters |
 | **ui-design** | `**/src/ui/**/*.rs` | Atomic Design pattern, footer hint ordering, keybindings |
-| **rust-testing** | `**/*_test*.rs`, `**/tests/**/*.rs` | Test structure, naming conventions, rstest usage |
+| **rust-testing** | `**/src/**/*.rs`, `**/tests/**/*.rs` | Test structure, naming conventions, rstest usage |
 | **visual-regression** | `**/tests/render_snapshots.rs` | Snapshot testing with insta, coverage criteria |
 
 ### Available Skills
