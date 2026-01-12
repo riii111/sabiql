@@ -78,8 +78,10 @@ async fn main() -> Result<()> {
         Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
-                 Please delete ~/.config/sabiql/connections.toml and reconfigure.",
-                found, expected
+                 Please delete {} and reconfigure.",
+                found,
+                expected,
+                connection_store.storage_path().display()
             );
             std::process::exit(1);
         }
