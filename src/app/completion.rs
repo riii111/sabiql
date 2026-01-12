@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-
+use crate::app::cache::BoundedLruCache;
 use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
+const TABLE_CACHE_CAPACITY: usize = 500;
 
 /// Context detected from SQL text at cursor position
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub enum CompletionContext {
 pub struct CompletionEngine {
     keywords: Vec<&'static str>,
     lexer: SqlLexer,
-    table_detail_cache: HashMap<String, Table>,
+    table_detail_cache: BoundedLruCache<String, Table>,
 }
 
 impl Default for CompletionEngine {
@@ -104,7 +104,7 @@ impl CompletionEngine {
                 "USING",
             ],
             lexer: SqlLexer::new(),
-            table_detail_cache: HashMap::new(),
+            table_detail_cache: BoundedLruCache::new(TABLE_CACHE_CAPACITY),
         }
     }
 
@@ -113,7 +113,8 @@ impl CompletionEngine {
     }
 
     pub fn has_cached_table(&self, qualified_name: &str) -> bool {
-        self.table_detail_cache.contains_key(qualified_name)
+        self.table_detail_cache
+            .contains(&qualified_name.to_string())
     }
 
     pub fn clear_table_cache(&mut self) {
@@ -152,9 +153,7 @@ impl CompletionEngine {
 
             let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-            if seen.contains(&qualified_name)
-                || self.table_detail_cache.contains_key(&qualified_name)
-            {
+            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
                 continue;
             }
 
@@ -236,7 +235,7 @@ impl CompletionEngine {
 
                 let selected_qualified = table_detail.map(|t| t.qualified_name());
                 let use_all_cache = referenced_tables.is_empty();
-                for (qualified_name, cached_table) in &self.table_detail_cache {
+                for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
                         continue;
                     }
@@ -739,7 +738,7 @@ impl CompletionEngine {
         // Try to find the table in cache
         let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
 
-        if let Some(table) = self.table_detail_cache.get(&qualified_name) {
+        if let Some(table) = self.table_detail_cache.peek(&qualified_name) {
             return self.column_candidates(Some(table), prefix);
         }
 
