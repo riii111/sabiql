@@ -1,5 +1,4 @@
 use std::io::{Stdout, stdout};
-use std::time::Duration;
 
 use color_eyre::eyre::Result;
 use crossterm::event::{
@@ -27,7 +26,6 @@ pub struct TuiRunner {
     event_tx: UnboundedSender<Event>,
     task: Option<JoinHandle<()>>,
     cancellation_token: CancellationToken,
-    tick_rate: f64,
 }
 
 impl TuiRunner {
@@ -42,13 +40,7 @@ impl TuiRunner {
             event_tx,
             task: None,
             cancellation_token,
-            tick_rate: 4.0,
         })
-    }
-
-    pub fn tick_rate(mut self, rate: f64) -> Self {
-        self.tick_rate = rate;
-        self
     }
 
     pub fn enter(&mut self) -> Result<()> {
@@ -78,20 +70,17 @@ impl TuiRunner {
     }
 
     fn start_event_loop(&mut self) {
-        let tick_rate = self.tick_rate;
         let event_tx = self.event_tx.clone();
         let cancellation_token = self.cancellation_token.clone();
 
         self.task = Some(tokio::spawn(async move {
             let mut event_stream = EventStream::new();
-            let mut tick_interval = tokio::time::interval(Duration::from_secs_f64(1.0 / tick_rate));
 
             let _ = event_tx.send(Event::Init);
 
             loop {
                 let event = tokio::select! {
                     _ = cancellation_token.cancelled() => break,
-                    _ = tick_interval.tick() => Event::Tick,
                     crossterm_event = event_stream.next().fuse() => {
                         match crossterm_event {
                             Some(Ok(evt)) => match evt {
