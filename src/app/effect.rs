@@ -10,6 +10,7 @@ pub enum Effect {
     Render,
 
     SaveAndConnect {
+        name: String,
         host: String,
         port: u16,
         database: String,

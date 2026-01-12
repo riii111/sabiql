@@ -13,7 +13,7 @@ use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
-use sabiql::app::ports::ConnectionStore;
+use sabiql::app::ports::{ConnectionStore, ConnectionStoreError};
 use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
@@ -64,7 +64,8 @@ async fn main() -> Result<()> {
         Ok(Some(profile)) => {
             state.runtime.dsn = Some(profile.to_dsn());
             state.runtime.database_name = Some(profile.database.clone());
-            state.runtime.active_connection_name = Some(profile.display_name());
+            state.runtime.active_connection_name = Some(profile.display_name().to_string());
+            state.connection_setup.name = profile.name.as_str().to_string();
             state.connection_setup.host = profile.host;
             state.connection_setup.port = profile.port.to_string();
             state.connection_setup.database = profile.database;
@@ -76,6 +77,14 @@ async fn main() -> Result<()> {
         Ok(None) => {
             state.connection_setup.is_first_run = true;
             state.ui.input_mode = InputMode::ConnectionSetup;
+        }
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
+            eprintln!(
+                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+                 Please delete ~/.config/sabiql/connections.toml and reconfigure.",
+                found, expected
+            );
+            std::process::exit(1);
         }
         Err(_) => {
             state.connection_setup.is_first_run = true;

@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 use super::id::ConnectionId;
+use super::name::{ConnectionName, ConnectionNameError};
 use super::ssl_mode::SslMode;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionProfile {
     pub id: ConnectionId,
+    pub name: ConnectionName,
     pub host: String,
     pub port: u16,
     pub database: String,
@@ -16,27 +18,28 @@ pub struct ConnectionProfile {
 
 impl ConnectionProfile {
     pub fn new(
+        name: impl Into<String>,
         host: impl Into<String>,
         port: u16,
         database: impl Into<String>,
         username: impl Into<String>,
         password: impl Into<String>,
         ssl_mode: SslMode,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ConnectionNameError> {
+        Ok(Self {
             id: ConnectionId::new(),
+            name: ConnectionName::new(name)?,
             host: host.into(),
             port,
             database: database.into(),
             username: username.into(),
             password: password.into(),
             ssl_mode,
-        }
+        })
     }
 
-    /// Format: host:port/database
-    pub fn display_name(&self) -> String {
-        format!("{}:{}/{}", self.host, self.port, self.database)
+    pub fn display_name(&self) -> &str {
+        self.name.as_str()
     }
 
     /// Special characters in credentials are URL-encoded
@@ -67,6 +70,7 @@ mod tests {
 
     fn make_test_profile() -> ConnectionProfile {
         ConnectionProfile::new(
+            "Test Connection",
             "localhost",
             5432,
             "testdb",
@@ -74,6 +78,7 @@ mod tests {
             "testpass",
             SslMode::Prefer,
         )
+        .unwrap()
     }
 
     mod new {
@@ -85,15 +90,29 @@ mod tests {
             let p2 = make_test_profile();
             assert_ne!(p1.id, p2.id);
         }
+
+        #[test]
+        fn empty_name_returns_error() {
+            let result = ConnectionProfile::new(
+                "",
+                "localhost",
+                5432,
+                "testdb",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            );
+            assert!(result.is_err());
+        }
     }
 
     mod display_name {
         use super::*;
 
         #[test]
-        fn returns_host_port_database_format() {
+        fn returns_connection_name() {
             let profile = make_test_profile();
-            assert_eq!(profile.display_name(), "localhost:5432/testdb");
+            assert_eq!(profile.display_name(), "Test Connection");
         }
     }
 
@@ -116,13 +135,15 @@ mod tests {
         #[test]
         fn encodes_special_chars_in_credentials() {
             let profile = ConnectionProfile::new(
+                "Test",
                 "localhost",
                 5432,
                 "my/db",
                 "user@org",
                 "p@ss:word",
                 SslMode::Prefer,
-            );
+            )
+            .unwrap();
             let dsn = profile.to_dsn();
             assert!(dsn.contains("user%40org"));
             assert!(dsn.contains("p%40ss%3Aword"));

@@ -95,6 +95,11 @@ pub fn reduce_connection(
         Action::ConnectionSetupInput(c) => {
             let setup = &mut state.connection_setup;
             match setup.focused_field {
+                ConnectionField::Name => {
+                    insert_char_at_cursor(&mut setup.name, setup.cursor_position, *c);
+                    let new_cursor = setup.cursor_position + 1;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
                 ConnectionField::Host => {
                     insert_char_at_cursor(&mut setup.host, setup.cursor_position, *c);
                     let new_cursor = setup.cursor_position + 1;
@@ -132,6 +137,7 @@ pub fn reduce_connection(
                 return Some(vec![]);
             }
             let field_str = match setup.focused_field {
+                ConnectionField::Name => &mut setup.name,
                 ConnectionField::Host => &mut setup.host,
                 ConnectionField::Port => &mut setup.port,
                 ConnectionField::Database => &mut setup.database,
@@ -214,7 +220,13 @@ pub fn reduce_connection(
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.parse().unwrap_or(5432);
+                let name = if setup.name.trim().is_empty() {
+                    setup.default_name()
+                } else {
+                    setup.name.clone()
+                };
                 Some(vec![Effect::SaveAndConnect {
+                    name,
                     host: setup.host.clone(),
                     port,
                     database: setup.database.clone(),
@@ -240,10 +252,10 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted { dsn } => {
+        Action::ConnectionSaveCompleted { dsn, name } => {
             state.connection_setup.is_first_run = false;
             state.runtime.dsn = Some(dsn.clone());
-            state.runtime.active_connection_name = Some(state.connection_setup.auto_name());
+            state.runtime.active_connection_name = Some(name.clone());
             state.runtime.connection_state = ConnectionState::Connecting;
             state.cache.state = MetadataState::Loading;
             state.ui.input_mode = InputMode::Normal;

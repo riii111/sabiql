@@ -116,6 +116,7 @@ impl EffectRunner {
             }
 
             Effect::SaveAndConnect {
+                name,
                 host,
                 port,
                 database,
@@ -123,15 +124,25 @@ impl EffectRunner {
                 password,
                 ssl_mode,
             } => {
-                let profile =
-                    ConnectionProfile::new(host, port, database, user, password, ssl_mode);
+                let profile = match ConnectionProfile::new(
+                    name, host, port, database, user, password, ssl_mode,
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        let _ = self
+                            .action_tx
+                            .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                        return Ok(());
+                    }
+                };
                 let dsn = profile.to_dsn();
+                let name = profile.name.as_str().to_string();
                 let store = Arc::clone(&self.connection_store);
                 let tx = self.action_tx.clone();
 
                 tokio::task::spawn_blocking(move || match store.save(&profile) {
                     Ok(()) => {
-                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn });
+                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn, name });
                     }
                     Err(e) => {
                         let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));

@@ -977,6 +977,7 @@ mod tests {
                 &mut state,
                 Action::ConnectionSaveCompleted {
                     dsn: "postgres://db.example.com/mydb".to_string(),
+                    name: "Test Connection".to_string(),
                 },
                 now,
             );
@@ -988,7 +989,7 @@ mod tests {
             );
             assert_eq!(
                 state.runtime.active_connection_name,
-                Some("db.example.com:5432/mydb".to_string())
+                Some("Test Connection".to_string())
             );
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(effects.len(), 1);
@@ -1256,6 +1257,7 @@ mod tests {
                 &mut state,
                 Action::ConnectionSaveCompleted {
                     dsn: "postgres://localhost/test".to_string(),
+                    name: "Test".to_string(),
                 },
                 now,
             );
