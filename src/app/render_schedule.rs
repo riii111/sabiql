@@ -63,17 +63,17 @@ fn has_active_spinner(state: &AppState) -> bool {
 fn has_blinking_cursor(state: &AppState) -> bool {
     matches!(
         state.ui.input_mode,
-        InputMode::SqlModal | InputMode::TablePicker | InputMode::CommandLine
+        InputMode::SqlModal
+            | InputMode::TablePicker
+            | InputMode::CommandLine
+            | InputMode::ConnectionSetup
     )
 }
 
-/// Returns the earlier of two optional instants.
 fn min_instant(a: Option<Instant>, b: Option<Instant>) -> Option<Instant> {
     match (a, b) {
         (Some(a), Some(b)) => Some(a.min(b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
+        _ => a.or(b),
     }
 }
 
@@ -315,6 +315,14 @@ mod tests {
         fn command_line_returns_true() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::CommandLine;
+
+            assert!(has_blinking_cursor(&state));
+        }
+
+        #[test]
+        fn connection_setup_returns_true() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConnectionSetup;
 
             assert!(has_blinking_cursor(&state));
         }
