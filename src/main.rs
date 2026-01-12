@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
                 let mut effects = reduce(&mut state, action, now);
 
                 if state.render_dirty {
-                    state.clear_expired_messages();
+                    state.clear_expired_timers(now);
                     effects.push(Effect::Render);
                 }
 
@@ -131,7 +131,7 @@ async fn main() -> Result<()> {
                 }
             } => {
                 let now = Instant::now();
-                state.clear_expired_messages();
+                state.clear_expired_timers(now);
                 let effects = reduce(&mut state, Action::Render, now);
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;

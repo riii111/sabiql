@@ -78,6 +78,16 @@ impl AppState {
         self.messages.clear_expired();
     }
 
+    /// Clear all expired timers (messages, highlight, etc.)
+    pub fn clear_expired_timers(&mut self, now: std::time::Instant) {
+        self.messages.clear_expired();
+        if let Some(until) = self.query.result_highlight_until
+            && now >= until
+        {
+            self.query.result_highlight_until = None;
+        }
+    }
+
     pub fn result_visible_rows(&self) -> usize {
         self.ui.result_visible_rows()
     }
