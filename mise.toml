@@ -7,6 +7,10 @@ description = "Build the project"
 run = "cargo build -q"
 sources = ["Cargo.toml", "src/**/*.rs"]
 
+[tasks."build:release"]
+description = "Build release binary"
+run = "cargo build --release -q"
+
 [tasks.fmt]
 description = "Format code"
 run = "cargo fmt"
