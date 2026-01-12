@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
+│              ││(select a table)                                              │
+│              ││                                                              │
+│              │╭ Select Connection ───────────────────────────╮               │
+│              ││> ● Production                                │               │
+│              ││    Staging                                   │               │
+│              ││    Local Dev                                 │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │───────────────┘
+│              ││                                              │───────────────┐
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              │╰ ↑/↓ Select  Enter Confirm  n New  q Quit ────╯               │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter:Confirm  j/k:Select  n:New  q:Quit
