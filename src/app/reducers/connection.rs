@@ -271,7 +271,12 @@ pub fn reduce_connection(
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.validation_errors.is_empty() {
+                let is_new = setup.editing_id.is_none();
                 let port = setup.port.parse().unwrap_or(5432);
+                // Set Connecting state for new connections to show error modal on failure
+                if is_new {
+                    state.runtime.connection_state = ConnectionState::Connecting;
+                }
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.clone(),
