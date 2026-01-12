@@ -2,6 +2,7 @@ use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
 use super::confirm_dialog_state::ConfirmDialogState;
+use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
 use super::message_state::MessageState;
@@ -17,7 +18,6 @@ pub struct AppState {
     pub command_line_input: String,
     pub action_tx: Option<Sender<Action>>,
 
-    /// Dirty flag for event-driven rendering.
     /// When true, a render is needed on the next event loop iteration.
     pub render_dirty: bool,
 
@@ -31,6 +31,7 @@ pub struct AppState {
     pub connection_setup: ConnectionSetupState,
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
+    pub connection_caches: ConnectionCacheStore,
 }
 
 impl AppState {
@@ -39,7 +40,7 @@ impl AppState {
             should_quit: false,
             command_line_input: String::new(),
             action_tx: None,
-            render_dirty: true, // Initial render needed
+            render_dirty: true,
             runtime: RuntimeState::new(project_name),
             ui: UiState::new(),
             cache: MetadataCache::default(),
@@ -50,6 +51,7 @@ impl AppState {
             connection_setup: ConnectionSetupState::default(),
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
+            connection_caches: ConnectionCacheStore::default(),
         }
     }
 
