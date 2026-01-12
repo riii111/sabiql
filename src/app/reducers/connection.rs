@@ -346,7 +346,7 @@ pub fn reduce_connection(
                 }
 
                 state.confirm_dialog.on_confirm = Action::DeleteConnection(id);
-                state.confirm_dialog.on_cancel = Action::CloseConfirmDialog;
+                state.confirm_dialog.on_cancel = Action::None;
                 state.confirm_dialog.return_mode = state.ui.input_mode;
                 state.ui.input_mode = InputMode::ConfirmDialog;
             }
@@ -593,6 +593,26 @@ mod tests {
             );
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
+        }
+
+        #[test]
+        fn preserves_return_mode_from_connection_selector() {
+            let mut state = AppState::new("test".to_string());
+            let profile = create_profile("Production");
+            state.connections = vec![profile];
+            state.ui.connection_list_selected = 0;
+            state.ui.input_mode = InputMode::ConnectionSelector;
+
+            reduce_connection(
+                &mut state,
+                &Action::RequestDeleteSelectedConnection,
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state.confirm_dialog.return_mode,
+                InputMode::ConnectionSelector
+            );
         }
     }
 
