@@ -79,7 +79,7 @@ pub fn reduce_connection(
         }
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup =
-                crate::app::connection_setup_state::ConnectionSetupState::from_profile(&profile);
+                crate::app::connection_setup_state::ConnectionSetupState::from_profile(profile);
             state.ui.input_mode = InputMode::ConnectionSetup;
             Some(vec![])
         }
