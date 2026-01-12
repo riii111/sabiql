@@ -123,6 +123,7 @@ async fn main() -> Result<()> {
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
                 state.clear_dirty();
             }
+            // Animation deadline reached (spinner, cursor blink, message timeout)
             _ = async {
                 match deadline {
                     Some(d) => sleep_until(d.into()).await,
@@ -131,7 +132,6 @@ async fn main() -> Result<()> {
             } => {
                 let now = Instant::now();
                 state.clear_expired_messages();
-                state.mark_dirty();
                 let effects = reduce(&mut state, Action::Render, now);
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
