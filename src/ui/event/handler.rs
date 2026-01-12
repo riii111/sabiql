@@ -307,6 +307,7 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
         KeyCode::Char('e') => Action::ReenterConnectionSetup,
+        KeyCode::Char('s') => Action::OpenConnectionSelector,
         KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
         KeyCode::Char('c') => Action::CopyConnectionError,
         KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
@@ -991,6 +992,7 @@ mod tests {
             Quit,
             Close,
             Reenter,
+            OpenSelector,
             ToggleDetails,
             Copy,
             ScrollUp,
@@ -1002,6 +1004,7 @@ mod tests {
         #[case(KeyCode::Char('q'), Expected::Quit)]
         #[case(KeyCode::Esc, Expected::Close)]
         #[case(KeyCode::Char('e'), Expected::Reenter)]
+        #[case(KeyCode::Char('s'), Expected::OpenSelector)]
         #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
         #[case(KeyCode::Char('c'), Expected::Copy)]
         #[case(KeyCode::Up, Expected::ScrollUp)]
@@ -1017,6 +1020,9 @@ mod tests {
                 Expected::Quit => assert!(matches!(result, Action::Quit)),
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
+                Expected::OpenSelector => {
+                    assert!(matches!(result, Action::OpenConnectionSelector))
+                }
                 Expected::ToggleDetails => {
                     assert!(matches!(result, Action::ToggleConnectionErrorDetails))
                 }

@@ -79,11 +79,12 @@ pub mod idx {
 
     pub mod conn_error {
         pub const EDIT: usize = 0;
-        pub const DETAILS: usize = 1;
-        pub const COPY: usize = 2;
-        pub const SCROLL: usize = 3;
-        pub const ESC_CLOSE: usize = 4;
-        pub const QUIT: usize = 5;
+        pub const SWITCH: usize = 1;
+        pub const DETAILS: usize = 2;
+        pub const COPY: usize = 3;
+        pub const SCROLL: usize = 4;
+        pub const ESC_CLOSE: usize = 5;
+        pub const QUIT: usize = 6;
     }
 
     pub mod confirm {
@@ -567,7 +568,15 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         description: "Edit connection settings",
         action: Action::ReenterConnectionSetup,
     },
-    // idx 1: DETAILS
+    // idx 1: SWITCH
+    KeyBinding {
+        key_short: "s",
+        key: "s",
+        desc_short: "Switch",
+        description: "Switch to another connection",
+        action: Action::OpenConnectionSelector,
+    },
+    // idx 2: DETAILS
     KeyBinding {
         key_short: "d",
         key: "d",
@@ -575,7 +584,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         description: "Toggle error details",
         action: Action::ToggleConnectionErrorDetails,
     },
-    // idx 2: COPY
+    // idx 3: COPY
     KeyBinding {
         key_short: "c",
         key: "c",
@@ -583,7 +592,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         description: "Copy error to clipboard",
         action: Action::CopyConnectionError,
     },
-    // idx 3: SCROLL
+    // idx 4: SCROLL
     KeyBinding {
         key_short: "j/k",
         key: "j/k",
@@ -591,7 +600,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         description: "Scroll error",
         action: Action::None,
     },
-    // idx 4: ESC_CLOSE
+    // idx 5: ESC_CLOSE
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -599,7 +608,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         description: "Close",
         action: Action::CloseConnectionError,
     },
-    // idx 5: QUIT
+    // idx 6: QUIT
     KeyBinding {
         key_short: "q",
         key: "q",
