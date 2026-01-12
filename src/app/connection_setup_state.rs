@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;
@@ -101,6 +101,8 @@ pub struct ConnectionSetupState {
     pub viewport_offset: usize,
 
     pub is_first_run: bool,
+
+    pub editing_id: Option<ConnectionId>,
 }
 
 impl Default for ConnectionSetupState {
@@ -119,6 +121,7 @@ impl Default for ConnectionSetupState {
             cursor_position: 0,
             viewport_offset: 0,
             is_first_run: true,
+            editing_id: None,
         }
     }
 }
@@ -170,6 +173,29 @@ impl ConnectionSetupState {
         let len = self.field_value(self.focused_field).chars().count();
         self.cursor_position = len;
         self.viewport_offset = 0;
+    }
+
+    pub fn from_profile(profile: &ConnectionProfile) -> Self {
+        Self {
+            name: profile.name.as_str().to_string(),
+            host: profile.host.clone(),
+            port: profile.port.to_string(),
+            database: profile.database.clone(),
+            user: profile.username.clone(),
+            password: profile.password.clone(),
+            ssl_mode: profile.ssl_mode,
+            focused_field: ConnectionField::Name,
+            ssl_dropdown: SslModeDropdown::default(),
+            validation_errors: HashMap::new(),
+            cursor_position: 0,
+            viewport_offset: 0,
+            is_first_run: false,
+            editing_id: Some(profile.id.clone()),
+        }
+    }
+
+    pub fn is_edit_mode(&self) -> bool {
+        self.editing_id.is_some()
     }
 }
 
@@ -250,6 +276,7 @@ mod tests {
             assert_eq!(state.ssl_mode, SslMode::Prefer);
             assert_eq!(state.focused_field, ConnectionField::Name);
             assert!(state.is_first_run);
+            assert!(state.editing_id.is_none());
         }
 
         #[test]
@@ -293,6 +320,54 @@ mod tests {
             };
             state.clear_errors();
             assert!(!state.has_errors());
+        }
+
+        #[test]
+        fn from_profile_populates_all_fields() {
+            let profile = ConnectionProfile::new(
+                "Test DB",
+                "db.example.com",
+                5433,
+                "testdb",
+                "testuser",
+                "secret",
+                SslMode::Require,
+            )
+            .unwrap();
+
+            let state = ConnectionSetupState::from_profile(&profile);
+
+            assert_eq!(state.name, "Test DB");
+            assert_eq!(state.host, "db.example.com");
+            assert_eq!(state.port, "5433");
+            assert_eq!(state.database, "testdb");
+            assert_eq!(state.user, "testuser");
+            assert_eq!(state.password, "secret");
+            assert_eq!(state.ssl_mode, SslMode::Require);
+            assert_eq!(state.editing_id, Some(profile.id));
+            assert!(!state.is_first_run);
+        }
+
+        #[test]
+        fn is_edit_mode_returns_false_for_new() {
+            let state = ConnectionSetupState::default();
+            assert!(!state.is_edit_mode());
+        }
+
+        #[test]
+        fn is_edit_mode_returns_true_for_edit() {
+            let profile = ConnectionProfile::new(
+                "Test",
+                "localhost",
+                5432,
+                "db",
+                "user",
+                "",
+                SslMode::Prefer,
+            )
+            .unwrap();
+            let state = ConnectionSetupState::from_profile(&profile);
+            assert!(state.is_edit_mode());
         }
     }
 }
