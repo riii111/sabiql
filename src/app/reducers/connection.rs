@@ -283,8 +283,9 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted { dsn, name } => {
+        Action::ConnectionSaveCompleted { id, dsn, name } => {
             state.connection_setup.is_first_run = false;
+            state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
             state.runtime.connection_state = ConnectionState::Connecting;
