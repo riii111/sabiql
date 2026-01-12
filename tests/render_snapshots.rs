@@ -332,3 +332,59 @@ fn footer_shows_success_message() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn explorer_connections_mode() {
+    use sabiql::app::explorer_mode::ExplorerMode;
+    use sabiql::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    // Set up connections
+    let active_id = ConnectionId::new();
+    state.connections = vec![
+        ConnectionProfile {
+            id: active_id.clone(),
+            name: ConnectionName::new("Production").unwrap(),
+            host: "prod.example.com".to_string(),
+            port: 5432,
+            database: "prod_db".to_string(),
+            username: "admin".to_string(),
+            password: "secret".to_string(),
+            ssl_mode: SslMode::Require,
+        },
+        ConnectionProfile {
+            id: ConnectionId::new(),
+            name: ConnectionName::new("Staging").unwrap(),
+            host: "staging.example.com".to_string(),
+            port: 5432,
+            database: "staging_db".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            ssl_mode: SslMode::Prefer,
+        },
+        ConnectionProfile {
+            id: ConnectionId::new(),
+            name: ConnectionName::new("Local Dev").unwrap(),
+            host: "localhost".to_string(),
+            port: 5432,
+            database: "dev_db".to_string(),
+            username: "dev".to_string(),
+            password: "dev".to_string(),
+            ssl_mode: SslMode::Disable,
+        },
+    ];
+
+    // Set active connection
+    state.runtime.active_connection_id = Some(active_id);
+
+    // Switch to Connections mode
+    state.ui.explorer_mode = ExplorerMode::Connections;
+    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_connection_list_selection(Some(0));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
