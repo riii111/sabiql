@@ -156,6 +156,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
+        KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
 
         KeyCode::Enter => {
             if state.connection_error.error_info.is_some() {

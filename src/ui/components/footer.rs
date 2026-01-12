@@ -75,6 +75,7 @@ impl Footer {
                     // Connections mode hints
                     vec![
                         ("Enter", "Connect"),
+                        ("n", "New"),
                         ("j/k", "Navigate"),
                         ("?", "Help"),
                         ("c", "Tables"),
