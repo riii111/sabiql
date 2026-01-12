@@ -980,7 +980,6 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
-                    is_edit: false,
                 },
                 now,
             );
@@ -1262,7 +1261,6 @@ mod tests {
                     id: ConnectionId::new(),
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
-                    is_edit: false,
                 },
                 now,
             );

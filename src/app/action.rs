@@ -63,7 +63,6 @@ pub enum Action {
         id: ConnectionId,
         dsn: String,
         name: String,
-        is_edit: bool,
     },
     ConnectionSaveFailed(String),
     ConnectionEditLoaded(Box<ConnectionProfile>),

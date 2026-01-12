@@ -271,12 +271,8 @@ pub fn reduce_connection(
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.validation_errors.is_empty() {
-                let is_new = setup.editing_id.is_none();
                 let port = setup.port.parse().unwrap_or(5432);
-                // Set Connecting state for new connections to show error modal on failure
-                if is_new {
-                    state.runtime.connection_state = ConnectionState::Connecting;
-                }
+                state.runtime.connection_state = ConnectionState::Connecting;
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.clone(),
@@ -305,25 +301,15 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted {
-            id,
-            dsn,
-            name,
-            is_edit,
-        } => {
+        Action::ConnectionSaveCompleted { id, dsn, name } => {
             state.connection_setup.is_first_run = false;
             state.ui.input_mode = InputMode::Normal;
-
-            if *is_edit {
-                Some(vec![])
-            } else {
-                state.runtime.active_connection_id = Some(id.clone());
-                state.runtime.dsn = Some(dsn.clone());
-                state.runtime.active_connection_name = Some(name.clone());
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
-            }
+            state.runtime.active_connection_id = Some(id.clone());
+            state.runtime.dsn = Some(dsn.clone());
+            state.runtime.active_connection_name = Some(name.clone());
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.cache.state = MetadataState::Loading;
+            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(msg) => {
             state.messages.set_error_at(msg.clone(), now);
