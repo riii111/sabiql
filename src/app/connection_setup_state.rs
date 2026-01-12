@@ -2,13 +2,12 @@ use std::collections::HashMap;
 
 use crate::domain::connection::SslMode;
 
-/// Input field width including brackets "[ ]" (4 chars)
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
-/// Visible character width for input content (INPUT_WIDTH - 4)
 pub const CONNECTION_INPUT_VISIBLE_WIDTH: usize = (CONNECTION_INPUT_WIDTH - 4) as usize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnectionField {
+    Name,
     Host,
     Port,
     Database,
@@ -20,6 +19,7 @@ pub enum ConnectionField {
 impl ConnectionField {
     pub fn all() -> &'static [ConnectionField] {
         &[
+            ConnectionField::Name,
             ConnectionField::Host,
             ConnectionField::Port,
             ConnectionField::Database,
@@ -31,6 +31,7 @@ impl ConnectionField {
 
     pub fn next(&self) -> Option<ConnectionField> {
         match self {
+            ConnectionField::Name => Some(ConnectionField::Host),
             ConnectionField::Host => Some(ConnectionField::Port),
             ConnectionField::Port => Some(ConnectionField::Database),
             ConnectionField::Database => Some(ConnectionField::User),
@@ -42,7 +43,8 @@ impl ConnectionField {
 
     pub fn prev(&self) -> Option<ConnectionField> {
         match self {
-            ConnectionField::Host => None,
+            ConnectionField::Name => None,
+            ConnectionField::Host => Some(ConnectionField::Name),
             ConnectionField::Port => Some(ConnectionField::Host),
             ConnectionField::Database => Some(ConnectionField::Port),
             ConnectionField::User => Some(ConnectionField::Database),
@@ -54,7 +56,8 @@ impl ConnectionField {
     pub fn is_required(&self) -> bool {
         matches!(
             self,
-            ConnectionField::Host
+            ConnectionField::Name
+                | ConnectionField::Host
                 | ConnectionField::Port
                 | ConnectionField::Database
                 | ConnectionField::User
@@ -63,6 +66,7 @@ impl ConnectionField {
 
     pub fn label(&self) -> &'static str {
         match self {
+            ConnectionField::Name => "Name:",
             ConnectionField::Host => "Host:",
             ConnectionField::Port => "Port:",
             ConnectionField::Database => "Database:",
@@ -81,6 +85,7 @@ pub struct SslModeDropdown {
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSetupState {
+    pub name: String,
     pub host: String,
     pub port: String,
     pub database: String,
@@ -95,25 +100,23 @@ pub struct ConnectionSetupState {
     pub cursor_position: usize,
     pub viewport_offset: usize,
 
-    /// Determines cancel behavior: first run shows quit confirmation, otherwise returns to Normal
     pub is_first_run: bool,
 }
 
 impl Default for ConnectionSetupState {
     fn default() -> Self {
-        let host = "localhost".to_string();
-        let cursor_position = host.len();
         Self {
-            host,
+            name: String::new(),
+            host: "localhost".to_string(),
             port: "5432".to_string(),
             database: String::new(),
             user: String::new(),
             password: String::new(),
             ssl_mode: SslMode::Prefer,
-            focused_field: ConnectionField::Host,
+            focused_field: ConnectionField::Name,
             ssl_dropdown: SslModeDropdown::default(),
             validation_errors: HashMap::new(),
-            cursor_position,
+            cursor_position: 0,
             viewport_offset: 0,
             is_first_run: true,
         }
@@ -121,17 +124,18 @@ impl Default for ConnectionSetupState {
 }
 
 impl ConnectionSetupState {
-    /// Format: host:port/database (matches ConnectionProfile::display_name)
-    pub fn auto_name(&self) -> String {
+    /// Generates default name from database@host format.
+    pub fn default_name(&self) -> String {
         if self.database.is_empty() {
-            format!("{}:{}", self.host, self.port)
+            self.host.clone()
         } else {
-            format!("{}:{}/{}", self.host, self.port, self.database)
+            format!("{}@{}", self.database, self.host)
         }
     }
 
     pub fn field_value(&self, field: ConnectionField) -> &str {
         match field {
+            ConnectionField::Name => &self.name,
             ConnectionField::Host => &self.host,
             ConnectionField::Port => &self.port,
             ConnectionField::Database => &self.database,
@@ -178,6 +182,7 @@ mod tests {
         use super::*;
 
         #[rstest]
+        #[case(ConnectionField::Name, Some(ConnectionField::Host))]
         #[case(ConnectionField::Host, Some(ConnectionField::Port))]
         #[case(ConnectionField::Port, Some(ConnectionField::Database))]
         #[case(ConnectionField::Database, Some(ConnectionField::User))]
@@ -192,7 +197,8 @@ mod tests {
         }
 
         #[rstest]
-        #[case(ConnectionField::Host, None)]
+        #[case(ConnectionField::Name, None)]
+        #[case(ConnectionField::Host, Some(ConnectionField::Name))]
         #[case(ConnectionField::Port, Some(ConnectionField::Host))]
         #[case(ConnectionField::Database, Some(ConnectionField::Port))]
         #[case(ConnectionField::User, Some(ConnectionField::Database))]
@@ -206,6 +212,7 @@ mod tests {
         }
 
         #[rstest]
+        #[case(ConnectionField::Name, true)]
         #[case(ConnectionField::Host, true)]
         #[case(ConnectionField::Port, true)]
         #[case(ConnectionField::Database, true)]
@@ -222,9 +229,9 @@ mod tests {
         #[test]
         fn all_returns_fields_in_order() {
             let all = ConnectionField::all();
-            assert_eq!(all.len(), 6);
-            assert_eq!(all[0], ConnectionField::Host);
-            assert_eq!(all[5], ConnectionField::SslMode);
+            assert_eq!(all.len(), 7);
+            assert_eq!(all[0], ConnectionField::Name);
+            assert_eq!(all[6], ConnectionField::SslMode);
         }
     }
 
@@ -234,29 +241,30 @@ mod tests {
         #[test]
         fn default_has_correct_values() {
             let state = ConnectionSetupState::default();
+            assert!(state.name.is_empty());
             assert_eq!(state.host, "localhost");
             assert_eq!(state.port, "5432");
             assert!(state.database.is_empty());
             assert!(state.user.is_empty());
             assert!(state.password.is_empty());
             assert_eq!(state.ssl_mode, SslMode::Prefer);
-            assert_eq!(state.focused_field, ConnectionField::Host);
+            assert_eq!(state.focused_field, ConnectionField::Name);
             assert!(state.is_first_run);
         }
 
         #[test]
-        fn auto_name_without_database() {
+        fn default_name_without_database() {
             let state = ConnectionSetupState::default();
-            assert_eq!(state.auto_name(), "localhost:5432");
+            assert_eq!(state.default_name(), "localhost");
         }
 
         #[test]
-        fn auto_name_with_database() {
+        fn default_name_with_database() {
             let state = ConnectionSetupState {
                 database: "mydb".to_string(),
                 ..Default::default()
             };
-            assert_eq!(state.auto_name(), "localhost:5432/mydb");
+            assert_eq!(state.default_name(), "mydb@localhost");
         }
 
         #[test]

@@ -10,17 +10,17 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                                              │
 │        ╭ Connection Setup ──────────────────────────────────────────╮        │
 │        │                                                            │        │
-│        │  Host:       [ localhost█                 ]                │        │
+│        │  Name:       [ █                          ]                │        │
+│        │  Host:       [ localhost                  ]                │        │
 │        │  Port:       [ 5432                       ]                │        │
-│        │  Database:   [ mydb                       ]                │        │
-│        │  User:       [ postgres                   ]                │────────┘
-│        │  Password:   [                            ]                │────────┐
+│        │  Database:   [ mydb                       ]                │────────┘
+│        │  User:       [ postgres                   ]                │────────┐
+│        │  Password:   [                            ]                │        │
 │        │  SSL Mode:   [ prefer                   ▼ ]                │        │
 │        │                                                            │        │
 │        │  Note: Connection info is stored locally in plain text     │        │
 │        │                                                            │        │
 │        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ──╯        │
-│              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘

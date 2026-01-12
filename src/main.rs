@@ -64,7 +64,8 @@ async fn main() -> Result<()> {
         Ok(Some(profile)) => {
             state.runtime.dsn = Some(profile.to_dsn());
             state.runtime.database_name = Some(profile.database.clone());
-            state.runtime.active_connection_name = Some(profile.display_name());
+            state.runtime.active_connection_name = Some(profile.display_name().to_string());
+            state.connection_setup.name = profile.name.as_str().to_string();
             state.connection_setup.host = profile.host;
             state.connection_setup.port = profile.port.to_string();
             state.connection_setup.database = profile.database;

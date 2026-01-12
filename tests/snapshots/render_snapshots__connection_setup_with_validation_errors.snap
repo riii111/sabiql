@@ -10,17 +10,17 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                                              │
 │        ╭ Connection Setup ──────────────────────────────────────────╮        │
 │        │                                                            │        │
-│        │  Host:       [ █                          ] Required       │        │
+│        │  Name:       [ █                          ]                │        │
+│        │  Host:       [                            ] Required       │        │
 │        │  Port:       [ 5432                       ]                │        │
-│        │  Database:   [                            ] Required       │        │
-│        │  User:       [                            ] Required       │────────┘
-│        │  Password:   [                            ]                │────────┐
+│        │  Database:   [                            ] Required       │────────┘
+│        │  User:       [                            ] Required       │────────┐
+│        │  Password:   [                            ]                │        │
 │        │  SSL Mode:   [ prefer                   ▼ ]                │        │
 │        │                                                            │        │
 │        │  Note: Connection info is stored locally in plain text     │        │
 │        │                                                            │        │
 │        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ──╯        │
-│              ││                                                              │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘

@@ -64,7 +64,7 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Required".to_string());
             }
         }
-        ConnectionField::Password | ConnectionField::SslMode => {
+        ConnectionField::Name | ConnectionField::Password | ConnectionField::SslMode => {
             // Optional fields, no validation needed
         }
     }
