@@ -1,4 +1,5 @@
 use crate::app::action::Action;
+use crate::app::input_mode::InputMode;
 
 #[derive(Debug, Clone)]
 pub struct ConfirmDialogState {
@@ -6,6 +7,8 @@ pub struct ConfirmDialogState {
     pub message: String,
     pub on_confirm: Action,
     pub on_cancel: Action,
+    /// The InputMode to return to after dialog closes
+    pub return_mode: InputMode,
 }
 
 impl Default for ConfirmDialogState {
@@ -15,6 +18,7 @@ impl Default for ConfirmDialogState {
             message: String::new(),
             on_confirm: Action::None,
             on_cancel: Action::None,
+            return_mode: InputMode::Normal,
         }
     }
 }
