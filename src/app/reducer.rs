@@ -22,6 +22,19 @@ use crate::app::reducers::{
 use crate::app::state::AppState;
 
 pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
+    // Mark dirty for all state-changing actions (except None and Render)
+    let should_mark_dirty = !matches!(action, Action::None | Action::Render);
+
+    let effects = reduce_inner(state, action, now);
+
+    if should_mark_dirty {
+        state.mark_dirty();
+    }
+
+    effects
+}
+
+fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
     if let Some(effects) = reduce_connection(state, &action, now) {
         return effects;
     }
@@ -56,6 +69,7 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
         }
         Action::Render => {
             state.clear_expired_messages();
+            state.clear_dirty();
             vec![Effect::Render]
         }
 
