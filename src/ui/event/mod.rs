@@ -6,7 +6,6 @@ use crossterm::event::KeyEvent;
 pub enum Event {
     Init,
     Tick,
-    Render,
     Key(KeyEvent),
     Resize(u16, u16),
 }

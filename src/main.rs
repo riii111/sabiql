@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
 
     state.action_tx = Some(action_tx.clone());
 
-    let mut tui = TuiRunner::new()?.tick_rate(4.0).frame_rate(30.0);
+    let mut tui = TuiRunner::new()?.tick_rate(4.0);
     tui.enter()?;
 
     let initial_size = tui.terminal().size()?;
