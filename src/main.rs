@@ -13,7 +13,7 @@ use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
-use sabiql::app::ports::ConnectionStore;
+use sabiql::app::ports::{ConnectionStore, ConnectionStoreError};
 use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
@@ -77,6 +77,14 @@ async fn main() -> Result<()> {
         Ok(None) => {
             state.connection_setup.is_first_run = true;
             state.ui.input_mode = InputMode::ConnectionSetup;
+        }
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
+            eprintln!(
+                "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
+                 Please delete ~/.config/sabiql/connections.toml and reconfigure.",
+                found, expected
+            );
+            std::process::exit(1);
         }
         Err(_) => {
             state.connection_setup.is_first_run = true;
