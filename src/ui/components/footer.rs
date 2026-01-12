@@ -151,6 +151,12 @@ impl Footer {
                 CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
             ],
+            InputMode::ConnectionSelector => vec![
+                ("Enter", "Confirm"),
+                ("j/k", "Select"),
+                ("n", "New"),
+                ("q", "Quit"),
+            ],
         }
     }
 
