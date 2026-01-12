@@ -10,6 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Target DB**: PostgreSQL (MVP), MySQL (future)
 - **No DB Driver Required**: Uses `psql`/`mysql` CLI for queries (driver-less architecture)
 
+## Setup
+
+```bash
+mise install                       # Install tools (Rust, lefthook, etc.)
+mise exec -- lefthook install      # Set up Git hooks (runs cargo fmt on commit)
+```
+
 ## Architecture
 
 ### Layer Structure (Hexagonal / Ports & Adapters)

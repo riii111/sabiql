@@ -1,0 +1,5 @@
+pre-commit:
+  commands:
+    fmt:
+      run: mise run fmt
+      stage_fixed: true

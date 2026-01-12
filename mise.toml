@@ -1,6 +1,7 @@
 [tools]
 rust = "1.92.0"
 "cargo:cargo-insta" = "1.45.1"
+lefthook = "1.10.10"
 
 [tasks.build]
 description = "Build the project"
