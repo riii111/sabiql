@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +45,7 @@ pub enum Action {
 
     // Connection Setup
     OpenConnectionSetup,
+    StartEditConnection(ConnectionId),
     CloseConnectionSetup,
     ConnectionSetupInput(char),
     ConnectionSetupBackspace,
@@ -60,8 +62,11 @@ pub enum Action {
         id: ConnectionId,
         dsn: String,
         name: String,
+        is_edit: bool,
     },
     ConnectionSaveFailed(String),
+    ConnectionEditLoaded(Box<ConnectionProfile>),
+    ConnectionEditLoadFailed(String),
 
     // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
