@@ -5,14 +5,17 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
+use tokio::time::sleep_until;
 
 use sabiql::app::action::Action;
 use sabiql::app::cache::TtlCache;
 use sabiql::app::completion::CompletionEngine;
+use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::ports::ConnectionStore;
 use sabiql::app::reducer::reduce;
+use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
@@ -98,6 +101,9 @@ async fn main() -> Result<()> {
     let mut last_cache_cleanup = Instant::now();
 
     loop {
+        let now = Instant::now();
+        let deadline = next_animation_deadline(&state, now);
+
         tokio::select! {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
@@ -107,7 +113,26 @@ async fn main() -> Result<()> {
             }
             Some(action) = action_rx.recv() => {
                 let now = Instant::now();
-                let effects = reduce(&mut state, action, now);
+                let mut effects = reduce(&mut state, action, now);
+
+                // Auto-render if dirty
+                if state.render_dirty {
+                    effects.push(Effect::Render);
+                    state.clear_dirty();
+                }
+
+                let mut tui_adapter = TuiAdapter::new(&mut tui);
+                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+            }
+            _ = async {
+                match deadline {
+                    Some(d) => sleep_until(d.into()).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                // Animation deadline reached: trigger render if needed
+                state.mark_dirty();
+                let effects = reduce(&mut state, Action::Render, Instant::now());
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
                 effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
             }
