@@ -75,6 +75,7 @@ impl Footer {
                     // Connections mode hints
                     vec![
                         ("Enter", "Connect"),
+                        ("n", "New"),
                         ("j/k", "Navigate"),
                         ("?", "Help"),
                         ("c", "Tables"),
@@ -150,6 +151,12 @@ impl Footer {
             InputMode::ConfirmDialog => vec![
                 CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
+            ],
+            InputMode::ConnectionSelector => vec![
+                ("Enter", "Confirm"),
+                ("↑/↓", "Select"),
+                ("n", "New"),
+                ("q", "Quit"),
             ],
         }
     }

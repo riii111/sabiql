@@ -169,19 +169,52 @@ impl EffectRunner {
                 let store = Arc::clone(&self.connection_store);
                 let tx = self.action_tx.clone();
 
-                tokio::task::spawn_blocking(move || match store.save(&profile) {
-                    Ok(()) => {
-                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted {
-                            id,
-                            dsn,
-                            name,
-                            is_edit,
-                        });
-                    }
-                    Err(e) => {
-                        let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
-                    }
-                });
+                if is_edit {
+                    tokio::task::spawn_blocking(move || match store.save(&profile) {
+                        Ok(()) => {
+                            let _ = tx.blocking_send(Action::ConnectionSaveCompleted {
+                                id,
+                                dsn,
+                                name,
+                                is_edit,
+                            });
+                        }
+                        Err(e) => {
+                            let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                        }
+                    });
+                } else {
+                    // Save only after connection succeeds
+                    let provider = Arc::clone(&self.metadata_provider);
+                    let cache = self.metadata_cache.clone();
+                    tokio::spawn(async move {
+                        match provider.fetch_metadata(&dsn).await {
+                            Ok(metadata) => {
+                                cache.set(dsn.clone(), metadata).await;
+                                match store.save(&profile) {
+                                    Ok(()) => {
+                                        let _ = tx
+                                            .send(Action::ConnectionSaveCompleted {
+                                                id,
+                                                dsn,
+                                                name,
+                                                is_edit,
+                                            })
+                                            .await;
+                                    }
+                                    Err(e) => {
+                                        let _ = tx
+                                            .send(Action::ConnectionSaveFailed(e.to_string()))
+                                            .await;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Action::MetadataFailed(e.to_string())).await;
+                            }
+                        }
+                    });
+                }
                 Ok(())
             }
 

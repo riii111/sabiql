@@ -5,6 +5,7 @@ use super::command_line::CommandLine;
 use super::command_palette::CommandPalette;
 use super::confirm_dialog::ConfirmDialog;
 use super::connection_error::ConnectionError;
+use super::connection_selector::ConnectionSelector;
 use super::connection_setup::ConnectionSetup;
 use super::explorer::Explorer;
 use super::footer::Footer;
@@ -47,6 +48,7 @@ impl MainLayout {
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
             InputMode::ConnectionError => ConnectionError::render(frame, state),
             InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
+            InputMode::ConnectionSelector => ConnectionSelector::render(frame, state),
             _ => {}
         }
 
