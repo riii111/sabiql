@@ -69,6 +69,9 @@ pub enum Action {
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(String),
 
+    // Connection Selector
+    OpenConnectionSelector,
+
     // Connection Error
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,

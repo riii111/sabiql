@@ -30,6 +30,18 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
         InputMode::ConnectionError => handle_connection_error_keys(key),
         InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
+        InputMode::ConnectionSelector => handle_connection_selector_keys(key),
+    }
+}
+
+fn handle_connection_selector_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Char('j') | KeyCode::Down => Action::ConnectionListSelectNext,
+        KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
+        KeyCode::Enter => Action::ConfirmConnectionSelection,
+        KeyCode::Char('n') => Action::OpenConnectionSetup,
+        _ => Action::None,
     }
 }
 
@@ -144,6 +156,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') => Action::ErOpenDiagram,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
+        KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
 
         KeyCode::Enter => {
             if state.connection_error.error_info.is_some() {
@@ -1201,6 +1214,35 @@ mod tests {
         #[test]
         fn unknown_key_returns_none() {
             let result = handle_confirm_dialog_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod connection_selector_keys {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(KeyCode::Char('q'), Action::Quit)]
+        #[case(KeyCode::Char('j'), Action::ConnectionListSelectNext)]
+        #[case(KeyCode::Down, Action::ConnectionListSelectNext)]
+        #[case(KeyCode::Char('k'), Action::ConnectionListSelectPrevious)]
+        #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
+        #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
+        #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
+        fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
+            let result = handle_connection_selector_keys(key(code));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn unknown_key_returns_none() {
+            let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
 
             assert!(matches!(result, Action::None));
         }

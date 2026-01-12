@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Enter:Connect  j/k:Navigate  ?:Help  c:Tables  Esc:Back  q:Quit
+Enter:Connect  n:New  j/k:Navigate  ?:Help  c:Tables  Esc:Back  q:Quit

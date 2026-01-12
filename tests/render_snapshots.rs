@@ -388,3 +388,53 @@ fn explorer_connections_mode() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn connection_selector_with_multiple_connections() {
+    use sabiql::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    let active_id = ConnectionId::new();
+    state.connections = vec![
+        ConnectionProfile {
+            id: active_id.clone(),
+            name: ConnectionName::new("Production").unwrap(),
+            host: "prod.example.com".to_string(),
+            port: 5432,
+            database: "prod_db".to_string(),
+            username: "admin".to_string(),
+            password: "secret".to_string(),
+            ssl_mode: SslMode::Require,
+        },
+        ConnectionProfile {
+            id: ConnectionId::new(),
+            name: ConnectionName::new("Staging").unwrap(),
+            host: "staging.example.com".to_string(),
+            port: 5432,
+            database: "staging_db".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            ssl_mode: SslMode::Prefer,
+        },
+        ConnectionProfile {
+            id: ConnectionId::new(),
+            name: ConnectionName::new("Local Dev").unwrap(),
+            host: "localhost".to_string(),
+            port: 5432,
+            database: "dev_db".to_string(),
+            username: "dev".to_string(),
+            password: "dev".to_string(),
+            ssl_mode: SslMode::Disable,
+        },
+    ];
+
+    state.runtime.active_connection_id = Some(active_id);
+    state.ui.input_mode = InputMode::ConnectionSelector;
+    state.ui.set_connection_list_selection(Some(0));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
