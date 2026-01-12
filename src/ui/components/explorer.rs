@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -13,17 +14,22 @@ pub struct Explorer;
 
 impl Explorer {
     pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        let is_error = matches!(state.cache.state, MetadataState::Error(_));
-        let has_cached_data =
-            !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
-
         let block = panel_block(" [1] Explorer ", is_focused);
-
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        Self::render_tables_section(frame, inner, state, has_cached_data);
+        match state.ui.explorer_mode {
+            ExplorerMode::Tables => {
+                let is_error = matches!(state.cache.state, MetadataState::Error(_));
+                let has_cached_data =
+                    !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
+                Self::render_tables_section(frame, inner, state, has_cached_data);
+            }
+            ExplorerMode::Connections => {
+                Self::render_connections_section(frame, inner, state);
+            }
+        }
     }
 
     fn render_tables_section(
@@ -118,6 +124,63 @@ impl Explorer {
                         position: h_offset,
                         viewport_size: content_width,
                         total_items: max_name_width,
+                    },
+                );
+            }
+        }
+    }
+
+    fn render_connections_section(frame: &mut Frame, area: Rect, state: &mut AppState) {
+        let active_id = state.runtime.active_connection_id.as_ref();
+
+        let items: Vec<ListItem> = if state.connections.is_empty() {
+            vec![ListItem::new(" No connections")]
+        } else {
+            state
+                .connections
+                .iter()
+                .map(|conn| {
+                    let is_active = active_id == Some(&conn.id);
+                    let prefix = if is_active { "● " } else { "  " };
+                    let text = format!("{}{}", prefix, conn.display_name());
+                    let style = if is_active {
+                        Style::default().fg(Color::Green)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(text).style(style)
+                })
+                .collect()
+        };
+
+        let list = List::new(items)
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        frame.render_stateful_widget(list, area, &mut state.ui.connection_list_state);
+
+        // Render vertical scrollbar if needed
+        if !state.connections.is_empty() {
+            let total_items = state.connections.len();
+            let viewport_size = area.height as usize;
+
+            if total_items > viewport_size {
+                let scroll_offset = state.ui.connection_list_state.offset();
+
+                use super::scroll_indicator::{
+                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
+                };
+                render_vertical_scroll_indicator_bar(
+                    frame,
+                    area,
+                    VerticalScrollParams {
+                        position: scroll_offset,
+                        viewport_size,
+                        total_items,
                     },
                 );
             }

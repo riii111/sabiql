@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::app::connection_error::ConnectionErrorInfo;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::domain::connection::ConnectionProfile;
@@ -104,6 +105,14 @@ pub enum Action {
     // Explorer horizontal scroll
     ExplorerScrollLeft,
     ExplorerScrollRight,
+
+    // Explorer mode (Tables / Connections)
+    ToggleExplorerMode,
+    SetExplorerMode(ExplorerMode),
+    ConnectionListSelectNext,
+    ConnectionListSelectPrevious,
+    ConnectionsLoaded(Vec<ConnectionProfile>),
+    ConfirmConnectionSelection,
 
     // Selection
     ConfirmSelection,

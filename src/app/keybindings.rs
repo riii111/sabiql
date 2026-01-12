@@ -41,7 +41,7 @@ pub mod idx {
         pub const RELOAD: usize = 9;
         pub const SQL: usize = 10;
         pub const ER_DIAGRAM: usize = 11;
-        pub const CONNECT: usize = 12;
+        pub const CONNECTIONS: usize = 12;
     }
 
     /// Indexes for FOOTER_NAV_KEYS
@@ -212,13 +212,13 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         description: "Open ER Diagram",
         action: Action::ErOpenDiagram,
     },
-    // idx 12: CONNECT
+    // idx 12: CONNECTIONS
     KeyBinding {
         key_short: "c",
         key: "c",
-        desc_short: "Connect",
-        description: "Open connection settings",
-        action: Action::OpenConnectionSetup,
+        desc_short: "Connections",
+        description: "Toggle Connections mode",
+        action: Action::ToggleExplorerMode,
     },
 ];
 
@@ -749,7 +749,7 @@ mod tests {
         assert!(idx::global::RELOAD < GLOBAL_KEYS.len());
         assert!(idx::global::SQL < GLOBAL_KEYS.len());
         assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
-        assert!(idx::global::CONNECT < GLOBAL_KEYS.len());
+        assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
 
         // FOOTER_NAV_KEYS
         assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());

@@ -1,5 +1,6 @@
 use ratatui::widgets::ListState;
 
+use super::explorer_mode::ExplorerMode;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
@@ -22,6 +23,10 @@ pub struct UiState {
     pub explorer_selected: usize,
     pub explorer_horizontal_offset: usize,
     pub explorer_list_state: ListState,
+    pub explorer_mode: ExplorerMode,
+
+    pub connection_list_selected: usize,
+    pub connection_list_state: ListState,
 
     pub picker_selected: usize,
     pub picker_list_state: ListState,
@@ -95,6 +100,20 @@ impl UiState {
             None => {
                 self.explorer_selected = 0;
                 self.explorer_list_state.select(None);
+            }
+        }
+    }
+
+    /// Update connection list selection, keeping connection_list_selected and connection_list_state in sync.
+    pub fn set_connection_list_selection(&mut self, index: Option<usize>) {
+        match index {
+            Some(i) => {
+                self.connection_list_selected = i;
+                self.connection_list_state.select(Some(i));
+            }
+            None => {
+                self.connection_list_selected = 0;
+                self.connection_list_state.select(None);
             }
         }
     }
@@ -243,6 +262,34 @@ mod tests {
 
         assert_eq!(state.explorer_selected, 0);
         assert_eq!(state.explorer_list_state.selected(), None);
+    }
+
+    #[test]
+    fn default_explorer_mode_is_tables() {
+        let state = UiState::default();
+
+        assert_eq!(state.explorer_mode, ExplorerMode::Tables);
+    }
+
+    #[test]
+    fn set_connection_list_selection_with_some_syncs_both_fields() {
+        let mut state = UiState::default();
+
+        state.set_connection_list_selection(Some(3));
+
+        assert_eq!(state.connection_list_selected, 3);
+        assert_eq!(state.connection_list_state.selected(), Some(3));
+    }
+
+    #[test]
+    fn set_connection_list_selection_with_none_resets_to_zero_and_none() {
+        let mut state = UiState::default();
+        state.set_connection_list_selection(Some(5));
+
+        state.set_connection_list_selection(None);
+
+        assert_eq!(state.connection_list_selected, 0);
+        assert_eq!(state.connection_list_state.selected(), None);
     }
 
     #[test]

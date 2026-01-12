@@ -13,6 +13,7 @@ pub mod effect;
 pub mod effect_runner;
 pub mod er_state;
 pub mod er_task;
+pub mod explorer_mode;
 pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;

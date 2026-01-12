@@ -18,7 +18,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │  r              Reload metadata                     ││           │
 │           │  s              Open SQL Editor                     ││           │
 │           │  e              Open ER Diagram                     ││           │
-│           │  c              Open connection settings            ││           │
+│           │  c              Toggle Connections mode             ││           │
 │           │                                                     ││           │
 │           │▸ Navigation                                         ││           │
 │           │  j / ↓          Move down / scroll                  ▼│           │

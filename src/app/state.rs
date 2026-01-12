@@ -12,6 +12,7 @@ use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
 use super::ui_state::UiState;
 use crate::domain::TableSummary;
+use crate::domain::connection::ConnectionProfile;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -32,6 +33,8 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub connection_caches: ConnectionCacheStore,
+    /// Cached list of saved connections (for Explorer Connections mode).
+    pub connections: Vec<ConnectionProfile>,
 }
 
 impl AppState {
@@ -52,6 +55,7 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             connection_caches: ConnectionCacheStore::default(),
+            connections: Vec::new(),
         }
     }
 
