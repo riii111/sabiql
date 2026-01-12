@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
-use crate::domain::{DatabaseMetadata, QueryResult, Table};
+use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorMove {
@@ -36,6 +36,11 @@ pub enum Action {
 
     // Connection lifecycle
     TryConnect,
+    SwitchConnection {
+        id: ConnectionId,
+        dsn: String,
+        name: String,
+    },
 
     // Connection Setup
     OpenConnectionSetup,
