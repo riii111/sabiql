@@ -88,7 +88,11 @@ impl ConnectionStore for TomlConnectionStore {
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
-        let mut profiles = self.load_all().unwrap_or_default();
+        let mut profiles = match self.load_all() {
+            Ok(p) => p,
+            Err(ConnectionStoreError::VersionMismatch { .. }) => vec![],
+            Err(e) => return Err(e),
+        };
 
         let normalized_name = profile.name.normalized();
         if profiles
