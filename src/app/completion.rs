@@ -110,75 +110,9 @@ impl CompletionEngine {
 
     #[cfg(test)]
     pub fn new_with_capacity(capacity: usize) -> Self {
-        Self {
-            keywords: vec![
-                "SELECT",
-                "FROM",
-                "WHERE",
-                "JOIN",
-                "LEFT",
-                "RIGHT",
-                "INNER",
-                "OUTER",
-                "CROSS",
-                "ON",
-                "AND",
-                "OR",
-                "NOT",
-                "IN",
-                "IS",
-                "NULL",
-                "TRUE",
-                "FALSE",
-                "LIKE",
-                "ILIKE",
-                "BETWEEN",
-                "EXISTS",
-                "CASE",
-                "WHEN",
-                "THEN",
-                "ELSE",
-                "END",
-                "AS",
-                "DISTINCT",
-                "ORDER",
-                "BY",
-                "ASC",
-                "DESC",
-                "NULLS",
-                "FIRST",
-                "LAST",
-                "GROUP",
-                "HAVING",
-                "LIMIT",
-                "OFFSET",
-                "UNION",
-                "INTERSECT",
-                "EXCEPT",
-                "ALL",
-                "INSERT",
-                "INTO",
-                "VALUES",
-                "UPDATE",
-                "SET",
-                "DELETE",
-                "CREATE",
-                "DROP",
-                "ALTER",
-                "TABLE",
-                "INDEX",
-                "VIEW",
-                "RETURNING",
-                "WITH",
-                "RECURSIVE",
-                "COALESCE",
-                "NULLIF",
-                "CAST",
-                "USING",
-            ],
-            lexer: SqlLexer::new(),
-            table_detail_cache: BoundedLruCache::new(capacity),
-        }
+        let mut engine = Self::new();
+        engine.table_detail_cache = BoundedLruCache::new(capacity);
+        engine
     }
 
     pub fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
@@ -186,8 +120,7 @@ impl CompletionEngine {
     }
 
     pub fn has_cached_table(&self, qualified_name: &str) -> bool {
-        self.table_detail_cache
-            .contains(&qualified_name.to_string())
+        self.table_detail_cache.contains(qualified_name)
     }
 
     pub fn clear_table_cache(&mut self) {

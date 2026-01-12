@@ -1,4 +1,5 @@
 use lru::LruCache;
+use std::borrow::Borrow;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 
@@ -18,7 +19,11 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.put(key, value);
     }
 
-    pub fn contains(&self, key: &K) -> bool {
+    pub fn contains<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.inner.peek(key).is_some()
     }
 
@@ -27,7 +32,11 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
     }
 
     /// Returns a reference without updating LRU order
-    pub fn peek(&self, key: &K) -> Option<&V> {
+    pub fn peek<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.inner.peek(key)
     }
 
