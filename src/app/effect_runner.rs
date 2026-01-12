@@ -205,6 +205,22 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::LoadConnections => {
+                let store = Arc::clone(&self.connection_store);
+                let tx = self.action_tx.clone();
+
+                tokio::task::spawn_blocking(move || match store.load_all() {
+                    Ok(profiles) => {
+                        let _ = tx.blocking_send(Action::ConnectionsLoaded(profiles));
+                    }
+                    Err(_) => {
+                        // On error, send empty list to avoid blocking UI
+                        let _ = tx.blocking_send(Action::ConnectionsLoaded(vec![]));
+                    }
+                });
+                Ok(())
+            }
+
             Effect::CacheInvalidate { dsn } => {
                 self.metadata_cache.invalidate(&dsn).await;
                 Ok(())

@@ -24,6 +24,8 @@ pub enum Effect {
         id: ConnectionId,
     },
 
+    LoadConnections,
+
     CacheInvalidate {
         dsn: String,
     },
