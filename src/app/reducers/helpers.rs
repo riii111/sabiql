@@ -98,8 +98,10 @@ mod tests {
 
         #[test]
         fn empty_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            state.name = "".to_string();
+            let mut state = ConnectionSetupState {
+                name: "".to_string(),
+                ..Default::default()
+            };
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -111,8 +113,10 @@ mod tests {
 
         #[test]
         fn whitespace_only_name_sets_error() {
-            let mut state = ConnectionSetupState::default();
-            state.name = "   ".to_string();
+            let mut state = ConnectionSetupState {
+                name: "   ".to_string(),
+                ..Default::default()
+            };
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -126,8 +130,10 @@ mod tests {
         #[case("a".repeat(50), false)]
         #[case("a".repeat(51), true)]
         fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
-            let mut state = ConnectionSetupState::default();
-            state.name = name;
+            let mut state = ConnectionSetupState {
+                name,
+                ..Default::default()
+            };
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -137,19 +143,16 @@ mod tests {
                     Some(&"Name must be 50 characters or less".to_string())
                 );
             } else {
-                assert!(
-                    state
-                        .validation_errors
-                        .get(&ConnectionField::Name)
-                        .is_none()
-                );
+                assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
             }
         }
 
         #[test]
         fn valid_name_clears_previous_error() {
-            let mut state = ConnectionSetupState::default();
-            state.name = "".to_string();
+            let mut state = ConnectionSetupState {
+                name: "".to_string(),
+                ..Default::default()
+            };
             validate_field(&mut state, ConnectionField::Name);
             assert!(state.validation_errors.contains_key(&ConnectionField::Name));
 
