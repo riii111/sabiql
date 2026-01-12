@@ -1,6 +1,12 @@
-# Visual Regression Testing
+---
+description: Visual regression testing with insta snapshots - when to add/update snapshots
+alwaysApply: false
+globs:
+  - "**/tests/render_snapshots.rs"
+  - "**/tests/snapshots/**"
+---
 
-This project uses snapshot testing to detect unintended UI changes.
+# Visual Regression Testing
 
 ## Overview
 
@@ -16,8 +22,7 @@ tests/
 │   ├── mod.rs       # Test utilities (render_to_string, create_test_*)
 │   └── fixtures.rs  # Sample data builders (metadata, table detail, query result)
 ├── render_snapshots.rs  # Snapshot test scenarios
-├── snapshots/           # Generated .snap files (auto-created by insta)
-└── README.md
+└── snapshots/           # Generated .snap files (auto-created by insta)
 ```
 
 ## Commands
