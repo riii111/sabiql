@@ -64,7 +64,19 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .insert(field, "Required".to_string());
             }
         }
-        ConnectionField::Name | ConnectionField::Password | ConnectionField::SslMode => {
+        ConnectionField::Name => {
+            let name = state.name.trim();
+            if name.is_empty() {
+                state
+                    .validation_errors
+                    .insert(field, "Name is required".to_string());
+            } else if name.chars().count() > 50 {
+                state
+                    .validation_errors
+                    .insert(field, "Name must be 50 characters or less".to_string());
+            }
+        }
+        ConnectionField::Password | ConnectionField::SslMode => {
             // Optional fields, no validation needed
         }
     }

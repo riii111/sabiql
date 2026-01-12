@@ -56,7 +56,8 @@ impl ConnectionField {
     pub fn is_required(&self) -> bool {
         matches!(
             self,
-            ConnectionField::Host
+            ConnectionField::Name
+                | ConnectionField::Host
                 | ConnectionField::Port
                 | ConnectionField::Database
                 | ConnectionField::User
@@ -211,7 +212,7 @@ mod tests {
         }
 
         #[rstest]
-        #[case(ConnectionField::Name, false)]
+        #[case(ConnectionField::Name, true)]
         #[case(ConnectionField::Host, true)]
         #[case(ConnectionField::Port, true)]
         #[case(ConnectionField::Database, true)]
