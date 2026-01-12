@@ -3,6 +3,7 @@ pub mod command_line;
 pub mod command_palette;
 pub mod confirm_dialog;
 pub mod connection_error;
+pub mod connection_selector;
 pub mod connection_setup;
 pub mod explorer;
 pub mod footer;
