@@ -962,6 +962,7 @@ mod tests {
 
     mod connection_setup_transitions {
         use super::*;
+        use crate::domain::ConnectionId;
 
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
@@ -976,6 +977,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::ConnectionSaveCompleted {
+                    id: ConnectionId::new(),
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
                 },
@@ -1082,7 +1084,7 @@ mod tests {
     mod connection_state_tests {
         use super::*;
         use crate::app::connection_state::ConnectionState;
-        use crate::domain::{DatabaseMetadata, MetadataState};
+        use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
 
         #[test]
         fn try_connect_with_dsn_starts_connecting() {
@@ -1256,6 +1258,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 Action::ConnectionSaveCompleted {
+                    id: ConnectionId::new(),
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
                 },

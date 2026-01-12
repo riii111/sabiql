@@ -135,6 +135,7 @@ impl EffectRunner {
                         return Ok(());
                     }
                 };
+                let id = profile.id.clone();
                 let dsn = profile.to_dsn();
                 let name = profile.name.as_str().to_string();
                 let store = Arc::clone(&self.connection_store);
@@ -142,7 +143,7 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || match store.save(&profile) {
                     Ok(()) => {
-                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { dsn, name });
+                        let _ = tx.blocking_send(Action::ConnectionSaveCompleted { id, dsn, name });
                     }
                     Err(e) => {
                         let _ = tx.blocking_send(Action::ConnectionSaveFailed(e.to_string()));

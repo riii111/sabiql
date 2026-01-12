@@ -57,6 +57,7 @@ pub enum Action {
     ConnectionSetupSave,
     ConnectionSetupCancel,
     ConnectionSaveCompleted {
+        id: ConnectionId,
         dsn: String,
         name: String,
     },
