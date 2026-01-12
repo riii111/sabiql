@@ -108,6 +108,79 @@ impl CompletionEngine {
         }
     }
 
+    #[cfg(test)]
+    pub fn new_with_capacity(capacity: usize) -> Self {
+        Self {
+            keywords: vec![
+                "SELECT",
+                "FROM",
+                "WHERE",
+                "JOIN",
+                "LEFT",
+                "RIGHT",
+                "INNER",
+                "OUTER",
+                "CROSS",
+                "ON",
+                "AND",
+                "OR",
+                "NOT",
+                "IN",
+                "IS",
+                "NULL",
+                "TRUE",
+                "FALSE",
+                "LIKE",
+                "ILIKE",
+                "BETWEEN",
+                "EXISTS",
+                "CASE",
+                "WHEN",
+                "THEN",
+                "ELSE",
+                "END",
+                "AS",
+                "DISTINCT",
+                "ORDER",
+                "BY",
+                "ASC",
+                "DESC",
+                "NULLS",
+                "FIRST",
+                "LAST",
+                "GROUP",
+                "HAVING",
+                "LIMIT",
+                "OFFSET",
+                "UNION",
+                "INTERSECT",
+                "EXCEPT",
+                "ALL",
+                "INSERT",
+                "INTO",
+                "VALUES",
+                "UPDATE",
+                "SET",
+                "DELETE",
+                "CREATE",
+                "DROP",
+                "ALTER",
+                "TABLE",
+                "INDEX",
+                "VIEW",
+                "RETURNING",
+                "WITH",
+                "RECURSIVE",
+                "COALESCE",
+                "NULLIF",
+                "CAST",
+                "USING",
+            ],
+            lexer: SqlLexer::new(),
+            table_detail_cache: BoundedLruCache::new(capacity),
+        }
+    }
+
     pub fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
         self.table_detail_cache.insert(qualified_name, table);
     }
@@ -2594,6 +2667,88 @@ mod tests {
             let user_id = candidates.iter().find(|c| c.text == "user_id");
             assert!(name.is_some());
             assert!(user_id.is_none());
+        }
+    }
+
+    mod lru_cache_behavior {
+        use super::*;
+        use crate::domain::{Column, Table, TableSummary};
+
+        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                columns: columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| Column {
+                        name: c.to_string(),
+                        data_type: "text".to_string(),
+                        nullable: true,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: i as i32,
+                    })
+                    .collect(),
+                primary_key: None,
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn evicted_table_appears_in_missing_tables() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            // Cache 3 tables with capacity 2 - t1 will be evicted
+            let t1 = create_table("public", "t1", &["id"]);
+            let t2 = create_table("public", "t2", &["id"]);
+            let t3 = create_table("public", "t3", &["id"]);
+
+            e.cache_table_detail("public.t1".to_string(), t1);
+            e.cache_table_detail("public.t2".to_string(), t2);
+            e.cache_table_detail("public.t3".to_string(), t3);
+
+            // t1 should be evicted
+            assert!(!e.has_cached_table("public.t1"));
+            assert!(e.has_cached_table("public.t2"));
+            assert!(e.has_cached_table("public.t3"));
+
+            // Create metadata with all tables
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![
+                TableSummary::new("public".to_string(), "t1".to_string(), None, false),
+                TableSummary::new("public".to_string(), "t2".to_string(), None, false),
+                TableSummary::new("public".to_string(), "t3".to_string(), None, false),
+            ];
+
+            // SQL referencing evicted table should trigger re-fetch
+            let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+            assert_eq!(missing, vec!["public.t1".to_string()]);
+        }
+
+        #[test]
+        fn cached_table_not_in_missing_tables() {
+            let mut e = CompletionEngine::new_with_capacity(2);
+
+            let t1 = create_table("public", "t1", &["id"]);
+            e.cache_table_detail("public.t1".to_string(), t1);
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.tables = vec![TableSummary::new(
+                "public".to_string(),
+                "t1".to_string(),
+                None,
+                false,
+            )];
+
+            let missing = e.missing_tables("SELECT * FROM t1", Some(&metadata));
+            assert!(missing.is_empty());
         }
     }
 }
