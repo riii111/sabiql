@@ -5,6 +5,7 @@ use std::time::Instant;
 use crate::app::action::Action;
 use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
@@ -271,6 +272,92 @@ pub fn reduce_navigation(
             if state.ui.explorer_horizontal_offset < max_name_width {
                 state.ui.explorer_horizontal_offset += 1;
             }
+            Some(vec![])
+        }
+
+        // Explorer Mode (Tables / Connections)
+        Action::ToggleExplorerMode => {
+            match state.ui.explorer_mode {
+                ExplorerMode::Tables => {
+                    state.ui.explorer_mode = ExplorerMode::Connections;
+                    // Initialize selection if needed
+                    if !state.connections.is_empty() && state.ui.connection_list_selected == 0 {
+                        state.ui.set_connection_list_selection(Some(0));
+                    }
+                    // Load connections list
+                    Some(vec![Effect::LoadConnections])
+                }
+                ExplorerMode::Connections => {
+                    state.ui.explorer_mode = ExplorerMode::Tables;
+                    Some(vec![])
+                }
+            }
+        }
+        Action::SetExplorerMode(mode) => {
+            state.ui.explorer_mode = *mode;
+            if *mode == ExplorerMode::Connections {
+                Some(vec![Effect::LoadConnections])
+            } else {
+                Some(vec![])
+            }
+        }
+        Action::ConnectionListSelectNext => {
+            let len = state.connections.len();
+            if len > 0 && state.ui.connection_list_selected < len - 1 {
+                state
+                    .ui
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected + 1));
+            }
+            Some(vec![])
+        }
+        Action::ConnectionListSelectPrevious => {
+            if !state.connections.is_empty() {
+                let new_idx = state.ui.connection_list_selected.saturating_sub(1);
+                state.ui.set_connection_list_selection(Some(new_idx));
+            }
+            Some(vec![])
+        }
+        Action::ConnectionsLoaded(profiles) => {
+            // Sort by name (case-insensitive)
+            let mut sorted = profiles.clone();
+            sorted.sort_by(|a, b| {
+                a.display_name()
+                    .to_lowercase()
+                    .cmp(&b.display_name().to_lowercase())
+            });
+            state.connections = sorted;
+            // Reset selection if out of bounds
+            if state.ui.connection_list_selected >= state.connections.len() {
+                let new_idx = state.connections.len().saturating_sub(1);
+                state.ui.set_connection_list_selection(Some(new_idx));
+            } else if !state.connections.is_empty() {
+                state
+                    .ui
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected));
+            }
+            Some(vec![])
+        }
+        Action::ConfirmConnectionSelection => {
+            if let Some(selected) = state.connections.get(state.ui.connection_list_selected) {
+                let selected_id = selected.id.clone();
+                let active_id = state.runtime.active_connection_id.clone();
+
+                // Only switch if different from current connection
+                if active_id.as_ref() != Some(&selected_id) {
+                    let dsn = selected.to_dsn();
+                    let name = selected.display_name().to_string();
+                    let id = selected_id;
+
+                    // Return to Tables mode after switching
+                    state.ui.explorer_mode = ExplorerMode::Tables;
+
+                    return Some(vec![Effect::DispatchActions(vec![
+                        Action::SwitchConnection { id, dsn, name },
+                    ])]);
+                }
+            }
+            // Already on this connection, just go back to Tables mode
+            state.ui.explorer_mode = ExplorerMode::Tables;
             Some(vec![])
         }
 
