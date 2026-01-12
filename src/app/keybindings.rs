@@ -109,6 +109,27 @@ pub mod idx {
         pub const CLOSE: usize = 1;
         pub const QUIT: usize = 2;
     }
+
+    pub mod connections_mode {
+        pub const CONNECT: usize = 0;
+        pub const NEW: usize = 1;
+        pub const EDIT: usize = 2;
+        pub const DELETE: usize = 3;
+        pub const NAVIGATE: usize = 4;
+        pub const HELP: usize = 5;
+        pub const TABLES: usize = 6;
+        pub const BACK: usize = 7;
+        pub const QUIT: usize = 8;
+    }
+
+    pub mod connection_selector {
+        pub const CONFIRM: usize = 0;
+        pub const SELECT: usize = 1;
+        pub const NEW: usize = 2;
+        pub const EDIT: usize = 3;
+        pub const DELETE: usize = 4;
+        pub const QUIT: usize = 5;
+    }
 }
 
 // =============================================================================
@@ -713,6 +734,140 @@ pub const HELP_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
+// Connections Mode (Explorer)
+// =============================================================================
+
+pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
+    // idx 0: CONNECT
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Connect",
+        description: "Connect to selected",
+        action: Action::ConfirmConnectionSelection,
+    },
+    // idx 1: NEW
+    KeyBinding {
+        key_short: "n",
+        key: "n",
+        desc_short: "New",
+        description: "New connection",
+        action: Action::OpenConnectionSetup,
+    },
+    // idx 2: EDIT
+    KeyBinding {
+        key_short: "e",
+        key: "e",
+        desc_short: "Edit",
+        description: "Edit connection",
+        action: Action::RequestEditSelectedConnection,
+    },
+    // idx 3: DELETE
+    KeyBinding {
+        key_short: "d",
+        key: "d / Del",
+        desc_short: "Delete",
+        description: "Delete connection",
+        action: Action::RequestDeleteSelectedConnection,
+    },
+    // idx 4: NAVIGATE
+    KeyBinding {
+        key_short: "j/k",
+        key: "j / k / ↑ / ↓",
+        desc_short: "Navigate",
+        description: "Navigate list",
+        action: Action::None,
+    },
+    // idx 5: HELP
+    KeyBinding {
+        key_short: "?",
+        key: "?",
+        desc_short: "Help",
+        description: "Show help",
+        action: Action::OpenHelp,
+    },
+    // idx 6: TABLES
+    KeyBinding {
+        key_short: "c",
+        key: "c",
+        desc_short: "Tables",
+        description: "Switch to Tables mode",
+        action: Action::ToggleExplorerMode,
+    },
+    // idx 7: BACK
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Back",
+        description: "Back to Tables mode",
+        action: Action::ToggleExplorerMode,
+    },
+    // idx 8: QUIT
+    KeyBinding {
+        key_short: "q",
+        key: "q",
+        desc_short: "Quit",
+        description: "Quit application",
+        action: Action::Quit,
+    },
+];
+
+// =============================================================================
+// Connection Selector
+// =============================================================================
+
+pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
+    // idx 0: CONFIRM
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Confirm",
+        description: "Confirm selection",
+        action: Action::ConfirmConnectionSelection,
+    },
+    // idx 1: SELECT
+    KeyBinding {
+        key_short: "↑/↓",
+        key: "↑ / ↓ / j / k",
+        desc_short: "Select",
+        description: "Select connection",
+        action: Action::None,
+    },
+    // idx 2: NEW
+    KeyBinding {
+        key_short: "n",
+        key: "n",
+        desc_short: "New",
+        description: "New connection",
+        action: Action::OpenConnectionSetup,
+    },
+    // idx 3: EDIT
+    KeyBinding {
+        key_short: "e",
+        key: "e",
+        desc_short: "Edit",
+        description: "Edit connection",
+        action: Action::RequestEditSelectedConnection,
+    },
+    // idx 4: DELETE
+    KeyBinding {
+        key_short: "d",
+        key: "d",
+        desc_short: "Delete",
+        description: "Delete connection",
+        action: Action::RequestDeleteSelectedConnection,
+    },
+    // idx 5: QUIT
+    KeyBinding {
+        key_short: "q",
+        key: "q",
+        desc_short: "Quit",
+        description: "Quit application",
+        action: Action::Quit,
+    },
+];
+
+// =============================================================================
 // Help Overlay Layout
 // =============================================================================
 
@@ -806,5 +961,24 @@ mod tests {
         assert!(idx::help::SCROLL < HELP_KEYS.len());
         assert!(idx::help::CLOSE < HELP_KEYS.len());
         assert!(idx::help::QUIT < HELP_KEYS.len());
+
+        // CONNECTIONS_MODE_KEYS
+        assert!(idx::connections_mode::CONNECT < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::NEW < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::EDIT < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::DELETE < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::NAVIGATE < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::HELP < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::TABLES < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::BACK < CONNECTIONS_MODE_KEYS.len());
+        assert!(idx::connections_mode::QUIT < CONNECTIONS_MODE_KEYS.len());
+
+        // CONNECTION_SELECTOR_KEYS
+        assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_KEYS.len());
+        assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_KEYS.len());
+        assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_KEYS.len());
+        assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_KEYS.len());
+        assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_KEYS.len());
+        assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_KEYS.len());
     }
 }

@@ -5,19 +5,20 @@ use ratatui::widgets::{List, ListItem};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
 use crate::app::state::AppState;
 
 pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let hint = " ↑/↓ Select  Enter Confirm  n New  q Quit ";
+        let hint = Self::build_hint_string();
         let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(60),
             " Select Connection ",
-            hint,
+            &hint,
         );
 
         Self::render_connection_list(frame, inner, state);
@@ -79,5 +80,21 @@ impl ConnectionSelector {
                 );
             }
         }
+    }
+
+    fn build_hint_string() -> String {
+        let hints = [
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::SELECT].as_hint(),
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::CONFIRM].as_hint(),
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::NEW].as_hint(),
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::EDIT].as_hint(),
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::DELETE].as_hint(),
+            CONNECTION_SELECTOR_KEYS[idx::connection_selector::QUIT].as_hint(),
+        ];
+        let hint_parts: Vec<String> = hints
+            .iter()
+            .map(|(key, desc)| format!("{} {}", key, desc))
+            .collect();
+        format!(" {} ", hint_parts.join("  "))
     }
 }

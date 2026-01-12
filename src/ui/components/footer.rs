@@ -10,8 +10,9 @@ use crate::app::er_state::ErStatus;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
-    COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
-    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS,
+    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS,
+    OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -72,15 +73,16 @@ impl Footer {
                 } else if state.ui.explorer_mode == ExplorerMode::Connections
                     && state.ui.focused_pane == FocusedPane::Explorer
                 {
-                    // Connections mode hints
                     vec![
-                        ("Enter", "Connect"),
-                        ("n", "New"),
-                        ("j/k", "Navigate"),
-                        ("?", "Help"),
-                        ("c", "Tables"),
-                        ("Esc", "Back"),
-                        ("q", "Quit"),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::CONNECT].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::NEW].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::EDIT].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::DELETE].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::NAVIGATE].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::HELP].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::TABLES].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::BACK].as_hint(),
+                        CONNECTIONS_MODE_KEYS[idx::connections_mode::QUIT].as_hint(),
                     ]
                 } else {
                     let mut list = vec![
@@ -153,10 +155,12 @@ impl Footer {
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
             ],
             InputMode::ConnectionSelector => vec![
-                ("Enter", "Confirm"),
-                ("↑/↓", "Select"),
-                ("n", "New"),
-                ("q", "Quit"),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::CONFIRM].as_hint(),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::SELECT].as_hint(),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::NEW].as_hint(),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::EDIT].as_hint(),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::DELETE].as_hint(),
+                CONNECTION_SELECTOR_KEYS[idx::connection_selector::QUIT].as_hint(),
             ],
         }
     }

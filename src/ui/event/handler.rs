@@ -41,6 +41,8 @@ fn handle_connection_selector_keys(key: KeyEvent) -> Action {
         KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
         KeyCode::Enter => Action::ConfirmConnectionSelection,
         KeyCode::Char('n') => Action::OpenConnectionSetup,
+        KeyCode::Char('e') => Action::RequestEditSelectedConnection,
+        KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
         _ => Action::None,
     }
 }
@@ -154,9 +156,13 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
         KeyCode::Char('s') => Action::OpenSqlModal,
+        KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::ErOpenDiagram,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
+        KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
+            Action::RequestDeleteSelectedConnection
+        }
 
         KeyCode::Enter => {
             if state.connection_error.error_info.is_some() {
@@ -1231,6 +1237,8 @@ mod tests {
         #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
         #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
         #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
+        #[case(KeyCode::Char('e'), Action::RequestEditSelectedConnection)]
+        #[case(KeyCode::Char('d'), Action::RequestDeleteSelectedConnection)]
         fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
             let result = handle_connection_selector_keys(key(code));
 
@@ -1245,6 +1253,40 @@ mod tests {
             let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
 
             assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod connections_mode {
+        use super::*;
+        use crate::app::explorer_mode::ExplorerMode;
+        use crate::app::focused_pane::FocusedPane;
+        use rstest::rstest;
+
+        fn connections_mode_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_mode = ExplorerMode::Connections;
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('d'))]
+        #[case(KeyCode::Delete)]
+        fn delete_key_requests_delete(#[case] code: KeyCode) {
+            let state = connections_mode_state();
+
+            let result = handle_normal_mode(key(code), &state);
+
+            assert!(matches!(result, Action::RequestDeleteSelectedConnection));
+        }
+
+        #[test]
+        fn e_key_requests_edit() {
+            let state = connections_mode_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+
+            assert!(matches!(result, Action::RequestEditSelectedConnection));
         }
     }
 }
