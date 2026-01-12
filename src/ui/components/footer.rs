@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use super::atoms::spinner_char;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
@@ -67,6 +68,18 @@ impl Footer {
                         FOOTER_NAV_KEYS[idx::footer_nav::TOP_BOTTOM].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
                         GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                    ]
+                } else if state.ui.explorer_mode == ExplorerMode::Connections
+                    && state.ui.focused_pane == FocusedPane::Explorer
+                {
+                    // Connections mode hints
+                    vec![
+                        ("Enter", "Connect"),
+                        ("j/k", "Navigate"),
+                        ("?", "Help"),
+                        ("c", "Tables"),
+                        ("Esc", "Back"),
+                        ("q", "Quit"),
                     ]
                 } else {
                     let mut list = vec![
