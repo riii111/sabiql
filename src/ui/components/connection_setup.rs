@@ -33,12 +33,22 @@ impl ConnectionSetup {
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
         let modal_height = 13;
 
-        let hint = " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ";
+        let (title, hint) = if form_state.is_edit_mode() {
+            (
+                " Edit Connection ",
+                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ",
+            )
+        } else {
+            (
+                " New Connection ",
+                " Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save & Connect │ Esc: Cancel ",
+            )
+        };
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
-            " Connection Setup ",
+            title,
             hint,
         );
 

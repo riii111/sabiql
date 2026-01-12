@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││(select a table)                                              │
 │              ││                                                              │
 │              ││                                                              │
-│        ╭ Connection Setup ──────────────────────────────────────────╮        │
+│        ╭ New Connection ────────────────────────────────────────────╮        │
 │        │                                                            │        │
 │        │  Name:       [ █                          ]                │        │
 │        │  Host:       [ localhost                  ]                │        │
@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │        │                                                            │        │
 │        │  Note: Connection info is stored locally in plain text     │        │
 │        │                                                            │        │
-│        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save │ Esc: Cancel ──╯        │
+│        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Save & Connect │ Esc:╯        │
 │              ││                                                              │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
