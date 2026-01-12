@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;
-    let loaded_profile = connection_store.load();
+    let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
     let effect_runner = EffectRunner::new(
@@ -60,23 +60,20 @@ async fn main() -> Result<()> {
 
     let mut state = AppState::new(project_name);
 
-    match loaded_profile {
-        Ok(Some(profile)) => {
-            state.runtime.dsn = Some(profile.to_dsn());
-            state.runtime.database_name = Some(profile.database.clone());
-            state.runtime.active_connection_name = Some(profile.display_name().to_string());
-            state.connection_setup.name = profile.name.as_str().to_string();
-            state.connection_setup.host = profile.host;
-            state.connection_setup.port = profile.port.to_string();
-            state.connection_setup.database = profile.database;
-            state.connection_setup.user = profile.username;
-            state.connection_setup.password = profile.password;
-            state.connection_setup.ssl_mode = profile.ssl_mode;
-            state.connection_setup.is_first_run = false;
-        }
-        Ok(None) => {
+    match all_profiles {
+        Ok(profiles) if profiles.is_empty() => {
             state.connection_setup.is_first_run = true;
             state.ui.input_mode = InputMode::ConnectionSetup;
+        }
+        Ok(mut profiles) => {
+            profiles.sort_by(|a, b| {
+                a.display_name()
+                    .to_lowercase()
+                    .cmp(&b.display_name().to_lowercase())
+            });
+            state.connections = profiles;
+            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.ui.set_connection_list_selection(Some(0));
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
             eprintln!(
