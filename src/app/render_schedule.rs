@@ -51,8 +51,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
 
 /// Returns true if a spinner animation is currently active.
 fn has_active_spinner(state: &AppState) -> bool {
-    state.query.status == QueryStatus::Running
-        || state.er_preparation.status == ErStatus::Waiting
+    state.query.status == QueryStatus::Running || state.er_preparation.status == ErStatus::Waiting
 }
 
 /// Returns true if the current input mode has a blinking cursor.
