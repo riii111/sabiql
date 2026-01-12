@@ -338,6 +338,8 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ConfirmConnectionSelection => {
+            let from_selector = state.ui.input_mode == InputMode::ConnectionSelector;
+
             if let Some(selected) = state.connections.get(state.ui.connection_list_selected) {
                 let selected_id = selected.id.clone();
                 let active_id = state.runtime.active_connection_id.clone();
@@ -348,16 +350,22 @@ pub fn reduce_navigation(
                     let name = selected.display_name().to_string();
                     let id = selected_id;
 
-                    // Return to Tables mode after switching
+                    // Return to Tables mode and Normal input mode after switching
                     state.ui.explorer_mode = ExplorerMode::Tables;
+                    if from_selector {
+                        state.ui.input_mode = InputMode::Normal;
+                    }
 
                     return Some(vec![Effect::DispatchActions(vec![
                         Action::SwitchConnection { id, dsn, name },
                     ])]);
                 }
             }
-            // Already on this connection, just go back to Tables mode
+            // Already on this connection, just go back to Tables mode / Normal
             state.ui.explorer_mode = ExplorerMode::Tables;
+            if from_selector {
+                state.ui.input_mode = InputMode::Normal;
+            }
             Some(vec![])
         }
 
