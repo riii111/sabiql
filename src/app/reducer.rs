@@ -68,8 +68,6 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
             vec![]
         }
         Action::Render => {
-            state.clear_expired_messages();
-            state.clear_dirty();
             vec![Effect::Render]
         }
 
