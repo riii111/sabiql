@@ -50,6 +50,7 @@ pub enum Action {
     CloseConnectionSetup,
     ConnectionSetupInput(char),
     ConnectionSetupBackspace,
+    ConnectionSetupMoveCursor(CursorMove),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
     ConnectionSetupToggleDropdown,

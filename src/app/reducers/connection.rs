@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, CursorMove};
 use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
@@ -203,6 +203,28 @@ pub fn reduce_connection(
                 field_str.remove(byte_idx);
                 setup.update_cursor(char_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
             }
+            Some(vec![])
+        }
+        Action::ConnectionSetupMoveCursor(movement) => {
+            let setup = &mut state.connection_setup;
+            let field_str = match setup.focused_field {
+                ConnectionField::Name => &setup.name,
+                ConnectionField::Host => &setup.host,
+                ConnectionField::Port => &setup.port,
+                ConnectionField::Database => &setup.database,
+                ConnectionField::User => &setup.user,
+                ConnectionField::Password => &setup.password,
+                ConnectionField::SslMode => return Some(vec![]),
+            };
+            let len = field_str.chars().count();
+            let new_pos = match movement {
+                CursorMove::Left => setup.cursor_position.saturating_sub(1),
+                CursorMove::Right => (setup.cursor_position + 1).min(len),
+                CursorMove::Home => 0,
+                CursorMove::End => len,
+                CursorMove::Up | CursorMove::Down => return Some(vec![]),
+            };
+            setup.update_cursor(new_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
             Some(vec![])
         }
         Action::ConnectionSetupNextField => {

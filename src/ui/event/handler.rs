@@ -262,6 +262,7 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
 }
 
 fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::action::CursorMove;
     use crate::app::connection_setup_state::ConnectionField;
 
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
@@ -289,6 +290,12 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
         {
             Action::ConnectionSetupToggleDropdown
         }
+
+        // Cursor movement
+        (KeyCode::Left, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Left),
+        (KeyCode::Right, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Right),
+        (KeyCode::Home, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Home),
+        (KeyCode::End, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::End),
 
         // Text input (allow Alt for international keyboards, block Ctrl-only)
         (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
