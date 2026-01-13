@@ -336,6 +336,8 @@ pub fn reduce_connection(
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(msg) => {
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }

@@ -181,6 +181,7 @@ impl EffectRunner {
                                         .await;
                                 }
                                 Err(e) => {
+                                    cache.invalidate(&dsn).await;
                                     let _ =
                                         tx.send(Action::ConnectionSaveFailed(e.to_string())).await;
                                 }
