@@ -525,7 +525,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "^S",
         key: "Ctrl+S",
-        desc_short: "Save",
+        desc_short: "Connect",
         description: "Save and connect",
         action: Action::ConnectionSetupSave,
     },
