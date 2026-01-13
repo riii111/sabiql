@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
+│              ││(select a table)                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││ ╭ Delete Connection ────────────────────────╮                │
+│              ││ │           Delete "Production"?            │                │
+│              ││ │                                           │                │
+│              ││ │     ⚠ This is the active connection.      │                │
+│              ││ │         You will be disconnected.         │                │
+│              │└─│                                           │────────────────┘
+│              │┌ │       This action cannot be undone.       │────────────────┐
+│              ││(│                                           │                │
+│              ││ │       [ Yes (Enter) ]   [ No (Esc) ]      │                │
+│              ││ │                                           │                │
+│              ││ │                                           │                │
+│              ││ ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter/y:Yes  Esc/n:No

@@ -438,3 +438,43 @@ fn connection_selector_with_multiple_connections() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn confirm_dialog_delete_active_connection() {
+    use sabiql::domain::connection::ConnectionId;
+
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    let active_id = ConnectionId::new();
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Delete Connection".to_string();
+    state.confirm_dialog.message =
+        "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.".to_string();
+    state.confirm_dialog.on_confirm = Action::DeleteConnection(active_id);
+    state.confirm_dialog.on_cancel = Action::None;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_delete_inactive_connection() {
+    use sabiql::domain::connection::ConnectionId;
+
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    let target_id = ConnectionId::new();
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Delete Connection".to_string();
+    state.confirm_dialog.message =
+        "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
+    state.confirm_dialog.on_confirm = Action::DeleteConnection(target_id);
+    state.confirm_dialog.on_cancel = Action::None;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
