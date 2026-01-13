@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│ No connection│┌ [2] Inspector ───────────────────────────────────────────────┐
+│              ││(select a table)                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              │└──────────────────────────────────────────────────────────────┘
+│              │┌ [3] Result ──────────────────────────────────────────────────┐
+│              ││(select a table to preview)                                   │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter:Connect  n:New  e:Edit  d:Delete  j/k:Navigate  ?:Help  c:Tables  Esc:Back
