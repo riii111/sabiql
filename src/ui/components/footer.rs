@@ -145,6 +145,7 @@ impl Footer {
             ],
             InputMode::ConnectionError => vec![
                 CONNECTION_ERROR_KEYS[idx::conn_error::EDIT].as_hint(),
+                CONNECTION_ERROR_KEYS[idx::conn_error::SWITCH].as_hint(),
                 CONNECTION_ERROR_KEYS[idx::conn_error::DETAILS].as_hint(),
                 CONNECTION_ERROR_KEYS[idx::conn_error::COPY].as_hint(),
                 CONNECTION_ERROR_KEYS[idx::conn_error::ESC_CLOSE].as_hint(),

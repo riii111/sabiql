@@ -2,11 +2,12 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, CursorMove};
 use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
+use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{insert_char_at_cursor, validate_all, validate_field};
 use crate::app::state::AppState;
@@ -204,6 +205,28 @@ pub fn reduce_connection(
             }
             Some(vec![])
         }
+        Action::ConnectionSetupMoveCursor(movement) => {
+            let setup = &mut state.connection_setup;
+            let field_str = match setup.focused_field {
+                ConnectionField::Name => &setup.name,
+                ConnectionField::Host => &setup.host,
+                ConnectionField::Port => &setup.port,
+                ConnectionField::Database => &setup.database,
+                ConnectionField::User => &setup.user,
+                ConnectionField::Password => &setup.password,
+                ConnectionField::SslMode => return Some(vec![]),
+            };
+            let len = field_str.chars().count();
+            let new_pos = match movement {
+                CursorMove::Left => setup.cursor_position.saturating_sub(1),
+                CursorMove::Right => (setup.cursor_position + 1).min(len),
+                CursorMove::Home => 0,
+                CursorMove::End => len,
+                CursorMove::Up | CursorMove::Down => return Some(vec![]),
+            };
+            setup.update_cursor(new_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
+            Some(vec![])
+        }
         Action::ConnectionSetupNextField => {
             let setup = &mut state.connection_setup;
             validate_field(setup, setup.focused_field);
@@ -272,6 +295,7 @@ pub fn reduce_connection(
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.parse().unwrap_or(5432);
+                state.runtime.connection_state = ConnectionState::Connecting;
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.clone(),
@@ -300,27 +324,20 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted {
-            id,
-            dsn,
-            name,
-            is_edit,
-        } => {
+        Action::ConnectionSaveCompleted { id, dsn, name } => {
             state.connection_setup.is_first_run = false;
             state.ui.input_mode = InputMode::Normal;
-
-            if *is_edit {
-                Some(vec![])
-            } else {
-                state.runtime.active_connection_id = Some(id.clone());
-                state.runtime.dsn = Some(dsn.clone());
-                state.runtime.active_connection_name = Some(name.clone());
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
-            }
+            state.ui.explorer_mode = ExplorerMode::Tables;
+            state.runtime.active_connection_id = Some(id.clone());
+            state.runtime.dsn = Some(dsn.clone());
+            state.runtime.active_connection_name = Some(name.clone());
+            state.runtime.connection_state = ConnectionState::Connecting;
+            state.cache.state = MetadataState::Loading;
+            Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(msg) => {
+            state.runtime.connection_state = ConnectionState::NotConnected;
+            state.cache.state = MetadataState::NotLoaded;
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }

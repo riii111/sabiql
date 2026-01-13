@@ -262,6 +262,7 @@ fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
 }
 
 fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
+    use crate::app::action::CursorMove;
     use crate::app::connection_setup_state::ConnectionField;
 
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
@@ -290,6 +291,12 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
             Action::ConnectionSetupToggleDropdown
         }
 
+        // Cursor movement
+        (KeyCode::Left, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Left),
+        (KeyCode::Right, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Right),
+        (KeyCode::Home, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Home),
+        (KeyCode::End, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::End),
+
         // Text input (allow Alt for international keyboards, block Ctrl-only)
         (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
         (KeyCode::Char(c), m, false)
@@ -307,6 +314,7 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseConnectionError,
         KeyCode::Char('e') => Action::ReenterConnectionSetup,
+        KeyCode::Char('s') => Action::OpenConnectionSelector,
         KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
         KeyCode::Char('c') => Action::CopyConnectionError,
         KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
@@ -991,6 +999,7 @@ mod tests {
             Quit,
             Close,
             Reenter,
+            OpenSelector,
             ToggleDetails,
             Copy,
             ScrollUp,
@@ -1002,6 +1011,7 @@ mod tests {
         #[case(KeyCode::Char('q'), Expected::Quit)]
         #[case(KeyCode::Esc, Expected::Close)]
         #[case(KeyCode::Char('e'), Expected::Reenter)]
+        #[case(KeyCode::Char('s'), Expected::OpenSelector)]
         #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
         #[case(KeyCode::Char('c'), Expected::Copy)]
         #[case(KeyCode::Up, Expected::ScrollUp)]
@@ -1017,6 +1027,9 @@ mod tests {
                 Expected::Quit => assert!(matches!(result, Action::Quit)),
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
+                Expected::OpenSelector => {
+                    assert!(matches!(result, Action::OpenConnectionSelector))
+                }
                 Expected::ToggleDetails => {
                     assert!(matches!(result, Action::ToggleConnectionErrorDetails))
                 }

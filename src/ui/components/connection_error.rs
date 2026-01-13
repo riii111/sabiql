@@ -125,6 +125,8 @@ impl ConnectionError {
             Span::styled("Actions: ", Style::default().fg(Color::DarkGray)),
             key_chip("e"),
             Span::raw(" Re-enter  "),
+            key_chip("s"),
+            Span::raw(" Switch  "),
             key_chip("d"),
             Span::raw(" Details  "),
             key_chip("c"),
