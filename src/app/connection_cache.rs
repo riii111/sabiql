@@ -113,4 +113,69 @@ mod tests {
         assert_eq!(removed.unwrap().explorer_selected, 99);
         assert!(store.get(&id).is_none());
     }
+
+    #[test]
+    fn preserves_metadata_on_save_and_get() {
+        use crate::domain::{DatabaseMetadata, TableSummary};
+        use std::time::Instant;
+
+        let mut store = ConnectionCacheStore::new();
+        let id = ConnectionId::new();
+
+        let metadata = DatabaseMetadata {
+            database_name: "test_db".to_string(),
+            schemas: vec![],
+            tables: vec![TableSummary::new(
+                "public".to_string(),
+                "users".to_string(),
+                Some(100),
+                false,
+            )],
+            fetched_at: Instant::now(),
+        };
+
+        let cache = ConnectionCache {
+            metadata: Some(metadata.clone()),
+            ..Default::default()
+        };
+        store.save(&id, cache);
+
+        let retrieved = store.get(&id).unwrap();
+        assert!(retrieved.metadata.is_some());
+        let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
+        assert_eq!(retrieved_metadata.database_name, "test_db");
+        assert_eq!(retrieved_metadata.tables.len(), 1);
+    }
+
+    #[test]
+    fn preserves_query_result_on_save_and_get() {
+        use crate::domain::{QueryResult, QuerySource};
+        use std::time::Instant;
+
+        let mut store = ConnectionCacheStore::new();
+        let id = ConnectionId::new();
+
+        let query_result = QueryResult {
+            query: "SELECT * FROM users".to_string(),
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows: vec![vec!["1".to_string(), "Alice".to_string()]],
+            row_count: 1,
+            execution_time_ms: 10,
+            executed_at: Instant::now(),
+            source: QuerySource::Preview,
+            error: None,
+        };
+
+        let cache = ConnectionCache {
+            query_result: Some(Arc::new(query_result)),
+            ..Default::default()
+        };
+        store.save(&id, cache);
+
+        let retrieved = store.get(&id).unwrap();
+        assert!(retrieved.query_result.is_some());
+        let retrieved_result = retrieved.query_result.as_ref().unwrap();
+        assert_eq!(retrieved_result.query, "SELECT * FROM users");
+        assert_eq!(retrieved_result.row_count, 1);
+    }
 }
