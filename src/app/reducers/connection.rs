@@ -722,4 +722,125 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
         }
     }
+
+    mod switch_connection {
+        use super::*;
+        use crate::app::connection_cache::ConnectionCache;
+        use crate::app::inspector_tab::InspectorTab;
+        use crate::domain::ConnectionId;
+
+        fn create_switch_action(id: &ConnectionId, name: &str) -> Action {
+            Action::SwitchConnection {
+                id: id.clone(),
+                dsn: format!("postgres://localhost/{}", name),
+                name: name.to_string(),
+            }
+        }
+
+        #[test]
+        fn saves_current_cache_before_switching() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            let new_id = ConnectionId::new();
+
+            // Set up current connection with some state
+            state.runtime.active_connection_id = Some(current_id.clone());
+            state.ui.explorer_selected = 5;
+            state.ui.inspector_tab = InspectorTab::Indexes;
+
+            let action = create_switch_action(&new_id, "new_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            // Verify current state was saved
+            let saved = state.connection_caches.get(&current_id).unwrap();
+            assert_eq!(saved.explorer_selected, 5);
+            assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
+        }
+
+        #[test]
+        fn restores_cached_state_when_available() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::new();
+
+            // Pre-populate cache for target connection
+            let cached = ConnectionCache {
+                explorer_selected: 42,
+                inspector_tab: InspectorTab::ForeignKeys,
+                ..Default::default()
+            };
+            state.connection_caches.save(&target_id, cached);
+
+            let action = create_switch_action(&target_id, "cached_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 42);
+            assert_eq!(state.ui.inspector_tab, InspectorTab::ForeignKeys);
+        }
+
+        #[test]
+        fn fetches_metadata_when_no_cache_exists() {
+            let mut state = AppState::new("test".to_string());
+            let new_id = ConnectionId::new();
+
+            let action = create_switch_action(&new_id, "fresh_db");
+            let effects = reduce_connection(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
+            assert_eq!(state.runtime.connection_state, ConnectionState::Connecting);
+        }
+
+        #[test]
+        fn updates_active_connection_fields() {
+            let mut state = AppState::new("test".to_string());
+            let new_id = ConnectionId::new();
+
+            let action = create_switch_action(&new_id, "target_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            assert_eq!(state.runtime.active_connection_id, Some(new_id));
+            assert_eq!(
+                state.runtime.dsn,
+                Some("postgres://localhost/target_db".to_string())
+            );
+            assert_eq!(
+                state.runtime.active_connection_name,
+                Some("target_db".to_string())
+            );
+        }
+
+        #[test]
+        fn sets_connected_state_when_cache_exists() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::new();
+
+            // Pre-populate cache
+            state
+                .connection_caches
+                .save(&target_id, ConnectionCache::default());
+
+            let action = create_switch_action(&target_id, "cached_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            assert_eq!(state.runtime.connection_state, ConnectionState::Connected);
+        }
+
+        #[test]
+        fn clears_completion_cache_on_switch() {
+            let mut state = AppState::new("test".to_string());
+            let new_id = ConnectionId::new();
+
+            let action = create_switch_action(&new_id, "any_db");
+            let effects = reduce_connection(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+        }
+    }
 }
