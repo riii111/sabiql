@@ -478,3 +478,24 @@ fn confirm_dialog_delete_inactive_connection() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn explorer_connections_mode_empty() {
+    use sabiql::app::explorer_mode::ExplorerMode;
+
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    // No connections configured
+    state.connections = vec![];
+    state.runtime.active_connection_id = None;
+
+    // Switch to Connections mode
+    state.ui.explorer_mode = ExplorerMode::Connections;
+    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_connection_list_selection(None);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
