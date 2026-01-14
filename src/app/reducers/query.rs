@@ -20,6 +20,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
+                state.query.perf_completed_at = Some(now);
+                state.query.perf_render_pending = true;
                 state.ui.result_scroll_offset = 0;
                 state.ui.result_horizontal_offset = 0;
                 state.query.result_highlight_until = Some(now + Duration::from_millis(500));
@@ -45,6 +47,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
+                state.query.perf_completed_at = Some(now);
+                state.query.perf_render_pending = true;
                 state.set_error(error.clone());
                 if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = SqlModalStatus::Error;
@@ -99,6 +103,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
+                state.query.perf_started_at = Some(now);
+                state.query.perf_completed_at = None;
+                state.query.perf_render_pending = false;
 
                 let limit = state.cache.table_detail.as_ref().map_or(100, |detail| {
                     let col_count = detail.columns.len();
@@ -127,6 +134,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
+                state.query.perf_started_at = Some(now);
+                state.query.perf_completed_at = None;
+                state.query.perf_render_pending = false;
                 Some(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
