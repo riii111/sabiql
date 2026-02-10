@@ -88,6 +88,7 @@ impl TuiRunner {
                                     Event::Key(key)
                                 }
                                 CrosstermEvent::Resize(x, y) => Event::Resize(x, y),
+                                CrosstermEvent::Paste(text) => Event::Paste(text),
                                 _ => continue,
                             },
                             Some(Err(_)) => break,

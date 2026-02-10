@@ -6,5 +6,6 @@ use crossterm::event::KeyEvent;
 pub enum Event {
     Init,
     Key(KeyEvent),
+    Paste(String),
     Resize(u16, u16),
 }

@@ -182,6 +182,9 @@ pub enum Action {
     InspectorScrollLeft,
     InspectorScrollRight,
 
+    // Clipboard paste (bracketed paste)
+    Paste(String),
+
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,
