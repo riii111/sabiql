@@ -235,6 +235,8 @@ pub enum Action {
     CloseErTablePicker,
     ErFilterInput(char),
     ErFilterBackspace,
+    ErToggleSelection,
+    ErSelectAll,
     ErConfirmSelection,
 
     // ER Diagram (full database diagram)

@@ -461,9 +461,9 @@ impl EffectRunner {
             Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name,
-                target_table,
+                target_tables,
             } => {
-                use crate::domain::er::fk_reachable_tables;
+                use crate::domain::er::fk_reachable_tables_multi;
 
                 let all_tables: Vec<ErTableInfo> = {
                     let engine = completion_engine.borrow();
@@ -483,8 +483,13 @@ impl EffectRunner {
                     return Ok(());
                 }
 
-                let (tables, filename) = if let Some(ref seed) = target_table {
-                    let reachable = fk_reachable_tables(&all_tables, seed, 1);
+                let total = all_tables.len();
+                let (tables, filename) = if target_tables.is_empty() || target_tables.len() == total
+                {
+                    (all_tables, "er_full.dot".to_string())
+                } else if target_tables.len() == 1 {
+                    let seed = &target_tables[0];
+                    let reachable = fk_reachable_tables_multi(&all_tables, &target_tables, 1);
                     let safe_name: String = seed
                         .chars()
                         .map(|c| {
@@ -497,16 +502,27 @@ impl EffectRunner {
                         .collect();
                     (reachable, format!("er_partial_{}.dot", safe_name))
                 } else {
-                    (all_tables, "er_full.dot".to_string())
+                    let reachable = fk_reachable_tables_multi(&all_tables, &target_tables, 1);
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut sorted_seeds: Vec<&String> = target_tables.iter().collect();
+                    sorted_seeds.sort();
+                    let mut hasher = DefaultHasher::new();
+                    sorted_seeds.hash(&mut hasher);
+                    let hash8 = format!("{:016x}", hasher.finish());
+                    let hash8 = &hash8[..8];
+                    (
+                        reachable,
+                        format!("er_partial_multi_{}_{}.dot", target_tables.len(), hash8),
+                    )
                 };
 
                 if tables.is_empty() {
                     let _ = self
                         .action_tx
-                        .send(Action::ErDiagramFailed(format!(
-                            "Table '{}' not found in cached data",
-                            target_table.unwrap_or_default()
-                        )))
+                        .send(Action::ErDiagramFailed(
+                            "Selected tables not found in cached data".to_string(),
+                        ))
                         .await;
                     return Ok(());
                 }

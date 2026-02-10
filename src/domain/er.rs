@@ -17,9 +17,27 @@ pub struct ErTableInfo {
     pub foreign_keys: Vec<ErFkInfo>,
 }
 
-/// BFS on bidirectional FK adjacency graph from seed with depth limit.
-/// Returns the subset of tables reachable from the seed table via FK relationships
-/// within `max_depth` hops. Returns empty vec if seed is not found.
+/// Union of per-seed BFS results. Empty seeds → empty vec.
+pub fn fk_reachable_tables_multi(
+    tables: &[ErTableInfo],
+    seeds: &[String],
+    max_depth: usize,
+) -> Vec<ErTableInfo> {
+    let mut all_visited = HashSet::new();
+    for seed in seeds {
+        let reachable = fk_reachable_tables(tables, seed, max_depth);
+        for t in &reachable {
+            all_visited.insert(t.qualified_name.clone());
+        }
+    }
+    tables
+        .iter()
+        .filter(|t| all_visited.contains(&t.qualified_name))
+        .cloned()
+        .collect()
+}
+
+/// BFS from seed on bidirectional FK graph with depth limit.
 pub fn fk_reachable_tables(
     tables: &[ErTableInfo],
     seed: &str,

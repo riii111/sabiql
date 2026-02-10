@@ -15,7 +15,7 @@ pub struct ErPreparationState {
     pub failed_tables: HashMap<String, String>,
     pub status: ErStatus,
     pub total_tables: usize,
-    pub target_table: Option<String>,
+    pub target_tables: Vec<String>,
 }
 
 impl ErPreparationState {
@@ -146,7 +146,7 @@ mod tests {
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 3,
-                target_table: None,
+                target_tables: vec![],
             };
 
             state.reset();
@@ -170,7 +170,7 @@ mod tests {
                 failed_tables: HashMap::new(),
                 status: ErStatus::Waiting,
                 total_tables: 1,
-                target_table: None,
+                target_tables: vec![],
             };
 
             // Simulate skip: remove from pending (e.g., already cached)
@@ -188,7 +188,7 @@ mod tests {
                 failed_tables: HashMap::from([("public.users".to_string(), "timeout".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 2,
-                target_table: None,
+                target_tables: vec![],
             };
 
             // Simulate skip: remove last pending (e.g., already cached)

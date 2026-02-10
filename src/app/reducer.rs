@@ -1426,18 +1426,20 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_table_sets_target_and_returns_dispatch() {
+        fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input = "users".to_string();
-            state.ui.er_picker_selected = 0;
+            state
+                .ui
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
             assert_eq!(
-                state.er_preparation.target_table,
-                Some("public.users".to_string())
+                state.er_preparation.target_tables,
+                vec!["public.users".to_string()]
             );
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(effects.len(), 1);
@@ -1445,23 +1447,9 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_empty_filter_returns_full_er_dispatch() {
+        fn confirm_with_no_selection_returns_error() {
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input.clear();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
-
-            assert!(state.er_preparation.target_table.is_none());
-            assert_eq!(effects.len(), 1);
-        }
-
-        #[test]
-        fn confirm_with_no_match_filter_returns_error_and_stays_open() {
-            let mut state = state_with_metadata();
-            state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input = "nonexistent".to_string();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
@@ -1472,19 +1460,19 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_target_table_returns_generate_effect() {
+        fn er_open_with_target_tables_returns_generate_effect() {
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
-            state.er_preparation.target_table = Some("public.users".to_string());
+            state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::GenerateErDiagramFromCache { target_table, .. } => {
-                    assert_eq!(target_table, &Some("public.users".to_string()));
+                Effect::GenerateErDiagramFromCache { target_tables, .. } => {
+                    assert_eq!(target_tables, &vec!["public.users".to_string()]);
                 }
                 other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
             }

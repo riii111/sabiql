@@ -98,21 +98,15 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::ErConfirmSelection => {
-            let filtered = state.er_filtered_tables();
-            if !state.ui.er_filter_input.is_empty() && filtered.is_empty() {
-                state.set_error("No tables match the filter".to_string());
+            if state.ui.er_selected_tables.is_empty() {
+                state.set_error("No tables selected".to_string());
                 return Some(vec![]);
             }
-            let target = if state.ui.er_filter_input.is_empty() {
-                None
-            } else {
-                filtered
-                    .get(state.ui.er_picker_selected)
-                    .map(|table| table.qualified_name())
-            };
-            state.er_preparation.target_table = target;
+            state.er_preparation.target_tables =
+                state.ui.er_selected_tables.iter().cloned().collect();
             state.ui.input_mode = InputMode::Normal;
             state.ui.er_filter_input.clear();
+            state.ui.er_selected_tables.clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
         Action::Escape => {
