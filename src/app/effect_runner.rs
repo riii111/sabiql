@@ -484,7 +484,7 @@ impl EffectRunner {
                 }
 
                 let (tables, filename) = if let Some(ref seed) = target_table {
-                    let reachable = fk_reachable_tables(&all_tables, seed);
+                    let reachable = fk_reachable_tables(&all_tables, seed, 1);
                     let safe_name: String = seed
                         .chars()
                         .map(|c| {

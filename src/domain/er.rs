@@ -17,10 +17,14 @@ pub struct ErTableInfo {
     pub foreign_keys: Vec<ErFkInfo>,
 }
 
-/// BFS on bidirectional FK adjacency graph from seed.
-/// Returns the subset of tables reachable from the seed table via FK relationships.
-/// Returns empty vec if seed is not found.
-pub fn fk_reachable_tables(tables: &[ErTableInfo], seed: &str) -> Vec<ErTableInfo> {
+/// BFS on bidirectional FK adjacency graph from seed with depth limit.
+/// Returns the subset of tables reachable from the seed table via FK relationships
+/// within `max_depth` hops. Returns empty vec if seed is not found.
+pub fn fk_reachable_tables(
+    tables: &[ErTableInfo],
+    seed: &str,
+    max_depth: usize,
+) -> Vec<ErTableInfo> {
     if !tables.iter().any(|t| t.qualified_name == seed) {
         return vec![];
     }
@@ -40,17 +44,20 @@ pub fn fk_reachable_tables(tables: &[ErTableInfo], seed: &str) -> Vec<ErTableInf
         }
     }
 
-    // BFS from seed
+    // BFS from seed with depth limit
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     visited.insert(seed);
-    queue.push_back(seed);
+    queue.push_back((seed, 0usize));
 
-    while let Some(current) = queue.pop_front() {
+    while let Some((current, depth)) = queue.pop_front() {
+        if depth >= max_depth {
+            continue;
+        }
         if let Some(neighbors) = adjacency.get(current) {
             for &neighbor in neighbors {
                 if visited.insert(neighbor) {
-                    queue.push_back(neighbor);
+                    queue.push_back((neighbor, depth + 1));
                 }
             }
         }
@@ -107,11 +114,13 @@ mod tests {
     mod fk_reachable {
         use super::*;
 
+        const UNLIMITED: usize = usize::MAX;
+
         #[test]
         fn nonexistent_seed_returns_empty() {
             let tables = vec![make_table("users", "public", vec![])];
 
-            let result = fk_reachable_tables(&tables, "public.missing");
+            let result = fk_reachable_tables(&tables, "public.missing", UNLIMITED);
 
             assert!(result.is_empty());
         }
@@ -123,7 +132,7 @@ mod tests {
                 make_table("posts", "public", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users");
+            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
 
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].qualified_name, "public.users");
@@ -136,7 +145,7 @@ mod tests {
                 make_table("users", "public", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users");
+            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
 
             assert_eq!(result.len(), 2);
         }
@@ -154,7 +163,7 @@ mod tests {
                 make_table("users", "public", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users");
+            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
 
             assert_eq!(result.len(), 3);
         }
@@ -167,7 +176,7 @@ mod tests {
                 make_table("b", "public", vec![("public.b", "public.a")]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.a");
+            let result = fk_reachable_tables(&tables, "public.a", UNLIMITED);
 
             assert_eq!(result.len(), 2);
         }
@@ -180,7 +189,7 @@ mod tests {
                 make_table("logs", "public", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users");
+            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
 
             assert_eq!(result.len(), 2);
             assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
@@ -194,7 +203,7 @@ mod tests {
                 make_table("users", "public", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.posts");
+            let result = fk_reachable_tables(&tables, "public.posts", UNLIMITED);
 
             assert_eq!(result.len(), 2);
         }
@@ -206,9 +215,48 @@ mod tests {
                 make_table("logs", "audit", vec![]),
             ];
 
-            let result = fk_reachable_tables(&tables, "public.users");
+            let result = fk_reachable_tables(&tables, "public.users", UNLIMITED);
 
             assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn depth_1_returns_direct_neighbors_only() {
+            // A -> B -> C, depth=1 from A should return A and B only
+            let tables = vec![
+                make_table(
+                    "comments",
+                    "public",
+                    vec![("public.comments", "public.posts")],
+                ),
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users", 1);
+
+            assert_eq!(result.len(), 2);
+            assert!(result.iter().any(|t| t.qualified_name == "public.users"));
+            assert!(result.iter().any(|t| t.qualified_name == "public.posts"));
+            assert!(!result.iter().any(|t| t.qualified_name == "public.comments"));
+        }
+
+        #[test]
+        fn depth_2_returns_two_hops() {
+            // A -> B -> C, depth=2 from A should return all three
+            let tables = vec![
+                make_table(
+                    "comments",
+                    "public",
+                    vec![("public.comments", "public.posts")],
+                ),
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users", 2);
+
+            assert_eq!(result.len(), 3);
         }
     }
 }
