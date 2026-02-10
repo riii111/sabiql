@@ -15,6 +15,7 @@ pub struct ErPreparationState {
     pub failed_tables: HashMap<String, String>,
     pub status: ErStatus,
     pub total_tables: usize,
+    pub target_table: Option<String>,
 }
 
 impl ErPreparationState {

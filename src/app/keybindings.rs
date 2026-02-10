@@ -232,7 +232,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key: "e",
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
-        action: Action::ErOpenDiagram,
+        action: Action::OpenErTablePicker,
     },
     // idx 12: CONNECTIONS
     KeyBinding {
@@ -488,7 +488,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         key: ":erd",
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
-        action: Action::ErOpenDiagram,
+        action: Action::OpenErTablePicker,
     },
 ];
 

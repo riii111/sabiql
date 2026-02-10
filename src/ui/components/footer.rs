@@ -155,6 +155,12 @@ impl Footer {
                 CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
             ],
+            InputMode::ErTablePicker => vec![
+                TABLE_PICKER_KEYS[idx::table_picker::ENTER_SELECT].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::TYPE_FILTER].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::NAVIGATE].as_hint(),
+                TABLE_PICKER_KEYS[idx::table_picker::ESC_CLOSE].as_hint(),
+            ],
             InputMode::ConnectionSelector => vec![
                 CONNECTION_SELECTOR_KEYS[idx::connection_selector::CONFIRM].as_hint(),
                 CONNECTION_SELECTOR_KEYS[idx::connection_selector::SELECT].as_hint(),

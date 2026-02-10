@@ -31,6 +31,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::ConnectionError => handle_connection_error_keys(key),
         InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
         InputMode::ConnectionSelector => handle_connection_selector_keys(key),
+        InputMode::ErTablePicker => handle_er_table_picker_keys(key),
     }
 }
 
@@ -157,7 +158,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
-        KeyCode::Char('e') => Action::ErOpenDiagram,
+        KeyCode::Char('e') => Action::OpenErTablePicker,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
         KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
@@ -319,6 +320,18 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
         KeyCode::Char('c') => Action::CopyConnectionError,
         KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
         KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
+        _ => Action::None,
+    }
+}
+
+fn handle_er_table_picker_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CloseErTablePicker,
+        KeyCode::Enter => Action::ErConfirmSelection,
+        KeyCode::Up => Action::SelectPrevious,
+        KeyCode::Down => Action::SelectNext,
+        KeyCode::Backspace => Action::ErFilterBackspace,
+        KeyCode::Char(c) => Action::ErFilterInput(c),
         _ => Action::None,
     }
 }

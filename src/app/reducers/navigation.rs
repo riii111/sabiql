@@ -78,6 +78,12 @@ pub fn reduce_navigation(
                         state.ui.picker_selected += 1;
                     }
                 }
+                InputMode::ErTablePicker => {
+                    let max = state.er_filtered_tables().len().saturating_sub(1);
+                    if state.ui.er_picker_selected < max {
+                        state.ui.er_picker_selected += 1;
+                    }
+                }
                 InputMode::CommandPalette => {
                     let max = palette_command_count() - 1;
                     if state.ui.picker_selected < max {
@@ -103,6 +109,9 @@ pub fn reduce_navigation(
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
                 }
+                InputMode::ErTablePicker => {
+                    state.ui.er_picker_selected = state.ui.er_picker_selected.saturating_sub(1);
+                }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
@@ -119,6 +128,9 @@ pub fn reduce_navigation(
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state.ui.picker_selected = 0;
                 }
+                InputMode::ErTablePicker => {
+                    state.ui.er_picker_selected = 0;
+                }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
@@ -134,6 +146,10 @@ pub fn reduce_navigation(
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     state.ui.picker_selected = max;
+                }
+                InputMode::ErTablePicker => {
+                    let max = state.er_filtered_tables().len().saturating_sub(1);
+                    state.ui.er_picker_selected = max;
                 }
                 InputMode::CommandPalette => {
                     state.ui.picker_selected = palette_command_count() - 1;

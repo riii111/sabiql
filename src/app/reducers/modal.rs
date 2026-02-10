@@ -61,6 +61,59 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.sql_modal.completion_debounce = None;
             Some(vec![])
         }
+        Action::OpenErTablePicker => {
+            if state.cache.metadata.is_none() {
+                state.set_error("Metadata not loaded yet".to_string());
+                return Some(vec![]);
+            }
+            state.ui.input_mode = InputMode::ErTablePicker;
+            state.ui.er_filter_input.clear();
+            // Pre-select explorer's current table if available
+            let current_table = state.cache.current_table.clone();
+            if let Some(ref current) = current_table {
+                let filtered = state.er_filtered_tables();
+                let idx = filtered
+                    .iter()
+                    .position(|t| &t.qualified_name() == current)
+                    .unwrap_or(0);
+                state.ui.er_picker_selected = idx;
+            } else {
+                state.ui.er_picker_selected = 0;
+            }
+            Some(vec![])
+        }
+        Action::CloseErTablePicker => {
+            state.ui.input_mode = InputMode::Normal;
+            state.ui.er_filter_input.clear();
+            Some(vec![])
+        }
+        Action::ErFilterInput(c) => {
+            state.ui.er_filter_input.push(*c);
+            state.ui.er_picker_selected = 0;
+            Some(vec![])
+        }
+        Action::ErFilterBackspace => {
+            state.ui.er_filter_input.pop();
+            state.ui.er_picker_selected = 0;
+            Some(vec![])
+        }
+        Action::ErConfirmSelection => {
+            let filtered = state.er_filtered_tables();
+            let target =
+                if state.ui.er_filter_input.is_empty() && filtered.len() == state.tables().len() {
+                    // Empty filter = full ER
+                    None
+                } else if let Some(table) = filtered.get(state.ui.er_picker_selected) {
+                    Some(table.qualified_name())
+                } else {
+                    // No match found
+                    None
+                };
+            state.er_preparation.target_table = target;
+            state.ui.input_mode = InputMode::Normal;
+            state.ui.er_filter_input.clear();
+            Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
+        }
         Action::Escape => {
             state.ui.input_mode = InputMode::Normal;
             Some(vec![])

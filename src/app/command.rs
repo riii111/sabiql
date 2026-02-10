@@ -26,7 +26,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Quit => Action::Quit,
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
-        Command::Erd => Action::ErOpenDiagram,
+        Command::Erd => Action::OpenErTablePicker,
         Command::Unknown(_) => Action::None,
     }
 }
