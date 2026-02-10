@@ -1353,4 +1353,113 @@ mod tests {
             assert_eq!(effects.len(), 1);
         }
     }
+
+    mod er_table_picker {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn state_with_metadata() -> AppState {
+            let mut state = create_test_state();
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![
+                    TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                    TableSummary::new("public".to_string(), "posts".to_string(), None, false),
+                ],
+                fetched_at: Instant::now(),
+            });
+            state
+        }
+
+        #[test]
+        fn open_sets_mode_and_clears_filter() {
+            let mut state = state_with_metadata();
+            state.ui.er_filter_input = "old".to_string();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::OpenErTablePicker, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert!(state.ui.er_filter_input.is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn open_without_metadata_shows_error() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::OpenErTablePicker, now);
+
+            assert!(state.messages.last_error.is_some());
+            assert_ne!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn close_returns_to_normal() {
+            let mut state = state_with_metadata();
+            state.ui.input_mode = InputMode::ErTablePicker;
+            state.ui.er_filter_input = "test".to_string();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::CloseErTablePicker, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.ui.er_filter_input.is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn confirm_with_table_sets_target_and_dispatches() {
+            let mut state = state_with_metadata();
+            state.ui.input_mode = InputMode::ErTablePicker;
+            state.ui.er_filter_input = "users".to_string();
+            state.ui.er_picker_selected = 0;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
+
+            assert_eq!(
+                state.er_preparation.target_table,
+                Some("public.users".to_string())
+            );
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+        }
+
+        #[test]
+        fn confirm_with_empty_filter_dispatches_full_er() {
+            let mut state = state_with_metadata();
+            state.ui.input_mode = InputMode::ErTablePicker;
+            state.ui.er_filter_input.clear();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
+
+            assert!(state.er_preparation.target_table.is_none());
+            assert_eq!(effects.len(), 1);
+        }
+
+        #[test]
+        fn er_open_passes_target_table_to_effect() {
+            let mut state = state_with_metadata();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.target_table = Some("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now);
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::GenerateErDiagramFromCache { target_table, .. } => {
+                    assert_eq!(target_table, &Some("public.users".to_string()));
+                }
+                other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
+            }
+        }
+    }
 }

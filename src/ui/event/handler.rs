@@ -1315,4 +1315,50 @@ mod tests {
             assert!(matches!(result, Action::RequestEditSelectedConnection));
         }
     }
+
+    mod er_table_picker {
+        use super::*;
+
+        #[test]
+        fn esc_closes_picker() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseErTablePicker));
+        }
+
+        #[test]
+        fn enter_confirms_selection() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::ErConfirmSelection));
+        }
+
+        #[test]
+        fn up_selects_previous() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn down_selects_next() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Down));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn backspace_erases_filter() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::ErFilterBackspace));
+        }
+
+        #[test]
+        fn char_inputs_filter() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Char('a')));
+
+            assert!(matches!(result, Action::ErFilterInput('a')));
+        }
+    }
 }
