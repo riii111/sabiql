@@ -67,17 +67,17 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 return Some(vec![]);
             }
             state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input.clear();
-            // Pre-select explorer's current table if available
-            let current_table = state.cache.current_table.clone();
-            if let Some(ref current) = current_table {
+            // Pre-fill filter with explorer's current table name
+            if let Some(ref current) = state.cache.current_table.clone() {
+                state.ui.er_filter_input = current.clone();
                 let filtered = state.er_filtered_tables();
                 let idx = filtered
                     .iter()
-                    .position(|t| &t.qualified_name() == current)
+                    .position(|t| t.qualified_name() == *current)
                     .unwrap_or(0);
                 state.ui.er_picker_selected = idx;
             } else {
+                state.ui.er_filter_input.clear();
                 state.ui.er_picker_selected = 0;
             }
             Some(vec![])
@@ -99,14 +99,17 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::ErConfirmSelection => {
             let filtered = state.er_filtered_tables();
-            let target =
-                if state.ui.er_filter_input.is_empty() && filtered.len() == state.tables().len() {
-                    None
-                } else {
-                    filtered
-                        .get(state.ui.er_picker_selected)
-                        .map(|table| table.qualified_name())
-                };
+            if !state.ui.er_filter_input.is_empty() && filtered.is_empty() {
+                state.set_error("No tables match the filter".to_string());
+                return Some(vec![]);
+            }
+            let target = if state.ui.er_filter_input.is_empty() {
+                None
+            } else {
+                filtered
+                    .get(state.ui.er_picker_selected)
+                    .map(|table| table.qualified_name())
+            };
             state.er_preparation.target_table = target;
             state.ui.input_mode = InputMode::Normal;
             state.ui.er_filter_input.clear();

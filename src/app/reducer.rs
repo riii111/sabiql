@@ -1373,31 +1373,39 @@ mod tests {
         }
 
         #[test]
-        fn open_er_table_picker_sets_mode_and_clears_filter() {
-            // given
+        fn open_without_current_table_clears_filter() {
             let mut state = state_with_metadata();
             state.ui.er_filter_input = "old".to_string();
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
-            // then
             assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(state.ui.er_filter_input.is_empty());
             assert!(effects.is_empty());
         }
 
         #[test]
+        fn open_with_current_table_prefills_filter() {
+            let mut state = state_with_metadata();
+            state.cache.current_table = Some("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::OpenErTablePicker, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert_eq!(state.ui.er_filter_input, "public.users");
+            assert_eq!(state.ui.er_picker_selected, 0);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn open_without_metadata_returns_error() {
-            // given
             let mut state = create_test_state();
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
-            // then
             assert!(state.messages.last_error.is_some());
             assert_ne!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(effects.is_empty());
@@ -1405,16 +1413,13 @@ mod tests {
 
         #[test]
         fn close_er_table_picker_returns_to_normal() {
-            // given
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
             state.ui.er_filter_input = "test".to_string();
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::CloseErTablePicker, now);
 
-            // then
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert!(state.ui.er_filter_input.is_empty());
             assert!(effects.is_empty());
@@ -1422,17 +1427,14 @@ mod tests {
 
         #[test]
         fn confirm_with_table_sets_target_and_returns_dispatch() {
-            // given
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
             state.ui.er_filter_input = "users".to_string();
             state.ui.er_picker_selected = 0;
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
-            // then
             assert_eq!(
                 state.er_preparation.target_table,
                 Some("public.users".to_string())
@@ -1444,33 +1446,41 @@ mod tests {
 
         #[test]
         fn confirm_with_empty_filter_returns_full_er_dispatch() {
-            // given
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
             state.ui.er_filter_input.clear();
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
-            // then
             assert!(state.er_preparation.target_table.is_none());
             assert_eq!(effects.len(), 1);
         }
 
         #[test]
+        fn confirm_with_no_match_filter_returns_error_and_stays_open() {
+            let mut state = state_with_metadata();
+            state.ui.input_mode = InputMode::ErTablePicker;
+            state.ui.er_filter_input = "nonexistent".to_string();
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
+
+            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert!(state.messages.last_error.is_some());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn er_open_with_target_table_returns_generate_effect() {
-            // given
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
             state.er_preparation.target_table = Some("public.users".to_string());
             let now = Instant::now();
 
-            // when
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
-            // then
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::GenerateErDiagramFromCache { target_table, .. } => {
