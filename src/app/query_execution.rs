@@ -19,6 +19,9 @@ pub struct QueryExecution {
     pub result_history: ResultHistory,
     pub history_index: Option<usize>,
     pub result_highlight_until: Option<Instant>,
+    pub perf_started_at: Option<Instant>,
+    pub perf_completed_at: Option<Instant>,
+    pub perf_render_pending: bool,
 }
 
 #[cfg(test)]

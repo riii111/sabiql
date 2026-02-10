@@ -31,6 +31,16 @@ use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
 
+fn perf_enabled() -> bool {
+    std::env::var("SABIQL_PERF_LOG")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn perf_log(message: impl std::fmt::Display) {
+    eprintln!("[perf] {message}");
+}
+
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -103,6 +113,7 @@ impl EffectRunner {
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
     ) -> Result<()> {
+        let perf_on = perf_enabled();
         match effect {
             Effect::Render => {
                 let output = tui.draw(state)?;
@@ -112,6 +123,45 @@ impl EffectRunner {
                 state.ui.result_viewport_plan = output.result_viewport_plan;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
+
+                if state.query.perf_render_pending {
+                    if perf_on {
+                        let now = std::time::Instant::now();
+                        let total_ms = state
+                            .query
+                            .perf_started_at
+                            .map(|t| now.duration_since(t).as_millis());
+                        let render_delay_ms = state
+                            .query
+                            .perf_completed_at
+                            .map(|t| now.duration_since(t).as_millis());
+                        let (rows, cols, error, source, exec_ms) =
+                            if let Some(result) = state.query.current_result.as_ref() {
+                                (
+                                    result.row_count,
+                                    result.columns.len(),
+                                    result.is_error(),
+                                    format!("{:?}", result.source),
+                                    result.execution_time_ms,
+                                )
+                            } else {
+                                (0, 0, false, "-".to_string(), 0)
+                            };
+                        let total_ms = total_ms
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "-".to_string());
+                        let render_delay_ms = render_delay_ms
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "-".to_string());
+                        perf_log(format!(
+                            "render_done source={} total_ms={} render_delay_ms={} rows={} cols={} error={} exec_ms={}",
+                            source, total_ms, render_delay_ms, rows, cols, error, exec_ms
+                        ));
+                    }
+                    state.query.perf_render_pending = false;
+                    state.query.perf_started_at = None;
+                    state.query.perf_completed_at = None;
+                }
                 Ok(())
             }
 
@@ -363,17 +413,43 @@ impl EffectRunner {
                 let executor = Arc::clone(&self.query_executor);
                 let tx = self.action_tx.clone();
 
+                let perf_start = std::time::Instant::now();
+                state.query.perf_started_at = Some(perf_start);
+                state.query.perf_completed_at = None;
+                state.query.perf_render_pending = false;
+
+                if perf_on {
+                    perf_log(format!(
+                        "query_start source=Preview schema={} table={} gen={} limit={}",
+                        schema, table, generation, limit
+                    ));
+                }
+
                 tokio::spawn(async move {
                     match executor.execute_preview(&dsn, &schema, &table, limit).await {
                         Ok(result) => {
+                            if perf_on {
+                                perf_log(format!(
+                                    "query_complete source=Preview elapsed_ms={} rows={} cols={} error={}",
+                                    result.execution_time_ms,
+                                    result.row_count,
+                                    result.columns.len(),
+                                    result.is_error()
+                                ));
+                            }
                             let _ = tx
                                 .send(Action::QueryCompleted(Arc::new(result), generation))
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(Action::QueryFailed(e.to_string(), generation))
-                                .await;
+                            let error_msg = e.to_string();
+                            if perf_on {
+                                perf_log(format!(
+                                    "query_failed source=Preview error_len={}",
+                                    error_msg.len()
+                                ));
+                            }
+                            let _ = tx.send(Action::QueryFailed(error_msg, generation)).await;
                         }
                     }
                 });
@@ -384,13 +460,41 @@ impl EffectRunner {
                 let executor = Arc::clone(&self.query_executor);
                 let tx = self.action_tx.clone();
 
+                let perf_start = std::time::Instant::now();
+                state.query.perf_started_at = Some(perf_start);
+                state.query.perf_completed_at = None;
+                state.query.perf_render_pending = false;
+
+                if perf_on {
+                    perf_log(format!(
+                        "query_start source=Adhoc query_len={}",
+                        query.len()
+                    ));
+                }
+
                 tokio::spawn(async move {
                     match executor.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
+                            if perf_on {
+                                perf_log(format!(
+                                    "query_complete source=Adhoc elapsed_ms={} rows={} cols={} error={}",
+                                    result.execution_time_ms,
+                                    result.row_count,
+                                    result.columns.len(),
+                                    result.is_error()
+                                ));
+                            }
                             let _ = tx.send(Action::QueryCompleted(Arc::new(result), 0)).await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
+                            let error_msg = e.to_string();
+                            if perf_on {
+                                perf_log(format!(
+                                    "query_failed source=Adhoc error_len={}",
+                                    error_msg.len()
+                                ));
+                            }
+                            let _ = tx.send(Action::QueryFailed(error_msg, 0)).await;
                         }
                     }
                 });
