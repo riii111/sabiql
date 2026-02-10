@@ -1320,42 +1320,42 @@ mod tests {
         use super::*;
 
         #[test]
-        fn esc_closes_picker() {
+        fn esc_returns_close_er_table_picker() {
             let result = handle_er_table_picker_keys(key(KeyCode::Esc));
 
             assert!(matches!(result, Action::CloseErTablePicker));
         }
 
         #[test]
-        fn enter_confirms_selection() {
+        fn enter_returns_er_confirm_selection() {
             let result = handle_er_table_picker_keys(key(KeyCode::Enter));
 
             assert!(matches!(result, Action::ErConfirmSelection));
         }
 
         #[test]
-        fn up_selects_previous() {
+        fn up_returns_select_previous() {
             let result = handle_er_table_picker_keys(key(KeyCode::Up));
 
             assert!(matches!(result, Action::SelectPrevious));
         }
 
         #[test]
-        fn down_selects_next() {
+        fn down_returns_select_next() {
             let result = handle_er_table_picker_keys(key(KeyCode::Down));
 
             assert!(matches!(result, Action::SelectNext));
         }
 
         #[test]
-        fn backspace_erases_filter() {
+        fn backspace_returns_er_filter_backspace() {
             let result = handle_er_table_picker_keys(key(KeyCode::Backspace));
 
             assert!(matches!(result, Action::ErFilterBackspace));
         }
 
         #[test]
-        fn char_inputs_filter() {
+        fn char_input_returns_er_filter_input() {
             let result = handle_er_table_picker_keys(key(KeyCode::Char('a')));
 
             assert!(matches!(result, Action::ErFilterInput('a')));
