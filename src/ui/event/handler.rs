@@ -12,6 +12,17 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
         Event::Init => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
         Event::Key(key) => handle_key_event(key, state),
+        Event::Paste(text) => handle_paste_event(text, state),
+    }
+}
+
+fn handle_paste_event(text: String, state: &AppState) -> Action {
+    match state.ui.input_mode {
+        InputMode::TablePicker
+        | InputMode::CommandLine
+        | InputMode::ConnectionSetup
+        | InputMode::SqlModal => Action::Paste(text),
+        _ => Action::None,
     }
 }
 
@@ -1277,6 +1288,52 @@ mod tests {
         #[test]
         fn unknown_key_returns_none() {
             let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::None));
+        }
+    }
+
+    mod paste_event {
+        use super::*;
+
+        fn make_state(mode: InputMode) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = mode;
+            state
+        }
+
+        #[test]
+        fn paste_event_in_sql_modal_returns_paste_action() {
+            let state = make_state(InputMode::SqlModal);
+
+            let result = handle_paste_event("hello".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "hello"));
+        }
+
+        #[test]
+        fn paste_event_in_table_picker_returns_paste_action() {
+            let state = make_state(InputMode::TablePicker);
+
+            let result = handle_paste_event("world".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "world"));
+        }
+
+        #[test]
+        fn paste_event_in_normal_mode_returns_none() {
+            let state = make_state(InputMode::Normal);
+
+            let result = handle_paste_event("text".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn paste_event_in_help_mode_returns_none() {
+            let state = make_state(InputMode::Help);
+
+            let result = handle_paste_event("text".to_string(), &state);
 
             assert!(matches!(result, Action::None));
         }
