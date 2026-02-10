@@ -63,28 +63,22 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::OpenErTablePicker => {
             if state.cache.metadata.is_none() {
-                state.set_error("Metadata not loaded yet".to_string());
+                state.ui.pending_er_picker = true;
+                state.set_success("Waiting for metadata...".to_string());
                 return Some(vec![]);
             }
+            state.ui.pending_er_picker = false;
+            state.ui.er_selected_tables.clear();
             state.ui.input_mode = InputMode::ErTablePicker;
-            // Pre-fill filter with explorer's current table name
-            if let Some(ref current) = state.cache.current_table.clone() {
-                state.ui.er_filter_input = current.clone();
-                let filtered = state.er_filtered_tables();
-                let idx = filtered
-                    .iter()
-                    .position(|t| t.qualified_name() == *current)
-                    .unwrap_or(0);
-                state.ui.er_picker_selected = idx;
-            } else {
-                state.ui.er_filter_input.clear();
-                state.ui.er_picker_selected = 0;
-            }
+            state.ui.er_filter_input.clear();
+            state.ui.er_picker_selected = 0;
             Some(vec![])
         }
         Action::CloseErTablePicker => {
             state.ui.input_mode = InputMode::Normal;
             state.ui.er_filter_input.clear();
+            state.ui.er_selected_tables.clear();
+            state.ui.pending_er_picker = false;
             Some(vec![])
         }
         Action::ErFilterInput(c) => {
@@ -95,6 +89,26 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ErFilterBackspace => {
             state.ui.er_filter_input.pop();
             state.ui.er_picker_selected = 0;
+            Some(vec![])
+        }
+        Action::ErToggleSelection => {
+            let filtered = state.er_filtered_tables();
+            if let Some(table) = filtered.get(state.ui.er_picker_selected) {
+                let name = table.qualified_name();
+                if !state.ui.er_selected_tables.remove(&name) {
+                    state.ui.er_selected_tables.insert(name);
+                }
+            }
+            Some(vec![])
+        }
+        Action::ErSelectAll => {
+            let all_tables: Vec<String> =
+                state.tables().iter().map(|t| t.qualified_name()).collect();
+            if state.ui.er_selected_tables.len() == all_tables.len() {
+                state.ui.er_selected_tables.clear();
+            } else {
+                state.ui.er_selected_tables = all_tables.into_iter().collect();
+            }
             Some(vec![])
         }
         Action::ErConfirmSelection => {

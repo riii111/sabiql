@@ -1373,40 +1373,32 @@ mod tests {
         }
 
         #[test]
-        fn open_without_current_table_clears_filter() {
+        fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
             state.ui.er_filter_input = "old".to_string();
+            state
+                .ui
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
             assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(state.ui.er_filter_input.is_empty());
+            assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn open_with_current_table_prefills_filter() {
-            let mut state = state_with_metadata();
-            state.cache.current_table = Some("public.users".to_string());
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::OpenErTablePicker, now);
-
-            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
-            assert_eq!(state.ui.er_filter_input, "public.users");
-            assert_eq!(state.ui.er_picker_selected, 0);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn open_without_metadata_returns_error() {
+        fn open_without_metadata_sets_pending() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.ui.pending_er_picker);
+            assert!(state.messages.last_success.is_some());
             assert_ne!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(effects.is_empty());
         }
