@@ -1527,5 +1527,70 @@ mod tests {
                 other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
             }
         }
+
+        #[test]
+        fn prefetch_complete_auto_dispatches_er_open() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_metadata();
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 1;
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailAlreadyCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+            }));
+        }
+
+        #[test]
+        fn prefetch_complete_with_failures_does_not_auto_open() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_metadata();
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 2;
+            state
+                .er_preparation
+                .failed_tables
+                .insert("public.posts".to_string(), "timeout".to_string());
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailAlreadyCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(!effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+            }));
+            assert!(state.messages.last_error.is_some());
+        }
     }
 }

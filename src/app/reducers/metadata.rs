@@ -234,10 +234,11 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if state.er_preparation.status == ErStatus::Waiting
                 && state.er_preparation.is_complete()
             {
-                state.er_preparation.status = ErStatus::Idle;
                 if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                    state.er_preparation.status = ErStatus::Idle;
+                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
                 } else {
+                    state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation
@@ -320,10 +321,11 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if state.er_preparation.status == ErStatus::Waiting
                 && state.er_preparation.is_complete()
             {
-                state.er_preparation.status = ErStatus::Idle;
                 if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                    state.er_preparation.status = ErStatus::Idle;
+                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
                 } else {
+                    state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation

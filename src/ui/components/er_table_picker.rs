@@ -1,6 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
@@ -8,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
+use crate::domain::er::er_output_filename;
 use crate::ui::theme::Theme;
 
 use super::molecules::render_modal;
@@ -41,28 +39,9 @@ impl ErTablePicker {
 
         let output_label = if selected_count == 0 {
             "—".to_string()
-        } else if selected_count == total_count {
-            "er_full.dot".to_string()
-        } else if selected_count == 1 {
-            let name = state.ui.er_selected_tables.iter().next().unwrap();
-            let safe: String = name
-                .chars()
-                .map(|c| {
-                    if c.is_alphanumeric() || c == '_' {
-                        c
-                    } else {
-                        '_'
-                    }
-                })
-                .collect();
-            format!("er_partial_{}.dot", safe)
         } else {
-            let mut sorted: Vec<&String> = state.ui.er_selected_tables.iter().collect();
-            sorted.sort();
-            let mut hasher = DefaultHasher::new();
-            sorted.hash(&mut hasher);
-            let hash = format!("{:016x}", hasher.finish());
-            format!("er_partial_multi_{}_{}.dot", selected_count, &hash[..8])
+            let selected_vec: Vec<String> = state.ui.er_selected_tables.iter().cloned().collect();
+            er_output_filename(&selected_vec, total_count)
         };
 
         let (_, inner) = render_modal(
