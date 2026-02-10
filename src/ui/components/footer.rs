@@ -11,8 +11,8 @@ use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS,
-    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS,
-    OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
+    HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -156,10 +156,10 @@ impl Footer {
                 CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
             ],
             InputMode::ErTablePicker => vec![
-                TABLE_PICKER_KEYS[idx::table_picker::ENTER_SELECT].as_hint(),
-                TABLE_PICKER_KEYS[idx::table_picker::TYPE_FILTER].as_hint(),
-                TABLE_PICKER_KEYS[idx::table_picker::NAVIGATE].as_hint(),
-                TABLE_PICKER_KEYS[idx::table_picker::ESC_CLOSE].as_hint(),
+                ER_PICKER_KEYS[idx::er_picker::ENTER_GENERATE].as_hint(),
+                ER_PICKER_KEYS[idx::er_picker::TYPE_FILTER].as_hint(),
+                ER_PICKER_KEYS[idx::er_picker::NAVIGATE].as_hint(),
+                ER_PICKER_KEYS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::ConnectionSelector => vec![
                 CONNECTION_SELECTOR_KEYS[idx::connection_selector::CONFIRM].as_hint(),
