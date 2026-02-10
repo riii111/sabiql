@@ -99,6 +99,13 @@ pub mod idx {
         pub const ESC_CLOSE: usize = 3;
     }
 
+    pub mod er_picker {
+        pub const ENTER_GENERATE: usize = 0;
+        pub const NAVIGATE: usize = 1;
+        pub const TYPE_FILTER: usize = 2;
+        pub const ESC_CLOSE: usize = 3;
+    }
+
     pub mod cmd_palette {
         pub const ENTER_EXECUTE: usize = 0;
         pub const NAVIGATE_JK: usize = 1;
@@ -681,6 +688,45 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
+// ER Table Picker
+// =============================================================================
+
+pub const ER_PICKER_KEYS: &[KeyBinding] = &[
+    // idx 0: ENTER_GENERATE
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Generate",
+        description: "Generate ER diagram",
+        action: Action::ErConfirmSelection,
+    },
+    // idx 1: NAVIGATE
+    KeyBinding {
+        key_short: "↑↓",
+        key: "↑↓",
+        desc_short: "Navigate",
+        description: "Navigate",
+        action: Action::None,
+    },
+    // idx 2: TYPE_FILTER
+    KeyBinding {
+        key_short: "type",
+        key: "type",
+        desc_short: "Filter",
+        description: "Type to filter",
+        action: Action::None,
+    },
+    // idx 3: ESC_CLOSE
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close",
+        action: Action::CloseErTablePicker,
+    },
+];
+
+// =============================================================================
 // Command Palette
 // =============================================================================
 
@@ -960,6 +1006,12 @@ mod tests {
         assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_KEYS.len());
         assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_KEYS.len());
         assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_KEYS.len());
+
+        // ER_PICKER_KEYS
+        assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_KEYS.len());
+        assert!(idx::er_picker::NAVIGATE < ER_PICKER_KEYS.len());
+        assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_KEYS.len());
+        assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_KEYS.len());
 
         // COMMAND_PALETTE_KEYS
         assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_KEYS.len());

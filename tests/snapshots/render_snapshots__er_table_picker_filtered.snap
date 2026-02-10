@@ -8,8 +8,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.post   ││(select a table)                                              │
 │public.comm   │╭ ER Diagram ──────────────────────────────────╮               │
 │              ││  > user█                                     │               │
+│              ││  ▶ Partial ER from public.users              │               │
 │              ││▸   public.users                              │               │
-│              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
@@ -21,7 +21,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
-│              │╰ 1 tables │ Empty = all tables │ ↑↓ Navigate │╯               │
+│              │╰ 1 tables │ ↑↓ Navigate │ Enter Generate │ Esc╯               │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
-Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close
+Enter:Generate  type:Filter  ↑↓:Navigate  Esc:Close
