@@ -46,6 +46,12 @@ pub fn reduce_navigation(
                 state.ui.picker_selected = 0;
                 Some(vec![])
             }
+            InputMode::ErTablePicker => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.ui.er_filter_input.push_str(&clean);
+                state.ui.er_picker_selected = 0;
+                Some(vec![])
+            }
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.command_line_input.push_str(&clean);
@@ -494,6 +500,36 @@ mod tests {
             );
 
             assert!(effects.is_none());
+        }
+
+        #[test]
+        fn paste_in_er_table_picker_appends_to_er_filter() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::ErTablePicker;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Paste("public.users".to_string()),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.er_filter_input, "public.users");
+            assert_eq!(state.ui.er_picker_selected, 0);
+        }
+
+        #[test]
+        fn paste_in_er_table_picker_strips_newlines() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::ErTablePicker;
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("public\n.users\r\n".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.er_filter_input, "public.users");
         }
     }
 

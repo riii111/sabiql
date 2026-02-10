@@ -19,6 +19,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 fn handle_paste_event(text: String, state: &AppState) -> Action {
     match state.ui.input_mode {
         InputMode::TablePicker
+        | InputMode::ErTablePicker
         | InputMode::CommandLine
         | InputMode::ConnectionSetup
         | InputMode::SqlModal => Action::Paste(text),
@@ -1318,6 +1319,15 @@ mod tests {
             let result = handle_paste_event("world".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "world"));
+        }
+
+        #[test]
+        fn paste_event_in_er_table_picker_returns_paste_action() {
+            let state = make_state(InputMode::ErTablePicker);
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "public.users"));
         }
 
         #[test]
