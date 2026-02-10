@@ -1403,6 +1403,64 @@ mod tests {
             assert!(effects.is_empty());
         }
 
+        fn sample_metadata() -> Box<DatabaseMetadata> {
+            Box::new(DatabaseMetadata {
+                database_name: "test_db".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    Some(100),
+                    false,
+                )],
+                fetched_at: Instant::now(),
+            })
+        }
+
+        fn has_open_er_dispatch(effects: &[Effect]) -> bool {
+            effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::OpenErTablePicker)))
+            })
+        }
+
+        #[test]
+        fn metadata_loaded_with_pending_dispatches_open() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = true;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!state.ui.pending_er_picker);
+            assert!(has_open_er_dispatch(&effects));
+        }
+
+        #[test]
+        fn metadata_loaded_without_pending_does_not_dispatch_open() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = false;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!has_open_er_dispatch(&effects));
+        }
+
+        #[test]
+        fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = true;
+            state.ui.input_mode = InputMode::SqlModal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!state.ui.pending_er_picker);
+            assert!(!has_open_er_dispatch(&effects));
+        }
+
         #[test]
         fn close_er_table_picker_returns_to_normal() {
             let mut state = state_with_metadata();

@@ -10,7 +10,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││  > █                                         │               │
 │              ││  Mode:    Partial ER                         │               │
 │              ││  Targets: 2 tables                           │               │
-│              ││  Output:  er_partial_multi_2_*.dot           │               │
+│              ││  Output:  er_partial_multi_2_89466781.dot    │               │
 │              ││▸   ✔ public.users                            │               │
 │              ││    ✔ public.posts                            │               │
 │              ││      public.comments                         │───────────────┘

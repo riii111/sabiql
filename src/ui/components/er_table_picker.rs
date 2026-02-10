@@ -1,3 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
@@ -54,7 +57,12 @@ impl ErTablePicker {
                 .collect();
             format!("er_partial_{}.dot", safe)
         } else {
-            format!("er_partial_multi_{}_*.dot", selected_count)
+            let mut sorted: Vec<&String> = state.ui.er_selected_tables.iter().collect();
+            sorted.sort();
+            let mut hasher = DefaultHasher::new();
+            sorted.hash(&mut hasher);
+            let hash = format!("{:016x}", hasher.finish());
+            format!("er_partial_multi_{}_{}.dot", selected_count, &hash[..8])
         };
 
         let (_, inner) = render_modal(

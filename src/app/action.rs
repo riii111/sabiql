@@ -239,7 +239,7 @@ pub enum Action {
     ErSelectAll,
     ErConfirmSelection,
 
-    // ER Diagram (full database diagram)
+    // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
     ErDiagramOpened {
         path: String,
