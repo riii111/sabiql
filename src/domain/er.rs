@@ -63,6 +63,24 @@ pub fn fk_reachable_tables(tables: &[ErTableInfo], seed: &str) -> Vec<ErTableInf
         .collect()
 }
 
+#[cfg(test)]
+fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
+    ErTableInfo {
+        qualified_name: format!("{}.{}", schema, name),
+        name: name.to_string(),
+        schema: schema.to_string(),
+        foreign_keys: fks
+            .into_iter()
+            .enumerate()
+            .map(|(i, (from, to))| ErFkInfo {
+                name: format!("fk_{}", i),
+                from_qualified: from.to_string(),
+                to_qualified: to.to_string(),
+            })
+            .collect(),
+    }
+}
+
 impl ErTableInfo {
     pub fn from_table(qualified_name: &str, table: &Table) -> Self {
         Self {
@@ -78,6 +96,119 @@ impl ErTableInfo {
                     to_qualified: fk.referenced_table(),
                 })
                 .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod fk_reachable {
+        use super::*;
+
+        #[test]
+        fn nonexistent_seed_returns_empty() {
+            let tables = vec![make_table("users", "public", vec![])];
+
+            let result = fk_reachable_tables(&tables, "public.missing");
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn seed_only_no_fks_returns_seed() {
+            let tables = vec![
+                make_table("users", "public", vec![]),
+                make_table("posts", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users");
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].qualified_name, "public.users");
+        }
+
+        #[test]
+        fn direct_fk_returns_both() {
+            let tables = vec![
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users");
+
+            assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn transitive_fk_returns_chain() {
+            // A -> B -> C
+            let tables = vec![
+                make_table(
+                    "comments",
+                    "public",
+                    vec![("public.comments", "public.posts")],
+                ),
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users");
+
+            assert_eq!(result.len(), 3);
+        }
+
+        #[test]
+        fn cyclic_fk_does_not_loop() {
+            // A -> B -> A (cycle)
+            let tables = vec![
+                make_table("a", "public", vec![("public.a", "public.b")]),
+                make_table("b", "public", vec![("public.b", "public.a")]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.a");
+
+            assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn disconnected_table_excluded() {
+            let tables = vec![
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+                make_table("logs", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users");
+
+            assert_eq!(result.len(), 2);
+            assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
+        }
+
+        #[test]
+        fn bidirectional_traversal() {
+            // seed=posts, posts->users FK. Traversal should find users via reverse edge.
+            let tables = vec![
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.posts");
+
+            assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn cross_schema_fk() {
+            let tables = vec![
+                make_table("users", "public", vec![("public.users", "audit.logs")]),
+                make_table("logs", "audit", vec![]),
+            ];
+
+            let result = fk_reachable_tables(&tables, "public.users");
+
+            assert_eq!(result.len(), 2);
         }
     }
 }

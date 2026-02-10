@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
+│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
+│public.post   ││(select a table)                                              │
+│public.comm   │╭ ER Diagram ──────────────────────────────────╮               │
+│              ││  > █                                         │               │
+│              ││▸   public.users                              │               │
+│              ││    public.posts                              │               │
+│              ││    public.comments                           │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │───────────────┘
+│              ││                                              │───────────────┐
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              ││                                              │               │
+│              │╰ 3 tables │ Empty = all tables │ ↑↓ Navigate │╯               │
+│              ││                                                              │
+└──────────────┘└──────────────────────────────────────────────────────────────┘
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close
