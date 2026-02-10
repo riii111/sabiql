@@ -277,4 +277,69 @@ mod tests {
             assert_eq!(result.len(), 3);
         }
     }
+
+    mod fk_reachable_multi {
+        use super::*;
+
+        #[test]
+        fn empty_seeds_returns_empty() {
+            let tables = vec![make_table("users", "public", vec![])];
+
+            let result = fk_reachable_tables_multi(&tables, &[], 1);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn single_seed_matches_single_fn() {
+            let tables = vec![
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+                make_table("logs", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables_multi(&tables, &["public.users".to_string()], 1);
+
+            assert_eq!(result.len(), 2);
+            assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
+        }
+
+        #[test]
+        fn multi_seeds_union() {
+            let tables = vec![
+                make_table("a", "public", vec![("public.a", "public.b")]),
+                make_table("b", "public", vec![]),
+                make_table("c", "public", vec![]),
+            ];
+            let seeds = vec!["public.a".to_string(), "public.c".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 3);
+        }
+
+        #[test]
+        fn overlap_dedup() {
+            let tables = vec![
+                make_table("a", "public", vec![("public.a", "public.b")]),
+                make_table("b", "public", vec![]),
+            ];
+            let seeds = vec!["public.a".to_string(), "public.b".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn invalid_seed_ignored() {
+            let tables = vec![make_table("users", "public", vec![])];
+            let seeds = vec!["public.users".to_string(), "public.missing".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].qualified_name, "public.users");
+        }
+    }
 }
