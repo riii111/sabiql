@@ -461,8 +461,11 @@ impl EffectRunner {
             Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name,
+                target_table,
             } => {
-                let tables: Vec<ErTableInfo> = {
+                use crate::domain::er::fk_reachable_tables;
+
+                let all_tables: Vec<ErTableInfo> = {
                     let engine = completion_engine.borrow();
                     engine
                         .table_details_iter()
@@ -470,12 +473,31 @@ impl EffectRunner {
                         .collect()
                 };
 
-                if tables.is_empty() {
+                if all_tables.is_empty() {
                     let _ = self
                         .action_tx
                         .send(Action::ErDiagramFailed(
                             "No table data loaded yet".to_string(),
                         ))
+                        .await;
+                    return Ok(());
+                }
+
+                let (tables, filename) = if let Some(ref seed) = target_table {
+                    let reachable = fk_reachable_tables(&all_tables, seed);
+                    let safe_name = seed.replace('.', "_");
+                    (reachable, format!("er_partial_{}.dot", safe_name))
+                } else {
+                    (all_tables, "er_full.dot".to_string())
+                };
+
+                if tables.is_empty() {
+                    let _ = self
+                        .action_tx
+                        .send(Action::ErDiagramFailed(format!(
+                            "Table '{}' not found in cached data",
+                            target_table.unwrap_or_default()
+                        )))
                         .await;
                     return Ok(());
                 }
@@ -488,6 +510,7 @@ impl EffectRunner {
                     total_tables,
                     cache_dir,
                     self.action_tx.clone(),
+                    filename,
                 );
                 Ok(())
             }

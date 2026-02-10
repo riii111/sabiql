@@ -101,13 +101,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let filtered = state.er_filtered_tables();
             let target =
                 if state.ui.er_filter_input.is_empty() && filtered.len() == state.tables().len() {
-                    // Empty filter = full ER
                     None
-                } else if let Some(table) = filtered.get(state.ui.er_picker_selected) {
-                    Some(table.qualified_name())
                 } else {
-                    // No match found
-                    None
+                    filtered
+                        .get(state.ui.er_picker_selected)
+                        .map(|table| table.qualified_name())
                 };
             state.er_preparation.target_table = target;
             state.ui.input_mode = InputMode::Normal;

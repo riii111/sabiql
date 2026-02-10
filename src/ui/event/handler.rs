@@ -702,12 +702,12 @@ mod tests {
         }
 
         #[test]
-        fn e_key_opens_er_diagram() {
+        fn e_key_opens_er_table_picker() {
             let state = browse_state();
 
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
-            assert!(matches!(result, Action::ErOpenDiagram));
+            assert!(matches!(result, Action::OpenErTablePicker));
         }
     }
 

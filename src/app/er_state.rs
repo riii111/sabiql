@@ -146,6 +146,7 @@ mod tests {
                 failed_tables: HashMap::from([("c".to_string(), "err".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 3,
+                target_table: None,
             };
 
             state.reset();
@@ -169,6 +170,7 @@ mod tests {
                 failed_tables: HashMap::new(),
                 status: ErStatus::Waiting,
                 total_tables: 1,
+                target_table: None,
             };
 
             // Simulate skip: remove from pending (e.g., already cached)
@@ -186,6 +188,7 @@ mod tests {
                 failed_tables: HashMap::from([("public.users".to_string(), "timeout".to_string())]),
                 status: ErStatus::Waiting,
                 total_tables: 2,
+                target_table: None,
             };
 
             // Simulate skip: remove last pending (e.g., already cached)
