@@ -9,7 +9,9 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
-use crate::app::reducers::{insert_char_at_cursor, validate_all, validate_field};
+use crate::app::reducers::{
+    insert_char_at_cursor, insert_str_at_cursor, validate_all, validate_field,
+};
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
@@ -141,6 +143,44 @@ pub fn reduce_connection(
             state.runtime.connection_state = ConnectionState::NotConnected;
             state.cache.state = MetadataState::NotLoaded;
             state.ui.input_mode = InputMode::ConnectionSetup;
+            Some(vec![])
+        }
+
+        // ===== Clipboard Paste =====
+        Action::Paste(text) if state.ui.input_mode == InputMode::ConnectionSetup => {
+            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+            let setup = &mut state.connection_setup;
+            match setup.focused_field {
+                ConnectionField::Port => {
+                    let current_len = setup.port.chars().count();
+                    let remaining = 5usize.saturating_sub(current_len);
+                    let digits: String = clean
+                        .chars()
+                        .filter(|c| c.is_ascii_digit())
+                        .take(remaining)
+                        .collect();
+                    if !digits.is_empty() {
+                        let inserted =
+                            insert_str_at_cursor(&mut setup.port, setup.cursor_position, &digits);
+                        let new_cursor = setup.cursor_position + inserted;
+                        setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                    }
+                }
+                ConnectionField::SslMode => {}
+                _ => {
+                    let field_str = match setup.focused_field {
+                        ConnectionField::Name => &mut setup.name,
+                        ConnectionField::Host => &mut setup.host,
+                        ConnectionField::Database => &mut setup.database,
+                        ConnectionField::User => &mut setup.user,
+                        ConnectionField::Password => &mut setup.password,
+                        _ => unreachable!(),
+                    };
+                    let inserted = insert_str_at_cursor(field_str, setup.cursor_position, &clean);
+                    let new_cursor = setup.cursor_position + inserted;
+                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                }
+            }
             Some(vec![])
         }
 
@@ -477,6 +517,118 @@ mod tests {
             Default::default(),
         )
         .unwrap()
+    }
+
+    mod paste {
+        use super::*;
+        use crate::app::connection_setup_state::ConnectionField;
+
+        fn setup_state_with_field(field: ConnectionField) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.connection_setup.focused_field = field;
+            state.connection_setup.cursor_position = 0;
+            // Clear default values so tests start clean
+            state.connection_setup.host.clear();
+            state.connection_setup.port.clear();
+            state.connection_setup.database.clear();
+            state.connection_setup.user.clear();
+            state.connection_setup.name.clear();
+            state.connection_setup.password.clear();
+            state
+        }
+
+        #[test]
+        fn paste_into_host_inserts_text() {
+            let mut state = setup_state_with_field(ConnectionField::Host);
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("db.example.com".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.host, "db.example.com");
+        }
+
+        #[test]
+        fn paste_into_port_filters_non_digits() {
+            let mut state = setup_state_with_field(ConnectionField::Port);
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("54ab32".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.port, "5432");
+        }
+
+        #[test]
+        fn paste_into_port_respects_limit() {
+            let mut state = setup_state_with_field(ConnectionField::Port);
+            state.connection_setup.port = "54".to_string();
+            state.connection_setup.cursor_position = 2;
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("321000".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.port, "54321");
+        }
+
+        #[test]
+        fn paste_into_full_port_does_nothing() {
+            let mut state = setup_state_with_field(ConnectionField::Port);
+            state.connection_setup.port = "12345".to_string();
+            state.connection_setup.cursor_position = 5;
+
+            reduce_connection(&mut state, &Action::Paste("6".to_string()), Instant::now());
+
+            assert_eq!(state.connection_setup.port, "12345");
+        }
+
+        #[test]
+        fn paste_strips_newlines() {
+            let mut state = setup_state_with_field(ConnectionField::Host);
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("local\nhost".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.host, "localhost");
+        }
+
+        #[test]
+        fn paste_into_ssl_mode_ignored() {
+            let mut state = setup_state_with_field(ConnectionField::SslMode);
+            let ssl_mode_before = state.connection_setup.ssl_mode;
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("disable".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.ssl_mode, ssl_mode_before);
+        }
+
+        #[test]
+        fn paste_updates_cursor_and_viewport() {
+            let mut state = setup_state_with_field(ConnectionField::Host);
+
+            reduce_connection(
+                &mut state,
+                &Action::Paste("db.example.com".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_setup.cursor_position, 14);
+        }
     }
 
     mod open_connection_selector {

@@ -38,6 +38,22 @@ pub fn reduce_navigation(
             Some(vec![])
         }
 
+        // Clipboard paste
+        Action::Paste(text) => match state.ui.input_mode {
+            InputMode::TablePicker => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.ui.filter_input.push_str(&clean);
+                state.ui.picker_selected = 0;
+                Some(vec![])
+            }
+            InputMode::CommandLine => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.command_line_input.push_str(&clean);
+                Some(vec![])
+            }
+            _ => None,
+        },
+
         // Filter
         Action::FilterInput(c) => {
             state.ui.filter_input.push(*c);
@@ -378,6 +394,92 @@ mod tests {
     use super::*;
     use crate::app::effect::Effect;
     use std::time::Instant;
+
+    mod paste {
+        use super::*;
+
+        #[test]
+        fn paste_in_table_picker_appends_text() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::TablePicker;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Paste("hello".to_string()),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.filter_input, "hello");
+        }
+
+        #[test]
+        fn paste_in_table_picker_strips_newlines() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::TablePicker;
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("hel\nlo\r\n".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.filter_input, "hello");
+        }
+
+        #[test]
+        fn paste_in_table_picker_resets_selection() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::TablePicker;
+            state.ui.picker_selected = 5;
+
+            reduce_navigation(&mut state, &Action::Paste("x".to_string()), Instant::now());
+
+            assert_eq!(state.ui.picker_selected, 0);
+        }
+
+        #[test]
+        fn paste_in_command_line_appends_text() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::CommandLine;
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("quit".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.command_line_input, "quit");
+        }
+
+        #[test]
+        fn paste_in_command_line_strips_newlines() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::CommandLine;
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("qu\nit".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.command_line_input, "quit");
+        }
+
+        #[test]
+        fn paste_in_normal_mode_returns_none() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::Normal;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Paste("text".to_string()),
+                Instant::now(),
+            );
+
+            assert!(effects.is_none());
+        }
+    }
 
     mod explorer_mode {
         use super::*;

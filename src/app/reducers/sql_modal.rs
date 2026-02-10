@@ -48,6 +48,18 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
 
+        // Clipboard paste
+        Action::Paste(text) if state.ui.input_mode == InputMode::SqlModal => {
+            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
+            state.sql_modal.content.insert_str(byte_idx, &normalized);
+            state.sql_modal.cursor += normalized.chars().count();
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
+            state.sql_modal.status = SqlModalStatus::Editing;
+            Some(vec![])
+        }
+
         // Text editing
         Action::SqlModalInput(c) => {
             state.sql_modal.status = SqlModalStatus::Editing;
@@ -232,5 +244,99 @@ pub fn reduce_sql_modal(
         }
 
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    mod paste {
+        use super::*;
+
+        fn sql_modal_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state
+        }
+
+        #[test]
+        fn paste_inserts_at_cursor() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELCT".to_string();
+            state.sql_modal.cursor = 3;
+
+            reduce_sql_modal(&mut state, &Action::Paste("E".to_string()), Instant::now());
+
+            assert_eq!(state.sql_modal.content, "SELECT");
+        }
+
+        #[test]
+        fn paste_preserves_newlines() {
+            let mut state = sql_modal_state();
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("SELECT\n*\nFROM".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.content, "SELECT\n*\nFROM");
+        }
+
+        #[test]
+        fn paste_normalizes_crlf() {
+            let mut state = sql_modal_state();
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("a\r\nb".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.content, "a\nb");
+        }
+
+        #[test]
+        fn paste_advances_cursor() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "AB".to_string();
+            state.sql_modal.cursor = 1;
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("XYZ".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
+        }
+
+        #[test]
+        fn paste_dismisses_completion() {
+            let mut state = sql_modal_state();
+            state.sql_modal.completion.visible = true;
+
+            reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
+
+            assert!(!state.sql_modal.completion.visible);
+        }
+
+        #[test]
+        fn paste_with_multibyte() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "ab".to_string();
+            state.sql_modal.cursor = 1;
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("日本語".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.content, "a日本語b");
+            assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
+        }
     }
 }

@@ -18,6 +18,12 @@ pub fn insert_char_at_cursor(s: &mut String, char_pos: usize, c: char) {
     s.insert(byte_idx, c);
 }
 
+pub fn insert_str_at_cursor(s: &mut String, char_pos: usize, text: &str) -> usize {
+    let byte_idx = char_to_byte_index(s, char_pos);
+    s.insert_str(byte_idx, text);
+    text.chars().count()
+}
+
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.validation_errors.remove(&field);
 
@@ -92,6 +98,60 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    mod insert_str_at_cursor_tests {
+        use super::*;
+
+        #[test]
+        fn insert_str_at_empty_string() {
+            let mut s = String::new();
+
+            let count = insert_str_at_cursor(&mut s, 0, "abc");
+
+            assert_eq!(s, "abc");
+            assert_eq!(count, 3);
+        }
+
+        #[test]
+        fn insert_str_at_beginning() {
+            let mut s = "hello".to_string();
+
+            let count = insert_str_at_cursor(&mut s, 0, "xy");
+
+            assert_eq!(s, "xyhello");
+            assert_eq!(count, 2);
+        }
+
+        #[test]
+        fn insert_str_at_middle() {
+            let mut s = "abcd".to_string();
+
+            let count = insert_str_at_cursor(&mut s, 2, "XX");
+
+            assert_eq!(s, "abXXcd");
+            assert_eq!(count, 2);
+        }
+
+        #[test]
+        fn insert_str_at_end() {
+            let mut s = "abcd".to_string();
+
+            let count = insert_str_at_cursor(&mut s, 4, "!");
+
+            assert_eq!(s, "abcd!");
+            assert_eq!(count, 1);
+        }
+
+        #[test]
+        fn insert_str_with_multibyte() {
+            let mut s = "abc".to_string();
+
+            let count = insert_str_at_cursor(&mut s, 1, "日本");
+
+            assert_eq!(s, "a日本bc");
+            assert_eq!(count, 2);
+        }
+    }
 
     mod validate_field_name {
         use super::*;
