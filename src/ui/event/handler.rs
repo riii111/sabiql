@@ -19,6 +19,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 fn handle_paste_event(text: String, state: &AppState) -> Action {
     match state.ui.input_mode {
         InputMode::TablePicker
+        | InputMode::ErTablePicker
         | InputMode::CommandLine
         | InputMode::ConnectionSetup
         | InputMode::SqlModal => Action::Paste(text),
@@ -42,6 +43,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
         InputMode::ConnectionError => handle_connection_error_keys(key),
         InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
         InputMode::ConnectionSelector => handle_connection_selector_keys(key),
+        InputMode::ErTablePicker => handle_er_table_picker_keys(key),
     }
 }
 
@@ -168,7 +170,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
-        KeyCode::Char('e') => Action::ErOpenDiagram,
+        KeyCode::Char('e') => Action::OpenErTablePicker,
         KeyCode::Char('c') => Action::ToggleExplorerMode,
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
         KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
@@ -330,6 +332,18 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
         KeyCode::Char('c') => Action::CopyConnectionError,
         KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
         KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
+        _ => Action::None,
+    }
+}
+
+fn handle_er_table_picker_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CloseErTablePicker,
+        KeyCode::Enter => Action::ErConfirmSelection,
+        KeyCode::Up => Action::SelectPrevious,
+        KeyCode::Down => Action::SelectNext,
+        KeyCode::Backspace => Action::ErFilterBackspace,
+        KeyCode::Char(c) => Action::ErFilterInput(c),
         _ => Action::None,
     }
 }
@@ -700,12 +714,12 @@ mod tests {
         }
 
         #[test]
-        fn e_key_opens_er_diagram() {
+        fn e_key_opens_er_table_picker() {
             let state = browse_state();
 
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
-            assert!(matches!(result, Action::ErOpenDiagram));
+            assert!(matches!(result, Action::OpenErTablePicker));
         }
     }
 
@@ -1308,6 +1322,15 @@ mod tests {
         }
 
         #[test]
+        fn paste_event_in_er_table_picker_returns_paste_action() {
+            let state = make_state(InputMode::ErTablePicker);
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
         fn paste_event_in_normal_mode_returns_none() {
             let state = make_state(InputMode::Normal);
 
@@ -1357,6 +1380,52 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
             assert!(matches!(result, Action::RequestEditSelectedConnection));
+        }
+    }
+
+    mod er_table_picker {
+        use super::*;
+
+        #[test]
+        fn esc_returns_close_er_table_picker() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::CloseErTablePicker));
+        }
+
+        #[test]
+        fn enter_returns_er_confirm_selection() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Enter));
+
+            assert!(matches!(result, Action::ErConfirmSelection));
+        }
+
+        #[test]
+        fn up_returns_select_previous() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Up));
+
+            assert!(matches!(result, Action::SelectPrevious));
+        }
+
+        #[test]
+        fn down_returns_select_next() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Down));
+
+            assert!(matches!(result, Action::SelectNext));
+        }
+
+        #[test]
+        fn backspace_returns_er_filter_backspace() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::ErFilterBackspace));
+        }
+
+        #[test]
+        fn char_input_returns_er_filter_input() {
+            let result = handle_er_table_picker_keys(key(KeyCode::Char('a')));
+
+            assert!(matches!(result, Action::ErFilterInput('a')));
         }
     }
 }

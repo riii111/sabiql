@@ -13,11 +13,12 @@ pub fn spawn_er_diagram_task(
     total_tables: usize,
     cache_dir: PathBuf,
     tx: mpsc::Sender<Action>,
+    filename: String,
 ) {
     let table_count = tables.len();
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            exporter.generate_and_export(&tables, "er_full.dot", &cache_dir)
+            exporter.generate_and_export(&tables, &filename, &cache_dir)
         })
         .await;
 
@@ -129,7 +130,14 @@ mod tests {
                 output_path: output_path.clone(),
             });
 
-            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
 
             let action = receive_action(&mut rx).await;
             match action {
@@ -152,7 +160,14 @@ mod tests {
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(FailExporter);
 
-            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
 
             let action = receive_action(&mut rx).await;
             match action {
@@ -169,7 +184,14 @@ mod tests {
             let (tx, mut rx) = mpsc::channel(1);
             let exporter = Arc::new(PanicExporter);
 
-            spawn_er_diagram_task(exporter, vec![], 5, temp_dir.path().to_path_buf(), tx);
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
 
             let action = receive_action(&mut rx).await;
             match action {

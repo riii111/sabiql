@@ -78,6 +78,7 @@ pub enum Effect {
     GenerateErDiagramFromCache {
         total_tables: usize,
         project_name: String,
+        target_table: Option<String>,
     },
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,

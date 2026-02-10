@@ -7,6 +7,7 @@ use super::confirm_dialog::ConfirmDialog;
 use super::connection_error::ConnectionError;
 use super::connection_selector::ConnectionSelector;
 use super::connection_setup::ConnectionSetup;
+use super::er_table_picker::ErTablePicker;
 use super::explorer::Explorer;
 use super::footer::Footer;
 use super::header::Header;
@@ -42,6 +43,7 @@ impl MainLayout {
 
         match state.ui.input_mode {
             InputMode::TablePicker => TablePicker::render(frame, state),
+            InputMode::ErTablePicker => ErTablePicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
             InputMode::SqlModal => SqlModal::render(frame, state),

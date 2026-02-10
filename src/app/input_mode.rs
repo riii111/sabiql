@@ -11,4 +11,5 @@ pub enum InputMode {
     ConnectionError,
     ConfirmDialog,
     ConnectionSelector,
+    ErTablePicker,
 }

@@ -5,6 +5,7 @@ pub mod confirm_dialog;
 pub mod connection_error;
 pub mod connection_selector;
 pub mod connection_setup;
+pub mod er_table_picker;
 pub mod explorer;
 pub mod footer;
 pub mod header;

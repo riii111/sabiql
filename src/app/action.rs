@@ -230,6 +230,13 @@ pub enum Action {
     // Focus mode
     ToggleFocus,
 
+    // ER Table Picker
+    OpenErTablePicker,
+    CloseErTablePicker,
+    ErFilterInput(char),
+    ErFilterBackspace,
+    ErConfirmSelection,
+
     // ER Diagram (full database diagram)
     ErOpenDiagram,
     ErDiagramOpened {

@@ -26,7 +26,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Quit => Action::Quit,
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
-        Command::Erd => Action::ErOpenDiagram,
+        Command::Erd => Action::OpenErTablePicker,
         Command::Unknown(_) => Action::None,
     }
 }
@@ -119,10 +119,10 @@ mod tests {
         }
 
         #[test]
-        fn erd_returns_er_open_diagram_action() {
+        fn erd_returns_open_er_table_picker_action() {
             let result = command_to_action(Command::Erd);
 
-            assert!(matches!(result, Action::ErOpenDiagram));
+            assert!(matches!(result, Action::OpenErTablePicker));
         }
 
         #[test]

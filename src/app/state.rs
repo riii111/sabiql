@@ -124,6 +124,20 @@ impl AppState {
             .unwrap_or_default()
     }
 
+    pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
+        let filter_lower = self.ui.er_filter_input.to_lowercase();
+        self.cache
+            .metadata
+            .as_ref()
+            .map(|m| {
+                m.tables
+                    .iter()
+                    .filter(|t| t.qualified_name_lower().contains(&filter_lower))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn toggle_focus(&mut self) -> bool {
         self.ui.toggle_focus()
     }

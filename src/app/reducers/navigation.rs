@@ -46,6 +46,12 @@ pub fn reduce_navigation(
                 state.ui.picker_selected = 0;
                 Some(vec![])
             }
+            InputMode::ErTablePicker => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.ui.er_filter_input.push_str(&clean);
+                state.ui.er_picker_selected = 0;
+                Some(vec![])
+            }
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.command_line_input.push_str(&clean);
@@ -94,6 +100,12 @@ pub fn reduce_navigation(
                         state.ui.picker_selected += 1;
                     }
                 }
+                InputMode::ErTablePicker => {
+                    let max = state.er_filtered_tables().len().saturating_sub(1);
+                    if state.ui.er_picker_selected < max {
+                        state.ui.er_picker_selected += 1;
+                    }
+                }
                 InputMode::CommandPalette => {
                     let max = palette_command_count() - 1;
                     if state.ui.picker_selected < max {
@@ -119,6 +131,9 @@ pub fn reduce_navigation(
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
                 }
+                InputMode::ErTablePicker => {
+                    state.ui.er_picker_selected = state.ui.er_picker_selected.saturating_sub(1);
+                }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
@@ -135,6 +150,9 @@ pub fn reduce_navigation(
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state.ui.picker_selected = 0;
                 }
+                InputMode::ErTablePicker => {
+                    state.ui.er_picker_selected = 0;
+                }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
                     {
@@ -150,6 +168,10 @@ pub fn reduce_navigation(
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     state.ui.picker_selected = max;
+                }
+                InputMode::ErTablePicker => {
+                    let max = state.er_filtered_tables().len().saturating_sub(1);
+                    state.ui.er_picker_selected = max;
                 }
                 InputMode::CommandPalette => {
                     state.ui.picker_selected = palette_command_count() - 1;
@@ -478,6 +500,36 @@ mod tests {
             );
 
             assert!(effects.is_none());
+        }
+
+        #[test]
+        fn paste_in_er_table_picker_appends_to_er_filter() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::ErTablePicker;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Paste("public.users".to_string()),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.er_filter_input, "public.users");
+            assert_eq!(state.ui.er_picker_selected, 0);
+        }
+
+        #[test]
+        fn paste_in_er_table_picker_strips_newlines() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::ErTablePicker;
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("public\n.users\r\n".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.er_filter_input, "public.users");
         }
     }
 
