@@ -485,7 +485,16 @@ impl EffectRunner {
 
                 let (tables, filename) = if let Some(ref seed) = target_table {
                     let reachable = fk_reachable_tables(&all_tables, seed);
-                    let safe_name = seed.replace('.', "_");
+                    let safe_name: String = seed
+                        .chars()
+                        .map(|c| {
+                            if c.is_alphanumeric() || c == '_' {
+                                c
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect();
                     (reachable, format!("er_partial_{}.dot", safe_name))
                 } else {
                     (all_tables, "er_full.dot".to_string())
