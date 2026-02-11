@@ -1373,42 +1373,92 @@ mod tests {
         }
 
         #[test]
-        fn open_without_current_table_clears_filter() {
+        fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
             state.ui.er_filter_input = "old".to_string();
+            state
+                .ui
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
             assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(state.ui.er_filter_input.is_empty());
+            assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn open_with_current_table_prefills_filter() {
-            let mut state = state_with_metadata();
-            state.cache.current_table = Some("public.users".to_string());
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::OpenErTablePicker, now);
-
-            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
-            assert_eq!(state.ui.er_filter_input, "public.users");
-            assert_eq!(state.ui.er_picker_selected, 0);
-            assert!(effects.is_empty());
-        }
-
-        #[test]
-        fn open_without_metadata_returns_error() {
+        fn open_without_metadata_sets_pending() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::OpenErTablePicker, now);
 
-            assert!(state.messages.last_error.is_some());
+            assert!(state.ui.pending_er_picker);
+            assert!(state.messages.last_success.is_some());
             assert_ne!(state.ui.input_mode, InputMode::ErTablePicker);
             assert!(effects.is_empty());
+        }
+
+        fn sample_metadata() -> Box<DatabaseMetadata> {
+            Box::new(DatabaseMetadata {
+                database_name: "test_db".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    Some(100),
+                    false,
+                )],
+                fetched_at: Instant::now(),
+            })
+        }
+
+        fn has_open_er_dispatch(effects: &[Effect]) -> bool {
+            effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::OpenErTablePicker)))
+            })
+        }
+
+        #[test]
+        fn metadata_loaded_with_pending_dispatches_open() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = true;
+            state.ui.input_mode = InputMode::Normal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!state.ui.pending_er_picker);
+            assert!(has_open_er_dispatch(&effects));
+        }
+
+        #[test]
+        fn metadata_loaded_without_pending_does_not_dispatch_open() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = false;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!has_open_er_dispatch(&effects));
+        }
+
+        #[test]
+        fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
+            let mut state = create_test_state();
+            state.ui.pending_er_picker = true;
+            state.ui.input_mode = InputMode::SqlModal;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::MetadataLoaded(sample_metadata()), now);
+
+            assert!(!state.ui.pending_er_picker);
+            assert!(!has_open_er_dispatch(&effects));
         }
 
         #[test]
@@ -1426,18 +1476,20 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_table_sets_target_and_returns_dispatch() {
+        fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input = "users".to_string();
-            state.ui.er_picker_selected = 0;
+            state
+                .ui
+                .er_selected_tables
+                .insert("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
 
             assert_eq!(
-                state.er_preparation.target_table,
-                Some("public.users".to_string())
+                state.er_preparation.target_tables,
+                vec!["public.users".to_string()]
             );
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(effects.len(), 1);
@@ -1445,23 +1497,9 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_empty_filter_returns_full_er_dispatch() {
+        fn confirm_with_no_selection_returns_error() {
             let mut state = state_with_metadata();
             state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input.clear();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::ErConfirmSelection, now);
-
-            assert!(state.er_preparation.target_table.is_none());
-            assert_eq!(effects.len(), 1);
-        }
-
-        #[test]
-        fn confirm_with_no_match_filter_returns_error_and_stays_open() {
-            let mut state = state_with_metadata();
-            state.ui.input_mode = InputMode::ErTablePicker;
-            state.ui.er_filter_input = "nonexistent".to_string();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErConfirmSelection, now);
@@ -1472,22 +1510,87 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_target_table_returns_generate_effect() {
+        fn er_open_with_target_tables_returns_generate_effect() {
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
-            state.er_preparation.target_table = Some("public.users".to_string());
+            state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
-                Effect::GenerateErDiagramFromCache { target_table, .. } => {
-                    assert_eq!(target_table, &Some("public.users".to_string()));
+                Effect::GenerateErDiagramFromCache { target_tables, .. } => {
+                    assert_eq!(target_tables, &vec!["public.users".to_string()]);
                 }
                 other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
             }
+        }
+
+        #[test]
+        fn prefetch_complete_auto_dispatches_er_open() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_metadata();
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 1;
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailAlreadyCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+            }));
+        }
+
+        #[test]
+        fn prefetch_complete_with_failures_does_not_auto_open() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_metadata();
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.total_tables = 2;
+            state
+                .er_preparation
+                .failed_tables
+                .insert("public.posts".to_string(), "timeout".to_string());
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.users".to_string());
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::TableDetailAlreadyCached {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(!effects.iter().any(|e| {
+                matches!(e, Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+            }));
+            assert!(state.messages.last_error.is_some());
         }
     }
 }

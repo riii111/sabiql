@@ -8,11 +8,11 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.post   ││(select a table)                                              │
 │public.comm   │╭ ER Diagram ──────────────────────────────────╮               │
 │              ││  > █                                         │               │
-│              ││  Mode:    Invalid                            │               │
-│              ││  Targets: —                                  │               │
-│              ││  Output:  —                                  │               │
-│              ││▸     public.users                            │               │
-│              ││      public.posts                            │               │
+│              ││  Mode:    Partial ER                         │               │
+│              ││  Targets: 2 tables                           │               │
+│              ││  Output:  er_partial_multi_2_89466781.dot    │               │
+│              ││▸   ✔ public.users                            │               │
+│              ││    ✔ public.posts                            │               │
 │              ││      public.comments                         │───────────────┘
 │              ││                                              │───────────────┐
 │              ││                                              │               │
@@ -21,7 +21,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
-│              │╰ 0/3 selected │ Space Select │ ^A All │ Enter ╯               │
+│              │╰ 2/3 selected │ Space Select │ ^A All │ Enter ╯               │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
 Enter:Generate  Space:Select  ^A:All  type:Filter  ↑↓:Navigate  Esc:Close

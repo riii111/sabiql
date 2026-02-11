@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use ratatui::widgets::ListState;
 
 use super::explorer_mode::ExplorerMode;
@@ -35,6 +37,8 @@ pub struct UiState {
     pub er_filter_input: String,
     pub er_picker_selected: usize,
     pub er_picker_list_state: ListState,
+    pub er_selected_tables: BTreeSet<String>,
+    pub pending_er_picker: bool,
 
     pub inspector_tab: InspectorTab,
     pub inspector_scroll_offset: usize,

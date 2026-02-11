@@ -8,12 +8,12 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.post   ││(select a table)                                              │
 │public.comm   │╭ ER Diagram ──────────────────────────────────╮               │
 │              ││  > █                                         │               │
-│              ││  Mode:    Invalid                            │               │
-│              ││  Targets: —                                  │               │
-│              ││  Output:  —                                  │               │
-│              ││▸     public.users                            │               │
-│              ││      public.posts                            │               │
-│              ││      public.comments                         │───────────────┘
+│              ││  Mode:    Full ER                            │               │
+│              ││  Targets: all 3 tables                       │               │
+│              ││  Output:  er_full.dot                        │               │
+│              ││▸   ✔ public.users                            │               │
+│              ││    ✔ public.posts                            │               │
+│              ││    ✔ public.comments                         │───────────────┘
 │              ││                                              │───────────────┐
 │              ││                                              │               │
 │              ││                                              │               │
@@ -21,7 +21,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              ││                                              │               │
 │              ││                                              │               │
 │              ││                                              │               │
-│              │╰ 0/3 selected │ Space Select │ ^A All │ Enter ╯               │
+│              │╰ 3/3 selected │ Space Select │ ^A All │ Enter ╯               │
 │              ││                                                              │
 └──────────────┘└──────────────────────────────────────────────────────────────┘
 Enter:Generate  Space:Select  ^A:All  type:Filter  ↑↓:Navigate  Esc:Close

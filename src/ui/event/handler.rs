@@ -337,13 +337,15 @@ fn handle_connection_error_keys(key: KeyEvent) -> Action {
 }
 
 fn handle_er_table_picker_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseErTablePicker,
-        KeyCode::Enter => Action::ErConfirmSelection,
-        KeyCode::Up => Action::SelectPrevious,
-        KeyCode::Down => Action::SelectNext,
-        KeyCode::Backspace => Action::ErFilterBackspace,
-        KeyCode::Char(c) => Action::ErFilterInput(c),
+    match (key.code, key.modifiers) {
+        (KeyCode::Esc, _) => Action::CloseErTablePicker,
+        (KeyCode::Enter, _) => Action::ErConfirmSelection,
+        (KeyCode::Up, _) => Action::SelectPrevious,
+        (KeyCode::Down, _) => Action::SelectNext,
+        (KeyCode::Char(' '), _) => Action::ErToggleSelection,
+        (KeyCode::Char('a'), m) if m.contains(KeyModifiers::CONTROL) => Action::ErSelectAll,
+        (KeyCode::Backspace, _) => Action::ErFilterBackspace,
+        (KeyCode::Char(c), _) => Action::ErFilterInput(c),
         _ => Action::None,
     }
 }
