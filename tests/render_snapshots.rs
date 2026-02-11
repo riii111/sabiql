@@ -605,8 +605,18 @@ fn er_table_picker_all_selected() {
 
 mod style_assertions {
     use super::*;
+    use harness::{TEST_HEIGHT, TEST_WIDTH};
     use ratatui::style::{Color, Modifier};
     use sabiql::app::input_mode::InputMode;
+
+    /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
+    fn help_modal_origin() -> (u16, u16) {
+        let modal_w = TEST_WIDTH * 70 / 100;
+        let modal_h = TEST_HEIGHT * 80 / 100;
+        let x = (TEST_WIDTH - modal_w) / 2;
+        let y = (TEST_HEIGHT - modal_h) / 2;
+        (x, y)
+    }
 
     #[test]
     fn scrim_applies_dim_modifier() {
@@ -620,7 +630,6 @@ mod style_assertions {
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-        // Cell (0, 0) is outside the modal — scrim should apply DIM
         let cell = buffer.cell((0, 0)).unwrap();
         assert!(
             cell.modifier.contains(Modifier::DIM),
@@ -641,28 +650,23 @@ mod style_assertions {
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-        // The modal is centered; find a border cell by scanning for rounded corner '╭'
-        let mut found_border = false;
-        for y in 0..buffer.area.height {
-            for x in 0..buffer.area.width {
-                let cell = buffer.cell((x, y)).unwrap();
-                if cell.symbol() == "╭" {
-                    assert_eq!(
-                        cell.fg,
-                        Color::DarkGray,
-                        "Expected DarkGray fg on modal border '╭' at ({}, {}), got {:?}",
-                        x,
-                        y,
-                        cell.fg
-                    );
-                    found_border = true;
-                    break;
-                }
-            }
-            if found_border {
-                break;
-            }
-        }
-        assert!(found_border, "Could not find modal border character '╭'");
+        let (mx, my) = help_modal_origin();
+        let cell = buffer.cell((mx, my)).unwrap();
+        assert_eq!(
+            cell.symbol(),
+            "╭",
+            "Expected '╭' at modal origin ({}, {}), got '{}'",
+            mx,
+            my,
+            cell.symbol()
+        );
+        assert_eq!(
+            cell.fg,
+            Color::DarkGray,
+            "Expected DarkGray fg on modal border at ({}, {}), got {:?}",
+            mx,
+            my,
+            cell.fg
+        );
     }
 }
