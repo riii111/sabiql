@@ -25,11 +25,7 @@ pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect 
 pub fn render_scrim(frame: &mut Frame) {
     let buf = frame.buffer_mut();
     let area = buf.area;
-    for y in area.y..(area.y + area.height) {
-        for x in area.x..(area.x + area.width) {
-            buf[(x, y)].set_bg(Theme::SCRIM_BG);
-        }
-    }
+    buf.set_style(area, Style::default().add_modifier(Modifier::DIM));
 }
 
 pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {
