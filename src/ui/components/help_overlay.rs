@@ -116,7 +116,7 @@ impl HelpOverlay {
     fn key_line(key: &str, desc: &str) -> Line<'static> {
         Line::from(vec![
             Span::styled(
-                format!("  {:<15}", key),
+                format!("  {:<20}", key),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),

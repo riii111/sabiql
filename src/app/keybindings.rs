@@ -64,10 +64,9 @@ pub mod idx {
         pub const ESC_CLOSE: usize = 1;
         pub const ENTER_EXECUTE: usize = 2;
         pub const ENTER_SELECT: usize = 3;
-        pub const NAVIGATE: usize = 4;
-        pub const NAVIGATE_JK: usize = 5;
-        pub const TYPE_FILTER: usize = 6;
-        pub const ERROR_OPEN: usize = 7;
+        pub const NAVIGATE_JK: usize = 4;
+        pub const TYPE_FILTER: usize = 5;
+        pub const ERROR_OPEN: usize = 6;
     }
 
     pub mod conn_setup {
@@ -293,7 +292,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     },
     KeyBinding {
         key_short: "^F/^B",
-        key: "Ctrl+F / Ctrl+B / PgDn / PgUp",
+        key: "Ctrl+F/B / PgDn/Up",
         desc_short: "Full Page",
         description: "Scroll full page down/up",
         action: Action::None,
@@ -465,15 +464,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         description: "Confirm selection",
         action: Action::None,
     },
-    // idx 4: NAVIGATE
-    KeyBinding {
-        key_short: "↑↓",
-        key: "↑ / ↓",
-        desc_short: "Navigate",
-        description: "Navigate items",
-        action: Action::None,
-    },
-    // idx 5: NAVIGATE_JK
+    // idx 4: NAVIGATE_JK
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -1034,7 +1025,6 @@ mod tests {
         assert!(idx::overlay::ESC_CLOSE < OVERLAY_KEYS.len());
         assert!(idx::overlay::ENTER_EXECUTE < OVERLAY_KEYS.len());
         assert!(idx::overlay::ENTER_SELECT < OVERLAY_KEYS.len());
-        assert!(idx::overlay::NAVIGATE < OVERLAY_KEYS.len());
         assert!(idx::overlay::NAVIGATE_JK < OVERLAY_KEYS.len());
         assert!(idx::overlay::TYPE_FILTER < OVERLAY_KEYS.len());
         assert!(idx::overlay::ERROR_OPEN < OVERLAY_KEYS.len());

@@ -6,22 +6,22 @@ test_project | - | - | no dsn | localhost:5432/test
 ┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
 │public.user╭ Help ────────────────────────────────────────────────╮───────────┐
 │public.post│▸ Global Keys                                        ▲│           │
-│public.comm│  q              Quit application                    ┃│           │
-│           │  ?              Toggle help                         ┃│           │
-│           │  Ctrl+P         Open Table Picker                   ┃│           │
-│           │  Ctrl+K         Open Command Palette                ││           │
-│           │  :              Enter command line                  ││           │
-│           │  f              Toggle Focus mode                   ││           │
-│           │  f              Exit Focus mode                     ││           │
-│           │  1/2/3          Switch pane focus                   ││───────────┘
-│           │  Tab/⇧Tab       Inspector prev/next tab             ││───────────┐
-│           │  r              Reload metadata                     ││           │
-│           │  s              Open SQL Editor                     ││           │
-│           │  e              Open ER Diagram                     ││           │
-│           │  c              Toggle Connections mode             ││           │
+│public.comm│  q                   Quit application               ┃│           │
+│           │  ?                   Toggle help                    ┃│           │
+│           │  Ctrl+P              Open Table Picker              ┃│           │
+│           │  Ctrl+K              Open Command Palette           ││           │
+│           │  :                   Enter command line             ││           │
+│           │  f                   Toggle Focus mode              ││           │
+│           │  f                   Exit Focus mode                ││           │
+│           │  1/2/3               Switch pane focus              ││───────────┘
+│           │  Tab/⇧Tab            Inspector prev/next tab        ││───────────┐
+│           │  r                   Reload metadata                ││           │
+│           │  s                   Open SQL Editor                ││           │
+│           │  e                   Open ER Diagram                ││           │
+│           │  c                   Toggle Connections mode        ││           │
 │           │                                                     ││           │
 │           │▸ Navigation                                         ││           │
-│           │  j / ↓          Move down / scroll                  ▼│           │
-│           │  k / ↑          Move up / scroll             row   0%│           │
+│           │  j / ↓               Move down / scroll             ▼│           │
+│           │  k / ↑               Move up / scroll        row   0%│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
 j/k / ↑↓:Scroll  ?/Esc:Close  q:Quit
