@@ -16,14 +16,14 @@ pub struct Theme;
 #[allow(dead_code)]
 impl Theme {
     // Modal border
-    pub const MODAL_BORDER: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
-    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0x5a, 0x5a, 0x7a);
+    pub const MODAL_BORDER: Color = Color::DarkGray;
+    pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Gray;
 
     // Modal title (emphasized)
-    pub const MODAL_TITLE: Color = Color::Rgb(0xcc, 0xcc, 0xdd);
+    pub const MODAL_TITLE: Color = Color::White;
 
     // Modal hint text (de-emphasized)
-    pub const MODAL_HINT: Color = Color::Rgb(0x55, 0x55, 0x66);
+    pub const MODAL_HINT: Color = Color::DarkGray;
 
     // Key chip (for important keys in Help)
     pub const KEY_CHIP_BG: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
