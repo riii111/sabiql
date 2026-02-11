@@ -1,7 +1,9 @@
 mod harness;
 
 use harness::fixtures;
-use harness::{create_test_state, create_test_terminal, render_to_string, test_instant};
+use harness::{
+    create_test_state, create_test_terminal, render_and_get_buffer, render_to_string, test_instant,
+};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -599,4 +601,68 @@ fn er_table_picker_all_selected() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+mod style_assertions {
+    use super::*;
+    use ratatui::style::{Color, Modifier};
+    use sabiql::app::input_mode::InputMode;
+
+    #[test]
+    fn scrim_applies_dim_modifier() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.ui.input_mode = InputMode::Help;
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        // Cell (0, 0) is outside the modal — scrim should apply DIM
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert!(
+            cell.modifier.contains(Modifier::DIM),
+            "Expected DIM modifier on scrim cell (0,0), got {:?}",
+            cell.modifier
+        );
+    }
+
+    #[test]
+    fn modal_border_uses_ansi_darkgray() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.ui.input_mode = InputMode::Help;
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        // The modal is centered; find a border cell by scanning for rounded corner '╭'
+        let mut found_border = false;
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                let cell = buffer.cell((x, y)).unwrap();
+                if cell.symbol() == "╭" {
+                    assert_eq!(
+                        cell.fg,
+                        Color::DarkGray,
+                        "Expected DarkGray fg on modal border '╭' at ({}, {}), got {:?}",
+                        x,
+                        y,
+                        cell.fg
+                    );
+                    found_border = true;
+                    break;
+                }
+            }
+            if found_border {
+                break;
+            }
+        }
+        assert!(found_border, "Could not find modal border character '╭'");
+    }
 }
