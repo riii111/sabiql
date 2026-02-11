@@ -19,9 +19,6 @@ impl Theme {
     // Modal/Overlay backgrounds
     pub const MODAL_BG: Color = Palette::DUCKBONES;
 
-    // Scrim (dimmed background behind modals)
-    pub const SCRIM_BG: Color = Color::Rgb(0x10, 0x10, 0x18);
-
     // Modal border
     pub const MODAL_BORDER: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
     pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0x5a, 0x5a, 0x7a);
