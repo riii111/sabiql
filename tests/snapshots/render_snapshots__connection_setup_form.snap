@@ -3,11 +3,11 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
-│              ││(select a table)                                              │
-│              ││                                                              │
-│              ││                                                              │
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
 │        ╭ New Connection ────────────────────────────────────────────╮        │
 │        │                                                            │        │
 │        │  Name:       [ █                          ]                │        │
@@ -21,7 +21,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │        │  Note: Connection info is stored locally in plain text     │        │
 │        │                                                            │        │
 │        ╰ Tab: Next │ Shift+Tab: Prev │ Ctrl+S: Connect │ Esc: Cancel╯        │
-│              ││                                                              │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 ^S:Connect  Tab:Next  ⇧Tab:Prev  Esc:Cancel

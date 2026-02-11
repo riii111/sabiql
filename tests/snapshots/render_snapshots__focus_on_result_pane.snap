@@ -3,25 +3,25 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│> public.user │┌ [2] Inspector ───────────────────────────────────────────────┐
-│  public.post ││(select a table)                                              │
-│  public.comm ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              │└──────────────────────────────────────────────────────────────┘
-│              │┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────┐
-│              ││id   name    email                                            │
-│              ││1    Alice   alice@example.com                                │
-│              ││2    Bob     bob@example.com                                  │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││(select a table)                                          │
+│  public.comments ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  │└──────────────────────────────────────────────────────────┘
+│                  │┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────┐
+│                  ││id   name    email                                        │
+│                  ││1    Alice   alice@example.com                            │
+│                  ││2    Bob     bob@example.com                              │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^K:Palette  1/2/3:Pane

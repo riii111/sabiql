@@ -3,11 +3,11 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
-│              ││(select a table)                                              │
-│              ││                                                              │
-│              ││                                                              │
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
 │           │✗ Could not resolve host                              │           │
 │           │                                                      │           │
@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │
 │           ╰ Esc to close  q to quit ─────────────────────────────╯           │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 e:Edit  s:Switch  d:Details  c:Copy  Esc:Close  q:Quit

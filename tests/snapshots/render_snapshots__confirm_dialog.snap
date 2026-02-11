@@ -3,25 +3,25 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
-│              ││(select a table)                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││ ╭ Confirm ──────────────────────────────────╮                │
-│              ││ │         No connection configured.         │                │
-│              ││ │      Are you sure you want to quit?       │                │
-│              │└─│                                           │────────────────┘
-│              │┌ │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
-│              ││(│                                           │                │
-│              ││ │                                           │                │
-│              ││ ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                 ╭ Confirm ──────────────────────────────────╮                │
+│                 │         No connection configured.         │                │
+│                 │      Are you sure you want to quit?       │                │
+│                 │                                           │────────────────┘
+│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
+│                 │                                           │                │
+│                 │                                           │                │
+│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 Enter/y:Yes  Esc/n:No

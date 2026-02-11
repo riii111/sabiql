@@ -3,25 +3,25 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│ Press 'r' to │┌ [2] Inspector ───────────────────────────────────────────────┐
-│              ││(select a table)                                              │
-│              ││                                                              │
-│              │╭ Select Connection ───────────────────────────╮               │
-│              ││> ● Production                                │               │
-│              ││    Staging                                   │               │
-│              ││    Local Dev                                 │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │───────────────┘
-│              ││                                              │───────────────┐
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              │╰ ↑/↓ Select  Enter Confirm  n New  e Edit  d D╯               │
-│              ││                                                              │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│               ╭ Select Connection ───────────────────────────╮               │
+│               │> ● Production                                │               │
+│               │    Staging                                   │               │
+│               │    Local Dev                                 │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │───────────────┘
+│               │                                              │───────────────┐
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               ╰ ↑/↓ Select  Enter Confirm  n New  e Edit  d D╯               │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 Enter:Confirm  ↑/↓:Select  n:New  e:Edit  d:Delete  q:Quit
