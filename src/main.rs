@@ -25,17 +25,29 @@ use sabiql::ui::adapters::TuiAdapter;
 use sabiql::ui::event::handler::handle_event;
 use sabiql::ui::tui::TuiRunner;
 
-/// CLI arguments (empty, but needed for --help and --version)
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {}
+struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Command {
+    /// Update sabiql to the latest compatible version
+    Update,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     error::install_hooks()?;
 
-    Args::parse(); // --help, --version
+    let args = Args::parse();
+    if let Some(Command::Update) = args.command {
+        return run_update();
+    }
+
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
 
@@ -166,4 +178,45 @@ async fn main() -> Result<()> {
 
     tui.exit()?;
     Ok(())
+}
+
+fn run_update() -> Result<()> {
+    let current = env!("CARGO_PKG_VERSION");
+    println!("Current version: v{}", current);
+    println!("Checking for updates...");
+
+    let status = self_update::backends::github::Update::configure()
+        .repo_owner("riii111")
+        .repo_name("sabiql")
+        .bin_name("sabiql")
+        .show_download_progress(true)
+        .current_version(current)
+        .build()?
+        .update()?;
+
+    if status.updated() {
+        println!("Updated successfully: v{} -> {}", current, status.version());
+    } else {
+        println!("Already up to date (v{}).", current);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn no_subcommand_returns_none() {
+        let args = Args::parse_from(["sabiql"]);
+        assert!(args.command.is_none());
+    }
+
+    #[test]
+    fn update_subcommand_is_recognized() {
+        let args = Args::parse_from(["sabiql", "update"]);
+        assert!(matches!(args.command, Some(Command::Update)));
+    }
 }
