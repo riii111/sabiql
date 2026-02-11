@@ -45,17 +45,8 @@ pub fn render_and_get_buffer(terminal: &mut Terminal<TestBackend>, state: &mut A
 }
 
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
-    terminal
-        .draw(|frame| {
-            let output = MainLayout::render(frame, state, Some(FIXED_TIME_MS));
-            state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-            state.ui.result_viewport_plan = output.result_viewport_plan;
-            state.ui.inspector_pane_height = output.inspector_pane_height;
-            state.ui.result_pane_height = output.result_pane_height;
-        })
-        .unwrap();
-
-    buffer_to_string(terminal.backend().buffer())
+    let buffer = render_and_get_buffer(terminal, state);
+    buffer_to_string(&buffer)
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {
