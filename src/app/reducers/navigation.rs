@@ -278,6 +278,42 @@ pub fn reduce_navigation(
             }
             Some(vec![])
         }
+        Action::InspectorScrollTop => {
+            state.ui.inspector_scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::InspectorScrollBottom => {
+            let visible = match state.ui.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
+            let total_items = state
+                .cache
+                .table_detail
+                .as_ref()
+                .map(|t| match state.ui.inspector_tab {
+                    InspectorTab::Columns => t.columns.len(),
+                    InspectorTab::Indexes => t.indexes.len(),
+                    InspectorTab::ForeignKeys => t.foreign_keys.len(),
+                    InspectorTab::Rls => t.rls.as_ref().map_or(1, |rls| {
+                        let mut lines = 1;
+                        if !rls.policies.is_empty() {
+                            lines += 2;
+                            for policy in &rls.policies {
+                                lines += 1;
+                                if policy.qual.is_some() {
+                                    lines += 1;
+                                }
+                            }
+                        }
+                        lines
+                    }),
+                    InspectorTab::Ddl => ddl_line_count_postgres(t),
+                })
+                .unwrap_or(0);
+            state.ui.inspector_scroll_offset = total_items.saturating_sub(visible);
+            Some(vec![])
+        }
         Action::InspectorScrollLeft => {
             state.ui.inspector_horizontal_offset =
                 calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
@@ -862,6 +898,78 @@ mod tests {
             assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
             assert!(effects.is_empty());
+        }
+    }
+
+    mod inspector_scroll_top_bottom {
+        use super::*;
+        use crate::domain::{Column, Table};
+
+        fn state_with_table_detail(columns: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_pane_height = 10;
+            let cols: Vec<Column> = (0..columns)
+                .map(|i| Column {
+                    name: format!("col_{}", i),
+                    data_type: "text".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: i as i32,
+                })
+                .collect();
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "test_table".to_string(),
+                columns: cols,
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                row_count_estimate: Some(0),
+                rls: None,
+                comment: None,
+            });
+            state
+        }
+
+        #[test]
+        fn inspector_scroll_top_resets_to_zero() {
+            let mut state = state_with_table_detail(20);
+            state.ui.inspector_scroll_offset = 10;
+
+            let effects =
+                reduce_navigation(&mut state, &Action::InspectorScrollTop, Instant::now());
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
+        }
+
+        #[test]
+        fn inspector_scroll_bottom_goes_to_max() {
+            let mut state = state_with_table_detail(20);
+            state.ui.inspector_scroll_offset = 0;
+            let visible = state.inspector_visible_rows(); // 10 - 5 = 5
+            let expected_max = 20_usize.saturating_sub(visible);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::InspectorScrollBottom, Instant::now());
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, expected_max);
+        }
+
+        #[test]
+        fn inspector_scroll_bottom_no_detail_stays_zero() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_pane_height = 10;
+
+            let effects =
+                reduce_navigation(&mut state, &Action::InspectorScrollBottom, Instant::now());
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.inspector_scroll_offset, 0);
         }
     }
 }

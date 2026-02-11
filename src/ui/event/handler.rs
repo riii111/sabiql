@@ -117,6 +117,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('g') | KeyCode::Home => {
             if result_navigation {
                 Action::ResultScrollTop
+            } else if inspector_navigation {
+                Action::InspectorScrollTop
             } else {
                 Action::SelectFirst
             }
@@ -124,6 +126,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('G') | KeyCode::End => {
             if result_navigation {
                 Action::ResultScrollBottom
+            } else if inspector_navigation {
+                Action::InspectorScrollBottom
             } else {
                 Action::SelectLast
             }
@@ -186,7 +190,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::OpenErTablePicker,
-        KeyCode::Char('c') => Action::ToggleExplorerMode,
+        KeyCode::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+            Action::ToggleExplorerMode
+        }
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
         KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
             Action::RequestDeleteSelectedConnection
@@ -737,6 +743,61 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
             assert!(matches!(result, Action::OpenErTablePicker));
+        }
+
+        fn inspector_focused_state() -> AppState {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
+            state
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('g'))]
+        #[case(KeyCode::Home)]
+        fn g_scrolls_inspector_top(#[case] code: KeyCode) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(code), &state);
+
+            assert!(matches!(result, Action::InspectorScrollTop));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('G'))]
+        #[case(KeyCode::End)]
+        fn shift_g_scrolls_inspector_bottom(#[case] code: KeyCode) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(code), &state);
+
+            assert!(matches!(result, Action::InspectorScrollBottom));
+        }
+
+        #[test]
+        fn c_key_toggles_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::ToggleExplorerMode));
+        }
+
+        #[test]
+        fn c_key_noop_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn c_key_noop_when_inspector_focused() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

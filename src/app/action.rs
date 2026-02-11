@@ -179,6 +179,8 @@ pub enum Action {
     // Inspector scroll
     InspectorScrollUp,
     InspectorScrollDown,
+    InspectorScrollTop,
+    InspectorScrollBottom,
     InspectorScrollLeft,
     InspectorScrollRight,
 
