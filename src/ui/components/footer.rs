@@ -15,6 +15,7 @@ use crate::app::keybindings::{
     HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
+use crate::domain::QuerySource;
 use crate::ui::theme::Theme;
 
 pub struct Footer;
@@ -62,14 +63,23 @@ impl Footer {
         match state.ui.input_mode {
             InputMode::Normal => {
                 if state.ui.focus_mode {
-                    vec![
+                    let mut list = vec![
                         GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::SCROLL_SHORT].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::TOP_BOTTOM].as_hint(),
-                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
-                    ]
+                    ];
+                    if state
+                        .query
+                        .current_result
+                        .as_ref()
+                        .is_some_and(|r| r.source == QuerySource::Preview)
+                    {
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                    }
+                    list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
+                    list
                 } else if state.ui.explorer_mode == ExplorerMode::Connections
                     && state.ui.focused_pane == FocusedPane::Explorer
                 {
@@ -101,6 +111,14 @@ impl Footer {
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint());
+                        if state
+                            .query
+                            .current_result
+                            .as_ref()
+                            .is_some_and(|r| r.source == QuerySource::Preview)
+                        {
+                            list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                        }
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
