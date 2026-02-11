@@ -13,6 +13,55 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 
+fn result_max_scroll(state: &AppState) -> usize {
+    let visible = state.result_visible_rows();
+    state
+        .query
+        .current_result
+        .as_ref()
+        .map(|r| r.rows.len().saturating_sub(visible))
+        .unwrap_or(0)
+}
+
+fn inspector_total_items(state: &AppState) -> usize {
+    state
+        .cache
+        .table_detail
+        .as_ref()
+        .map(|t| match state.ui.inspector_tab {
+            InspectorTab::Columns => t.columns.len(),
+            InspectorTab::Indexes => t.indexes.len(),
+            InspectorTab::ForeignKeys => t.foreign_keys.len(),
+            InspectorTab::Rls => t.rls.as_ref().map_or(1, |rls| {
+                let mut lines = 1;
+                if !rls.policies.is_empty() {
+                    lines += 2;
+                    for policy in &rls.policies {
+                        lines += 1;
+                        if policy.qual.is_some() {
+                            lines += 1;
+                        }
+                    }
+                }
+                lines
+            }),
+            InspectorTab::Ddl => ddl_line_count_postgres(t),
+        })
+        .unwrap_or(0)
+}
+
+fn inspector_max_scroll(state: &AppState) -> usize {
+    let visible = match state.ui.inspector_tab {
+        InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+        _ => state.inspector_visible_rows(),
+    };
+    inspector_total_items(state).saturating_sub(visible)
+}
+
+fn explorer_item_count(state: &AppState) -> usize {
+    state.tables().len()
+}
+
 /// Handles focus, scroll, selection, filter, and command line actions.
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_navigation(
@@ -189,19 +238,61 @@ pub fn reduce_navigation(
             Some(vec![])
         }
 
+        // Explorer page scroll (selection-based)
+        Action::SelectHalfPageDown => {
+            let len = explorer_item_count(state);
+            if len == 0 {
+                return Some(vec![]);
+            }
+            let visible = state.ui.explorer_visible_items();
+            let delta = (visible / 2).max(1);
+            let max_idx = len.saturating_sub(1);
+            let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
+            state.ui.set_explorer_selection(Some(new_idx));
+            Some(vec![])
+        }
+        Action::SelectHalfPageUp => {
+            let len = explorer_item_count(state);
+            if len == 0 {
+                return Some(vec![]);
+            }
+            let visible = state.ui.explorer_visible_items();
+            let delta = (visible / 2).max(1);
+            let new_idx = state.ui.explorer_selected.saturating_sub(delta);
+            state.ui.set_explorer_selection(Some(new_idx));
+            Some(vec![])
+        }
+        Action::SelectFullPageDown => {
+            let len = explorer_item_count(state);
+            if len == 0 {
+                return Some(vec![]);
+            }
+            let visible = state.ui.explorer_visible_items();
+            let delta = visible.max(1);
+            let max_idx = len.saturating_sub(1);
+            let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
+            state.ui.set_explorer_selection(Some(new_idx));
+            Some(vec![])
+        }
+        Action::SelectFullPageUp => {
+            let len = explorer_item_count(state);
+            if len == 0 {
+                return Some(vec![]);
+            }
+            let visible = state.ui.explorer_visible_items();
+            let delta = visible.max(1);
+            let new_idx = state.ui.explorer_selected.saturating_sub(delta);
+            state.ui.set_explorer_selection(Some(new_idx));
+            Some(vec![])
+        }
+
         // Result Scroll
         Action::ResultScrollUp => {
             state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
             Some(vec![])
         }
         Action::ResultScrollDown => {
-            let visible = state.result_visible_rows();
-            let max_scroll = state
-                .query
-                .current_result
-                .as_ref()
-                .map(|r| r.rows.len().saturating_sub(visible))
-                .unwrap_or(0);
+            let max_scroll = result_max_scroll(state);
             if state.ui.result_scroll_offset < max_scroll {
                 state.ui.result_scroll_offset += 1;
             }
@@ -212,14 +303,29 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ResultScrollBottom => {
-            let visible = state.result_visible_rows();
-            let max_scroll = state
-                .query
-                .current_result
-                .as_ref()
-                .map(|r| r.rows.len().saturating_sub(visible))
-                .unwrap_or(0);
-            state.ui.result_scroll_offset = max_scroll;
+            state.ui.result_scroll_offset = result_max_scroll(state);
+            Some(vec![])
+        }
+        Action::ResultScrollHalfPageDown => {
+            let delta = (state.result_visible_rows() / 2).max(1);
+            let max = result_max_scroll(state);
+            state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            Some(vec![])
+        }
+        Action::ResultScrollHalfPageUp => {
+            let delta = (state.result_visible_rows() / 2).max(1);
+            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
+            Some(vec![])
+        }
+        Action::ResultScrollFullPageDown => {
+            let delta = state.result_visible_rows().max(1);
+            let max = result_max_scroll(state);
+            state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            Some(vec![])
+        }
+        Action::ResultScrollFullPageUp => {
+            let delta = state.result_visible_rows().max(1);
+            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
         Action::ResultScrollLeft => {
@@ -244,35 +350,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::InspectorScrollDown => {
-            let visible = match state.ui.inspector_tab {
-                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-                _ => state.inspector_visible_rows(),
-            };
-            let total_items = state
-                .cache
-                .table_detail
-                .as_ref()
-                .map(|t| match state.ui.inspector_tab {
-                    InspectorTab::Columns => t.columns.len(),
-                    InspectorTab::Indexes => t.indexes.len(),
-                    InspectorTab::ForeignKeys => t.foreign_keys.len(),
-                    InspectorTab::Rls => t.rls.as_ref().map_or(1, |rls| {
-                        let mut lines = 1;
-                        if !rls.policies.is_empty() {
-                            lines += 2;
-                            for policy in &rls.policies {
-                                lines += 1;
-                                if policy.qual.is_some() {
-                                    lines += 1;
-                                }
-                            }
-                        }
-                        lines
-                    }),
-                    InspectorTab::Ddl => ddl_line_count_postgres(t),
-                })
-                .unwrap_or(0);
-            let max_offset = total_items.saturating_sub(visible);
+            let max_offset = inspector_max_scroll(state);
             if state.ui.inspector_scroll_offset < max_offset {
                 state.ui.inspector_scroll_offset += 1;
             }
@@ -283,35 +361,47 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::InspectorScrollBottom => {
+            state.ui.inspector_scroll_offset = inspector_max_scroll(state);
+            Some(vec![])
+        }
+        Action::InspectorScrollHalfPageDown => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
             };
-            let total_items = state
-                .cache
-                .table_detail
-                .as_ref()
-                .map(|t| match state.ui.inspector_tab {
-                    InspectorTab::Columns => t.columns.len(),
-                    InspectorTab::Indexes => t.indexes.len(),
-                    InspectorTab::ForeignKeys => t.foreign_keys.len(),
-                    InspectorTab::Rls => t.rls.as_ref().map_or(1, |rls| {
-                        let mut lines = 1;
-                        if !rls.policies.is_empty() {
-                            lines += 2;
-                            for policy in &rls.policies {
-                                lines += 1;
-                                if policy.qual.is_some() {
-                                    lines += 1;
-                                }
-                            }
-                        }
-                        lines
-                    }),
-                    InspectorTab::Ddl => ddl_line_count_postgres(t),
-                })
-                .unwrap_or(0);
-            state.ui.inspector_scroll_offset = total_items.saturating_sub(visible);
+            let delta = (visible / 2).max(1);
+            let max = inspector_max_scroll(state);
+            state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
+            Some(vec![])
+        }
+        Action::InspectorScrollHalfPageUp => {
+            let visible = match state.ui.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
+            let delta = (visible / 2).max(1);
+            state.ui.inspector_scroll_offset =
+                state.ui.inspector_scroll_offset.saturating_sub(delta);
+            Some(vec![])
+        }
+        Action::InspectorScrollFullPageDown => {
+            let visible = match state.ui.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
+            let delta = visible.max(1);
+            let max = inspector_max_scroll(state);
+            state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
+            Some(vec![])
+        }
+        Action::InspectorScrollFullPageUp => {
+            let visible = match state.ui.inspector_tab {
+                InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
+                _ => state.inspector_visible_rows(),
+            };
+            let delta = visible.max(1);
+            state.ui.inspector_scroll_offset =
+                state.ui.inspector_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
         Action::InspectorScrollLeft => {
@@ -970,6 +1060,176 @@ mod tests {
 
             assert!(effects.is_some());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
+        }
+    }
+
+    mod result_page_scroll {
+        use super::*;
+        use std::sync::Arc;
+
+        fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.result_pane_height = pane_height;
+            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
+            let row_count = result_rows.len();
+            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string()],
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+            }));
+            state
+        }
+
+        #[test]
+        fn half_page_down_from_top() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible = 25 - 5 = 20, half = 10
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultScrollHalfPageDown,
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.result_scroll_offset, 10);
+        }
+
+        #[test]
+        fn half_page_up_from_middle() {
+            let mut state = state_with_result_rows(100, 25);
+            state.ui.result_scroll_offset = 50;
+
+            reduce_navigation(&mut state, &Action::ResultScrollHalfPageUp, Instant::now());
+
+            assert_eq!(state.ui.result_scroll_offset, 40);
+        }
+
+        #[test]
+        fn full_page_down_clamped_at_max() {
+            let mut state = state_with_result_rows(30, 25);
+            // visible = 20, max_scroll = 30-20 = 10
+            state.ui.result_scroll_offset = 5;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultScrollFullPageDown,
+                Instant::now(),
+            );
+
+            // delta=20, 5+20=25, clamped to 10
+            assert_eq!(state.ui.result_scroll_offset, 10);
+        }
+
+        #[test]
+        fn full_page_up_clamped_at_zero() {
+            let mut state = state_with_result_rows(100, 25);
+            state.ui.result_scroll_offset = 5;
+
+            reduce_navigation(&mut state, &Action::ResultScrollFullPageUp, Instant::now());
+
+            // delta=20, saturating_sub(5,20) = 0
+            assert_eq!(state.ui.result_scroll_offset, 0);
+        }
+
+        #[test]
+        fn zero_height_pane_scrolls_by_one() {
+            let mut state = state_with_result_rows(100, 0);
+            // visible = 0, delta = max(0/2,1) = 1
+            reduce_navigation(
+                &mut state,
+                &Action::ResultScrollHalfPageDown,
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.result_scroll_offset, 1);
+        }
+    }
+
+    mod explorer_page_scroll {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn state_with_tables(count: usize, pane_height: u16) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_pane_height = pane_height;
+            state.ui.focused_pane = FocusedPane::Explorer;
+            let tables: Vec<TableSummary> = (0..count)
+                .map(|i| {
+                    TableSummary::new("public".to_string(), format!("table_{}", i), Some(0), false)
+                })
+                .collect();
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            });
+            state.ui.set_explorer_selection(Some(0));
+            state
+        }
+
+        #[test]
+        fn half_page_down_jumps_by_correct_delta() {
+            let mut state = state_with_tables(50, 23);
+            // explorer_visible_items = 23-3 = 20, half = 10
+            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 10);
+        }
+
+        #[test]
+        fn half_page_down_clamped_at_last() {
+            let mut state = state_with_tables(50, 23);
+            state.ui.set_explorer_selection(Some(45));
+
+            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 49);
+        }
+
+        #[test]
+        fn half_page_up_clamped_at_zero() {
+            let mut state = state_with_tables(50, 23);
+            state.ui.set_explorer_selection(Some(3));
+
+            reduce_navigation(&mut state, &Action::SelectHalfPageUp, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 0);
+        }
+
+        #[test]
+        fn full_page_down_jumps_by_visible() {
+            let mut state = state_with_tables(50, 23);
+            // delta = 20
+            reduce_navigation(&mut state, &Action::SelectFullPageDown, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 20);
+        }
+
+        #[test]
+        fn empty_list_does_nothing() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.explorer_pane_height = 23;
+
+            let effects =
+                reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+
+            assert!(effects.is_some());
+            assert_eq!(state.ui.explorer_selected, 0);
+        }
+
+        #[test]
+        fn zero_height_pane_scrolls_by_one() {
+            let mut state = state_with_tables(50, 0);
+            // explorer_visible_items = 0, delta = max(0/2,1) = 1
+            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+
+            assert_eq!(state.ui.explorer_selected, 1);
         }
     }
 }

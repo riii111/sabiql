@@ -46,6 +46,8 @@ pub struct UiState {
     pub inspector_viewport_plan: ViewportPlan,
     pub inspector_pane_height: u16,
 
+    pub explorer_pane_height: u16,
+
     pub result_scroll_offset: usize,
     pub result_horizontal_offset: usize,
     pub result_viewport_plan: ViewportPlan,
@@ -70,6 +72,11 @@ impl UiState {
 
     pub fn inspector_visible_rows(&self) -> usize {
         self.inspector_pane_height.saturating_sub(5) as usize
+    }
+
+    /// Visible items in Explorer list (height minus 2 borders minus 1 scrollbar row)
+    pub fn explorer_visible_items(&self) -> usize {
+        self.explorer_pane_height.saturating_sub(3) as usize
     }
 
     pub fn inspector_ddl_visible_rows(&self) -> usize {

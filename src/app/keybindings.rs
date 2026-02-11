@@ -285,6 +285,20 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         action: Action::None,
     },
     KeyBinding {
+        key_short: "^D/^U",
+        key: "Ctrl+D / Ctrl+U",
+        desc_short: "Half Page",
+        description: "Scroll half page down/up",
+        action: Action::None,
+    },
+    KeyBinding {
+        key_short: "^F/^B",
+        key: "Ctrl+F / Ctrl+B / PgDn / PgUp",
+        desc_short: "Full Page",
+        description: "Scroll full page down/up",
+        action: Action::None,
+    },
+    KeyBinding {
         key_short: "h/l / ←→",
         key: "h / l",
         desc_short: "H-Scroll",

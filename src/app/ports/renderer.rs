@@ -7,6 +7,7 @@ use crate::app::viewport::ViewportPlan;
 pub struct RenderOutput {
     pub inspector_viewport_plan: ViewportPlan,
     pub result_viewport_plan: ViewportPlan,
+    pub explorer_pane_height: u16,
     pub inspector_pane_height: u16,
     pub result_pane_height: u16,
 }
