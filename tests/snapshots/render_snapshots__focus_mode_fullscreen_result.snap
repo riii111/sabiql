@@ -3,7 +3,7 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [3] Result [PREVIEW] (2 rows, 15ms) ─────────────────────────────────────────┐
+┌ [3] Result [PREVIEW p.1 (rows 1–2)] (2 rows, 15ms) ──────────────────────────┐
 │id   name    email                                                            │
 │1    Alice   alice@example.com                                                │
 │2    Bob     bob@example.com                                                  │
