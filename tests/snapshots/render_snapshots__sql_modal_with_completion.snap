@@ -19,8 +19,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │Ready │ Alt+Enter: Run  Ctrl+L: Clear  Esc: Close             │       │
-│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close──────────────────╯       │
+│       │Ready                                                         │       │
+│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
