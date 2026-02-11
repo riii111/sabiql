@@ -80,6 +80,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 return Action::ResultScrollHalfPageDown;
             } else if inspector_navigation {
                 return Action::InspectorScrollHalfPageDown;
+            } else if connections_mode {
+                return Action::None;
             } else {
                 return Action::SelectHalfPageDown;
             }
@@ -89,6 +91,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 return Action::ResultScrollHalfPageUp;
             } else if inspector_navigation {
                 return Action::InspectorScrollHalfPageUp;
+            } else if connections_mode {
+                return Action::None;
             } else {
                 return Action::SelectHalfPageUp;
             }
@@ -98,6 +102,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 return Action::ResultScrollFullPageDown;
             } else if inspector_navigation {
                 return Action::InspectorScrollFullPageDown;
+            } else if connections_mode {
+                return Action::None;
             } else {
                 return Action::SelectFullPageDown;
             }
@@ -107,6 +113,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 return Action::ResultScrollFullPageUp;
             } else if inspector_navigation {
                 return Action::InspectorScrollFullPageUp;
+            } else if connections_mode {
+                return Action::None;
             } else {
                 return Action::SelectFullPageUp;
             }
@@ -212,8 +220,10 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollFullPageDown
             } else if inspector_navigation {
                 Action::InspectorScrollFullPageDown
-            } else {
+            } else if !connections_mode {
                 Action::SelectFullPageDown
+            } else {
+                Action::None
             }
         }
         KeyCode::PageUp => {
@@ -221,8 +231,10 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::ResultScrollFullPageUp
             } else if inspector_navigation {
                 Action::InspectorScrollFullPageUp
-            } else {
+            } else if !connections_mode {
                 Action::SelectFullPageUp
+            } else {
+                Action::None
             }
         }
 
@@ -997,6 +1009,32 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::PageDown), &state);
 
             assert!(matches!(result, Action::SelectFullPageDown));
+        }
+
+        fn connections_mode_state() -> AppState {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_mode = ExplorerMode::Connections;
+            state
+        }
+
+        #[test]
+        fn ctrl_d_noop_in_connections_mode() {
+            let state = connections_mode_state();
+            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn pagedown_noop_in_connections_mode() {
+            let state = connections_mode_state();
+
+            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+
+            assert!(matches!(result, Action::None));
         }
     }
 
