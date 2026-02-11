@@ -3,25 +3,25 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ┐[Cols] [Idx] [FK] [RLS] [DDL]                                   
-│public.user   │┌ [2] Inspector ───────────────────────────────────────────────┐
-│public.post   ││(select a table)                                              │
-│public.comm   │╭ Table Picker ────────────────────────────────╮               │
-│              ││  > user█                                     │               │
-│              ││▸   public.users                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │───────────────┘
-│              ││                                              │───────────────┐
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              ││                                              │               │
-│              │╰ 1 tables │ ↑↓ Navigate │ Enter Select ───────╯               │
-│              ││                                                              │
-└──────────────┘└──────────────────────────────────────────────────────────────┘
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
+│public.posts      ││(select a table)                                          │
+│public.comments╭ Table Picker ────────────────────────────────╮               │
+│               │  > user█                                     │               │
+│               │▸   public.users                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │───────────────┘
+│               │                                              │───────────────┐
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               ╰ 1 tables │ ↑↓ Navigate │ Enter Select ───────╯               │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
 Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close
