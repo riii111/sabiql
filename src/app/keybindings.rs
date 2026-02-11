@@ -50,6 +50,7 @@ pub mod idx {
         pub const SCROLL_SHORT: usize = 1;
         pub const TOP_BOTTOM: usize = 2;
         pub const H_SCROLL: usize = 3;
+        pub const PAGE_NAV: usize = 4;
     }
 
     pub mod sql_modal {
@@ -290,6 +291,20 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         description: "Scroll left/right",
         action: Action::None,
     },
+    KeyBinding {
+        key_short: "]",
+        key: "]",
+        desc_short: "Next Page",
+        description: "Next page (Preview)",
+        action: Action::ResultNextPage,
+    },
+    KeyBinding {
+        key_short: "[",
+        key: "[",
+        desc_short: "Prev Page",
+        description: "Previous page (Preview)",
+        action: Action::ResultPrevPage,
+    },
 ];
 
 /// Navigation keys for Footer (combined key display)
@@ -324,6 +339,14 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         key: "h / l / ← / →",
         desc_short: "H-Scroll",
         description: "Scroll left/right",
+        action: Action::None,
+    },
+    // idx 4: PAGE_NAV
+    KeyBinding {
+        key_short: "]/[",
+        key: "] / [",
+        desc_short: "Page",
+        description: "Next/Previous page",
         action: Action::None,
     },
 ];
@@ -985,6 +1008,7 @@ mod tests {
         assert!(idx::footer_nav::SCROLL_SHORT < FOOTER_NAV_KEYS.len());
         assert!(idx::footer_nav::TOP_BOTTOM < FOOTER_NAV_KEYS.len());
         assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
+        assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
 
         // SQL_MODAL_KEYS
         assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());

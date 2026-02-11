@@ -152,6 +152,21 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
+        KeyCode::Char(']') => {
+            if result_navigation {
+                Action::ResultNextPage
+            } else {
+                Action::None
+            }
+        }
+        KeyCode::Char('[') => {
+            if result_navigation {
+                Action::ResultPrevPage
+            } else {
+                Action::None
+            }
+        }
+
         // Pane switching: exit focus mode first if active
         KeyCode::Char(c @ '1'..='3') => {
             if state.ui.focus_mode {
@@ -722,6 +737,53 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
             assert!(matches!(result, Action::OpenErTablePicker));
+        }
+
+        #[test]
+        fn bracket_right_returns_next_page_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
+
+            assert!(matches!(result, Action::ResultNextPage));
+        }
+
+        #[test]
+        fn bracket_left_returns_prev_page_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
+
+            assert!(matches!(result, Action::ResultPrevPage));
+        }
+
+        #[test]
+        fn brackets_return_none_when_explorer_focused() {
+            let state = browse_state();
+
+            let right = handle_normal_mode(key(KeyCode::Char(']')), &state);
+            let left = handle_normal_mode(key(KeyCode::Char('[')), &state);
+
+            assert!(matches!(right, Action::None));
+            assert!(matches!(left, Action::None));
+        }
+
+        #[test]
+        fn bracket_right_returns_next_page_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
+
+            assert!(matches!(result, Action::ResultNextPage));
+        }
+
+        #[test]
+        fn bracket_left_returns_prev_page_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
+
+            assert!(matches!(result, Action::ResultPrevPage));
         }
     }
 

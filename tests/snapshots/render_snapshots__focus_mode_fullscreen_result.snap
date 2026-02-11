@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
-f:Exit Focus  j/k / ↑↓:Scroll  h/l / ←→:H-Scroll  g/G:Top/Bottom  ?:Help  q:Quit
+f:Exit Focus  j/k / ↑↓:Scroll  h/l / ←→:H-Scroll  g/G:Top/Bottom  ]/[:Page  ?:He
