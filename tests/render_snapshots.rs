@@ -1,7 +1,9 @@
 mod harness;
 
 use harness::fixtures;
-use harness::{create_test_state, create_test_terminal, render_to_string, test_instant};
+use harness::{
+    create_test_state, create_test_terminal, render_and_get_buffer, render_to_string, test_instant,
+};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -599,4 +601,72 @@ fn er_table_picker_all_selected() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+mod style_assertions {
+    use super::*;
+    use harness::{TEST_HEIGHT, TEST_WIDTH};
+    use ratatui::style::{Color, Modifier};
+    use sabiql::app::input_mode::InputMode;
+
+    /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
+    fn help_modal_origin() -> (u16, u16) {
+        let modal_w = TEST_WIDTH * 70 / 100;
+        let modal_h = TEST_HEIGHT * 80 / 100;
+        let x = (TEST_WIDTH - modal_w) / 2;
+        let y = (TEST_HEIGHT - modal_h) / 2;
+        (x, y)
+    }
+
+    #[test]
+    fn scrim_applies_dim_modifier() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.ui.input_mode = InputMode::Help;
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert!(
+            cell.modifier.contains(Modifier::DIM),
+            "Expected DIM modifier on scrim cell (0,0), got {:?}",
+            cell.modifier
+        );
+    }
+
+    #[test]
+    fn modal_border_uses_ansi_darkgray() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.ui.input_mode = InputMode::Help;
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        let (mx, my) = help_modal_origin();
+        let cell = buffer.cell((mx, my)).unwrap();
+        assert_eq!(
+            cell.symbol(),
+            "╭",
+            "Expected '╭' at modal origin ({}, {}), got '{}'",
+            mx,
+            my,
+            cell.symbol()
+        );
+        assert_eq!(
+            cell.fg,
+            Color::DarkGray,
+            "Expected DarkGray fg on modal border at ({}, {}), got {:?}",
+            mx,
+            my,
+            cell.fg
+        );
+    }
 }

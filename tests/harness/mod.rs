@@ -30,7 +30,7 @@ pub fn create_test_terminal() -> Terminal<TestBackend> {
 
 const FIXED_TIME_MS: u128 = 0;
 
-pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
+pub fn render_and_get_buffer(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> Buffer {
     terminal
         .draw(|frame| {
             let output = MainLayout::render(frame, state, Some(FIXED_TIME_MS));
@@ -41,7 +41,12 @@ pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppSta
         })
         .unwrap();
 
-    buffer_to_string(terminal.backend().buffer())
+    terminal.backend().buffer().clone()
+}
+
+pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
+    let buffer = render_and_get_buffer(terminal, state);
+    buffer_to_string(&buffer)
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {
