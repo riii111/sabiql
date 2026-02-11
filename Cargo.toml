@@ -1,6 +1,6 @@
 [package]
 name = "sabiql"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2024"
 description = "A fast, driver-less TUI for browsing PostgreSQL databases"
 license = "MIT"
@@ -26,6 +26,7 @@ urlencoding = "2"
 regex = "1"
 arboard = "3"
 lru = "0.16"
+self_update = { version = "0.42", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2", "rustls"] }
 
 [dev-dependencies]
 pretty_assertions = "1"
