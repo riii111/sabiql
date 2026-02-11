@@ -180,6 +180,24 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn no_subcommand_returns_none() {
+        let args = Args::parse_from(["sabiql"]);
+        assert!(args.command.is_none());
+    }
+
+    #[test]
+    fn update_subcommand_is_recognized() {
+        let args = Args::parse_from(["sabiql", "update"]);
+        assert!(matches!(args.command, Some(Command::Update)));
+    }
+}
+
 fn run_update() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     println!("Current version: v{}", current);
