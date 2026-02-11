@@ -623,29 +623,26 @@ INSERT INTO notification_preferences (user_id, notification_type, email_enabled,
 (12, 'campaigns', true, true, false, true);
 
 -- ==========================================
--- Analytics Events
+-- Analytics Events (~1200 rows for pagination testing)
 -- ==========================================
-INSERT INTO analytics.events (event_type, user_id, session_id, organization_id, properties, page_url, referrer, user_agent, ip_address, country, city, device_type, browser, os) VALUES
-('page_view', 1, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 1, '{"page": "dashboard"}', '/dashboard', 'https://google.com', 'Mozilla/5.0 Chrome/120', '192.168.1.100', 'US', 'San Francisco', 'desktop', 'Chrome', 'macOS'),
-('product_view', 1, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 1, '{"product_id": 1, "product_name": "Cloud Storage Pro"}', '/products/1', '/products', 'Mozilla/5.0 Chrome/120', '192.168.1.100', 'US', 'San Francisco', 'desktop', 'Chrome', 'macOS'),
-('add_to_cart', 1, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 1, '{"product_id": 1, "quantity": 1}', '/cart', '/products/1', 'Mozilla/5.0 Chrome/120', '192.168.1.100', 'US', 'San Francisco', 'desktop', 'Chrome', 'macOS'),
-('checkout_start', 1, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 1, '{"cart_value": 999.99}', '/checkout', '/cart', 'Mozilla/5.0 Chrome/120', '192.168.1.100', 'US', 'San Francisco', 'desktop', 'Chrome', 'macOS'),
-('purchase', 1, 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 1, '{"order_id": 1, "total": 1099.99}', '/checkout/success', '/checkout', 'Mozilla/5.0 Chrome/120', '192.168.1.100', 'US', 'San Francisco', 'desktop', 'Chrome', 'macOS'),
-('page_view', 2, 'b2c3d4e5-f6a7-8901-bcde-f12345678901', 1, '{"page": "products"}', '/products', 'https://bing.com', 'Mozilla/5.0 Firefox/121', '192.168.1.101', 'US', 'New York', 'desktop', 'Firefox', 'Windows'),
-('search', 2, 'b2c3d4e5-f6a7-8901-bcde-f12345678901', 1, '{"query": "api gateway", "results_count": 5}', '/search', '/products', 'Mozilla/5.0 Firefox/121', '192.168.1.101', 'US', 'New York', 'desktop', 'Firefox', 'Windows'),
-('product_view', 2, 'b2c3d4e5-f6a7-8901-bcde-f12345678901', 1, '{"product_id": 4, "product_name": "API Gateway"}', '/products/4', '/search', 'Mozilla/5.0 Firefox/121', '192.168.1.101', 'US', 'New York', 'desktop', 'Firefox', 'Windows'),
-('page_view', 3, 'c3d4e5f6-a7b8-9012-cdef-123456789012', 2, '{"page": "dashboard"}', '/dashboard', NULL, 'Safari/17.0', '172.16.0.25', 'GB', 'London', 'desktop', 'Safari', 'macOS'),
-('feature_used', 3, 'c3d4e5f6-a7b8-9012-cdef-123456789012', 2, '{"feature": "design_export", "format": "png"}', '/design/export', '/design', 'Safari/17.0', '172.16.0.25', 'GB', 'London', 'desktop', 'Safari', 'macOS'),
-('page_view', NULL, 'd4e5f6a7-b8c9-0123-defa-234567890123', NULL, '{"page": "pricing"}', '/pricing', 'https://google.com', 'Mozilla/5.0 Chrome/120', '10.0.0.50', 'US', 'Austin', 'mobile', 'Chrome', 'Android'),
-('signup_start', NULL, 'd4e5f6a7-b8c9-0123-defa-234567890123', NULL, '{}', '/signup', '/pricing', 'Mozilla/5.0 Chrome/120', '10.0.0.50', 'US', 'Austin', 'mobile', 'Chrome', 'Android'),
-('page_view', 4, 'e5f6a7b8-c9d0-1234-efab-345678901234', 3, '{"page": "analytics"}', '/analytics', NULL, 'Edge/120', '192.168.2.50', 'US', 'Austin', 'desktop', 'Edge', 'Windows'),
-('report_generated', 4, 'e5f6a7b8-c9d0-1234-efab-345678901234', 3, '{"report_type": "monthly_summary", "format": "pdf"}', '/analytics/reports', '/analytics', 'Edge/120', '192.168.2.50', 'US', 'Austin', 'desktop', 'Edge', 'Windows'),
-('api_call', 1, NULL, 1, '{"endpoint": "/api/v1/products", "method": "GET", "status": 200}', NULL, NULL, 'API Client/1.0', '192.168.1.100', 'US', 'San Francisco', NULL, NULL, NULL),
-('api_call', 1, NULL, 1, '{"endpoint": "/api/v1/orders", "method": "POST", "status": 201}', NULL, NULL, 'API Client/1.0', '192.168.1.100', 'US', 'San Francisco', NULL, NULL, NULL),
-('login', 5, 'f6a7b8c9-d0e1-2345-fabc-456789012345', 4, '{"method": "password"}', '/login', NULL, 'Safari/17.0', '10.10.10.100', 'US', 'Seattle', 'desktop', 'Safari', 'macOS'),
-('login', 6, 'a7b8c9d0-e1f2-3456-abcd-567890123456', 4, '{"method": "sso"}', '/login/sso', '/login', 'Chrome/120', '192.168.1.150', 'US', 'Portland', 'desktop', 'Chrome', 'Linux'),
-('error', NULL, 'b8c9d0e1-f2a3-4567-bcde-678901234567', NULL, '{"error_type": "404", "url": "/nonexistent"}', '/nonexistent', '/products', 'Mozilla/5.0 Chrome/120', '10.0.0.100', 'JP', 'Tokyo', 'mobile', 'Chrome', 'iOS'),
-('feedback', 7, 'c9d0e1f2-a3b4-5678-cdef-789012345678', 1, '{"rating": 5, "comment": "Great product!"}', '/feedback', '/dashboard', 'Safari/17.0 Mobile', '172.20.0.75', 'CA', 'Toronto', 'tablet', 'Safari', 'iPadOS');
+INSERT INTO analytics.events (event_type, user_id, session_id, organization_id, properties, page_url, referrer, user_agent, ip_address, country, city, device_type, browser, os, created_at)
+SELECT
+    (ARRAY['page_view','product_view','add_to_cart','search','login','logout','signup_start','purchase','api_call','error','feature_used','feedback'])[1 + (i % 12)],
+    CASE WHEN i % 7 = 0 THEN NULL ELSE 1 + (i % 20) END,
+    gen_random_uuid(),
+    CASE WHEN i % 11 = 0 THEN NULL ELSE 1 + (i % 14) END,
+    jsonb_build_object('i', i, 'action', 'bulk_event_' || i),
+    '/page/' || (i % 50),
+    CASE WHEN i % 3 = 0 THEN 'https://google.com' WHEN i % 3 = 1 THEN 'https://bing.com' ELSE NULL END,
+    (ARRAY['Mozilla/5.0 Chrome/120','Mozilla/5.0 Firefox/121','Safari/17.0','Edge/120'])[1 + (i % 4)],
+    ('10.0.' || (i % 256) || '.' || ((i * 7) % 256))::INET,
+    (ARRAY['US','GB','JP','DE','CA','AU','KR','FR'])[1 + (i % 8)],
+    (ARRAY['San Francisco','New York','London','Tokyo','Berlin','Toronto','Sydney','Seoul','Paris','Austin'])[1 + (i % 10)],
+    (ARRAY['desktop','mobile','tablet'])[1 + (i % 3)],
+    (ARRAY['Chrome','Firefox','Safari','Edge'])[1 + (i % 4)],
+    (ARRAY['macOS','Windows','Linux','Android','iOS'])[1 + (i % 5)],
+    NOW() - (i || ' minutes')::INTERVAL
+FROM generate_series(1, 1200) AS s(i);
 
 -- ==========================================
 -- Daily Metrics
@@ -683,29 +680,23 @@ INSERT INTO analytics.daily_metrics (organization_id, metric_date, metric_name, 
 (4, CURRENT_DATE - INTERVAL '5 days', 'api_calls', 1345678, '{"tier": "enterprise"}');
 
 -- ==========================================
--- Audit Logs
+-- Audit Logs (~600 rows for pagination testing)
 -- ==========================================
-INSERT INTO audit_logs (user_id, organization_id, table_schema, table_name, operation, record_id, old_values, new_values, changed_fields, ip_address, request_id) VALUES
-(1, 1, 'public', 'users', 'INSERT', 1, NULL, '{"username":"alice","email":"alice@example.com"}', ARRAY['username', 'email'], '192.168.1.100', 'a0000001-0001-4000-8000-000000002025'),
-(2, 1, 'public', 'users', 'INSERT', 2, NULL, '{"username":"bob","email":"bob@example.com"}', ARRAY['username', 'email'], '192.168.1.101', 'a0000002-0002-4000-8000-000000002025'),
-(1, 1, 'public', 'organizations', 'INSERT', 1, NULL, '{"name":"Tech Corp","slug":"tech-corp"}', ARRAY['name', 'slug'], '192.168.1.100', 'a0000003-0003-4000-8000-000000002025'),
-(1, 1, 'sales', 'orders', 'INSERT', 1, NULL, '{"order_number":"ORD-2025-0001","status":"pending"}', ARRAY['order_number', 'status'], '192.168.1.100', 'a0000004-0004-4000-8000-000000002025'),
-(1, 1, 'sales', 'orders', 'UPDATE', 1, '{"status":"pending"}', '{"status":"completed","payment_status":"paid"}', ARRAY['status', 'payment_status'], '192.168.1.100', 'a0000005-0005-4000-8000-000000002025'),
-(4, 3, 'public', 'products', 'INSERT', 1, NULL, '{"sku":"PROD-001","name":"Cloud Storage Pro"}', ARRAY['sku', 'name'], '192.168.2.50', 'a0000006-0006-4000-8000-000000002025'),
-(2, 1, 'sales', 'orders', 'INSERT', 2, NULL, '{"order_number":"ORD-2025-0002","status":"pending"}', ARRAY['order_number', 'status'], '192.168.1.101', 'a0000007-0007-4000-8000-000000002025'),
-(1, 1, 'sales', 'payments', 'INSERT', 1, NULL, '{"transaction_id":"TXN-001-2025","payment_status":"completed"}', ARRAY['transaction_id', 'payment_status'], '192.168.1.100', 'a0000008-0008-4000-8000-000000002025'),
-(6, 5, 'public', 'users', 'INSERT', 6, NULL, '{"username":"frank","email":"frank.li@example.com"}', ARRAY['username', 'email'], '192.168.1.150', 'a0000009-0009-4000-8000-000000002025'),
-(7, 6, 'public', 'users', 'INSERT', 7, NULL, '{"username":"grace","email":"grace.park@example.com"}', ARRAY['username', 'email'], '172.20.0.75', 'a0000010-0010-4000-8000-000000002025'),
-(8, 7, 'public', 'organizations', 'INSERT', 5, NULL, '{"name":"Greenfield Ops","slug":"greenfield-ops"}', ARRAY['name', 'slug'], '192.168.1.160', 'a0000011-0011-4000-8000-000000002025'),
-(9, 8, 'public', 'organizations', 'INSERT', 6, NULL, '{"name":"Northwind Retail","slug":"northwind-retail"}', ARRAY['name', 'slug'], '10.0.0.60', 'a0000012-0012-4000-8000-000000002025'),
-(1, 1, 'public', 'products', 'UPDATE', 1, '{"price": 899.99}', '{"price": 999.99}', ARRAY['price'], '192.168.1.100', 'a0000013-0013-4000-8000-000000002025'),
-(2, 1, 'public', 'organization_members', 'INSERT', NULL, NULL, '{"user_id": 7, "role": "member"}', ARRAY['user_id', 'role'], '192.168.1.101', 'a0000014-0014-4000-8000-000000002025'),
-(5, 4, 'marketing', 'coupons', 'INSERT', 4, NULL, '{"code": "ENTERPRISE50", "discount_value": 25.00}', ARRAY['code', 'discount_value'], '10.10.10.100', 'a0000015-0015-4000-8000-000000002025'),
-(12, 11, 'marketing', 'campaigns', 'UPDATE', 7, '{"status": "draft"}', '{"status": "active"}', ARRAY['status'], '192.168.3.100', 'a0000016-0016-4000-8000-000000002025'),
-(1, 1, 'public', 'users', 'UPDATE', 1, '{"last_login_at": null}', '{"last_login_at": "2025-01-15T10:30:00Z"}', ARRAY['last_login_at'], '192.168.1.100', 'a0000017-0017-4000-8000-000000002025'),
-(3, 2, 'public', 'categories', 'INSERT', 1, NULL, '{"slug": "software", "name": "Software"}', ARRAY['slug', 'name'], '172.16.0.25', 'a0000018-0018-4000-8000-000000002025'),
-(4, 3, 'public', 'tags', 'INSERT', 1, NULL, '{"slug": "enterprise", "name": "Enterprise"}', ARRAY['slug', 'name'], '192.168.2.50', 'a0000019-0019-4000-8000-000000002025'),
-(1, 1, 'analytics', 'events', 'INSERT', 1, NULL, '{"event_type": "page_view"}', ARRAY['event_type'], '192.168.1.100', 'a0000020-0020-4000-8000-000000002025');
+INSERT INTO audit_logs (user_id, organization_id, table_schema, table_name, operation, record_id, old_values, new_values, changed_fields, ip_address, request_id, created_at)
+SELECT
+    1 + (i % 20),
+    1 + (i % 14),
+    (ARRAY['public','public','public','sales','sales','marketing','analytics'])[1 + (i % 7)],
+    (ARRAY['users','products','organizations','orders','payments','coupons','events'])[1 + (i % 7)],
+    (ARRAY['INSERT','UPDATE','UPDATE','DELETE'])[1 + (i % 4)],
+    i,
+    CASE WHEN i % 4 >= 1 THEN jsonb_build_object('status', 'old_' || i) ELSE NULL END,
+    jsonb_build_object('status', 'new_' || i, 'updated_field', 'value_' || i),
+    ARRAY['status'],
+    ('192.168.' || (i % 256) || '.' || ((i * 3) % 256))::INET,
+    gen_random_uuid(),
+    NOW() - (i || ' minutes')::INTERVAL
+FROM generate_series(1, 600) AS s(i);
 
 -- ==========================================
 -- Settings
