@@ -34,7 +34,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
-    /// Update sabiql to the latest version
+    /// Update sabiql to the latest compatible version
     Update,
 }
 
