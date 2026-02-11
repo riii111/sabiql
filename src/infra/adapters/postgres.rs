@@ -798,12 +798,14 @@ impl QueryExecutor for PostgresAdapter {
         schema: &str,
         table: &str,
         limit: usize,
+        offset: usize,
     ) -> Result<QueryResult, MetadataError> {
         let query = format!(
-            "SELECT * FROM {}.{} LIMIT {}",
+            "SELECT * FROM {}.{} LIMIT {} OFFSET {}",
             quote_ident(schema),
             quote_ident(table),
-            limit
+            limit,
+            offset
         );
         self.execute_query_raw(dsn, &query, QuerySource::Preview)
             .await

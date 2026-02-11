@@ -47,6 +47,7 @@ impl QueryExecutor for MySqlAdapter {
         _schema: &str,
         _table: &str,
         _limit: usize,
+        _offset: usize,
     ) -> Result<QueryResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),

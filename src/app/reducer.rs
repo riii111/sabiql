@@ -97,7 +97,9 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             schema,
                             table: table_name,
                             generation: current_gen,
-                            limit: 100,
+                            limit: crate::app::query_execution::PREVIEW_PAGE_SIZE,
+                            offset: 0,
+                            target_page: 0,
                         });
                     }
                 }
@@ -133,7 +135,9 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             schema,
                             table: table_name,
                             generation: current_gen,
-                            limit: 100,
+                            limit: crate::app::query_execution::PREVIEW_PAGE_SIZE,
+                            offset: 0,
+                            target_page: 0,
                         });
                     }
                 }
