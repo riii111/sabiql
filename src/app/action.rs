@@ -216,7 +216,11 @@ pub enum Action {
         generation: u64,
     },
     ExecuteAdhoc(String),
-    QueryCompleted(Arc<QueryResult>, u64),
+    QueryCompleted {
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+    },
     QueryFailed(String, u64),
 
     // Result pane
@@ -226,6 +230,8 @@ pub enum Action {
     ResultScrollBottom,
     ResultScrollLeft,
     ResultScrollRight,
+    ResultNextPage,
+    ResultPrevPage,
 
     // Focus mode
     ToggleFocus,
