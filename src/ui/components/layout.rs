@@ -67,6 +67,7 @@ impl MainLayout {
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
                 result_viewport_plan: result_plan,
+                explorer_pane_height: 0,
                 inspector_pane_height: 0,
                 result_pane_height: main_area.height,
             }
@@ -87,6 +88,7 @@ impl MainLayout {
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,
                 result_viewport_plan: result_plan,
+                explorer_pane_height: left_area.height,
                 inspector_pane_height: inspector_area.height,
                 result_pane_height: result_area.height,
             }

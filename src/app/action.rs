@@ -113,6 +113,10 @@ pub enum Action {
     SelectPrevious,
     SelectFirst,
     SelectLast,
+    SelectHalfPageDown,
+    SelectHalfPageUp,
+    SelectFullPageDown,
+    SelectFullPageUp,
 
     // Explorer horizontal scroll
     ExplorerScrollLeft,
@@ -181,6 +185,10 @@ pub enum Action {
     InspectorScrollDown,
     InspectorScrollTop,
     InspectorScrollBottom,
+    InspectorScrollHalfPageDown,
+    InspectorScrollHalfPageUp,
+    InspectorScrollFullPageDown,
+    InspectorScrollFullPageUp,
     InspectorScrollLeft,
     InspectorScrollRight,
 
@@ -230,6 +238,10 @@ pub enum Action {
     ResultScrollDown,
     ResultScrollTop,
     ResultScrollBottom,
+    ResultScrollHalfPageDown,
+    ResultScrollHalfPageUp,
+    ResultScrollFullPageDown,
+    ResultScrollFullPageUp,
     ResultScrollLeft,
     ResultScrollRight,
     ResultNextPage,
