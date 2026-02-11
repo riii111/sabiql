@@ -20,7 +20,7 @@ impl SqlModal {
             Constraint::Percentage(80),
             Constraint::Percentage(60),
             " SQL Editor ",
-            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close",
+            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ",
         );
 
         // Split into editor area and status line
@@ -133,13 +133,7 @@ impl SqlModal {
             SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
         };
 
-        let hints = " Alt+Enter: Run  Ctrl+L: Clear  Esc: Close";
-
-        let line = Line::from(vec![
-            Span::styled(status_text, status_style),
-            Span::raw(" │"),
-            Span::styled(hints, Style::default().fg(Theme::MODAL_HINT)),
-        ]);
+        let line = Line::from(vec![Span::styled(status_text, status_style)]);
 
         let paragraph = Paragraph::new(line).style(Style::default());
 
