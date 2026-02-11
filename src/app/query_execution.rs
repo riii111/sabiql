@@ -30,7 +30,7 @@ impl PaginationState {
     pub fn total_pages_estimate(&self) -> Option<usize> {
         self.total_rows_estimate.map(|total| {
             let total = total.max(0) as usize;
-            total.div_ceil(PREVIEW_PAGE_SIZE)
+            total.div_ceil(PREVIEW_PAGE_SIZE).max(1)
         })
     }
 
@@ -119,6 +119,26 @@ mod tests {
             let p = PaginationState::default();
 
             assert_eq!(p.total_pages_estimate(), None);
+        }
+
+        #[test]
+        fn total_pages_estimate_clamps_zero_to_one() {
+            let p = PaginationState {
+                total_rows_estimate: Some(0),
+                ..Default::default()
+            };
+
+            assert_eq!(p.total_pages_estimate(), Some(1));
+        }
+
+        #[test]
+        fn total_pages_estimate_clamps_negative_to_one() {
+            let p = PaginationState {
+                total_rows_estimate: Some(-1),
+                ..Default::default()
+            };
+
+            assert_eq!(p.total_pages_estimate(), Some(1));
         }
 
         #[test]
