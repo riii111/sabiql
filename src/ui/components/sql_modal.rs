@@ -82,7 +82,7 @@ impl SqlModal {
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Theme::MODAL_BG));
+            .style(Style::default());
 
         frame.render_widget(paragraph, area);
     }
@@ -141,7 +141,7 @@ impl SqlModal {
             Span::styled(hints, Style::default().fg(Theme::MODAL_HINT)),
         ]);
 
-        let paragraph = Paragraph::new(line).style(Style::default().bg(Theme::MODAL_BG));
+        let paragraph = Paragraph::new(line).style(Style::default());
 
         frame.render_widget(paragraph, area);
     }
@@ -253,7 +253,7 @@ impl SqlModal {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray))
-                .style(Style::default().bg(Theme::MODAL_BG)),
+                .style(Style::default()),
         );
 
         frame.render_widget(list, popup_area);

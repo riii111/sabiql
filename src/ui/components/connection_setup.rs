@@ -225,7 +225,7 @@ impl ConnectionSetup {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray))
-            .style(Style::default().bg(Theme::MODAL_BG));
+            .style(Style::default());
         frame.render_widget(block, dropdown_area);
 
         let inner = dropdown_area.inner(Margin::new(1, 1));
