@@ -9,7 +9,6 @@ use crate::app::keybindings::{
     ER_PICKER_KEYS, GLOBAL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS,
 };
 use crate::app::state::AppState;
-use crate::ui::theme::Theme;
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
@@ -86,7 +85,7 @@ impl HelpOverlay {
 
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
-            .style(Style::default().bg(Theme::MODAL_BG))
+            .style(Style::default())
             .scroll((scroll_offset as u16, 0));
 
         frame.render_widget(help, inner);

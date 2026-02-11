@@ -7,7 +7,6 @@ pub struct Palette;
 #[allow(dead_code)]
 impl Palette {
     pub const CATPPUCCIN_MOCHA: Color = Color::Rgb(0x1e, 0x1e, 0x2e);
-    pub const DUCKBONES: Color = Color::Rgb(0x15, 0x19, 0x26);
 }
 
 /// Application color theme constants
@@ -16,9 +15,6 @@ pub struct Theme;
 
 #[allow(dead_code)]
 impl Theme {
-    // Modal/Overlay backgrounds
-    pub const MODAL_BG: Color = Palette::DUCKBONES;
-
     // Modal border
     pub const MODAL_BORDER: Color = Color::Rgb(0x3a, 0x3a, 0x4a);
     pub const MODAL_BORDER_HIGHLIGHT: Color = Color::Rgb(0x5a, 0x5a, 0x7a);

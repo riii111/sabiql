@@ -40,5 +40,5 @@ pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {
         .borders(Borders::ALL)
         .border_set(border::ROUNDED)
         .border_style(Style::default().fg(Theme::MODAL_BORDER))
-        .style(Style::default().bg(Theme::MODAL_BG))
+        .style(Style::default())
 }
