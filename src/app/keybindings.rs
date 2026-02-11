@@ -101,9 +101,11 @@ pub mod idx {
 
     pub mod er_picker {
         pub const ENTER_GENERATE: usize = 0;
-        pub const NAVIGATE: usize = 1;
-        pub const TYPE_FILTER: usize = 2;
-        pub const ESC_CLOSE: usize = 3;
+        pub const SELECT: usize = 1;
+        pub const SELECT_ALL: usize = 2;
+        pub const NAVIGATE: usize = 3;
+        pub const TYPE_FILTER: usize = 4;
+        pub const ESC_CLOSE: usize = 5;
     }
 
     pub mod cmd_palette {
@@ -700,7 +702,23 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         description: "Generate ER diagram",
         action: Action::ErConfirmSelection,
     },
-    // idx 1: NAVIGATE
+    // idx 1: SELECT
+    KeyBinding {
+        key_short: "Space",
+        key: "Space",
+        desc_short: "Select",
+        description: "Toggle table selection",
+        action: Action::ErToggleSelection,
+    },
+    // idx 2: SELECT_ALL
+    KeyBinding {
+        key_short: "^A",
+        key: "Ctrl+A",
+        desc_short: "All",
+        description: "Select/deselect all tables",
+        action: Action::ErSelectAll,
+    },
+    // idx 3: NAVIGATE
     KeyBinding {
         key_short: "↑↓",
         key: "↑↓",
@@ -708,7 +726,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         description: "Navigate",
         action: Action::None,
     },
-    // idx 2: TYPE_FILTER
+    // idx 4: TYPE_FILTER
     KeyBinding {
         key_short: "type",
         key: "type",
@@ -716,7 +734,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         description: "Type to filter",
         action: Action::None,
     },
-    // idx 3: ESC_CLOSE
+    // idx 5: ESC_CLOSE
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -926,9 +944,9 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
 // Help Overlay Layout
 // =============================================================================
 
-/// Total lines in help overlay content (8 sections + 7 blank lines + key entries)
-pub const HELP_TOTAL_LINES: usize = 8
-    + 7
+/// Total lines in help overlay content (9 sections + 8 blank lines + key entries)
+pub const HELP_TOTAL_LINES: usize = 9
+    + 8
     + GLOBAL_KEYS.len()
     + NAVIGATION_KEYS.len()
     + SQL_MODAL_KEYS.len()
@@ -936,6 +954,7 @@ pub const HELP_TOTAL_LINES: usize = 8
     + COMMAND_LINE_KEYS.len()
     + CONNECTION_SETUP_KEYS.len()
     + CONNECTION_ERROR_KEYS.len()
+    + ER_PICKER_KEYS.len()
     + CONFIRM_DIALOG_KEYS.len();
 
 #[cfg(test)]

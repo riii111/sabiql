@@ -461,9 +461,9 @@ impl EffectRunner {
             Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name,
-                target_table,
+                target_tables,
             } => {
-                use crate::domain::er::fk_reachable_tables;
+                use crate::domain::er::{er_output_filename, fk_reachable_tables_multi};
 
                 let all_tables: Vec<ErTableInfo> = {
                     let engine = completion_engine.borrow();
@@ -483,30 +483,20 @@ impl EffectRunner {
                     return Ok(());
                 }
 
-                let (tables, filename) = if let Some(ref seed) = target_table {
-                    let reachable = fk_reachable_tables(&all_tables, seed, 1);
-                    let safe_name: String = seed
-                        .chars()
-                        .map(|c| {
-                            if c.is_alphanumeric() || c == '_' {
-                                c
-                            } else {
-                                '_'
-                            }
-                        })
-                        .collect();
-                    (reachable, format!("er_partial_{}.dot", safe_name))
+                let total = all_tables.len();
+                let filename = er_output_filename(&target_tables, total);
+                let tables = if target_tables.is_empty() || target_tables.len() == total {
+                    all_tables
                 } else {
-                    (all_tables, "er_full.dot".to_string())
+                    fk_reachable_tables_multi(&all_tables, &target_tables, 1)
                 };
 
                 if tables.is_empty() {
                     let _ = self
                         .action_tx
-                        .send(Action::ErDiagramFailed(format!(
-                            "Table '{}' not found in cached data",
-                            target_table.unwrap_or_default()
-                        )))
+                        .send(Action::ErDiagramFailed(
+                            "Selected tables not found in cached data".to_string(),
+                        ))
                         .await;
                     return Ok(());
                 }

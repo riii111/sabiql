@@ -37,6 +37,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
+            if state.ui.pending_er_picker && state.ui.input_mode == InputMode::Normal {
+                state.ui.pending_er_picker = false;
+                effects.push(Effect::DispatchActions(vec![Action::OpenErTablePicker]));
+            } else {
+                state.ui.pending_er_picker = false;
+            }
+
             Some(effects)
         }
         Action::MetadataFailed(error) => {
@@ -97,6 +104,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.sql_modal.prefetching_tables.clear();
                 state.sql_modal.failed_prefetch_tables.clear();
                 state.er_preparation.reset();
+                state.ui.er_selected_tables.clear();
+                state.ui.pending_er_picker = false;
                 state.messages.last_error = None;
                 state.messages.last_success = None;
                 state.messages.expires_at = None;
@@ -225,10 +234,11 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if state.er_preparation.status == ErStatus::Waiting
                 && state.er_preparation.is_complete()
             {
-                state.er_preparation.status = ErStatus::Idle;
                 if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                    state.er_preparation.status = ErStatus::Idle;
+                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
                 } else {
+                    state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation
@@ -311,10 +321,11 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if state.er_preparation.status == ErStatus::Waiting
                 && state.er_preparation.is_complete()
             {
-                state.er_preparation.status = ErStatus::Idle;
                 if !state.er_preparation.has_failures() {
-                    state.set_success("ER ready. Press 'e' to open.".to_string());
+                    state.er_preparation.status = ErStatus::Idle;
+                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
                 } else {
+                    state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
                     let failed_data: Vec<(String, String)> = state
                         .er_preparation

@@ -1,4 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 
 use crate::domain::Table;
 
@@ -17,9 +19,53 @@ pub struct ErTableInfo {
     pub foreign_keys: Vec<ErFkInfo>,
 }
 
-/// BFS on bidirectional FK adjacency graph from seed with depth limit.
-/// Returns the subset of tables reachable from the seed table via FK relationships
-/// within `max_depth` hops. Returns empty vec if seed is not found.
+/// Deterministic filename for ER diagram output.
+pub fn er_output_filename(selected: &[String], total: usize) -> String {
+    if selected.is_empty() || selected.len() == total {
+        "er_full.dot".to_string()
+    } else if selected.len() == 1 {
+        let safe: String = selected[0]
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        format!("er_partial_{}.dot", safe)
+    } else {
+        let mut sorted: Vec<&String> = selected.iter().collect();
+        sorted.sort();
+        let mut hasher = DefaultHasher::new();
+        sorted.hash(&mut hasher);
+        let hash = format!("{:016x}", hasher.finish());
+        format!("er_partial_multi_{}_{}.dot", selected.len(), &hash[..8])
+    }
+}
+
+/// Union of per-seed BFS results. Empty seeds → empty vec.
+pub fn fk_reachable_tables_multi(
+    tables: &[ErTableInfo],
+    seeds: &[String],
+    max_depth: usize,
+) -> Vec<ErTableInfo> {
+    let mut all_visited = HashSet::new();
+    for seed in seeds {
+        let reachable = fk_reachable_tables(tables, seed, max_depth);
+        for t in &reachable {
+            all_visited.insert(t.qualified_name.clone());
+        }
+    }
+    tables
+        .iter()
+        .filter(|t| all_visited.contains(&t.qualified_name))
+        .cloned()
+        .collect()
+}
+
+/// BFS from seed on bidirectional FK graph with depth limit.
 pub fn fk_reachable_tables(
     tables: &[ErTableInfo],
     seed: &str,
@@ -257,6 +303,71 @@ mod tests {
             let result = fk_reachable_tables(&tables, "public.users", 2);
 
             assert_eq!(result.len(), 3);
+        }
+    }
+
+    mod fk_reachable_multi {
+        use super::*;
+
+        #[test]
+        fn empty_seeds_returns_empty() {
+            let tables = vec![make_table("users", "public", vec![])];
+
+            let result = fk_reachable_tables_multi(&tables, &[], 1);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn single_seed_matches_single_fn() {
+            let tables = vec![
+                make_table("posts", "public", vec![("public.posts", "public.users")]),
+                make_table("users", "public", vec![]),
+                make_table("logs", "public", vec![]),
+            ];
+
+            let result = fk_reachable_tables_multi(&tables, &["public.users".to_string()], 1);
+
+            assert_eq!(result.len(), 2);
+            assert!(!result.iter().any(|t| t.qualified_name == "public.logs"));
+        }
+
+        #[test]
+        fn multi_seeds_union() {
+            let tables = vec![
+                make_table("a", "public", vec![("public.a", "public.b")]),
+                make_table("b", "public", vec![]),
+                make_table("c", "public", vec![]),
+            ];
+            let seeds = vec!["public.a".to_string(), "public.c".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 3);
+        }
+
+        #[test]
+        fn overlap_dedup() {
+            let tables = vec![
+                make_table("a", "public", vec![("public.a", "public.b")]),
+                make_table("b", "public", vec![]),
+            ];
+            let seeds = vec!["public.a".to_string(), "public.b".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 2);
+        }
+
+        #[test]
+        fn invalid_seed_ignored() {
+            let tables = vec![make_table("users", "public", vec![])];
+            let seeds = vec!["public.users".to_string(), "public.missing".to_string()];
+
+            let result = fk_reachable_tables_multi(&tables, &seeds, 1);
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].qualified_name, "public.users");
         }
     }
 }

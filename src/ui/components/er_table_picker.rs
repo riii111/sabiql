@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
 use crate::app::state::AppState;
+use crate::domain::er::er_output_filename;
 use crate::ui::theme::Theme;
 
 use super::molecules::render_modal;
@@ -14,15 +15,33 @@ pub struct ErTablePicker;
 impl ErTablePicker {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
         let filtered = state.er_filtered_tables();
-        let is_full_er = state.ui.er_filter_input.is_empty();
+        let selected_count = state.ui.er_selected_tables.len();
+        let total_count = state.tables().len();
 
-        let preview = if is_full_er {
-            let total = state.tables().len();
-            format!("▶ Full ER (all {} tables)", total)
-        } else if let Some(table) = filtered.get(state.ui.er_picker_selected) {
-            format!("▶ Partial ER from {}", table.qualified_name())
+        let (mode_label, targets_label, preview_color) = if selected_count == 0 {
+            ("Invalid".to_string(), "—".to_string(), Color::Red)
+        } else if selected_count == total_count {
+            (
+                "Full ER".to_string(),
+                format!("all {} tables", total_count),
+                Color::DarkGray,
+            )
+        } else if selected_count == 1 {
+            let name = state.ui.er_selected_tables.iter().next().unwrap().clone();
+            ("Partial ER".to_string(), name, Color::Green)
         } else {
-            "▶ No matching tables".to_string()
+            (
+                "Partial ER".to_string(),
+                format!("{} tables", selected_count),
+                Color::Cyan,
+            )
+        };
+
+        let output_label = if selected_count == 0 {
+            "—".to_string()
+        } else {
+            let selected_vec: Vec<String> = state.ui.er_selected_tables.iter().cloned().collect();
+            er_output_filename(&selected_vec, total_count)
         };
 
         let (_, inner) = render_modal(
@@ -31,14 +50,14 @@ impl ErTablePicker {
             Constraint::Percentage(70),
             " ER Diagram ",
             &format!(
-                " {} tables │ ↑↓ Navigate │ Enter Generate │ Esc Cancel ",
-                filtered.len()
+                " {}/{} selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel ",
+                selected_count, total_count
             ),
         );
 
         let [filter_area, preview_area, list_area] = Layout::vertical([
             Constraint::Length(1),
-            Constraint::Length(1),
+            Constraint::Length(3),
             Constraint::Min(1),
         ])
         .areas(inner);
@@ -56,44 +75,49 @@ impl ErTablePicker {
         ]);
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
-        // Preview line
-        let preview_color = if is_full_er {
-            Color::DarkGray
-        } else if filtered.is_empty() {
-            Color::Red
-        } else {
-            Color::Green
-        };
-        let preview_line = Line::from(Span::styled(
-            format!("  {}", preview),
-            Style::default().fg(preview_color),
-        ));
-        frame.render_widget(Paragraph::new(preview_line), preview_area);
+        // 3-line execution preview
+        let preview_lines = vec![
+            Line::from(vec![
+                Span::styled("  Mode:    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(mode_label, Style::default().fg(preview_color)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Targets: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(targets_label, Style::default().fg(preview_color)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Output:  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(output_label, Style::default().fg(preview_color)),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(preview_lines), preview_area);
 
-        // Table list
+        // Table list with checkboxes
         let items: Vec<ListItem> = filtered
             .iter()
             .map(|t| {
-                let content = format!("  {}", t.qualified_name());
-                ListItem::new(content).style(Style::default().fg(Color::Gray))
+                let qn = t.qualified_name();
+                let is_selected = state.ui.er_selected_tables.contains(&qn);
+                let mark = if is_selected { "✔ " } else { "  " };
+                let style = if is_selected {
+                    Style::default().fg(Color::Green)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+                ListItem::new(format!("  {}{}", mark, qn)).style(style)
             })
             .collect();
 
-        let list = if is_full_er {
-            // No highlight when empty filter (selection doesn't affect result)
-            List::new(items)
-        } else {
-            List::new(items)
-                .highlight_style(
-                    Style::default()
-                        .bg(Theme::COMPLETION_SELECTED_BG)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .highlight_symbol("▸ ")
-        };
+        let list = List::new(items)
+            .highlight_style(
+                Style::default()
+                    .bg(Theme::COMPLETION_SELECTED_BG)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("▸ ");
 
-        if !is_full_er && !filtered.is_empty() {
+        if !filtered.is_empty() {
             state
                 .ui
                 .er_picker_list_state
