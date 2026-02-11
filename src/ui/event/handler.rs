@@ -63,6 +63,11 @@ fn handle_connection_selector_keys(key: KeyEvent) -> Action {
 fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     use crate::app::focused_pane::FocusedPane;
 
+    let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
+    let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
+    let connections_mode = state.ui.explorer_mode == ExplorerMode::Connections
+        && state.ui.focused_pane == FocusedPane::Explorer;
+
     match (key.code, key.modifiers) {
         (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenTablePicker;
@@ -70,13 +75,44 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
             return Action::OpenCommandPalette;
         }
+        (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
+            if result_navigation {
+                return Action::ResultScrollHalfPageDown;
+            } else if inspector_navigation {
+                return Action::InspectorScrollHalfPageDown;
+            } else {
+                return Action::SelectHalfPageDown;
+            }
+        }
+        (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
+            if result_navigation {
+                return Action::ResultScrollHalfPageUp;
+            } else if inspector_navigation {
+                return Action::InspectorScrollHalfPageUp;
+            } else {
+                return Action::SelectHalfPageUp;
+            }
+        }
+        (KeyCode::Char('f'), m) if m.contains(KeyModifiers::CONTROL) => {
+            if result_navigation {
+                return Action::ResultScrollFullPageDown;
+            } else if inspector_navigation {
+                return Action::InspectorScrollFullPageDown;
+            } else {
+                return Action::SelectFullPageDown;
+            }
+        }
+        (KeyCode::Char('b'), m) if m.contains(KeyModifiers::CONTROL) => {
+            if result_navigation {
+                return Action::ResultScrollFullPageUp;
+            } else if inspector_navigation {
+                return Action::InspectorScrollFullPageUp;
+            } else {
+                return Action::SelectFullPageUp;
+            }
+        }
         _ => {}
     }
-
-    let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
-    let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
-    let connections_mode = state.ui.explorer_mode == ExplorerMode::Connections
-        && state.ui.focused_pane == FocusedPane::Explorer;
 
     match key.code {
         KeyCode::Char('q') => Action::Quit,
@@ -117,6 +153,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('g') | KeyCode::Home => {
             if result_navigation {
                 Action::ResultScrollTop
+            } else if inspector_navigation {
+                Action::InspectorScrollTop
             } else {
                 Action::SelectFirst
             }
@@ -124,6 +162,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('G') | KeyCode::End => {
             if result_navigation {
                 Action::ResultScrollBottom
+            } else if inspector_navigation {
+                Action::InspectorScrollBottom
             } else {
                 Action::SelectLast
             }
@@ -167,6 +207,25 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
+        KeyCode::PageDown => {
+            if result_navigation {
+                Action::ResultScrollFullPageDown
+            } else if inspector_navigation {
+                Action::InspectorScrollFullPageDown
+            } else {
+                Action::SelectFullPageDown
+            }
+        }
+        KeyCode::PageUp => {
+            if result_navigation {
+                Action::ResultScrollFullPageUp
+            } else if inspector_navigation {
+                Action::InspectorScrollFullPageUp
+            } else {
+                Action::SelectFullPageUp
+            }
+        }
+
         // Pane switching: exit focus mode first if active
         KeyCode::Char(c @ '1'..='3') => {
             if state.ui.focus_mode {
@@ -186,7 +245,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::OpenErTablePicker,
-        KeyCode::Char('c') => Action::ToggleExplorerMode,
+        KeyCode::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+            Action::ToggleExplorerMode
+        }
         KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
         KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
             Action::RequestDeleteSelectedConnection
@@ -739,6 +800,61 @@ mod tests {
             assert!(matches!(result, Action::OpenErTablePicker));
         }
 
+        fn inspector_focused_state() -> AppState {
+            let mut state = browse_state();
+            state.ui.focused_pane = FocusedPane::Inspector;
+            state
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('g'))]
+        #[case(KeyCode::Home)]
+        fn g_scrolls_inspector_top(#[case] code: KeyCode) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(code), &state);
+
+            assert!(matches!(result, Action::InspectorScrollTop));
+        }
+
+        #[rstest]
+        #[case(KeyCode::Char('G'))]
+        #[case(KeyCode::End)]
+        fn shift_g_scrolls_inspector_bottom(#[case] code: KeyCode) {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(code), &state);
+
+            assert!(matches!(result, Action::InspectorScrollBottom));
+        }
+
+        #[test]
+        fn c_key_toggles_when_explorer_focused() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::ToggleExplorerMode));
+        }
+
+        #[test]
+        fn c_key_noop_when_result_focused() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn c_key_noop_when_inspector_focused() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
         #[test]
         fn bracket_right_returns_next_page_when_result_focused() {
             let state = result_focused_state();
@@ -784,6 +900,103 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
 
             assert!(matches!(result, Action::ResultPrevPage));
+        }
+
+        // Page scroll: Ctrl-D/U/F/B and PageDown/PageUp
+        #[test]
+        fn ctrl_d_scrolls_result_half_page_down() {
+            let state = result_focused_state();
+            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::ResultScrollHalfPageDown));
+        }
+
+        #[test]
+        fn ctrl_u_scrolls_result_half_page_up() {
+            let state = result_focused_state();
+            let k = key_with_mod(KeyCode::Char('u'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::ResultScrollHalfPageUp));
+        }
+
+        #[test]
+        fn ctrl_f_scrolls_result_full_page_down() {
+            let state = result_focused_state();
+            let k = key_with_mod(KeyCode::Char('f'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::ResultScrollFullPageDown));
+        }
+
+        #[test]
+        fn ctrl_b_scrolls_result_full_page_up() {
+            let state = result_focused_state();
+            let k = key_with_mod(KeyCode::Char('b'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::ResultScrollFullPageUp));
+        }
+
+        #[test]
+        fn ctrl_d_scrolls_inspector_half_page_down() {
+            let state = inspector_focused_state();
+            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::InspectorScrollHalfPageDown));
+        }
+
+        #[test]
+        fn ctrl_d_scrolls_explorer_half_page_down() {
+            let state = browse_state();
+            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
+
+            let result = handle_normal_mode(k, &state);
+
+            assert!(matches!(result, Action::SelectHalfPageDown));
+        }
+
+        #[test]
+        fn pagedown_scrolls_result_full_page_down() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+
+            assert!(matches!(result, Action::ResultScrollFullPageDown));
+        }
+
+        #[test]
+        fn pageup_scrolls_result_full_page_up() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::PageUp), &state);
+
+            assert!(matches!(result, Action::ResultScrollFullPageUp));
+        }
+
+        #[test]
+        fn pagedown_scrolls_inspector_full_page_down() {
+            let state = inspector_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+
+            assert!(matches!(result, Action::InspectorScrollFullPageDown));
+        }
+
+        #[test]
+        fn pagedown_scrolls_explorer_full_page_down() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+
+            assert!(matches!(result, Action::SelectFullPageDown));
         }
     }
 

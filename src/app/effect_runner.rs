@@ -110,6 +110,7 @@ impl EffectRunner {
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                 }
                 state.ui.result_viewport_plan = output.result_viewport_plan;
+                state.ui.explorer_pane_height = output.explorer_pane_height;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
                 Ok(())
