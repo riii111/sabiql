@@ -99,10 +99,12 @@ impl Footer {
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
                         GLOBAL_KEYS[idx::global::ER_DIAGRAM].as_hint(),
-                        GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint(),
-                        GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint(),
-                        GLOBAL_KEYS[idx::global::PALETTE].as_hint(),
                     ];
+                    if state.ui.focused_pane == FocusedPane::Explorer {
+                        list.push(GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint());
+                    }
+                    list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::PALETTE].as_hint());
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
