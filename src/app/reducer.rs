@@ -92,14 +92,12 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             table: table_name.clone(),
                             generation: current_gen,
                         });
-                        effects.push(Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema,
-                            table: table_name,
-                            generation: current_gen,
-                            limit: 100,
-                        });
                     }
+                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview {
+                        schema,
+                        table: table_name,
+                        generation: current_gen,
+                    }]));
                 }
             } else if state.ui.input_mode == InputMode::Normal {
                 // Open error modal if connection error exists (from any pane)
@@ -128,14 +126,12 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             table: table_name.clone(),
                             generation: current_gen,
                         });
-                        effects.push(Effect::ExecutePreview {
-                            dsn: dsn.clone(),
-                            schema,
-                            table: table_name,
-                            generation: current_gen,
-                            limit: 100,
-                        });
                     }
+                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview {
+                        schema,
+                        table: table_name,
+                        generation: current_gen,
+                    }]));
                 }
             } else if state.ui.input_mode == InputMode::CommandPalette {
                 use crate::app::palette::palette_action_for_index;
@@ -1591,6 +1587,114 @@ mod tests {
                     if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
             }));
             assert!(state.messages.last_error.is_some());
+        }
+    }
+
+    mod pagination_integration {
+        use super::*;
+        use crate::app::query_execution::PREVIEW_PAGE_SIZE;
+        use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
+        use std::sync::Arc;
+
+        /// Set up a state with metadata loaded, a table selected via
+        /// ConfirmSelection, and a preview result completed.
+        fn state_after_confirm_and_complete() -> (AppState, Instant) {
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            let now = Instant::now();
+
+            // Load metadata with a table
+            let metadata = DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    Some(1200),
+                    false,
+                )],
+                fetched_at: now,
+            };
+            reduce(&mut state, Action::MetadataLoaded(Box::new(metadata)), now);
+
+            // ConfirmSelection from Normal mode (explorer focused)
+            state.ui.input_mode = InputMode::Normal;
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_selected = 0;
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
+
+            // Extract the dispatched ExecutePreview action and run it
+            let dispatch_actions: Vec<Action> = effects
+                .into_iter()
+                .filter_map(|e| match e {
+                    Effect::DispatchActions(actions) => Some(actions),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            for action in dispatch_actions {
+                reduce(&mut state, action, now);
+            }
+
+            // Simulate QueryCompleted with a full page of results
+            let current_gen = state.cache.selection_generation;
+            let result = Arc::new(QueryResult {
+                columns: vec!["id".to_string()],
+                rows: vec![vec!["1".to_string()]; PREVIEW_PAGE_SIZE],
+                execution_time_ms: 10,
+                source: QuerySource::Preview,
+                row_count: PREVIEW_PAGE_SIZE,
+                query: String::new(),
+                executed_at: now,
+                error: None,
+            });
+            reduce(
+                &mut state,
+                Action::QueryCompleted {
+                    result,
+                    generation: current_gen,
+                    target_page: Some(0),
+                },
+                now,
+            );
+
+            (state, now)
+        }
+
+        #[test]
+        fn confirm_selection_initializes_pagination_via_dispatch() {
+            let (state, _now) = state_after_confirm_and_complete();
+
+            assert_eq!(state.query.pagination.schema, "public");
+            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.query.pagination.total_rows_estimate, Some(1200));
+            assert_eq!(state.query.pagination.current_page, 0);
+            assert!(!state.query.pagination.reached_end);
+        }
+
+        #[test]
+        fn next_page_after_confirm_emits_correct_offset() {
+            let (mut state, now) = state_after_confirm_and_complete();
+
+            let effects = reduce(&mut state, Action::ResultNextPage, now);
+
+            let preview_effect = effects
+                .iter()
+                .find(|e| matches!(e, Effect::ExecutePreview { .. }));
+            assert!(preview_effect.is_some());
+            if let Some(Effect::ExecutePreview {
+                offset,
+                target_page,
+                schema,
+                table,
+                ..
+            }) = preview_effect
+            {
+                assert_eq!(*offset, PREVIEW_PAGE_SIZE);
+                assert_eq!(*target_page, 1);
+                assert_eq!(schema, "public");
+                assert_eq!(table, "users");
+            }
         }
     }
 }

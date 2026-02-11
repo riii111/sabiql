@@ -9,6 +9,7 @@ use super::atoms::panel_block_highlight;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
+use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::state::AppState;
 use crate::app::ui_state::RESULT_INNER_OVERHEAD;
 use crate::app::viewport::{
@@ -68,7 +69,41 @@ impl ResultPane {
             None => " [3] Result ".to_string(),
             Some(r) => {
                 let source_badge = match r.source {
-                    QuerySource::Preview => "PREVIEW".to_string(),
+                    QuerySource::Preview => {
+                        let pagination = &state.query.pagination;
+                        let page_num = pagination.current_page + 1;
+
+                        if r.rows.is_empty() {
+                            match pagination.total_pages_estimate() {
+                                Some(total_pages) => {
+                                    format!("PREVIEW p.{}/{}", page_num, total_pages)
+                                }
+                                None => format!("PREVIEW p.{}", page_num),
+                            }
+                        } else {
+                            let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
+                            let row_end = row_start + r.rows.len() - 1;
+
+                            match pagination.total_pages_estimate() {
+                                Some(total_pages) => {
+                                    let total_rows = pagination
+                                        .total_rows_estimate
+                                        .map(|t| t.max(0) as usize)
+                                        .unwrap_or(0);
+                                    format!(
+                                        "PREVIEW p.{}/{} (rows {}–{} of ~{})",
+                                        page_num, total_pages, row_start, row_end, total_rows
+                                    )
+                                }
+                                None => {
+                                    format!(
+                                        "PREVIEW p.{} (rows {}–{})",
+                                        page_num, row_start, row_end
+                                    )
+                                }
+                            }
+                        }
+                    }
                     QuerySource::Adhoc => {
                         if let Some(idx) = state.query.history_index {
                             format!("ADHOC #{}", idx + 1)

@@ -59,6 +59,8 @@ pub enum Effect {
         table: String,
         generation: u64,
         limit: usize,
+        offset: usize,
+        target_page: usize,
     },
     ExecuteAdhoc {
         dsn: String,
