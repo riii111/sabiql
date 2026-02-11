@@ -85,6 +85,10 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     state.cache.selection_generation += 1;
                     let current_gen = state.cache.selection_generation;
 
+                    state.query.pagination.reset();
+                    state.query.pagination.schema = schema.clone();
+                    state.query.pagination.table = table_name.clone();
+
                     if let Some(dsn) = &state.runtime.dsn {
                         effects.push(Effect::FetchTableDetail {
                             dsn: dsn.clone(),
@@ -122,6 +126,10 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
 
                     state.cache.selection_generation += 1;
                     let current_gen = state.cache.selection_generation;
+
+                    state.query.pagination.reset();
+                    state.query.pagination.schema = schema.clone();
+                    state.query.pagination.table = table_name.clone();
 
                     if let Some(dsn) = &state.runtime.dsn {
                         effects.push(Effect::FetchTableDetail {
