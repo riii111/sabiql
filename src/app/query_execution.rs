@@ -30,7 +30,7 @@ impl PaginationState {
     pub fn total_pages_estimate(&self) -> Option<usize> {
         self.total_rows_estimate.map(|total| {
             let total = total.max(0) as usize;
-            (total + PREVIEW_PAGE_SIZE - 1) / PREVIEW_PAGE_SIZE
+            total.div_ceil(PREVIEW_PAGE_SIZE)
         })
     }
 
@@ -86,24 +86,30 @@ mod tests {
 
         #[test]
         fn offset_returns_correct_value() {
-            let mut p = PaginationState::default();
-            p.current_page = 3;
+            let p = PaginationState {
+                current_page: 3,
+                ..Default::default()
+            };
 
             assert_eq!(p.offset(), 3 * PREVIEW_PAGE_SIZE);
         }
 
         #[test]
         fn total_pages_estimate_rounds_up() {
-            let mut p = PaginationState::default();
-            p.total_rows_estimate = Some(1001);
+            let p = PaginationState {
+                total_rows_estimate: Some(1001),
+                ..Default::default()
+            };
 
             assert_eq!(p.total_pages_estimate(), Some(3));
         }
 
         #[test]
         fn total_pages_estimate_exact_division() {
-            let mut p = PaginationState::default();
-            p.total_rows_estimate = Some(1000);
+            let p = PaginationState {
+                total_rows_estimate: Some(1000),
+                ..Default::default()
+            };
 
             assert_eq!(p.total_pages_estimate(), Some(2));
         }
@@ -117,8 +123,10 @@ mod tests {
 
         #[test]
         fn can_next_false_when_reached_end() {
-            let mut p = PaginationState::default();
-            p.reached_end = true;
+            let p = PaginationState {
+                reached_end: true,
+                ..Default::default()
+            };
 
             assert!(!p.can_next());
         }
@@ -139,8 +147,10 @@ mod tests {
 
         #[test]
         fn can_prev_true_on_later_page() {
-            let mut p = PaginationState::default();
-            p.current_page = 2;
+            let p = PaginationState {
+                current_page: 2,
+                ..Default::default()
+            };
 
             assert!(p.can_prev());
         }
