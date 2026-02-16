@@ -192,7 +192,7 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
-        let headers = vec!["Name", "Type", "Null", "PK", "Default"];
+        let headers = vec!["Name", "Type", "Null", "PK", "Default", "Comment"];
 
         let data_rows: Vec<Vec<String>> = table
             .columns
@@ -212,6 +212,7 @@ impl Inspector {
                         String::new()
                     },
                     col.default.clone().unwrap_or_default(),
+                    col.comment.clone().unwrap_or_default(),
                 ]
             })
             .collect();
@@ -299,11 +300,11 @@ impl Inspector {
                         let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
                         let display = truncate_cell(text, col_width as usize);
 
-                        // Special styling for PK and Default columns
+                        // Special styling for PK, Default, and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(Color::Yellow)
-                        } else if col_idx == 4 {
-                            Style::default().fg(Color::Gray)
+                        } else if col_idx == 4 || col_idx == 5 {
+                            Style::default().fg(Color::DarkGray)
                         } else {
                             Style::default()
                         };
