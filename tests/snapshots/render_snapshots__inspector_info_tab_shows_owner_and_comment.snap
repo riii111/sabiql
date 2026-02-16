@@ -4,24 +4,24 @@ expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
-│                  ││(select a table)                                          │
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││Owner:   postgres                                         │
+│  public.comments ││Comment: User accounts                                    │
+│                  ││Rows:    ~100                                             │
+│                  ││Schema:  public                                           │
+│                  ││Table:   users                                            │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
+│                  │└──────────────────────────────────────────────────────────┘
+│                  │┌ [3] Result ──────────────────────────────────────────────┐
+│                  ││(select a table to preview)                               │
 │                  ││                                                          │
-│                 ╭ Confirm ──────────────────────────────────╮                │
-│                 │         No connection configured.         │                │
-│                 │      Are you sure you want to quit?       │                │
-│                 │                                           │────────────────┘
-│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter/y:Yes  Esc/n:No
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  Tab/⇧
