@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use sabiql::domain::{Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary};
+use sabiql::domain::{
+    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent,
+    TriggerTiming,
+};
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
     DatabaseMetadata {
@@ -61,7 +64,13 @@ pub fn sample_table_detail() -> Table {
         indexes: vec![],
         foreign_keys: vec![],
         rls: None,
-        triggers: vec![],
+        triggers: vec![Trigger {
+            name: "audit_users".to_string(),
+            timing: TriggerTiming::After,
+            events: vec![TriggerEvent::Insert, TriggerEvent::Update],
+            function_name: "audit_func".to_string(),
+            security_definer: false,
+        }],
         row_count_estimate: Some(100),
         comment: None,
     }

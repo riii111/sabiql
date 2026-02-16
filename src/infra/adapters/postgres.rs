@@ -1420,6 +1420,112 @@ mod tests {
         }
     }
 
+    mod trigger_parsing {
+        use super::*;
+        use crate::domain::{TriggerEvent, TriggerTiming};
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+            let result = PostgresAdapter::parse_triggers(input).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn valid_single_trigger_parses_all_fields() {
+            let json = r#"[{
+                "name": "audit_trigger",
+                "timing": "AFTER",
+                "events": ["INSERT", "UPDATE"],
+                "function_name": "audit_func",
+                "security_definer": true
+            }]"#;
+
+            let result = PostgresAdapter::parse_triggers(json).unwrap();
+            let trigger = &result[0];
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(trigger.name, "audit_trigger");
+            assert_eq!(trigger.timing, TriggerTiming::After);
+            assert_eq!(
+                trigger.events,
+                vec![TriggerEvent::Insert, TriggerEvent::Update]
+            );
+            assert_eq!(trigger.function_name, "audit_func");
+            assert!(trigger.security_definer);
+        }
+
+        #[rstest]
+        #[case("BEFORE", TriggerTiming::Before)]
+        #[case("AFTER", TriggerTiming::After)]
+        #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
+        #[case("UNKNOWN", TriggerTiming::After)] // unknown defaults to After
+        fn timing_mapping_returns_expected(#[case] timing: &str, #[case] expected: TriggerTiming) {
+            let json = format!(
+                r#"[{{
+                    "name": "test", "timing": "{}", "events": ["INSERT"],
+                    "function_name": "func", "security_definer": false
+                }}]"#,
+                timing
+            );
+
+            let result = PostgresAdapter::parse_triggers(&json).unwrap();
+            assert_eq!(result[0].timing, expected);
+        }
+
+        #[test]
+        fn multiple_events_parsed_in_order() {
+            let json = r#"[{
+                "name": "multi_event",
+                "timing": "BEFORE",
+                "events": ["INSERT", "DELETE", "UPDATE", "TRUNCATE"],
+                "function_name": "func",
+                "security_definer": false
+            }]"#;
+
+            let result = PostgresAdapter::parse_triggers(json).unwrap();
+            assert_eq!(
+                result[0].events,
+                vec![
+                    TriggerEvent::Insert,
+                    TriggerEvent::Delete,
+                    TriggerEvent::Update,
+                    TriggerEvent::Truncate,
+                ]
+            );
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_triggers("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn empty_array_returns_empty_vec() {
+            let json = r#"[]"#;
+            let result = PostgresAdapter::parse_triggers(json).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn security_definer_false_returns_expected() {
+            let json = r#"[{
+                "name": "test",
+                "timing": "AFTER",
+                "events": ["INSERT"],
+                "function_name": "func",
+                "security_definer": false
+            }]"#;
+
+            let result = PostgresAdapter::parse_triggers(json).unwrap();
+            assert!(!result[0].security_definer);
+        }
+    }
+
     mod schema_parsing {
         use super::*;
         use rstest::rstest;
