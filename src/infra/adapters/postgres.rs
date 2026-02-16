@@ -446,7 +446,10 @@ impl PostgresAdapter {
         let raw: RawTableInfo =
             serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
 
-        Ok((raw.owner, raw.comment, raw.row_count_estimate))
+        // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run
+        let row_count = raw.row_count_estimate.filter(|&n| n >= 0);
+
+        Ok((raw.owner, raw.comment, row_count))
     }
 
     fn parse_tables(json: &str) -> Result<Vec<TableSummary>, MetadataError> {
@@ -1411,6 +1414,24 @@ mod tests {
             assert!(owner.is_none());
             assert!(comment.is_none());
             assert!(row_count.is_none());
+        }
+
+        #[test]
+        fn negative_row_count_returns_none() {
+            let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": -1}"#;
+
+            let (_, _, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+
+            assert!(row_count.is_none());
+        }
+
+        #[test]
+        fn zero_row_count_returns_zero() {
+            let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": 0}"#;
+
+            let (_, _, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+
+            assert_eq!(row_count, Some(0));
         }
 
         #[test]

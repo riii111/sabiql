@@ -604,6 +604,45 @@ fn er_table_picker_all_selected() {
 }
 
 #[test]
+fn inspector_triggers_tab_with_data() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Triggers;
+    state.ui.focused_pane = FocusedPane::Inspector;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_triggers_tab_empty() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+
+    let mut table = fixtures::sample_table_detail();
+    table.triggers = vec![];
+    state.cache.table_detail = Some(table);
+    state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Triggers;
+    state.ui.focused_pane = FocusedPane::Inspector;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_info_tab_shows_owner_and_comment() {
     let now = test_instant();
     let mut state = create_test_state();

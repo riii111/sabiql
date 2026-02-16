@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││Name          Timing    Event        Function    SecDef   │
+│  public.comments ││audit_users   AFTER     INSERT/UPDAT audit_func           │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  │└──────────────────────────────────────────────────────────┘
+│                  │┌ [3] Result ──────────────────────────────────────────────┐
+│                  ││(select a table to preview)                               │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  Tab/⇧
