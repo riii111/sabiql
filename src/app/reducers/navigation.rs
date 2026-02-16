@@ -45,6 +45,7 @@ fn inspector_total_items(state: &AppState) -> usize {
                 }
                 lines
             }),
+            InspectorTab::Triggers => t.triggers.len(),
             InspectorTab::Ddl => ddl_line_count_postgres(t),
         })
         .unwrap_or(0)

@@ -427,6 +427,7 @@ impl PostgresAdapter {
         )
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_table_info(
         json: &str,
     ) -> Result<(Option<String>, Option<String>, Option<i64>), MetadataError> {
@@ -1372,6 +1373,50 @@ mod tests {
             assert!(PostgresAdapter::parse_tables("null").unwrap().is_empty());
             assert!(PostgresAdapter::parse_columns("null").unwrap().is_empty());
             assert!(PostgresAdapter::parse_indexes("null").unwrap().is_empty());
+        }
+    }
+
+    mod table_info_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_none(#[case] input: &str) {
+            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(input).unwrap();
+            assert!(owner.is_none());
+            assert!(comment.is_none());
+            assert!(row_count.is_none());
+        }
+
+        #[test]
+        fn all_fields_present_returns_values() {
+            let json = r#"{"owner": "postgres", "comment": "User accounts table", "row_count_estimate": 100}"#;
+
+            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+
+            assert_eq!(owner.as_deref(), Some("postgres"));
+            assert_eq!(comment.as_deref(), Some("User accounts table"));
+            assert_eq!(row_count, Some(100));
+        }
+
+        #[test]
+        fn null_fields_returns_none() {
+            let json = r#"{"owner": null, "comment": null, "row_count_estimate": null}"#;
+
+            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+
+            assert!(owner.is_none());
+            assert!(comment.is_none());
+            assert!(row_count.is_none());
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_table_info("{not valid json}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
     }
 

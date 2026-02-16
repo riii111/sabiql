@@ -3,7 +3,7 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [DDL]                               
+┌ [1] Explorer ────┐[Cols] [Idx] [FK] [RLS] [Trig] [DDL]                        
 │public.user╭ Help ────────────────────────────────────────────────╮───────────┐
 │public.post│▸ Global Keys                                        ▲│           │
 │public.comm│  q                   Quit application               ┃│           │
