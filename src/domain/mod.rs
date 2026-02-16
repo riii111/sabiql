@@ -11,6 +11,7 @@ pub mod query_result;
 pub mod rls;
 pub mod schema;
 pub mod table;
+pub mod trigger;
 
 pub use column::Column;
 #[cfg(test)]
@@ -23,5 +24,6 @@ pub use query_result::{QueryResult, QuerySource};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use table::{Table, TableSummary};
+pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
 
 pub use connection::{ConnectionId, ConnectionProfile, SslMode};

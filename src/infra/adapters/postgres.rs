@@ -9,7 +9,8 @@ use tokio::time::timeout;
 use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
-    RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary,
+    RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary, Trigger, TriggerEvent,
+    TriggerTiming,
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
@@ -372,6 +373,81 @@ impl PostgresAdapter {
         )
     }
 
+    fn triggers_query(schema: &str, table: &str) -> String {
+        format!(
+            r#"
+            SELECT json_agg(row_to_json(t) ORDER BY t.name)
+            FROM (
+                SELECT
+                    tg.tgname AS name,
+                    CASE
+                        WHEN (tg.tgtype & 2) != 0 THEN 'BEFORE'
+                        WHEN (tg.tgtype & 2) = 0 AND (tg.tgtype & 64) != 0 THEN 'INSTEAD OF'
+                        ELSE 'AFTER'
+                    END AS timing,
+                    array_remove(ARRAY[
+                        CASE WHEN (tg.tgtype & 4) != 0 THEN 'INSERT' END,
+                        CASE WHEN (tg.tgtype & 8) != 0 THEN 'DELETE' END,
+                        CASE WHEN (tg.tgtype & 16) != 0 THEN 'UPDATE' END,
+                        CASE WHEN (tg.tgtype & 32) != 0 THEN 'TRUNCATE' END
+                    ], NULL) AS events,
+                    p.proname AS function_name,
+                    p.prosecdef AS security_definer
+                FROM pg_trigger tg
+                JOIN pg_class c ON c.oid = tg.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_proc p ON p.oid = tg.tgfoid
+                WHERE NOT tg.tgisinternal
+                  AND n.nspname = {}
+                  AND c.relname = {}
+            ) t
+            "#,
+            quote_literal(schema),
+            quote_literal(table)
+        )
+    }
+
+    fn table_info_query(schema: &str, table: &str) -> String {
+        format!(
+            r#"
+            SELECT row_to_json(t)
+            FROM (
+                SELECT
+                    pg_get_userbyid(c.relowner) AS owner,
+                    obj_description(c.oid) AS comment,
+                    c.reltuples::bigint AS row_count_estimate
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = {}
+                  AND c.relname = {}
+            ) t
+            "#,
+            quote_literal(schema),
+            quote_literal(table)
+        )
+    }
+
+    fn parse_table_info(
+        json: &str,
+    ) -> Result<(Option<String>, Option<String>, Option<i64>), MetadataError> {
+        let trimmed = json.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok((None, None, None));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RawTableInfo {
+            owner: Option<String>,
+            comment: Option<String>,
+            row_count_estimate: Option<i64>,
+        }
+
+        let raw: RawTableInfo =
+            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+
+        Ok((raw.owner, raw.comment, raw.row_count_estimate))
+    }
+
     fn parse_tables(json: &str) -> Result<Vec<TableSummary>, MetadataError> {
         let trimmed = json.trim();
         if trimmed.is_empty() || trimmed == "null" {
@@ -589,6 +665,50 @@ impl PostgresAdapter {
         }))
     }
 
+    fn parse_triggers(json: &str) -> Result<Vec<Trigger>, MetadataError> {
+        let trimmed = json.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(Vec::new());
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RawTrigger {
+            name: String,
+            timing: String,
+            events: Vec<String>,
+            function_name: String,
+            security_definer: bool,
+        }
+
+        let raw: Vec<RawTrigger> =
+            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+
+        Ok(raw
+            .into_iter()
+            .map(|t| Trigger {
+                name: t.name,
+                timing: match t.timing.as_str() {
+                    "BEFORE" => TriggerTiming::Before,
+                    "INSTEAD OF" => TriggerTiming::InsteadOf,
+                    _ => TriggerTiming::After,
+                },
+                events: t
+                    .events
+                    .iter()
+                    .filter_map(|e| match e.as_str() {
+                        "INSERT" => Some(TriggerEvent::Insert),
+                        "UPDATE" => Some(TriggerEvent::Update),
+                        "DELETE" => Some(TriggerEvent::Delete),
+                        "TRUNCATE" => Some(TriggerEvent::Truncate),
+                        _ => None,
+                    })
+                    .collect(),
+                function_name: t.function_name,
+                security_definer: t.security_definer,
+            })
+            .collect())
+    }
+
     /// Execute a raw SQL query and return structured results.
     /// This is used for adhoc queries and preview queries.
     pub async fn execute_query_raw(
@@ -750,6 +870,8 @@ impl MetadataProvider for PostgresAdapter {
         let indexes_q = Self::indexes_query(schema, table);
         let fks_q = Self::foreign_keys_query(schema, table);
         let rls_q = Self::rls_query(schema, table);
+        let triggers_q = Self::triggers_query(schema, table);
+        let table_info_q = Self::table_info_query(schema, table);
 
         // Execute queries sequentially to avoid connection pool exhaustion
         // on tables with many columns
@@ -759,11 +881,15 @@ impl MetadataProvider for PostgresAdapter {
         let indexes_json = self.execute_query(dsn, &indexes_q).await?;
         let fks_json = self.execute_query(dsn, &fks_q).await?;
         let rls_json = self.execute_query(dsn, &rls_q).await?;
+        let triggers_json = self.execute_query(dsn, &triggers_q).await?;
+        let table_info_json = self.execute_query(dsn, &table_info_q).await?;
 
         let columns = Self::parse_columns(&columns_json)?;
         let indexes = Self::parse_indexes(&indexes_json)?;
         let foreign_keys = Self::parse_foreign_keys(&fks_json)?;
         let rls = Self::parse_rls(&rls_json)?;
+        let triggers = Self::parse_triggers(&triggers_json)?;
+        let (owner, comment, row_count_estimate) = Self::parse_table_info(&table_info_json)?;
 
         let pk_cols: Vec<String> = columns
             .iter()
@@ -779,13 +905,15 @@ impl MetadataProvider for PostgresAdapter {
         Ok(Table {
             schema: schema.to_string(),
             name: table.to_string(),
+            owner,
             columns,
             primary_key,
             foreign_keys,
             indexes,
             rls,
-            row_count_estimate: None,
-            comment: None,
+            triggers,
+            row_count_estimate,
+            comment,
         })
     }
 }

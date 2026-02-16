@@ -24,6 +24,7 @@ pub fn sample_table_detail() -> Table {
     Table {
         schema: "public".to_string(),
         name: "users".to_string(),
+        owner: None,
         columns: vec![
             Column {
                 name: "id".to_string(),
@@ -60,6 +61,7 @@ pub fn sample_table_detail() -> Table {
         indexes: vec![],
         foreign_keys: vec![],
         rls: None,
+        triggers: vec![],
         row_count_estimate: Some(100),
         comment: None,
     }

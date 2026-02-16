@@ -72,11 +72,13 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "test_table".to_string(),
+            owner: None,
             columns,
             primary_key,
             foreign_keys: vec![],
             indexes: vec![],
             rls: None,
+            triggers: vec![],
             row_count_estimate: None,
             comment: None,
         }

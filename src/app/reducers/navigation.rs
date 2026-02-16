@@ -1013,12 +1013,14 @@ mod tests {
             state.cache.table_detail = Some(Table {
                 schema: "public".to_string(),
                 name: "test_table".to_string(),
+                owner: None,
                 columns: cols,
                 primary_key: None,
                 indexes: vec![],
                 foreign_keys: vec![],
-                row_count_estimate: Some(0),
                 rls: None,
+                triggers: vec![],
+                row_count_estimate: Some(0),
                 comment: None,
             });
             state
