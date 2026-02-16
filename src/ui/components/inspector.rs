@@ -69,6 +69,10 @@ impl Inspector {
             frame.render_widget(block, area);
 
             match state.ui.inspector_tab {
+                InspectorTab::Info => {
+                    Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset);
+                    ViewportPlan::default()
+                }
                 InspectorTab::Columns => Self::render_columns(
                     frame,
                     inner,
@@ -110,6 +114,67 @@ impl Inspector {
             frame.render_widget(content, area);
             ViewportPlan::default()
         }
+    }
+
+    fn render_info(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+        let label_style = Style::default().add_modifier(Modifier::BOLD);
+        let none_style = Style::default().fg(Color::DarkGray);
+
+        let owner_value = table.owner.as_deref().unwrap_or("(none)");
+        let comment_value = table.comment.as_deref().unwrap_or("(none)");
+        let row_count_value = table
+            .row_count_estimate
+            .map(|n| format!("~{}", n))
+            .unwrap_or_else(|| "(none)".to_string());
+
+        let owner_style = if table.owner.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+        let comment_style = if table.comment.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+        let row_count_style = if table.row_count_estimate.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+
+        let lines = vec![
+            Line::from(vec![
+                Span::styled("Owner:   ", label_style),
+                Span::styled(owner_value, owner_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Comment: ", label_style),
+                Span::styled(comment_value, comment_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Rows:    ", label_style),
+                Span::styled(row_count_value, row_count_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Schema:  ", label_style),
+                Span::raw(&table.schema),
+            ]),
+            Line::from(vec![
+                Span::styled("Table:   ", label_style),
+                Span::raw(&table.name),
+            ]),
+        ];
+
+        let total_lines = lines.len();
+        let visible_lines = area.height as usize;
+        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        let paragraph = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((clamped_scroll_offset as u16, 0));
+        frame.render_widget(paragraph, area);
     }
 
     fn render_columns(
