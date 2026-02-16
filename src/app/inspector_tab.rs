@@ -5,6 +5,7 @@ pub enum InspectorTab {
     Indexes,
     ForeignKeys,
     Rls,
+    Triggers,
     Ddl,
 }
 
@@ -14,7 +15,8 @@ impl InspectorTab {
             Self::Columns => Self::Indexes,
             Self::Indexes => Self::ForeignKeys,
             Self::ForeignKeys => Self::Rls,
-            Self::Rls => Self::Ddl,
+            Self::Rls => Self::Triggers,
+            Self::Triggers => Self::Ddl,
             Self::Ddl => Self::Columns,
         }
     }
@@ -25,7 +27,8 @@ impl InspectorTab {
             Self::Indexes => Self::Columns,
             Self::ForeignKeys => Self::Indexes,
             Self::Rls => Self::ForeignKeys,
-            Self::Ddl => Self::Rls,
+            Self::Triggers => Self::Rls,
+            Self::Ddl => Self::Triggers,
         }
     }
 
@@ -35,6 +38,7 @@ impl InspectorTab {
             Self::Indexes => "Idx",
             Self::ForeignKeys => "FK",
             Self::Rls => "RLS",
+            Self::Triggers => "Trig",
             Self::Ddl => "DDL",
         }
     }
@@ -45,6 +49,7 @@ impl InspectorTab {
             Self::Indexes,
             Self::ForeignKeys,
             Self::Rls,
+            Self::Triggers,
             Self::Ddl,
         ]
     }
@@ -78,6 +83,8 @@ mod tests {
         tab = tab.next();
         assert_eq!(tab, InspectorTab::Rls);
         tab = tab.next();
+        assert_eq!(tab, InspectorTab::Triggers);
+        tab = tab.next();
         assert_eq!(tab, InspectorTab::Ddl);
         tab = tab.next();
         assert_eq!(tab, InspectorTab::Columns);
@@ -88,6 +95,8 @@ mod tests {
         let mut tab = InspectorTab::Columns;
         tab = tab.prev();
         assert_eq!(tab, InspectorTab::Ddl);
+        tab = tab.prev();
+        assert_eq!(tab, InspectorTab::Triggers);
         tab = tab.prev();
         assert_eq!(tab, InspectorTab::Rls);
         tab = tab.prev();

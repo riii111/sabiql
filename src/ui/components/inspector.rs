@@ -94,6 +94,10 @@ impl Inspector {
                     Self::render_rls(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
+                InspectorTab::Triggers => {
+                    Self::render_triggers(frame, inner, table, state.ui.inspector_scroll_offset);
+                    ViewportPlan::default()
+                }
                 InspectorTab::Ddl => {
                     Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
@@ -510,6 +514,92 @@ impl Inspector {
                 );
             }
         }
+    }
+
+    fn render_triggers(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+        if table.triggers.is_empty() {
+            let msg = Paragraph::new("No triggers");
+            frame.render_widget(msg, area);
+            return;
+        }
+
+        let header = Row::new(vec![
+            Cell::from("Name"),
+            Cell::from("Timing"),
+            Cell::from("Event"),
+            Cell::from("Function"),
+            Cell::from("SecDef"),
+        ])
+        .style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED)
+                .fg(Color::White),
+        )
+        .height(1);
+
+        // -2: header (1) + scroll indicator (1)
+        let visible_rows = area.height.saturating_sub(2) as usize;
+        let total_rows = table.triggers.len();
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        let rows: Vec<Row> = table
+            .triggers
+            .iter()
+            .enumerate()
+            .skip(clamped_scroll_offset)
+            .take(visible_rows)
+            .map(|(row_idx, trigger)| {
+                let events_str = trigger
+                    .events
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let secdef = if trigger.security_definer {
+                    "\u{2713}"
+                } else {
+                    ""
+                };
+                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
+                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                } else {
+                    Style::default()
+                };
+                Row::new(vec![
+                    Cell::from(trigger.name.clone()),
+                    Cell::from(trigger.timing.to_string()),
+                    Cell::from(events_str),
+                    Cell::from(trigger.function_name.clone()),
+                    Cell::from(secdef),
+                ])
+                .style(style)
+            })
+            .collect();
+
+        let widths = [
+            Constraint::Percentage(25),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+            Constraint::Percentage(25),
+            Constraint::Percentage(15),
+        ];
+
+        let table_widget = Table::new(rows, widths).header(header);
+        frame.render_widget(table_widget, area);
+
+        // Vertical scroll indicator
+        use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: clamped_scroll_offset,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
     }
 
     fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
