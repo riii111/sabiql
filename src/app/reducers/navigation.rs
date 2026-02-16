@@ -29,6 +29,7 @@ fn inspector_total_items(state: &AppState) -> usize {
         .table_detail
         .as_ref()
         .map(|t| match state.ui.inspector_tab {
+            InspectorTab::Info => 5,
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
             InspectorTab::ForeignKeys => t.foreign_keys.len(),
