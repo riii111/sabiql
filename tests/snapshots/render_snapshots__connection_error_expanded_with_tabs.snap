@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│           ╭ Connection Error ────────────────────────────────────╮           │
+│           │✗ Connection failed                                   │           │
+│           │                                                      │           │
+│           │Hint: See details for more information                │           │
+│           │                                                      │           │
+│           │▼ Details                                             │           │
+│           │psql: error: connection to server at "localhost"      │───────────┘
+│           │(127.0.0.1), port 5433 failed: Connection refused     │───────────┐
+│           │    Is the server running on that host and accepting  │           │
+│           │TCP/IP connections?                                   │           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │
+│           ╰ Scroll: ↑/↓/j/k  Esc to close  q to quit ────────────╯           │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+e:Edit  s:Switch  d:Details  c:Copy  Esc:Close  q:Quit
