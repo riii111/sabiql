@@ -1000,6 +1000,7 @@ mod tests {
         fn state_with_table_detail(columns: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = 10;
+            state.ui.inspector_tab = crate::app::inspector_tab::InspectorTab::Columns;
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     name: format!("col_{}", i),
