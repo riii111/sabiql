@@ -300,10 +300,10 @@ impl Inspector {
                         let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
                         let display = truncate_cell(text, col_width as usize);
 
-                        // Special styling for PK, Default, and Comment columns
+                        // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(Color::Yellow)
-                        } else if col_idx == 4 || col_idx == 5 {
+                        } else if col_idx == 5 {
                             Style::default().fg(Color::DarkGray)
                         } else {
                             Style::default()
