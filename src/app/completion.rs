@@ -1096,6 +1096,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "user_name".to_string(),
@@ -1122,6 +1123,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1205,6 +1207,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "name".to_string(),
@@ -1231,6 +1234,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1247,6 +1251,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "optional_field".to_string(),
@@ -1273,6 +1278,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1471,6 +1477,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1497,6 +1504,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1556,6 +1564,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "user_id".to_string(),
@@ -1592,6 +1601,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1633,6 +1643,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "orders".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1679,6 +1690,7 @@ mod tests {
                 }],
                 indexes: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             }
@@ -1734,6 +1746,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "user_id".to_string(),
@@ -1760,6 +1773,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1777,6 +1791,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -1803,6 +1818,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1827,6 +1843,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "name".to_string(),
@@ -1853,6 +1870,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -1973,6 +1991,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![Column {
                     name: "id".to_string(),
                     data_type: "int".to_string(),
@@ -1987,6 +2006,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -2073,11 +2093,13 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![],
                 primary_key: None,
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -2096,6 +2118,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![
                     Column {
                         name: "id".to_string(),
@@ -2132,6 +2155,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             }
@@ -2328,6 +2352,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
+                owner: None,
                 columns: vec![Column {
                     name: "and".to_string(), // Same as keyword AND
                     data_type: "text".to_string(),
@@ -2342,6 +2367,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             };
@@ -2425,6 +2451,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
+                owner: None,
                 columns: columns
                     .iter()
                     .enumerate()
@@ -2443,6 +2470,7 @@ mod tests {
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             }
@@ -2524,6 +2552,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
+                owner: None,
                 columns: columns
                     .iter()
                     .enumerate()
@@ -2542,6 +2571,7 @@ mod tests {
                 foreign_keys: vec![],
                 indexes: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             }
@@ -2611,6 +2641,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
+                owner: None,
                 columns: columns
                     .iter()
                     .enumerate()
@@ -2629,6 +2660,7 @@ mod tests {
                 foreign_keys: vec![],
                 indexes: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             }

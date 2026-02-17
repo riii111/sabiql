@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use sabiql::domain::{Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary};
+use sabiql::domain::{
+    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent,
+    TriggerTiming,
+};
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
     DatabaseMetadata {
@@ -24,6 +27,7 @@ pub fn sample_table_detail() -> Table {
     Table {
         schema: "public".to_string(),
         name: "users".to_string(),
+        owner: Some("postgres".to_string()),
         columns: vec![
             Column {
                 name: "id".to_string(),
@@ -32,7 +36,7 @@ pub fn sample_table_detail() -> Table {
                 is_primary_key: true,
                 is_unique: true,
                 default: None,
-                comment: None,
+                comment: Some("Primary key".to_string()),
                 ordinal_position: 1,
             },
             Column {
@@ -60,8 +64,15 @@ pub fn sample_table_detail() -> Table {
         indexes: vec![],
         foreign_keys: vec![],
         rls: None,
+        triggers: vec![Trigger {
+            name: "audit_users".to_string(),
+            timing: TriggerTiming::After,
+            events: vec![TriggerEvent::Insert, TriggerEvent::Update],
+            function_name: "audit_func".to_string(),
+            security_definer: false,
+        }],
         row_count_estimate: Some(100),
-        comment: None,
+        comment: Some("User accounts".to_string()),
     }
 }
 

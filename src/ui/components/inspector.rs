@@ -69,6 +69,10 @@ impl Inspector {
             frame.render_widget(block, area);
 
             match state.ui.inspector_tab {
+                InspectorTab::Info => {
+                    Self::render_info(frame, inner, table, state.ui.inspector_scroll_offset);
+                    ViewportPlan::default()
+                }
                 InspectorTab::Columns => Self::render_columns(
                     frame,
                     inner,
@@ -94,6 +98,10 @@ impl Inspector {
                     Self::render_rls(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
                 }
+                InspectorTab::Triggers => {
+                    Self::render_triggers(frame, inner, table, state.ui.inspector_scroll_offset);
+                    ViewportPlan::default()
+                }
                 InspectorTab::Ddl => {
                     Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset);
                     ViewportPlan::default()
@@ -106,6 +114,67 @@ impl Inspector {
             frame.render_widget(content, area);
             ViewportPlan::default()
         }
+    }
+
+    fn render_info(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+        let label_style = Style::default().add_modifier(Modifier::BOLD);
+        let none_style = Style::default().fg(Color::DarkGray);
+
+        let owner_value = table.owner.as_deref().unwrap_or("(none)");
+        let comment_value = table.comment.as_deref().unwrap_or("(none)");
+        let row_count_value = table
+            .row_count_estimate
+            .map(|n| format!("~{}", n))
+            .unwrap_or_else(|| "(none)".to_string());
+
+        let owner_style = if table.owner.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+        let comment_style = if table.comment.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+        let row_count_style = if table.row_count_estimate.is_some() {
+            Style::default()
+        } else {
+            none_style
+        };
+
+        let lines = vec![
+            Line::from(vec![
+                Span::styled("Owner:   ", label_style),
+                Span::styled(owner_value, owner_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Comment: ", label_style),
+                Span::styled(comment_value, comment_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Rows:    ", label_style),
+                Span::styled(row_count_value, row_count_style),
+            ]),
+            Line::from(vec![
+                Span::styled("Schema:  ", label_style),
+                Span::raw(&table.schema),
+            ]),
+            Line::from(vec![
+                Span::styled("Table:   ", label_style),
+                Span::raw(&table.name),
+            ]),
+        ];
+
+        let total_lines = lines.len();
+        let visible_lines = area.height as usize;
+        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        let paragraph = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((clamped_scroll_offset as u16, 0));
+        frame.render_widget(paragraph, area);
     }
 
     fn render_columns(
@@ -123,7 +192,7 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
-        let headers = vec!["Name", "Type", "Null", "PK", "Default"];
+        let headers = vec!["Name", "Type", "Null", "PK", "Default", "Comment"];
 
         let data_rows: Vec<Vec<String>> = table
             .columns
@@ -143,6 +212,7 @@ impl Inspector {
                         String::new()
                     },
                     col.default.clone().unwrap_or_default(),
+                    col.comment.clone().unwrap_or_default(),
                 ]
             })
             .collect();
@@ -230,11 +300,11 @@ impl Inspector {
                         let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
                         let display = truncate_cell(text, col_width as usize);
 
-                        // Special styling for PK and Default columns
+                        // Special styling for PK, Default, and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(Color::Yellow)
-                        } else if col_idx == 4 {
-                            Style::default().fg(Color::Gray)
+                        } else if col_idx == 4 || col_idx == 5 {
+                            Style::default().fg(Color::DarkGray)
                         } else {
                             Style::default()
                         };
@@ -510,6 +580,92 @@ impl Inspector {
                 );
             }
         }
+    }
+
+    fn render_triggers(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+        if table.triggers.is_empty() {
+            let msg = Paragraph::new("No triggers");
+            frame.render_widget(msg, area);
+            return;
+        }
+
+        let header = Row::new(vec![
+            Cell::from("Name"),
+            Cell::from("Timing"),
+            Cell::from("Event"),
+            Cell::from("Function"),
+            Cell::from("SecDef"),
+        ])
+        .style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED)
+                .fg(Color::White),
+        )
+        .height(1);
+
+        // -2: header (1) + scroll indicator (1)
+        let visible_rows = area.height.saturating_sub(2) as usize;
+        let total_rows = table.triggers.len();
+        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
+        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        let rows: Vec<Row> = table
+            .triggers
+            .iter()
+            .enumerate()
+            .skip(clamped_scroll_offset)
+            .take(visible_rows)
+            .map(|(row_idx, trigger)| {
+                let events_str = trigger
+                    .events
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let secdef = if trigger.security_definer {
+                    "\u{2713}"
+                } else {
+                    ""
+                };
+                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
+                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                } else {
+                    Style::default()
+                };
+                Row::new(vec![
+                    Cell::from(trigger.name.clone()),
+                    Cell::from(trigger.timing.to_string()),
+                    Cell::from(events_str),
+                    Cell::from(trigger.function_name.clone()),
+                    Cell::from(secdef),
+                ])
+                .style(style)
+            })
+            .collect();
+
+        let widths = [
+            Constraint::Percentage(25),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+            Constraint::Percentage(25),
+            Constraint::Percentage(15),
+        ];
+
+        let table_widget = Table::new(rows, widths).header(header);
+        frame.render_widget(table_widget, area);
+
+        // Vertical scroll indicator
+        use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+        render_vertical_scroll_indicator_bar(
+            frame,
+            area,
+            VerticalScrollParams {
+                position: clamped_scroll_offset,
+                viewport_size: visible_rows,
+                total_items: total_rows,
+            },
+        );
     }
 
     fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {

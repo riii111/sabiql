@@ -4,24 +4,24 @@ expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
-│                  ││(select a table)                                          │
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││No triggers                                               │
+│  public.comments ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│                 ╭ Confirm ──────────────────────────────────╮                │
-│                 │         No connection configured.         │                │
-│                 │      Are you sure you want to quit?       │                │
-│                 │                                           │────────────────┘
-│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  │└──────────────────────────────────────────────────────────┘
+│                  │┌ [3] Result ──────────────────────────────────────────────┐
+│                  ││(select a table to preview)                               │
+│                  ││                                                          │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter/y:Yes  Esc/n:No
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  Tab/⇧

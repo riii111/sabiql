@@ -4,6 +4,10 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+fn quote_literal_sql(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
 fn generate_ddl(table: &Table) -> String {
     let mut ddl = format!(
         "CREATE TABLE {}.{} (\n",
@@ -39,6 +43,32 @@ fn generate_ddl(table: &Table) -> String {
     }
 
     ddl.push_str(");");
+
+    let qualified = format!(
+        "{}.{}",
+        quote_ident(&table.schema),
+        quote_ident(&table.name)
+    );
+
+    if let Some(comment) = &table.comment {
+        ddl.push_str(&format!(
+            "\n\nCOMMENT ON TABLE {} IS {};",
+            qualified,
+            quote_literal_sql(comment)
+        ));
+    }
+
+    for col in &table.columns {
+        if let Some(comment) = &col.comment {
+            ddl.push_str(&format!(
+                "\n\nCOMMENT ON COLUMN {}.{} IS {};",
+                qualified,
+                quote_ident(&col.name),
+                quote_literal_sql(comment)
+            ));
+        }
+    }
+
     ddl
 }
 
@@ -72,11 +102,13 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "test_table".to_string(),
+            owner: None,
             columns,
             primary_key,
             foreign_keys: vec![],
             indexes: vec![],
             rls: None,
+            triggers: vec![],
             row_count_estimate: None,
             comment: None,
         }
@@ -101,6 +133,54 @@ mod tests {
             assert!(ddl.contains("\"id\" integer NOT NULL"));
             assert!(ddl.contains("\"name\" text"));
             assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+        }
+    }
+
+    mod comment_on_statements {
+        use super::*;
+
+        #[test]
+        fn table_comment_appended_after_create() {
+            let mut table = make_table(vec![make_column("id", "integer", false)], None);
+            table.comment = Some("User accounts".to_string());
+
+            let ddl = generate_ddl_postgres(&table);
+
+            assert!(ddl.contains("COMMENT ON TABLE \"public\".\"test_table\" IS 'User accounts';"));
+        }
+
+        #[test]
+        fn column_comment_appended_after_create() {
+            let mut col = make_column("id", "integer", false);
+            col.comment = Some("Primary key".to_string());
+            let table = make_table(vec![col], None);
+
+            let ddl = generate_ddl_postgres(&table);
+
+            assert!(
+                ddl.contains(
+                    "COMMENT ON COLUMN \"public\".\"test_table\".\"id\" IS 'Primary key';"
+                )
+            );
+        }
+
+        #[test]
+        fn single_quote_in_comment_is_escaped() {
+            let mut table = make_table(vec![make_column("id", "integer", false)], None);
+            table.comment = Some("It's a test".to_string());
+
+            let ddl = generate_ddl_postgres(&table);
+
+            assert!(ddl.contains("IS 'It''s a test';"));
+        }
+
+        #[test]
+        fn no_comment_on_when_absent() {
+            let table = make_table(vec![make_column("id", "integer", false)], None);
+
+            let ddl = generate_ddl_postgres(&table);
+
+            assert!(!ddl.contains("COMMENT ON"));
         }
     }
 

@@ -793,11 +793,13 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
+                owner: None,
                 columns: vec![],
                 primary_key: None,
                 indexes: vec![],
                 foreign_keys: vec![],
                 rls: None,
+                triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
             })

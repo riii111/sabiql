@@ -2,16 +2,19 @@ use super::column::Column;
 use super::foreign_key::ForeignKey;
 use super::index::Index;
 use super::rls::RlsInfo;
+use super::trigger::Trigger;
 
 #[derive(Debug, Clone)]
 pub struct Table {
     pub schema: String,
     pub name: String,
+    pub owner: Option<String>,
     pub columns: Vec<Column>,
     pub primary_key: Option<Vec<String>>,
     pub foreign_keys: Vec<ForeignKey>,
     pub indexes: Vec<Index>,
     pub rls: Option<RlsInfo>,
+    pub triggers: Vec<Trigger>,
     pub row_count_estimate: Option<i64>,
     pub comment: Option<String>,
 }
