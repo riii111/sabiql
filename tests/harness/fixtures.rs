@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use sabiql::domain::{
-    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSummary, Trigger, TriggerEvent,
-    TriggerTiming,
+    Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
+    Table, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
@@ -61,8 +61,35 @@ pub fn sample_table_detail() -> Table {
             },
         ],
         primary_key: Some(vec!["id".to_string()]),
-        indexes: vec![],
-        foreign_keys: vec![],
+        indexes: vec![
+            Index {
+                name: "users_pkey".to_string(),
+                columns: vec!["id".to_string()],
+                is_unique: true,
+                is_primary: true,
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+            Index {
+                name: "idx_users_email".to_string(),
+                columns: vec!["email".to_string()],
+                is_unique: true,
+                is_primary: false,
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+        ],
+        foreign_keys: vec![ForeignKey {
+            name: "fk_users_department".to_string(),
+            from_schema: "public".to_string(),
+            from_table: "users".to_string(),
+            from_columns: vec!["department_id".to_string()],
+            to_schema: "public".to_string(),
+            to_table: "departments".to_string(),
+            to_columns: vec!["id".to_string()],
+            on_delete: FkAction::Cascade,
+            on_update: FkAction::NoAction,
+        }],
         rls: None,
         triggers: vec![Trigger {
             name: "audit_users".to_string(),
