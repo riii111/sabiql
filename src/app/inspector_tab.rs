@@ -65,6 +65,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_returns_info() {
+        assert_eq!(InspectorTab::default(), InspectorTab::Info);
+    }
+
+    #[test]
     fn next_wraps_from_last_to_first() {
         let tab = InspectorTab::Ddl;
         let result = tab.next();
