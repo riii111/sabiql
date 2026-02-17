@@ -97,7 +97,10 @@ impl ConnectionError {
             frame.render_widget(Paragraph::new(toggle_line), chunks[0]);
 
             if let Some(details) = error_state.masked_details() {
-                let lines: Vec<Line> = details.lines().map(|l| Line::from(l.to_string())).collect();
+                let lines: Vec<Line> = details
+                    .lines()
+                    .map(|l| Line::from(l.replace('\t', "    ")))
+                    .collect();
                 let scroll = error_state.scroll_offset;
                 let para = Paragraph::new(lines)
                     .scroll((scroll as u16, 0))
