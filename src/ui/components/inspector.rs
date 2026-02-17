@@ -197,7 +197,6 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = table
             .columns
             .iter()
-            .take(50)
             .map(|col| {
                 vec![
                     col.name.clone(),
@@ -219,7 +218,12 @@ impl Inspector {
             .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
-        let (all_ideal_widths, _) = calculate_column_widths(&headers, &data_rows);
+        let sample: &[Vec<String>] = if data_rows.len() > 50 {
+            &data_rows[..50]
+        } else {
+            &data_rows
+        };
+        let (all_ideal_widths, _) = calculate_column_widths(&headers, sample);
         let current_min_widths_sum: u16 = header_min_widths.iter().sum();
         let current_ideal_widths_sum: u16 = all_ideal_widths.iter().sum();
         let current_ideal_widths_max: u16 = all_ideal_widths.iter().copied().max().unwrap_or(0);
