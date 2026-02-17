@@ -371,6 +371,25 @@ impl Inspector {
         let max_scroll_offset = total_rows.saturating_sub(visible_rows);
         let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
 
+        let headers = ["Name", "Columns", "Type", "Unique"];
+        let data_rows: Vec<Vec<String>> = table
+            .indexes
+            .iter()
+            .map(|idx| {
+                vec![
+                    idx.name.clone(),
+                    idx.columns.join(", "),
+                    format!("{:?}", idx.index_type).to_lowercase(),
+                    if idx.is_unique {
+                        "✓".to_string()
+                    } else {
+                        String::new()
+                    },
+                ]
+            })
+            .collect();
+        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+
         let rows: Vec<Row> = table
             .indexes
             .iter()
@@ -395,12 +414,7 @@ impl Inspector {
             })
             .collect();
 
-        let widths = [
-            Constraint::Percentage(30),
-            Constraint::Percentage(40),
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-        ];
+        let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
@@ -449,6 +463,25 @@ impl Inspector {
         let max_scroll_offset = total_rows.saturating_sub(visible_rows);
         let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
 
+        let headers = ["Name", "Columns", "References"];
+        let data_rows: Vec<Vec<String>> = table
+            .foreign_keys
+            .iter()
+            .map(|fk| {
+                vec![
+                    fk.name.clone(),
+                    fk.from_columns.join(", "),
+                    format!(
+                        "{}.{}({})",
+                        fk.to_schema,
+                        fk.to_table,
+                        fk.to_columns.join(", ")
+                    ),
+                ]
+            })
+            .collect();
+        let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
+
         let rows: Vec<Row> = table
             .foreign_keys
             .iter()
@@ -476,11 +509,7 @@ impl Inspector {
             })
             .collect();
 
-        let widths = [
-            Constraint::Percentage(30),
-            Constraint::Percentage(30),
-            Constraint::Percentage(40),
-        ];
+        let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
