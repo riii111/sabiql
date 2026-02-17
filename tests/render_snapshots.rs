@@ -307,6 +307,23 @@ fn connection_error_expanded() {
 }
 
 #[test]
+fn connection_error_expanded_with_tabs() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.ui.input_mode = InputMode::ConnectionError;
+    state.connection_error.set_error(ConnectionErrorInfo::with_kind(
+        ConnectionErrorKind::Unknown,
+        "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
+    ));
+    state.connection_error.details_expanded = true;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn confirm_dialog() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InspectorTab {
-    Info,
     #[default]
+    Info,
     Columns,
     Indexes,
     ForeignKeys,
@@ -63,6 +63,11 @@ impl InspectorTab {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_returns_info() {
+        assert_eq!(InspectorTab::default(), InspectorTab::Info);
+    }
 
     #[test]
     fn next_wraps_from_last_to_first() {

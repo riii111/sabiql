@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::border;
 use ratatui::widgets::{Block, Borders};
 
@@ -22,10 +22,17 @@ pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect 
 }
 
 /// Dims the background to make the modal "float" visually.
+/// Uses DIM + dark foreground to suppress background borders
+/// that would otherwise appear adjacent to modal borders.
 pub fn render_scrim(frame: &mut Frame) {
     let buf = frame.buffer_mut();
     let area = buf.area;
-    buf.set_style(area, Style::default().add_modifier(Modifier::DIM));
+    buf.set_style(
+        area,
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::DIM),
+    );
 }
 
 pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {

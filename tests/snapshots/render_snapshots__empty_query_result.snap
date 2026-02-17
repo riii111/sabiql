@@ -5,14 +5,14 @@ expression: output
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││Name    Type           Null   PK   Default                │
-│  public.comments ││id      integer               ✓                           │
-│                  ││name    varchar(255)                                      │
-│                  ││email   varchar(255)   ✓                                  │
+│  public.posts    ││Owner:   postgres                                         │
+│  public.comments ││Comment: User accounts                                    │
+│                  ││Rows:    ~100                                             │
+│                  ││Schema:  public                                           │
+│                  ││Table:   users                                            │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│                  ││ col   0% ◀︎══════════════════════════════════════════════▶︎│
 │                  │└──────────────────────────────────────────────────────────┘
 │                  │┌ [3] Result [PREVIEW p.1] (0 rows, 5ms) ──────────────────┐
 │                  ││No rows returned                                          │
