@@ -197,6 +197,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = table
             .columns
             .iter()
+            .take(50)
             .map(|col| {
                 vec![
                     col.name.clone(),
@@ -375,6 +376,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = table
             .indexes
             .iter()
+            .take(50)
             .map(|idx| {
                 vec![
                     idx.name.clone(),
@@ -467,6 +469,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = table
             .foreign_keys
             .iter()
+            .take(50)
             .map(|fk| {
                 vec![
                     fk.name.clone(),
