@@ -190,6 +190,7 @@ fn run_update() -> Result<()> {
         .repo_name("sabiql")
         .bin_name("sabiql")
         .show_download_progress(true)
+        .no_confirm(true)
         .current_version(current)
         .build()?
         .update()?;
