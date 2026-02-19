@@ -75,6 +75,8 @@ pub enum Effect {
 
     CopyToClipboard {
         content: String,
+        on_success: Option<Action>,
+        on_failure: Option<Action>,
     },
 
     GenerateErDiagramFromCache {

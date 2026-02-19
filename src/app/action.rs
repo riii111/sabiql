@@ -247,6 +247,17 @@ pub enum Action {
     ResultNextPage,
     ResultPrevPage,
 
+    // Result pane selection
+    ResultEnterRowActive,
+    ResultEnterCellActive,
+    ResultExitToRowActive,
+    ResultExitToScroll,
+    ResultCellLeft,
+    ResultCellRight,
+    ResultCellYank,
+    CellCopied,
+    CopyFailed(String),
+
     // Focus mode
     ToggleFocus,
 

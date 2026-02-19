@@ -554,13 +554,26 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::CopyToClipboard { content } => {
+            Effect::CopyToClipboard {
+                content,
+                on_success,
+                on_failure,
+            } => {
                 let tx = self.action_tx.clone();
                 tokio::task::spawn_blocking(move || {
-                    if let Ok(mut clipboard) = arboard::Clipboard::new()
-                        && clipboard.set_text(&content).is_ok()
-                    {
-                        let _ = tx.blocking_send(Action::ConnectionErrorCopied);
+                    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&content)) {
+                        Ok(()) => {
+                            if let Some(action) = on_success {
+                                let _ = tx.blocking_send(action);
+                            }
+                        }
+                        Err(e) => {
+                            if let Some(action) = on_failure {
+                                let _ = tx.blocking_send(action);
+                            } else {
+                                let _ = tx.blocking_send(Action::CopyFailed(e.to_string()));
+                            }
+                        }
                     }
                 });
                 Ok(())
