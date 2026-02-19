@@ -77,4 +77,8 @@ impl Theme {
     // Scrollbar
     pub const SCROLLBAR_ACTIVE: Color = Color::Yellow;
     pub const SCROLLBAR_INACTIVE: Color = Color::DarkGray;
+
+    // Result pane selection
+    pub const RESULT_ROW_ACTIVE_BG: Color = Color::Rgb(0x2e, 0x2e, 0x44);
+    pub const RESULT_CELL_ACTIVE_BG: Color = Color::Rgb(0x3a, 0x3a, 0x5a);
 }
