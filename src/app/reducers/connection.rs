@@ -129,6 +129,8 @@ pub fn reduce_connection(
             if let Some(content) = state.connection_error.masked_details() {
                 Some(vec![Effect::CopyToClipboard {
                     content: content.to_string(),
+                    on_success: Some(Action::ConnectionErrorCopied),
+                    on_failure: None,
                 }])
             } else {
                 Some(vec![])

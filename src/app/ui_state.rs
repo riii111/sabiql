@@ -15,6 +15,80 @@ pub const RESULT_INNER_OVERHEAD: u16 = 3;
 /// border (2) + inner overhead, used by scroll limit calculation
 pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultNavMode {
+    Scroll,
+    RowActive,
+    CellActive,
+}
+
+/// Invariant: `cell` is `Some` only when `row` is `Some`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResultSelection {
+    row: Option<usize>,
+    cell: Option<usize>,
+}
+
+impl ResultSelection {
+    pub fn mode(&self) -> ResultNavMode {
+        match (self.row, self.cell) {
+            (Some(_), Some(_)) => ResultNavMode::CellActive,
+            (Some(_), None) => ResultNavMode::RowActive,
+            _ => ResultNavMode::Scroll,
+        }
+    }
+
+    pub fn row(&self) -> Option<usize> {
+        self.row
+    }
+
+    pub fn cell(&self) -> Option<usize> {
+        self.cell
+    }
+
+    pub fn enter_row(&mut self, row: usize) {
+        self.row = Some(row);
+        self.cell = None;
+    }
+
+    pub fn enter_cell(&mut self, col: usize) {
+        if self.row.is_some() {
+            self.cell = Some(col);
+        }
+    }
+
+    pub fn exit_to_row(&mut self) {
+        self.cell = None;
+    }
+
+    pub fn reset(&mut self) {
+        self.row = None;
+        self.cell = None;
+    }
+
+    pub fn clamp(&mut self, max_rows: usize, max_cols: usize) {
+        if max_rows == 0 {
+            self.reset();
+            return;
+        }
+        if let Some(r) = self.row
+            && r >= max_rows
+        {
+            self.reset();
+            return;
+        }
+        if max_cols == 0 {
+            self.cell = None;
+            return;
+        }
+        if let Some(c) = self.cell
+            && c >= max_cols
+        {
+            self.cell = Some(max_cols - 1);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub focused_pane: FocusedPane,
@@ -52,6 +126,7 @@ pub struct UiState {
     pub result_horizontal_offset: usize,
     pub result_viewport_plan: ViewportPlan,
     pub result_pane_height: u16,
+    pub result_selection: ResultSelection,
 
     pub help_scroll_offset: usize,
 
@@ -332,5 +407,140 @@ mod tests {
             visible,
             total_rows
         );
+    }
+
+    mod result_selection {
+        use super::*;
+
+        #[test]
+        fn default_is_scroll_mode() {
+            let sel = ResultSelection::default();
+
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
+            assert!(sel.row().is_none());
+            assert!(sel.cell().is_none());
+        }
+
+        #[test]
+        fn enter_row_transitions_to_row_active() {
+            let mut sel = ResultSelection::default();
+
+            sel.enter_row(5);
+
+            assert_eq!(sel.mode(), ResultNavMode::RowActive);
+            assert_eq!(sel.row(), Some(5));
+            assert!(sel.cell().is_none());
+        }
+
+        #[test]
+        fn enter_cell_transitions_to_cell_active() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(3);
+
+            sel.enter_cell(7);
+
+            assert_eq!(sel.mode(), ResultNavMode::CellActive);
+            assert_eq!(sel.row(), Some(3));
+            assert_eq!(sel.cell(), Some(7));
+        }
+
+        #[test]
+        fn enter_cell_without_row_is_noop() {
+            let mut sel = ResultSelection::default();
+
+            sel.enter_cell(5);
+
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
+        }
+
+        #[test]
+        fn exit_to_row_clears_cell_only() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(2);
+            sel.enter_cell(4);
+
+            sel.exit_to_row();
+
+            assert_eq!(sel.mode(), ResultNavMode::RowActive);
+            assert_eq!(sel.row(), Some(2));
+        }
+
+        #[test]
+        fn reset_clears_both() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(1);
+            sel.enter_cell(2);
+
+            sel.reset();
+
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
+        }
+
+        #[test]
+        fn enter_row_clears_previous_cell() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(0);
+            sel.enter_cell(3);
+
+            sel.enter_row(5);
+
+            assert_eq!(sel.mode(), ResultNavMode::RowActive);
+            assert_eq!(sel.row(), Some(5));
+        }
+
+        #[test]
+        fn clamp_resets_when_zero_rows() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(5);
+
+            sel.clamp(0, 10);
+
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
+        }
+
+        #[test]
+        fn clamp_resets_when_row_out_of_bounds() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(10);
+            sel.enter_cell(2);
+
+            sel.clamp(5, 10);
+
+            assert_eq!(sel.mode(), ResultNavMode::Scroll);
+        }
+
+        #[test]
+        fn clamp_caps_cell_to_max_cols() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(0);
+            sel.enter_cell(9);
+
+            sel.clamp(10, 5);
+
+            assert_eq!(sel.cell(), Some(4));
+        }
+
+        #[test]
+        fn clamp_clears_cell_when_zero_cols() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(0);
+            sel.enter_cell(3);
+
+            sel.clamp(10, 0);
+
+            assert_eq!(sel.mode(), ResultNavMode::RowActive);
+        }
+
+        #[test]
+        fn clamp_preserves_valid_selection() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(3);
+            sel.enter_cell(2);
+
+            sel.clamp(10, 10);
+
+            assert_eq!(sel.row(), Some(3));
+            assert_eq!(sel.cell(), Some(2));
+        }
     }
 }
