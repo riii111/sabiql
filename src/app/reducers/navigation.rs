@@ -342,7 +342,7 @@ pub fn reduce_navigation(
             if let Some(r) = state.ui.result_selection.row()
                 && r > 0
             {
-                state.ui.result_selection.enter_row(r - 1);
+                state.ui.result_selection.move_row(r - 1);
                 ensure_row_visible(state);
             } else if state.ui.result_selection.row().is_none() {
                 state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
@@ -353,7 +353,7 @@ pub fn reduce_navigation(
             if let Some(r) = state.ui.result_selection.row() {
                 let max_row = result_row_count(state).saturating_sub(1);
                 if r < max_row {
-                    state.ui.result_selection.enter_row(r + 1);
+                    state.ui.result_selection.move_row(r + 1);
                     ensure_row_visible(state);
                 }
             } else {
@@ -366,7 +366,7 @@ pub fn reduce_navigation(
         }
         Action::ResultScrollTop => {
             if state.ui.result_selection.row().is_some() {
-                state.ui.result_selection.enter_row(0);
+                state.ui.result_selection.move_row(0);
                 ensure_row_visible(state);
             } else {
                 state.ui.result_scroll_offset = 0;
@@ -376,7 +376,7 @@ pub fn reduce_navigation(
         Action::ResultScrollBottom => {
             if state.ui.result_selection.row().is_some() {
                 let max_row = result_row_count(state).saturating_sub(1);
-                state.ui.result_selection.enter_row(max_row);
+                state.ui.result_selection.move_row(max_row);
                 ensure_row_visible(state);
             } else {
                 state.ui.result_scroll_offset = result_max_scroll(state);
@@ -385,13 +385,9 @@ pub fn reduce_navigation(
         }
         Action::ResultScrollHalfPageDown => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            if state.ui.result_selection.row().is_some() {
+            if let Some(r) = state.ui.result_selection.row() {
                 let max_row = result_row_count(state).saturating_sub(1);
-                let r = state.ui.result_selection.row().unwrap_or(0);
-                state
-                    .ui
-                    .result_selection
-                    .enter_row((r + delta).min(max_row));
+                state.ui.result_selection.move_row((r + delta).min(max_row));
                 ensure_row_visible(state);
             } else {
                 let max = result_max_scroll(state);
@@ -401,9 +397,8 @@ pub fn reduce_navigation(
         }
         Action::ResultScrollHalfPageUp => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            if state.ui.result_selection.row().is_some() {
-                let r = state.ui.result_selection.row().unwrap_or(0);
-                state.ui.result_selection.enter_row(r.saturating_sub(delta));
+            if let Some(r) = state.ui.result_selection.row() {
+                state.ui.result_selection.move_row(r.saturating_sub(delta));
                 ensure_row_visible(state);
             } else {
                 state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
@@ -412,13 +407,9 @@ pub fn reduce_navigation(
         }
         Action::ResultScrollFullPageDown => {
             let delta = state.result_visible_rows().max(1);
-            if state.ui.result_selection.row().is_some() {
+            if let Some(r) = state.ui.result_selection.row() {
                 let max_row = result_row_count(state).saturating_sub(1);
-                let r = state.ui.result_selection.row().unwrap_or(0);
-                state
-                    .ui
-                    .result_selection
-                    .enter_row((r + delta).min(max_row));
+                state.ui.result_selection.move_row((r + delta).min(max_row));
                 ensure_row_visible(state);
             } else {
                 let max = result_max_scroll(state);
@@ -428,9 +419,8 @@ pub fn reduce_navigation(
         }
         Action::ResultScrollFullPageUp => {
             let delta = state.result_visible_rows().max(1);
-            if state.ui.result_selection.row().is_some() {
-                let r = state.ui.result_selection.row().unwrap_or(0);
-                state.ui.result_selection.enter_row(r.saturating_sub(delta));
+            if let Some(r) = state.ui.result_selection.row() {
+                state.ui.result_selection.move_row(r.saturating_sub(delta));
                 ensure_row_visible(state);
             } else {
                 state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
@@ -606,13 +596,20 @@ pub fn reduce_navigation(
                     .as_ref()
                     .and_then(|r| r.rows.get(row_idx))
                     .and_then(|row| row.get(col_idx))
-                    .cloned()
-                    .unwrap_or_default();
-                Some(vec![Effect::CopyToClipboard {
-                    content,
-                    on_success: Some(Action::CellCopied),
-                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
-                }])
+                    .cloned();
+                match content {
+                    Some(value) => Some(vec![Effect::CopyToClipboard {
+                        content: value,
+                        on_success: Some(Action::CellCopied),
+                        on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                    }]),
+                    None => {
+                        state
+                            .messages
+                            .set_error_at("Cell index out of bounds".into(), now);
+                        Some(vec![])
+                    }
+                }
             } else {
                 Some(vec![])
             }

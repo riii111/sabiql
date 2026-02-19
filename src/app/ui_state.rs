@@ -51,6 +51,11 @@ impl ResultSelection {
         self.cell = None;
     }
 
+    /// Move row cursor while preserving the current cell selection.
+    pub fn move_row(&mut self, row: usize) {
+        self.row = Some(row);
+    }
+
     pub fn enter_cell(&mut self, col: usize) {
         if self.row.is_some() {
             self.cell = Some(col);
@@ -486,6 +491,30 @@ mod tests {
 
             assert_eq!(sel.mode(), ResultNavMode::RowActive);
             assert_eq!(sel.row(), Some(5));
+        }
+
+        #[test]
+        fn move_row_preserves_cell() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(0);
+            sel.enter_cell(3);
+
+            sel.move_row(5);
+
+            assert_eq!(sel.mode(), ResultNavMode::CellActive);
+            assert_eq!(sel.row(), Some(5));
+            assert_eq!(sel.cell(), Some(3));
+        }
+
+        #[test]
+        fn move_row_in_row_active_stays_row_active() {
+            let mut sel = ResultSelection::default();
+            sel.enter_row(2);
+
+            sel.move_row(7);
+
+            assert_eq!(sel.mode(), ResultNavMode::RowActive);
+            assert_eq!(sel.row(), Some(7));
         }
 
         #[test]
