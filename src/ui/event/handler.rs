@@ -4,6 +4,7 @@ use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
+use crate::app::ui_state::ResultNavMode;
 
 use super::Event;
 
@@ -67,6 +68,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
     let connections_mode = state.ui.explorer_mode == ExplorerMode::Connections
         && state.ui.focused_pane == FocusedPane::Explorer;
+    let result_nav_mode = state.ui.result_selection.mode();
 
     match (key.code, key.modifiers) {
         (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
@@ -129,7 +131,13 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('r') => Action::ReloadMetadata,
         KeyCode::Char('f') => Action::ToggleFocus,
         KeyCode::Esc => {
-            if connections_mode {
+            if result_navigation {
+                match result_nav_mode {
+                    ResultNavMode::CellActive => Action::ResultExitToRowActive,
+                    ResultNavMode::RowActive => Action::ResultExitToScroll,
+                    ResultNavMode::Scroll => Action::Escape,
+                }
+            } else if connections_mode {
                 Action::SetExplorerMode(ExplorerMode::Tables)
             } else {
                 Action::Escape
@@ -178,7 +186,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         }
 
         KeyCode::Char('h') | KeyCode::Left => {
-            if result_navigation {
+            if result_navigation && result_nav_mode == ResultNavMode::CellActive {
+                Action::ResultCellLeft
+            } else if result_navigation {
                 Action::ResultScrollLeft
             } else if inspector_navigation {
                 Action::InspectorScrollLeft
@@ -189,7 +199,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
         KeyCode::Char('l') | KeyCode::Right => {
-            if result_navigation {
+            if result_navigation && result_nav_mode == ResultNavMode::CellActive {
+                Action::ResultCellRight
+            } else if result_navigation {
                 Action::ResultScrollRight
             } else if inspector_navigation {
                 Action::InspectorScrollRight
@@ -254,6 +266,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
         KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
+        KeyCode::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
+            Action::ResultCellYank
+        }
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::OpenErTablePicker,
@@ -268,6 +283,12 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Enter => {
             if state.connection_error.error_info.is_some() {
                 Action::ConfirmSelection
+            } else if result_navigation {
+                match result_nav_mode {
+                    ResultNavMode::Scroll => Action::ResultEnterRowActive,
+                    ResultNavMode::RowActive => Action::ResultEnterCellActive,
+                    ResultNavMode::CellActive => Action::None,
+                }
             } else if connections_mode {
                 Action::ConfirmConnectionSelection
             } else if state.ui.focused_pane == FocusedPane::Explorer {
@@ -610,13 +631,13 @@ mod tests {
         }
 
         #[test]
-        fn enter_does_nothing_when_result_focused() {
+        fn enter_enters_row_active_when_result_focused() {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Result;
 
             let result = handle_normal_mode(key(KeyCode::Enter), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(result, Action::ResultEnterRowActive));
         }
 
         // Pane focus switching in Browse mode (1/2/3 keys)
