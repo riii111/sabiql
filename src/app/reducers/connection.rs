@@ -490,6 +490,9 @@ fn restore_cache(state: &mut AppState, cache: &ConnectionCache) {
     state
         .ui
         .set_explorer_selection(Some(cache.explorer_selected));
+    state.ui.result_selection.reset();
+    state.ui.result_scroll_offset = 0;
+    state.ui.result_horizontal_offset = 0;
 }
 
 fn reset_connection_state(state: &mut AppState) {
@@ -499,6 +502,9 @@ fn reset_connection_state(state: &mut AppState) {
     state.query.current_result = None;
     state.query.result_history = Default::default();
     state.ui.set_explorer_selection(None);
+    state.ui.result_selection.reset();
+    state.ui.result_scroll_offset = 0;
+    state.ui.result_horizontal_offset = 0;
 }
 
 #[cfg(test)]
@@ -980,6 +986,42 @@ mod tests {
             reduce_connection(&mut state, &action, Instant::now());
 
             assert_eq!(state.runtime.connection_state, ConnectionState::Connected);
+        }
+
+        #[test]
+        fn resets_result_selection_when_restoring_cache() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::new();
+
+            state
+                .connection_caches
+                .save(&target_id, ConnectionCache::default());
+            state.ui.result_selection.enter_row(3);
+            state.ui.result_selection.enter_cell(2);
+
+            let action = create_switch_action(&target_id, "cached_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            assert_eq!(
+                state.ui.result_selection.mode(),
+                crate::app::ui_state::ResultNavMode::Scroll
+            );
+        }
+
+        #[test]
+        fn resets_result_selection_when_no_cache() {
+            let mut state = AppState::new("test".to_string());
+            let new_id = ConnectionId::new();
+
+            state.ui.result_selection.enter_row(5);
+
+            let action = create_switch_action(&new_id, "fresh_db");
+            reduce_connection(&mut state, &action, Instant::now());
+
+            assert_eq!(
+                state.ui.result_selection.mode(),
+                crate::app::ui_state::ResultNavMode::Scroll
+            );
         }
 
         #[test]
