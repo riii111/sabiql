@@ -57,6 +57,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
+                state.ui.result_selection.reset();
+                state.ui.result_scroll_offset = 0;
+                state.ui.result_horizontal_offset = 0;
                 state.set_error(error.clone());
                 if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = SqlModalStatus::Error;
