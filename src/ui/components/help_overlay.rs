@@ -6,7 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::keybindings::{
     COMMAND_LINE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS,
-    ER_PICKER_KEYS, GLOBAL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS,
+    ER_PICKER_KEYS, GLOBAL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
 };
 use crate::app::state::AppState;
 
@@ -33,6 +33,12 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Navigation"));
         for kb in NAVIGATION_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Result Pane"));
+        for kb in RESULT_ACTIVE_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 

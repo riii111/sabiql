@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  j/k /
+r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  Enter

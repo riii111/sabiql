@@ -12,9 +12,10 @@ use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS,
     CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
-    HELP_KEYS, OVERLAY_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    HELP_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
+use crate::app::ui_state::ResultNavMode;
 use crate::domain::QuerySource;
 use crate::ui::theme::Theme;
 
@@ -62,8 +63,35 @@ impl Footer {
 
         match state.ui.input_mode {
             InputMode::Normal => {
-                if state.ui.focus_mode {
+                let result_navigation =
+                    state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
+                let nav_mode = state.ui.result_selection.mode();
+
+                if result_navigation && nav_mode == ResultNavMode::CellActive {
+                    // Cell Active: y:Yank h/l:Cell j/k:Row g/G:Top/Bot Esc:Back ?:Help q:Quit
+                    vec![
+                        RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::CELL_NAV].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
+                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                    ]
+                } else if result_navigation && nav_mode == ResultNavMode::RowActive {
+                    // Row Active: Enter:Cell j/k:Row h/l:H-Scroll g/G:Top/Bot Esc:Back ?:Help q:Quit
+                    vec![
+                        RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
+                        FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
+                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                    ]
+                } else if state.ui.focus_mode {
                     let mut list = vec![
+                        RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
                         GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::SCROLL_SHORT].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
@@ -111,6 +139,7 @@ impl Footer {
                     list.push(GLOBAL_KEYS[idx::global::PANE_SWITCH].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
+                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint());
                         if state
