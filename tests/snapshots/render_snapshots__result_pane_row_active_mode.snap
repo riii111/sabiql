@@ -5,11 +5,11 @@ expression: output
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
-│  public.posts    ││(select a table)                                          │
-│  public.comments ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
-│                  ││                                                          │
+│  public.posts    ││Owner:   postgres                                         │
+│  public.comments ││Comment: User accounts                                    │
+│                  ││Rows:    ~100                                             │
+│                  ││Schema:  public                                           │
+│                  ││Table:   users                                            │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  1/2/3:Pane  f:Focus  Enter
+Enter:Select  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  ?:Help  Esc:Back  q:Quit

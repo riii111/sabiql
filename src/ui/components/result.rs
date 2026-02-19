@@ -11,11 +11,12 @@ use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::state::AppState;
-use crate::app::ui_state::RESULT_INNER_OVERHEAD;
+use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::domain::{QueryResult, QuerySource};
+use crate::ui::theme::Theme;
 
 pub struct ResultPane;
 
@@ -49,6 +50,7 @@ impl ResultPane {
                     state.ui.result_scroll_offset,
                     state.ui.result_horizontal_offset,
                     &state.ui.result_viewport_plan,
+                    &state.ui.result_selection,
                 )
             }
         } else {
@@ -154,6 +156,7 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -162,6 +165,7 @@ impl ResultPane {
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
+        selection: &ResultSelection,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -226,27 +230,44 @@ impl ResultPane {
 
         let data_rows_visible = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
         let scroll_viewport_size = data_rows_visible;
+        let active_row = selection.row();
+        let active_cell = selection.cell();
+
         let rows: Vec<Row> = result
             .rows
             .iter()
+            .enumerate()
             .skip(scroll_offset)
             .take(data_rows_visible)
-            .enumerate()
-            .map(|(i, row)| {
-                let style = if i % 2 == 0 {
-                    Style::default()
+            .map(|(abs_row_idx, row)| {
+                let is_active_row = active_row == Some(abs_row_idx);
+                let row_bg = if is_active_row {
+                    Some(Theme::RESULT_ROW_ACTIVE_BG)
+                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
+                    Some(Color::Rgb(0x2a, 0x2a, 0x2e))
                 } else {
-                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    None
                 };
 
-                Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
-                    |(&orig_idx, &col_width)| {
-                        let cell = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
-                        let display = truncate_cell(cell, col_width as usize);
-                        Cell::from(display)
-                    },
-                ))
-                .style(style)
+                let cells: Vec<Cell> = viewport_indices
+                    .iter()
+                    .zip(viewport_widths.iter())
+                    .map(|(&orig_idx, &col_width)| {
+                        let val = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
+                        let display = truncate_cell(val, col_width as usize);
+                        let mut cell = Cell::from(display);
+                        if is_active_row && active_cell == Some(orig_idx) {
+                            cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
+                        }
+                        cell
+                    })
+                    .collect();
+
+                let mut r = Row::new(cells);
+                if let Some(bg) = row_bg {
+                    r = r.style(Style::default().bg(bg));
+                }
+                r
             })
             .collect();
 
