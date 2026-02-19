@@ -374,14 +374,14 @@ mod tests {
         #[test]
         fn respects_max_width_constraint() {
             let headers = vec!["description".to_string()];
-            let long_text = "a".repeat(100);
+            let long_text = "a".repeat(300);
             let rows = vec![vec![long_text]];
 
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // Should be capped at MAX_COL_WIDTH (50)
-            assert_eq!(result[0], 50);
+            // Should be capped at MAX_COL_WIDTH (200)
+            assert_eq!(result[0], 200);
         }
 
         #[test]
