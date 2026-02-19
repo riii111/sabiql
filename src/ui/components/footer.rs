@@ -68,25 +68,25 @@ impl Footer {
                 let nav_mode = state.ui.result_selection.mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
-                    // Cell Active: y:Yank h/l:Cell j/k:Row g/G:Top/Bot Esc:Back ?:Help q:Quit
+                    // Actions → Navigation → Help → Close/Cancel → Quit
                     vec![
                         RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::CELL_NAV].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
                         GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                     ]
                 } else if result_navigation && nav_mode == ResultNavMode::RowActive {
-                    // Row Active: Enter:Cell j/k:Row h/l:H-Scroll g/G:Top/Bot Esc:Back ?:Help q:Quit
+                    // Actions → Navigation → Help → Close/Cancel → Quit
                     vec![
                         RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
                         GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                     ]
                 } else if state.ui.focus_mode {

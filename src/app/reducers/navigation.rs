@@ -560,10 +560,8 @@ pub fn reduce_navigation(
         Action::ResultEnterRowActive => {
             let rows = result_row_count(state);
             if rows > 0 {
-                state
-                    .ui
-                    .result_selection
-                    .enter_row(state.ui.result_scroll_offset);
+                let clamped = state.ui.result_scroll_offset.min(rows - 1);
+                state.ui.result_selection.enter_row(clamped);
             }
             Some(vec![])
         }
@@ -1440,6 +1438,86 @@ mod tests {
             reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
 
             assert_eq!(state.ui.explorer_selected, 1);
+        }
+    }
+
+    mod cell_yank {
+        use super::*;
+        use std::sync::Arc;
+
+        fn state_with_grid(rows: usize, cols: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let columns: Vec<String> = (0..cols).map(|c| format!("col_{}", c)).collect();
+            let result_rows: Vec<Vec<String>> = (0..rows)
+                .map(|r| (0..cols).map(|c| format!("r{}c{}", r, c)).collect())
+                .collect();
+            let row_count = result_rows.len();
+            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns,
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+            }));
+            state
+        }
+
+        #[test]
+        fn out_of_bounds_row_sets_error() {
+            let mut state = state_with_grid(3, 3);
+            state.ui.result_selection.enter_row(10);
+            state.ui.result_selection.enter_cell(0);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn out_of_bounds_col_sets_error() {
+            let mut state = state_with_grid(3, 3);
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(10);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn valid_cell_emits_copy_effect() {
+            let mut state = state_with_grid(3, 3);
+            state.ui.result_selection.enter_row(1);
+            state.ui.result_selection.enter_cell(2);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => {
+                    assert_eq!(content, "r1c2");
+                }
+                other => panic!("expected CopyToClipboard, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn no_selection_is_noop() {
+            let mut state = state_with_grid(3, 3);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_none());
         }
     }
 }

@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  Esc:Back  ?:Help  q:Quit
+Enter:Select  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  ?:Help  Esc:Back  q:Quit

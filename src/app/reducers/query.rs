@@ -483,4 +483,29 @@ mod tests {
             assert_eq!(state.query.pagination.current_page, 3);
         }
     }
+
+    mod query_failed {
+        use super::*;
+        use crate::app::ui_state::ResultNavMode;
+
+        #[test]
+        fn resets_result_selection_and_offsets() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.ui.result_selection.enter_row(5);
+            state.ui.result_selection.enter_cell(2);
+            state.ui.result_scroll_offset = 10;
+            state.ui.result_horizontal_offset = 3;
+
+            let _ = reduce_query(
+                &mut state,
+                &Action::QueryFailed("error".to_string(), 1),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.result_selection.mode(), ResultNavMode::Scroll);
+            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.ui.result_horizontal_offset, 0);
+        }
+    }
 }
