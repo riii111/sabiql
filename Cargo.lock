@@ -2108,7 +2108,7 @@ checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
 name = "sabiql"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "arboard",
  "async-trait",
