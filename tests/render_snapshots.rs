@@ -736,6 +736,45 @@ fn inspector_info_tab_with_no_metadata() {
     insta::assert_snapshot!(output);
 }
 
+#[test]
+fn result_pane_row_active_mode() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.result_selection.enter_row(0);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_cell_active_mode() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.result_selection.enter_row(1);
+    state.ui.result_selection.enter_cell(2);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
 mod style_assertions {
     use super::*;
     use harness::{TEST_HEIGHT, TEST_WIDTH};
