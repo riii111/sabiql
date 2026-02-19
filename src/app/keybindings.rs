@@ -120,6 +120,15 @@ pub mod idx {
         pub const QUIT: usize = 2;
     }
 
+    pub mod result_active {
+        pub const ENTER_DEEPEN: usize = 0;
+        pub const YANK: usize = 1;
+        pub const CELL_NAV: usize = 2;
+        pub const ROW_NAV: usize = 3;
+        pub const TOP_BOTTOM: usize = 4;
+        pub const ESC_BACK: usize = 5;
+    }
+
     pub mod connections_mode {
         pub const CONNECT: usize = 0;
         pub const NEW: usize = 1;
@@ -969,14 +978,70 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
+// Result Pane Active (Row/Cell selection)
+// =============================================================================
+
+pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
+    // idx 0: ENTER_DEEPEN
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Select",
+        description: "Enter row / cell selection",
+        action: Action::ResultEnterRowActive,
+    },
+    // idx 1: YANK
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy cell value to clipboard",
+        action: Action::ResultCellYank,
+    },
+    // idx 2: CELL_NAV
+    KeyBinding {
+        key_short: "h/l",
+        key: "h / l",
+        desc_short: "Cell",
+        description: "Move cell left/right",
+        action: Action::None,
+    },
+    // idx 3: ROW_NAV
+    KeyBinding {
+        key_short: "j/k",
+        key: "j / k",
+        desc_short: "Row",
+        description: "Move row up/down",
+        action: Action::None,
+    },
+    // idx 4: TOP_BOTTOM
+    KeyBinding {
+        key_short: "g/G",
+        key: "g / G",
+        desc_short: "Top/Bot",
+        description: "First/Last row",
+        action: Action::None,
+    },
+    // idx 5: ESC_BACK
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Back",
+        description: "Exit to previous mode",
+        action: Action::ResultExitToScroll,
+    },
+];
+
+// =============================================================================
 // Help Overlay Layout
 // =============================================================================
 
-/// Total lines in help overlay content (9 sections + 8 blank lines + key entries)
-pub const HELP_TOTAL_LINES: usize = 9
-    + 8
+/// Total lines in help overlay content (sections + blank lines + key entries)
+pub const HELP_TOTAL_LINES: usize = 10
+    + 9
     + GLOBAL_KEYS.len()
     + NAVIGATION_KEYS.len()
+    + RESULT_ACTIVE_KEYS.len()
     + SQL_MODAL_KEYS.len()
     + OVERLAY_KEYS.len()
     + COMMAND_LINE_KEYS.len()
@@ -1069,6 +1134,14 @@ mod tests {
         assert!(idx::help::SCROLL < HELP_KEYS.len());
         assert!(idx::help::CLOSE < HELP_KEYS.len());
         assert!(idx::help::QUIT < HELP_KEYS.len());
+
+        // RESULT_ACTIVE_KEYS
+        assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
 
         // CONNECTIONS_MODE_KEYS
         assert!(idx::connections_mode::CONNECT < CONNECTIONS_MODE_KEYS.len());
