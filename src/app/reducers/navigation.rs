@@ -51,6 +51,16 @@ fn ensure_row_visible(state: &mut AppState) {
     }
 }
 
+/// Move row cursor to `new_row` if row is active, otherwise apply `scroll_fn` to viewport offset.
+fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOnce(&mut AppState)) {
+    if state.ui.result_selection.row().is_some() {
+        state.ui.result_selection.move_row(new_row);
+        ensure_row_visible(state);
+    } else {
+        scroll_fn(state);
+    }
+}
+
 /// Adjust horizontal offset so the active cell stays visible.
 fn ensure_cell_visible(state: &mut AppState) {
     if let Some(col) = state.ui.result_selection.cell() {
@@ -339,92 +349,100 @@ pub fn reduce_navigation(
 
         // Result Scroll (when row is active, these move the row cursor instead)
         Action::ResultScrollUp => {
-            if let Some(r) = state.ui.result_selection.row()
-                && r > 0
-            {
-                state.ui.result_selection.move_row(r - 1);
-                ensure_row_visible(state);
-            } else if state.ui.result_selection.row().is_none() {
-                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .and_then(|r| r.checked_sub(1));
+            match new_row {
+                Some(r) => move_row_or_scroll(state, r, |_| {}),
+                None if state.ui.result_selection.row().is_none() => {
+                    state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
+                }
+                _ => {} // row == 0, no-op
             }
             Some(vec![])
         }
         Action::ResultScrollDown => {
-            if let Some(r) = state.ui.result_selection.row() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                if r < max_row {
-                    state.ui.result_selection.move_row(r + 1);
-                    ensure_row_visible(state);
+            let max_row = result_row_count(state).saturating_sub(1);
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .map(|r| (r + 1).min(max_row))
+                .unwrap_or(0);
+            move_row_or_scroll(state, new_row, |s| {
+                let max_scroll = result_max_scroll(s);
+                if s.ui.result_scroll_offset < max_scroll {
+                    s.ui.result_scroll_offset += 1;
                 }
-            } else {
-                let max_scroll = result_max_scroll(state);
-                if state.ui.result_scroll_offset < max_scroll {
-                    state.ui.result_scroll_offset += 1;
-                }
-            }
+            });
             Some(vec![])
         }
         Action::ResultScrollTop => {
-            if state.ui.result_selection.row().is_some() {
-                state.ui.result_selection.move_row(0);
-                ensure_row_visible(state);
-            } else {
-                state.ui.result_scroll_offset = 0;
-            }
+            move_row_or_scroll(state, 0, |s| s.ui.result_scroll_offset = 0);
             Some(vec![])
         }
         Action::ResultScrollBottom => {
-            if state.ui.result_selection.row().is_some() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                state.ui.result_selection.move_row(max_row);
-                ensure_row_visible(state);
-            } else {
-                state.ui.result_scroll_offset = result_max_scroll(state);
-            }
+            let max_row = result_row_count(state).saturating_sub(1);
+            let max_scroll = result_max_scroll(state);
+            move_row_or_scroll(state, max_row, |s| s.ui.result_scroll_offset = max_scroll);
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            if let Some(r) = state.ui.result_selection.row() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                state.ui.result_selection.move_row((r + delta).min(max_row));
-                ensure_row_visible(state);
-            } else {
-                let max = result_max_scroll(state);
-                state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
-            }
+            let max_row = result_row_count(state).saturating_sub(1);
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .map(|r| (r + delta).min(max_row))
+                .unwrap_or(0);
+            move_row_or_scroll(state, new_row, |s| {
+                let max = result_max_scroll(s);
+                s.ui.result_scroll_offset = (s.ui.result_scroll_offset + delta).min(max);
+            });
             Some(vec![])
         }
         Action::ResultScrollHalfPageUp => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            if let Some(r) = state.ui.result_selection.row() {
-                state.ui.result_selection.move_row(r.saturating_sub(delta));
-                ensure_row_visible(state);
-            } else {
-                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
-            }
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .map(|r| r.saturating_sub(delta))
+                .unwrap_or(0);
+            move_row_or_scroll(state, new_row, |s| {
+                s.ui.result_scroll_offset = s.ui.result_scroll_offset.saturating_sub(delta);
+            });
             Some(vec![])
         }
         Action::ResultScrollFullPageDown => {
             let delta = state.result_visible_rows().max(1);
-            if let Some(r) = state.ui.result_selection.row() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                state.ui.result_selection.move_row((r + delta).min(max_row));
-                ensure_row_visible(state);
-            } else {
-                let max = result_max_scroll(state);
-                state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
-            }
+            let max_row = result_row_count(state).saturating_sub(1);
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .map(|r| (r + delta).min(max_row))
+                .unwrap_or(0);
+            move_row_or_scroll(state, new_row, |s| {
+                let max = result_max_scroll(s);
+                s.ui.result_scroll_offset = (s.ui.result_scroll_offset + delta).min(max);
+            });
             Some(vec![])
         }
         Action::ResultScrollFullPageUp => {
             let delta = state.result_visible_rows().max(1);
-            if let Some(r) = state.ui.result_selection.row() {
-                state.ui.result_selection.move_row(r.saturating_sub(delta));
-                ensure_row_visible(state);
-            } else {
-                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
-            }
+            let new_row = state
+                .ui
+                .result_selection
+                .row()
+                .map(|r| r.saturating_sub(delta))
+                .unwrap_or(0);
+            move_row_or_scroll(state, new_row, |s| {
+                s.ui.result_scroll_offset = s.ui.result_scroll_offset.saturating_sub(delta);
+            });
             Some(vec![])
         }
         Action::ResultScrollLeft => {
