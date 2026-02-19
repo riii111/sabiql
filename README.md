@@ -1,5 +1,6 @@
 # sabiql
-<img width="1400" height="873" alt="hero" src="https://github.com/user-attachments/assets/d94720a1-7b28-4dfe-a5ca-1c9cedf415eb" />
+<img width="1400" height="920" alt="hero" src="https://github.com/user-attachments/assets/de30d808-118c-4847-b838-94e638986822" />
+
 
 A fast, driver-less TUI for browsing PostgreSQL databases.
 
