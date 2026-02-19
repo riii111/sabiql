@@ -13,14 +13,56 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 
-fn result_max_scroll(state: &AppState) -> usize {
-    let visible = state.result_visible_rows();
+fn result_row_count(state: &AppState) -> usize {
     state
         .query
         .current_result
         .as_ref()
-        .map(|r| r.rows.len().saturating_sub(visible))
+        .map(|r| r.rows.len())
         .unwrap_or(0)
+}
+
+fn result_col_count(state: &AppState) -> usize {
+    state
+        .query
+        .current_result
+        .as_ref()
+        .map(|r| r.columns.len())
+        .unwrap_or(0)
+}
+
+fn result_max_scroll(state: &AppState) -> usize {
+    let visible = state.result_visible_rows();
+    result_row_count(state).saturating_sub(visible)
+}
+
+/// Adjust viewport scroll so the active row stays visible.
+fn ensure_row_visible(state: &mut AppState) {
+    if let Some(row) = state.ui.result_selection.row() {
+        let visible = state.result_visible_rows();
+        if visible == 0 {
+            return;
+        }
+        if row < state.ui.result_scroll_offset {
+            state.ui.result_scroll_offset = row;
+        } else if row >= state.ui.result_scroll_offset + visible {
+            state.ui.result_scroll_offset = row - visible + 1;
+        }
+    }
+}
+
+/// Adjust horizontal offset so the active cell stays visible.
+fn ensure_cell_visible(state: &mut AppState) {
+    if let Some(col) = state.ui.result_selection.cell() {
+        let plan = &state.ui.result_viewport_plan;
+        let h_offset = state.ui.result_horizontal_offset;
+        if col < h_offset {
+            state.ui.result_horizontal_offset = col;
+        } else if col >= h_offset + plan.column_count {
+            state.ui.result_horizontal_offset =
+                col.saturating_sub(plan.column_count.saturating_sub(1));
+        }
+    }
 }
 
 fn inspector_total_items(state: &AppState) -> usize {
@@ -69,15 +111,22 @@ fn explorer_item_count(state: &AppState) -> usize {
 pub fn reduce_navigation(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
         Action::SetFocusedPane(pane) => {
+            if *pane != FocusedPane::Result {
+                state.ui.result_selection.reset();
+            }
             state.ui.focused_pane = *pane;
             Some(vec![])
         }
         Action::ToggleFocus => {
+            let was_focus = state.ui.focus_mode;
             state.toggle_focus();
+            if was_focus {
+                state.ui.result_selection.reset();
+            }
             Some(vec![])
         }
         Action::InspectorNextTab => {
@@ -288,46 +337,104 @@ pub fn reduce_navigation(
             Some(vec![])
         }
 
-        // Result Scroll
+        // Result Scroll (when row is active, these move the row cursor instead)
         Action::ResultScrollUp => {
-            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
+            if let Some(r) = state.ui.result_selection.row()
+                && r > 0
+            {
+                state.ui.result_selection.enter_row(r - 1);
+                ensure_row_visible(state);
+            } else if state.ui.result_selection.row().is_none() {
+                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
+            }
             Some(vec![])
         }
         Action::ResultScrollDown => {
-            let max_scroll = result_max_scroll(state);
-            if state.ui.result_scroll_offset < max_scroll {
-                state.ui.result_scroll_offset += 1;
+            if let Some(r) = state.ui.result_selection.row() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                if r < max_row {
+                    state.ui.result_selection.enter_row(r + 1);
+                    ensure_row_visible(state);
+                }
+            } else {
+                let max_scroll = result_max_scroll(state);
+                if state.ui.result_scroll_offset < max_scroll {
+                    state.ui.result_scroll_offset += 1;
+                }
             }
             Some(vec![])
         }
         Action::ResultScrollTop => {
-            state.ui.result_scroll_offset = 0;
+            if state.ui.result_selection.row().is_some() {
+                state.ui.result_selection.enter_row(0);
+                ensure_row_visible(state);
+            } else {
+                state.ui.result_scroll_offset = 0;
+            }
             Some(vec![])
         }
         Action::ResultScrollBottom => {
-            state.ui.result_scroll_offset = result_max_scroll(state);
+            if state.ui.result_selection.row().is_some() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                state.ui.result_selection.enter_row(max_row);
+                ensure_row_visible(state);
+            } else {
+                state.ui.result_scroll_offset = result_max_scroll(state);
+            }
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            let max = result_max_scroll(state);
-            state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            if state.ui.result_selection.row().is_some() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                let r = state.ui.result_selection.row().unwrap_or(0);
+                state
+                    .ui
+                    .result_selection
+                    .enter_row((r + delta).min(max_row));
+                ensure_row_visible(state);
+            } else {
+                let max = result_max_scroll(state);
+                state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            }
             Some(vec![])
         }
         Action::ResultScrollHalfPageUp => {
             let delta = (state.result_visible_rows() / 2).max(1);
-            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
+            if state.ui.result_selection.row().is_some() {
+                let r = state.ui.result_selection.row().unwrap_or(0);
+                state.ui.result_selection.enter_row(r.saturating_sub(delta));
+                ensure_row_visible(state);
+            } else {
+                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
+            }
             Some(vec![])
         }
         Action::ResultScrollFullPageDown => {
             let delta = state.result_visible_rows().max(1);
-            let max = result_max_scroll(state);
-            state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            if state.ui.result_selection.row().is_some() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                let r = state.ui.result_selection.row().unwrap_or(0);
+                state
+                    .ui
+                    .result_selection
+                    .enter_row((r + delta).min(max_row));
+                ensure_row_visible(state);
+            } else {
+                let max = result_max_scroll(state);
+                state.ui.result_scroll_offset = (state.ui.result_scroll_offset + delta).min(max);
+            }
             Some(vec![])
         }
         Action::ResultScrollFullPageUp => {
             let delta = state.result_visible_rows().max(1);
-            state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
+            if state.ui.result_selection.row().is_some() {
+                let r = state.ui.result_selection.row().unwrap_or(0);
+                state.ui.result_selection.enter_row(r.saturating_sub(delta));
+                ensure_row_visible(state);
+            } else {
+                state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(delta);
+            }
             Some(vec![])
         }
         Action::ResultScrollLeft => {
@@ -439,6 +546,89 @@ pub fn reduce_navigation(
                 state.ui.explorer_horizontal_offset += 1;
             }
             Some(vec![])
+        }
+
+        // Result pane selection
+        Action::ResultEnterRowActive => {
+            let rows = result_row_count(state);
+            if rows > 0 {
+                state
+                    .ui
+                    .result_selection
+                    .enter_row(state.ui.result_scroll_offset);
+            }
+            Some(vec![])
+        }
+        Action::ResultEnterCellActive => {
+            if state.ui.result_selection.row().is_some() {
+                state
+                    .ui
+                    .result_selection
+                    .enter_cell(state.ui.result_horizontal_offset);
+            }
+            Some(vec![])
+        }
+        Action::ResultExitToRowActive => {
+            state.ui.result_selection.exit_to_row();
+            Some(vec![])
+        }
+        Action::ResultExitToScroll => {
+            state.ui.result_selection.reset();
+            Some(vec![])
+        }
+        Action::ResultCellLeft => {
+            if let Some(c) = state.ui.result_selection.cell()
+                && c > 0
+            {
+                state.ui.result_selection.enter_cell(c - 1);
+                ensure_cell_visible(state);
+            }
+            Some(vec![])
+        }
+        Action::ResultCellRight => {
+            if let Some(c) = state.ui.result_selection.cell() {
+                let max_col = result_col_count(state).saturating_sub(1);
+                if c < max_col {
+                    state.ui.result_selection.enter_cell(c + 1);
+                    ensure_cell_visible(state);
+                }
+            }
+            Some(vec![])
+        }
+        Action::ResultCellYank => {
+            if let (Some(row_idx), Some(col_idx)) = (
+                state.ui.result_selection.row(),
+                state.ui.result_selection.cell(),
+            ) {
+                let content = state
+                    .query
+                    .current_result
+                    .as_ref()
+                    .and_then(|r| r.rows.get(row_idx))
+                    .and_then(|row| row.get(col_idx))
+                    .cloned()
+                    .unwrap_or_default();
+                Some(vec![Effect::CopyToClipboard {
+                    content,
+                    on_success: Some(Action::CellCopied),
+                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                }])
+            } else {
+                Some(vec![])
+            }
+        }
+        Action::CellCopied => {
+            state.messages.set_success_at("Copied!".into(), now);
+            Some(vec![])
+        }
+        Action::CopyFailed(msg) => {
+            state.messages.set_error_at(msg.clone(), now);
+            Some(vec![])
+        }
+
+        Action::ResultNextPage | Action::ResultPrevPage => {
+            state.ui.result_selection.reset();
+            None // Let the query reducer handle the actual page change
         }
 
         // Explorer Mode (Tables / Connections)

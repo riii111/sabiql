@@ -26,6 +26,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.query.start_time = None;
                 state.ui.result_scroll_offset = 0;
                 state.ui.result_horizontal_offset = 0;
+                state.ui.result_selection.reset();
                 state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                 state.query.history_index = None;
 
