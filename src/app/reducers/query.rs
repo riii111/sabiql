@@ -218,6 +218,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             target_page,
             target_row,
         } => {
+            if *generation != state.cache.selection_generation {
+                return Some(vec![]);
+            }
+
             state
                 .messages
                 .set_success_at(format!("Deleted {} row(s)", affected_rows), now);
@@ -649,6 +653,7 @@ mod tests {
         #[test]
         fn delete_row_completed_sets_refresh_and_success_message() {
             let mut state = create_test_state();
+            state.cache.selection_generation = 5;
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -673,6 +678,30 @@ mod tests {
             );
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::ExecutePreview { .. }));
+        }
+
+        #[test]
+        fn delete_row_completed_is_ignored_when_generation_mismatch() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 8;
+            let now = Instant::now();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::DeleteRowCompleted {
+                    affected_rows: 1,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 5,
+                    target_page: 0,
+                    target_row: Some(0),
+                },
+                now,
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_success.is_none());
         }
 
         #[test]
