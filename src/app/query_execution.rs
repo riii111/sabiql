@@ -60,6 +60,8 @@ pub struct QueryExecution {
     pub history_index: Option<usize>,
     pub result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
+    pub pending_row_selection_after_refresh: Option<usize>,
+    pub clear_row_selection_after_refresh: bool,
 }
 
 #[cfg(test)]

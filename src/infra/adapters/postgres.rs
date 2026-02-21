@@ -111,6 +111,25 @@ fn is_select_query(query: &str) -> bool {
     found_select
 }
 
+fn parse_affected_rows(output: &str) -> usize {
+    output
+        .lines()
+        .rev()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let mut parts = trimmed.split_whitespace();
+            let tag = parts.next()?.to_uppercase();
+            if !matches!(tag.as_str(), "DELETE" | "UPDATE" | "INSERT") {
+                return None;
+            }
+            parts.last().and_then(|n| n.parse::<usize>().ok())
+        })
+        .unwrap_or(0)
+}
+
 fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
     if i == 0 {
         return true;
@@ -951,6 +970,65 @@ impl QueryExecutor for PostgresAdapter {
         }
 
         self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
+    }
+
+    async fn execute_write(&self, dsn: &str, query: &str) -> Result<usize, MetadataError> {
+        let mut child = Command::new("psql")
+            .arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-c")
+            .arg(query)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let (status, stdout, stderr) = result;
+        if !status.success() {
+            let err = if stderr.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            };
+            return Err(MetadataError::QueryFailed(err));
+        }
+
+        let combined = format!("{}\n{}", stdout, stderr);
+        Ok(parse_affected_rows(&combined))
     }
 }
 

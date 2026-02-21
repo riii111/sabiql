@@ -12,6 +12,15 @@ use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::domain::QuerySource;
+
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
 
 fn result_row_count(state: &AppState) -> usize {
     state
@@ -116,6 +125,24 @@ fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
+fn deletion_refresh_target(
+    row_count: usize,
+    selected_row: usize,
+    current_page: usize,
+) -> (usize, Option<usize>) {
+    if row_count <= 1 {
+        if current_page > 0 {
+            (current_page - 1, Some(usize::MAX))
+        } else {
+            (0, None)
+        }
+    } else if selected_row < row_count - 1 {
+        (current_page, Some(selected_row))
+    } else {
+        (current_page, Some(row_count - 2))
+    }
+}
+
 /// Handles focus, scroll, selection, filter, and command line actions.
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_navigation(
@@ -123,6 +150,15 @@ pub fn reduce_navigation(
     action: &Action,
     now: Instant,
 ) -> Option<Vec<Effect>> {
+    if state.ui.result_delete_operator_pending
+        && !matches!(
+            action,
+            Action::ResultDeleteOperatorPending | Action::RequestDeleteActiveRow
+        )
+    {
+        state.ui.result_delete_operator_pending = false;
+    }
+
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -629,6 +665,144 @@ pub fn reduce_navigation(
             } else {
                 Some(vec![])
             }
+        }
+        Action::ResultDeleteOperatorPending => {
+            if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive {
+                state.ui.result_delete_operator_pending = true;
+            }
+            Some(vec![])
+        }
+        Action::RequestDeleteActiveRow => {
+            state.ui.result_delete_operator_pending = false;
+
+            if state.ui.result_selection.mode() != crate::app::ui_state::ResultNavMode::RowActive {
+                return Some(vec![]);
+            }
+            if state.runtime.dsn.is_none() {
+                state
+                    .messages
+                    .set_error_at("No active connection".to_string(), now);
+                return Some(vec![]);
+            }
+
+            let Some(result) = state.query.current_result.as_ref() else {
+                return Some(vec![]);
+            };
+            if result.source != QuerySource::Preview {
+                state.messages.set_error_at(
+                    "Row deletion is available only in Preview results".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
+
+            let Some(row_idx) = state.ui.result_selection.row() else {
+                return Some(vec![]);
+            };
+            let Some(row) = result.rows.get(row_idx) else {
+                state
+                    .messages
+                    .set_error_at("Row index out of bounds".to_string(), now);
+                return Some(vec![]);
+            };
+
+            let schema = state.query.pagination.schema.clone();
+            let table = state.query.pagination.table.clone();
+            if schema.is_empty() || table.is_empty() {
+                state.messages.set_error_at(
+                    "Cannot determine target table for deletion".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
+
+            let Some(table_detail) = state.cache.table_detail.as_ref() else {
+                state.messages.set_error_at(
+                    "Table metadata not loaded. Please reload preview and try again.".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            };
+            if table_detail.schema != schema || table_detail.name != table {
+                state.messages.set_error_at(
+                    "Table metadata is stale. Please reload preview and try again.".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
+            let Some(pk_cols) = table_detail.primary_key.as_ref() else {
+                state.messages.set_error_at(
+                    "Deletion requires PRIMARY KEY. This table has no PRIMARY KEY.".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            };
+            if pk_cols.is_empty() {
+                state.messages.set_error_at(
+                    "Deletion requires PRIMARY KEY. This table has no PRIMARY KEY.".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
+
+            let mut where_clauses = Vec::new();
+            let mut target_pairs = Vec::new();
+
+            for pk in pk_cols {
+                let Some(col_idx) = result.columns.iter().position(|c| c == pk) else {
+                    state.messages.set_error_at(
+                        format!(
+                            "Primary key column '{}' is not present in the current preview",
+                            pk
+                        ),
+                        now,
+                    );
+                    return Some(vec![]);
+                };
+                let Some(value) = row.get(col_idx) else {
+                    state.messages.set_error_at(
+                        format!("Primary key value for '{}' is not available", pk),
+                        now,
+                    );
+                    return Some(vec![]);
+                };
+
+                where_clauses.push(format!("{} = {}", quote_ident(pk), quote_literal(value)));
+                target_pairs.push(format!("{}={}", pk, value));
+            }
+
+            let sql = format!(
+                "DELETE FROM {}.{} WHERE {};",
+                quote_ident(&schema),
+                quote_ident(&table),
+                where_clauses.join(" AND ")
+            );
+
+            let (target_page, target_row) = deletion_refresh_target(
+                result.rows.len(),
+                row_idx,
+                state.query.pagination.current_page,
+            );
+            let target_summary = target_pairs.join(", ");
+
+            state.confirm_dialog.title = "Delete Row".to_string();
+            state.confirm_dialog.message = format!(
+                "Delete selected row from {}.{}?\n\nTarget: {}\n\nSQL Preview:\n{}\n\nThis action cannot be undone.",
+                schema, table, target_summary, sql
+            );
+            state.confirm_dialog.on_confirm = Action::ExecuteDeleteRow {
+                sql,
+                schema,
+                table,
+                generation: state.cache.selection_generation,
+                target_page,
+                target_row,
+            };
+            state.confirm_dialog.on_cancel = Action::None;
+            state.confirm_dialog.return_mode = InputMode::Normal;
+            state.ui.input_mode = InputMode::ConfirmDialog;
+
+            Some(vec![])
         }
         Action::CellCopied => {
             state.messages.set_success_at("Copied!".into(), now);

@@ -16,4 +16,6 @@ pub trait QueryExecutor: Send + Sync {
     ) -> Result<QueryResult, MetadataError>;
 
     async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError>;
+
+    async fn execute_write(&self, dsn: &str, query: &str) -> Result<usize, MetadataError>;
 }
