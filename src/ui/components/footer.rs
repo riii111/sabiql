@@ -10,10 +10,9 @@ use crate::app::er_state::ErStatus;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
-    CELL_EDIT_KEYS, COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS,
-    CONNECTION_SELECTOR_KEYS, CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS,
-    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
-    TABLE_PICKER_KEYS, idx,
+    CELL_EDIT_KEYS, COMMAND_PALETTE_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS,
+    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
+    HELP_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -209,10 +208,7 @@ impl Footer {
                 CONNECTION_ERROR_KEYS[idx::conn_error::ESC_CLOSE].as_hint(),
                 CONNECTION_ERROR_KEYS[idx::conn_error::QUIT].as_hint(),
             ],
-            InputMode::ConfirmDialog => vec![
-                CONFIRM_DIALOG_KEYS[idx::confirm::YES].as_hint(),
-                CONFIRM_DIALOG_KEYS[idx::confirm::NO].as_hint(),
-            ],
+            InputMode::ConfirmDialog => vec![],
             InputMode::ErTablePicker => vec![
                 ER_PICKER_KEYS[idx::er_picker::ENTER_GENERATE].as_hint(),
                 ER_PICKER_KEYS[idx::er_picker::SELECT].as_hint(),

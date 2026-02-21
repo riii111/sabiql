@@ -807,9 +807,9 @@ fn confirm_dialog_update_preview() {
     state.cache.metadata = Some(fixtures::sample_metadata(now));
     state.cache.state = MetadataState::Loaded;
     state.ui.input_mode = InputMode::ConfirmDialog;
-    state.confirm_dialog.title = "Confirm UPDATE".to_string();
+    state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
     state.confirm_dialog.message =
-        "Diff: email: bob@example.com -> new@example.com\n\nSQL:\nUPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';".to_string();
+        "email: bob@example.com -> new@example.com\n\nUPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';".to_string();
     state.confirm_dialog.on_confirm = Action::ExecuteWrite(
         "UPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';"
             .to_string(),

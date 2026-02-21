@@ -296,15 +296,15 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
             }
             lines.push(preview.diff.first().map_or_else(
-                || "Diff: (none)".to_string(),
-                |d| format!("Diff: {}: {} -> {}", d.column, d.before, d.after),
+                || "(no changes)".to_string(),
+                |d| format!("{}: {} -> {}", d.column, d.before, d.after),
             ));
             lines.push(String::new());
-            lines.push("SQL:".to_string());
             lines.push(preview.sql.clone());
             let message = lines.join("\n");
 
-            state.confirm_dialog.title = "Confirm UPDATE".to_string();
+            state.confirm_dialog.title =
+                format!("Confirm UPDATE: {}", preview.target_summary.table);
             state.confirm_dialog.message = message;
             state.confirm_dialog.on_confirm = Action::ExecuteWrite(preview.sql.clone());
             state.confirm_dialog.on_cancel = Action::None;

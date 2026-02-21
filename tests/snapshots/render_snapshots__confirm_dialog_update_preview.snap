@@ -9,19 +9,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.comments   ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│       ╭ Confirm UPDATE ──────────────────────────────────────────────╮       │
-│       │ Diff: email: bob@example.com -> new@example.com              │       │
+│       ╭ Confirm UPDATE: users ───────────────────────────────────────╮       │
+│       │ email: bob@example.com -> new@example.com                    │       │
 │       │                                                              │       │
-│       │ SQL:                                                         │       │
-│       │ UPDATE "public"."users" SET "email" = 'new@example.com'      │───────┘
-│       │ WHERE "id" = '2';                                            │───────┐
-│       │                                                              │       │
+│       │ UPDATE "public"."users" SET "email" = 'new@example.com'      │       │
+│       │ WHERE "id" = '2';                                            │───────┘
+│       │                                                              │───────┐
 │       │            [ Confirm (Enter) ]   [ Cancel (Esc) ]            │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       ╰ Enter/Y: Confirm │ Esc/N: Cancel ────────────────────────────╯       │
+│       ╰──────────────────────────────────────────────────────────────╯       │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter/y:Confirm  Esc/n:Cancel

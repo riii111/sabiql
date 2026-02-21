@@ -34,14 +34,13 @@ impl ConfirmDialog {
         let max_modal_height = full_area.height.saturating_sub(2).max(8);
         let modal_height = (message_height + 6).min(max_modal_height);
 
-        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
         let title = format!(" {} ", dialog.title);
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
             Constraint::Length(modal_height),
             &title,
-            hint,
+            "",
         );
 
         let inner = modal_inner.inner(Margin::new(1, 0));
