@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOperation {
     Update,
+    /// Reserved for future write-preview flows (e.g. issue #107).
     Delete,
 }
 
