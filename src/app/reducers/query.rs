@@ -14,7 +14,7 @@ use crate::app::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::app::write_update::{build_pk_pairs, build_update_sql};
-use crate::domain::{QueryResult, QuerySource};
+use crate::domain::{QueryResult, QuerySource, Table};
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     if state.ui.input_mode != InputMode::CellEdit || !state.cell_edit.is_active() {
@@ -110,17 +110,162 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     Ok(preview)
 }
 
-fn format_update_sql_for_modal(sql: &str) -> String {
-    let Some((update_head, set_tail)) = sql.split_once(" SET ") else {
-        return sql.to_string();
+fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('\"', "\"\""))
+}
+
+fn quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn escape_modal_diff_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+fn is_simple_identifier(ident: &str) -> bool {
+    let mut chars = ident.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() || c == '_' => {}
+        _ => return false,
+    }
+
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+fn is_sql_keyword(ident: &str) -> bool {
+    matches!(
+        ident.to_ascii_uppercase().as_str(),
+        "ALL"
+            | "ALTER"
+            | "AND"
+            | "ANY"
+            | "AS"
+            | "ASC"
+            | "BY"
+            | "CREATE"
+            | "DELETE"
+            | "DESC"
+            | "DROP"
+            | "FALSE"
+            | "FROM"
+            | "GROUP"
+            | "IN"
+            | "INSERT"
+            | "INTO"
+            | "IS"
+            | "JOIN"
+            | "KEY"
+            | "LIMIT"
+            | "NOT"
+            | "NULL"
+            | "ON"
+            | "OR"
+            | "ORDER"
+            | "PRIMARY"
+            | "SELECT"
+            | "SET"
+            | "TABLE"
+            | "TRUE"
+            | "UNION"
+            | "UNIQUE"
+            | "UPDATE"
+            | "VALUES"
+            | "WHERE"
+    )
+}
+
+fn display_identifier(ident: &str) -> String {
+    if is_simple_identifier(ident) && !is_sql_keyword(ident) {
+        ident.to_string()
+    } else {
+        quote_ident(ident)
+    }
+}
+
+fn is_numeric_type(data_type: &str) -> bool {
+    let t = data_type.to_ascii_lowercase();
+    t.contains("int")
+        || t.contains("numeric")
+        || t.contains("decimal")
+        || t.contains("real")
+        || t.contains("double")
+        || t.contains("serial")
+}
+
+fn is_boolean_type(data_type: &str) -> bool {
+    let t = data_type.to_ascii_lowercase();
+    t.contains("bool")
+}
+
+fn is_numeric_literal(value: &str) -> bool {
+    value.parse::<i128>().is_ok() || value.parse::<f64>().is_ok()
+}
+
+fn display_sql_value(value: &str, data_type: Option<&str>) -> String {
+    if value == "NULL" {
+        return "NULL".to_string();
+    }
+
+    if data_type.is_some_and(is_numeric_type) && is_numeric_literal(value) {
+        return value.to_string();
+    }
+
+    if data_type.is_some_and(is_boolean_type) {
+        let normalized = value.trim();
+        if normalized.eq_ignore_ascii_case("true") || normalized.eq_ignore_ascii_case("t") {
+            return "TRUE".to_string();
+        }
+        if normalized.eq_ignore_ascii_case("false") || normalized.eq_ignore_ascii_case("f") {
+            return "FALSE".to_string();
+        }
+    }
+
+    quote_literal(value)
+}
+
+fn column_data_type<'a>(table_detail: Option<&'a Table>, column: &str) -> Option<&'a str> {
+    table_detail.and_then(|table| {
+        table
+            .columns
+            .iter()
+            .find(|c| c.name == column)
+            .map(|c| c.data_type.as_str())
+    })
+}
+
+fn format_update_sql_for_modal(preview: &WritePreview, table_detail: Option<&Table>) -> String {
+    let Some(diff) = preview.diff.first() else {
+        return preview.sql.clone();
     };
 
-    match set_tail.rsplit_once(" WHERE ") {
-        Some((set_expr, where_expr)) => {
-            format!("{}\nSET {}\nWHERE {}", update_head, set_expr, where_expr)
-        }
-        None => format!("{}\nSET {}", update_head, set_tail),
+    if preview.target_summary.key_values.is_empty() {
+        return preview.sql.clone();
     }
+
+    let where_clause = preview
+        .target_summary
+        .key_values
+        .iter()
+        .map(|(col, val)| {
+            let value = display_sql_value(val, column_data_type(table_detail, col));
+            format!("{} = {}", display_identifier(col), value)
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ");
+
+    let set_value = display_sql_value(&diff.after, column_data_type(table_detail, &diff.column));
+
+    format!(
+        "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
+        display_identifier(&preview.target_summary.schema),
+        display_identifier(&preview.target_summary.table),
+        display_identifier(&diff.column),
+        set_value,
+        where_clause
+    )
 }
 
 /// Handles query execution and command line actions.
@@ -310,10 +455,20 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
             lines.push(preview.diff.first().map_or_else(
                 || "(no changes)".to_string(),
-                |d| format!("{}: {} -> {}", d.column, d.before, d.after),
+                |d| {
+                    format!(
+                        "{}: \"{}\" -> \"{}\"",
+                        d.column,
+                        escape_modal_diff_value(&d.before),
+                        escape_modal_diff_value(&d.after)
+                    )
+                },
             ));
             lines.push(String::new());
-            lines.push(format_update_sql_for_modal(&preview.sql));
+            lines.push(format_update_sql_for_modal(
+                preview,
+                state.cache.table_detail.as_ref(),
+            ));
             let message = lines.join("\n");
 
             state.confirm_dialog.title =
@@ -894,23 +1049,97 @@ mod tests {
 
     mod sql_preview_formatting {
         use super::format_update_sql_for_modal;
+        use crate::app::write_guardrails::{
+            GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+        };
+        use crate::domain::Column;
+        use crate::domain::Table;
+
+        fn table_detail() -> Table {
+            Table {
+                schema: "sales".to_string(),
+                name: "shipping_zones".to_string(),
+                owner: None,
+                columns: vec![
+                    Column {
+                        name: "id".to_string(),
+                        data_type: "integer".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: true,
+                        is_unique: true,
+                        comment: None,
+                        ordinal_position: 1,
+                    },
+                    Column {
+                        name: "name".to_string(),
+                        data_type: "text".to_string(),
+                        nullable: false,
+                        default: None,
+                        is_primary_key: false,
+                        is_unique: false,
+                        comment: None,
+                        ordinal_position: 2,
+                    },
+                ],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        fn preview_sql() -> WritePreview {
+            WritePreview {
+                operation: WriteOperation::Update,
+                sql:
+                    "UPDATE \"sales\".\"shipping_zones\" SET \"name\" = 'North' WHERE \"id\" = '2';"
+                        .to_string(),
+                target_summary: TargetSummary {
+                    schema: "sales".to_string(),
+                    table: "shipping_zones".to_string(),
+                    key_values: vec![("id".to_string(), "2".to_string())],
+                },
+                diff: vec![crate::app::write_guardrails::ColumnDiff {
+                    column: "name".to_string(),
+                    before: "North America".to_string(),
+                    after: "North".to_string(),
+                }],
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
+            }
+        }
 
         #[test]
-        fn splits_update_into_multiline_blocks() {
-            let sql =
-                "UPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';";
-            let formatted = format_update_sql_for_modal(sql);
+        fn pretty_formats_update_and_unquotes_numeric_pk_for_display() {
+            let preview = preview_sql();
+            let formatted = format_update_sql_for_modal(&preview, Some(&table_detail()));
             assert_eq!(
                 formatted,
-                "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
+                "UPDATE sales.shipping_zones\nSET name = 'North'\nWHERE id = 2;"
             );
         }
 
         #[test]
-        fn returns_original_when_not_update_statement() {
-            let sql = "DELETE FROM \"public\".\"users\" WHERE \"id\" = '2';";
-            let formatted = format_update_sql_for_modal(sql);
-            assert_eq!(formatted, sql);
+        fn keeps_quotes_for_non_simple_identifiers() {
+            let mut preview = preview_sql();
+            preview.target_summary.schema = "Sales".to_string();
+            preview.target_summary.table = "order".to_string();
+            preview.target_summary.key_values = vec![("User-ID".to_string(), "2".to_string())];
+            preview.diff[0].column = "Display Name".to_string();
+
+            let formatted = format_update_sql_for_modal(&preview, None);
+            assert_eq!(
+                formatted,
+                "UPDATE \"Sales\".\"order\"\nSET \"Display Name\" = 'North'\nWHERE \"User-ID\" = '2';"
+            );
         }
     }
 }

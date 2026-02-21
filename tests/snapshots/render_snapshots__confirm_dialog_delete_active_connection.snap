@@ -9,16 +9,16 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│                 ╭ Delete Connection ────────────────────────╮                │
-│                 │ Delete "Production"?                      │                │
-│                 │                                           │                │
-│                 │ ⚠ This is the active connection.          │                │
-│                 │ You will be disconnected.                 │────────────────┘
-│                 │                                           │────────────────┐
-│                 │ This action cannot be undone.             │                │
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Confirm │ Esc/N: Cancel ─────────╯                │
+│                  ││                                                          │
+│                  │╭ Delete Connection ───────────────────╮                   │
+│                  ││ Delete "Production"?                 │                   │
+│                  ││                                      │                   │
+│                  ││ ⚠ This is the active connection.     │───────────────────┘
+│                  ││ You will be disconnected.            │───────────────────┐
+│                  ││                                      │                   │
+│                  ││ This action cannot be undone.        │                   │
+│                  │╰ Enter/Y: Confirm │ Esc/N: Cancel ────╯                   │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

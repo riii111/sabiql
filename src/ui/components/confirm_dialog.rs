@@ -35,13 +35,13 @@ impl ConfirmDialog {
         let hint_width = hint.chars().count() as u16;
         let title_width = dialog.title.chars().count() as u16;
         let content_width = message_max_line.max(hint_width).max(title_width);
-        let preferred_width = content_width.saturating_add(6).max(45);
+        let preferred_width = content_width.saturating_add(6).max(40);
         let modal_width = preferred_width.min(max_modal_width);
 
         let message_width = modal_width.saturating_sub(4).max(1);
         let message_height = Self::wrapped_line_count(&dialog.message, message_width);
-        let max_modal_height = full_area.height.saturating_sub(2).max(8);
-        let modal_height = (message_height + 4).min(max_modal_height);
+        let max_modal_height = full_area.height.saturating_sub(2).max(6);
+        let modal_height = (message_height + 2).clamp(6, max_modal_height);
 
         let title = format!(" {} ", dialog.title);
         let (_, modal_inner) = render_modal(
