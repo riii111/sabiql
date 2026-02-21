@@ -10,7 +10,7 @@ use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary, Trigger, TriggerEvent,
-    TriggerTiming,
+    TriggerTiming, WriteExecutionResult,
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
@@ -822,6 +822,91 @@ impl PostgresAdapter {
         ))
     }
 
+    pub async fn execute_write_raw(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError> {
+        let start = Instant::now();
+
+        let mut child = Command::new("psql")
+            .arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-c")
+            .arg(query)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let elapsed = start.elapsed().as_millis() as u64;
+        let (status, stdout, stderr) = result;
+
+        if !status.success() {
+            return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
+        }
+
+        let affected_rows = Self::parse_affected_rows(&stdout).ok_or_else(|| {
+            MetadataError::QueryFailed("Failed to parse affected row count".to_string())
+        })?;
+
+        Ok(WriteExecutionResult {
+            affected_rows,
+            execution_time_ms: elapsed,
+        })
+    }
+
+    fn parse_affected_rows(stdout: &str) -> Option<usize> {
+        stdout.lines().rev().find_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() != 2 {
+                return None;
+            }
+            match parts[0] {
+                "UPDATE" | "DELETE" => parts[1].parse::<usize>().ok(),
+                _ => None,
+            }
+        })
+    }
+
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
@@ -951,6 +1036,14 @@ impl QueryExecutor for PostgresAdapter {
         }
 
         self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
+    }
+
+    async fn execute_write(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError> {
+        self.execute_write_raw(dsn, query).await
     }
 }
 
@@ -1787,6 +1880,28 @@ mod tests {
             let json = r#"[]"#;
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
+        }
+    }
+
+    mod write_command_tag {
+        use super::*;
+
+        #[test]
+        fn parse_affected_rows_for_update() {
+            let out = "UPDATE 1\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
+        }
+
+        #[test]
+        fn parse_affected_rows_for_delete() {
+            let out = "DELETE 3\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(3));
+        }
+
+        #[test]
+        fn parse_affected_rows_returns_none_for_unknown_output() {
+            let out = "SELECT 1\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), None);
         }
     }
 }

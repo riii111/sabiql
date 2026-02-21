@@ -413,6 +413,27 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::ExecuteWrite { dsn, query } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match executor.execute_write(&dsn, &query).await {
+                        Ok(result) => {
+                            let _ = tx
+                                .send(Action::ExecuteWriteSucceeded {
+                                    affected_rows: result.affected_rows,
+                                })
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Action::ExecuteWriteFailed(e.to_string())).await;
+                        }
+                    }
+                });
+                Ok(())
+            }
+
             Effect::CacheTableInCompletionEngine {
                 qualified_name,
                 table,

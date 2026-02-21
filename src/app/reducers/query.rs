@@ -10,7 +10,103 @@ use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
+use crate::app::write_guardrails::{ColumnDiff, WriteOperation, WritePreview, evaluate_guardrails};
+use crate::app::write_update::{build_pk_pairs, build_update_sql};
 use crate::domain::{QueryResult, QuerySource};
+
+fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
+    if state.ui.input_mode != InputMode::CellEdit || !state.cell_edit.is_active() {
+        return Err("Cell edit mode is not active".to_string());
+    }
+
+    if state.query.history_index.is_some() {
+        return Err("Editing is unavailable while browsing history".to_string());
+    }
+
+    let result = state
+        .query
+        .current_result
+        .as_ref()
+        .ok_or_else(|| "No result to edit".to_string())?;
+    if result.source != QuerySource::Preview || result.is_error() {
+        return Err("Only Preview results are editable".to_string());
+    }
+
+    let row_idx = state
+        .cell_edit
+        .row
+        .ok_or_else(|| "No row selected for edit".to_string())?;
+    let col_idx = state
+        .cell_edit
+        .col
+        .ok_or_else(|| "No column selected for edit".to_string())?;
+
+    let row = result
+        .rows
+        .get(row_idx)
+        .ok_or_else(|| "Row index out of bounds".to_string())?;
+    let column_name = result
+        .columns
+        .get(col_idx)
+        .ok_or_else(|| "Column index out of bounds".to_string())?
+        .clone();
+
+    let table_detail = state
+        .cache
+        .table_detail
+        .as_ref()
+        .ok_or_else(|| "Table metadata not loaded".to_string())?;
+    let pk_cols = table_detail
+        .primary_key
+        .as_ref()
+        .filter(|cols| !cols.is_empty())
+        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
+
+    if pk_cols.iter().any(|pk| pk == &column_name) {
+        return Err("Primary key columns are read-only".to_string());
+    }
+
+    let target = crate::app::write_guardrails::TargetSummary {
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
+        key_values: vec![],
+    };
+    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
+    let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
+    let has_stable_row_identity = pk_pairs.is_some();
+    let mut target = target;
+    if let Some(pairs) = &pk_pairs {
+        target.key_values = pairs.clone();
+    }
+    let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
+    if guardrail.blocked {
+        let reason = guardrail
+            .reason
+            .clone()
+            .unwrap_or_else(|| "Write blocked by guardrails".to_string());
+        return Err(reason);
+    }
+
+    let sql = build_update_sql(
+        &target.schema,
+        &target.table,
+        &column_name,
+        &state.cell_edit.draft_value,
+        &target.key_values,
+    );
+    let preview = WritePreview {
+        operation: WriteOperation::Update,
+        sql,
+        target_summary: target,
+        diff: vec![ColumnDiff {
+            column: column_name,
+            before: state.cell_edit.original_value.clone(),
+            after: state.cell_edit.draft_value.clone(),
+        }],
+        guardrail,
+    };
+    Ok(preview)
+}
 
 /// Handles query execution and command line actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -27,6 +123,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.ui.result_scroll_offset = 0;
                 state.ui.result_horizontal_offset = 0;
                 state.ui.result_selection.reset();
+                state.cell_edit.clear();
+                state.pending_write_preview = None;
                 state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                 state.query.history_index = None;
 
@@ -60,6 +158,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.ui.result_selection.reset();
                 state.ui.result_scroll_offset = 0;
                 state.ui.result_horizontal_offset = 0;
+                state.cell_edit.clear();
+                state.pending_write_preview = None;
                 state.set_error(error.clone());
                 if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = SqlModalStatus::Error;
@@ -78,7 +178,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.ui.input_mode = InputMode::Normal;
+            state.ui.input_mode = state.ui.command_line_return_mode;
+            state.ui.command_line_return_mode = InputMode::Normal;
             state.command_line_input.clear();
 
             Some(match follow_up {
@@ -101,6 +202,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
                 Action::ErOpenDiagram => {
                     vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])]
+                }
+                Action::SubmitCellEditWrite => {
+                    vec![Effect::DispatchActions(vec![Action::SubmitCellEditWrite])]
                 }
                 _ => vec![],
             })
@@ -162,6 +266,110 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             } else {
                 Some(vec![])
             }
+        }
+
+        Action::SubmitCellEditWrite => {
+            if state.ui.input_mode != InputMode::CellEdit {
+                state
+                    .messages
+                    .set_error_at("`:w` is only available in Cell Edit mode".to_string(), now);
+                return Some(vec![]);
+            }
+
+            match build_update_preview(state) {
+                Ok(preview) => Some(vec![Effect::DispatchActions(vec![
+                    Action::OpenWritePreviewConfirm(Box::new(preview)),
+                ])]),
+                Err(msg) => {
+                    state.messages.set_error_at(msg, now);
+                    Some(vec![])
+                }
+            }
+        }
+
+        Action::OpenWritePreviewConfirm(preview) => {
+            state.pending_write_preview = Some((**preview).clone());
+            let diff_line = preview.diff.first().map_or_else(
+                || "Diff: (none)".to_string(),
+                |d| format!("Diff: {}: {} -> {}", d.column, d.before, d.after),
+            );
+            let message = format!(
+                "Risk: {}\nTarget: {}\n{}\n\nSQL:\n{}",
+                preview.guardrail.risk_level.as_str(),
+                preview.target_summary.format_compact(),
+                diff_line,
+                preview.sql
+            );
+
+            state.confirm_dialog.title = "Confirm UPDATE".to_string();
+            state.confirm_dialog.message = message;
+            state.confirm_dialog.on_confirm = Action::ExecuteWrite(preview.sql.clone());
+            state.confirm_dialog.on_cancel = Action::None;
+            state.confirm_dialog.return_mode = InputMode::CellEdit;
+            state.ui.input_mode = InputMode::ConfirmDialog;
+
+            Some(vec![])
+        }
+
+        Action::ExecuteWrite(query) => {
+            if let Some(dsn) = &state.runtime.dsn {
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(now);
+                Some(vec![Effect::ExecuteWrite {
+                    dsn: dsn.clone(),
+                    query: query.clone(),
+                }])
+            } else {
+                state
+                    .messages
+                    .set_error_at("No active connection".to_string(), now);
+                Some(vec![])
+            }
+        }
+
+        Action::ExecuteWriteSucceeded { affected_rows } => {
+            state.query.status = QueryStatus::Idle;
+            state.query.start_time = None;
+            state.pending_write_preview = None;
+
+            if *affected_rows != 1 {
+                state.messages.set_error_at(
+                    format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
+                    now,
+                );
+                state.ui.input_mode = InputMode::CellEdit;
+                return Some(vec![]);
+            }
+
+            state
+                .messages
+                .set_success_at("Updated 1 row".to_string(), now);
+            state.cell_edit.clear();
+            state.ui.input_mode = InputMode::Normal;
+
+            if let Some(dsn) = &state.runtime.dsn {
+                let page = state.query.pagination.current_page;
+                Some(vec![Effect::ExecutePreview {
+                    dsn: dsn.clone(),
+                    schema: state.query.pagination.schema.clone(),
+                    table: state.query.pagination.table.clone(),
+                    generation: state.cache.selection_generation,
+                    limit: PREVIEW_PAGE_SIZE,
+                    offset: page * PREVIEW_PAGE_SIZE,
+                    target_page: page,
+                }])
+            } else {
+                Some(vec![])
+            }
+        }
+
+        Action::ExecuteWriteFailed(error) => {
+            state.query.status = QueryStatus::Idle;
+            state.query.start_time = None;
+            state.pending_write_preview = None;
+            state.messages.set_error_at(error.clone(), now);
+            state.ui.input_mode = InputMode::CellEdit;
+            Some(vec![])
         }
 
         Action::ResultNextPage => {
