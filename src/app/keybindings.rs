@@ -123,10 +123,11 @@ pub mod idx {
     pub mod result_active {
         pub const ENTER_DEEPEN: usize = 0;
         pub const YANK: usize = 1;
-        pub const CELL_NAV: usize = 2;
-        pub const ROW_NAV: usize = 3;
-        pub const TOP_BOTTOM: usize = 4;
-        pub const ESC_BACK: usize = 5;
+        pub const DELETE_ROW: usize = 2;
+        pub const CELL_NAV: usize = 3;
+        pub const ROW_NAV: usize = 4;
+        pub const TOP_BOTTOM: usize = 5;
+        pub const ESC_BACK: usize = 6;
     }
 
     pub mod connections_mode {
@@ -998,7 +999,15 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Copy cell value to clipboard",
         action: Action::ResultCellYank,
     },
-    // idx 2: CELL_NAV
+    // idx 2: DELETE_ROW
+    KeyBinding {
+        key_short: "dd",
+        key: "d, d",
+        desc_short: "Delete",
+        description: "Delete active row (with preview)",
+        action: Action::RequestDeleteActiveRow,
+    },
+    // idx 3: CELL_NAV
     KeyBinding {
         key_short: "h/l",
         key: "h / l",
@@ -1006,7 +1015,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Move cell left/right",
         action: Action::None,
     },
-    // idx 3: ROW_NAV
+    // idx 4: ROW_NAV
     KeyBinding {
         key_short: "j/k",
         key: "j / k",
@@ -1014,7 +1023,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Move row up/down",
         action: Action::None,
     },
-    // idx 4: TOP_BOTTOM
+    // idx 5: TOP_BOTTOM
     KeyBinding {
         key_short: "g/G",
         key: "g / G",
@@ -1022,7 +1031,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "First/Last row",
         action: Action::None,
     },
-    // idx 5: ESC_BACK
+    // idx 6: ESC_BACK
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -1138,6 +1147,7 @@ mod tests {
         // RESULT_ACTIVE_KEYS
         assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::DELETE_ROW < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());

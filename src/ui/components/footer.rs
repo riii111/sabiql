@@ -82,6 +82,7 @@ impl Footer {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     vec![
                         RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
+                        RESULT_ACTIVE_KEYS[idx::result_active::DELETE_ROW].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
                         FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
