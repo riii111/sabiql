@@ -269,6 +269,13 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
+        KeyCode::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+            if state.ui.result_delete_operator_pending {
+                Action::RequestDeleteActiveRow
+            } else {
+                Action::ResultDeleteOperatorPending
+            }
+        }
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         KeyCode::Char('e') => Action::OpenErTablePicker,
@@ -804,6 +811,36 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
 
             assert!(matches!(result, Action::ResultScrollRight));
+        }
+
+        #[test]
+        fn d_sets_delete_operator_pending_in_row_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::ResultDeleteOperatorPending));
+        }
+
+        #[test]
+        fn second_d_requests_row_delete_when_pending() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_delete_operator_pending = true;
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::RequestDeleteActiveRow));
+        }
+
+        #[test]
+        fn d_in_scroll_mode_keeps_existing_behavior() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
