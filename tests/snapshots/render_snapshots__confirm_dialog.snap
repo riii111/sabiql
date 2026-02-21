@@ -10,14 +10,14 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│                 ╭ Confirm ──────────────────────────────────╮                │
-│                 │         No connection configured.         │                │
-│                 │      Are you sure you want to quit?       │                │
-│                 │                                           │────────────────┘
-│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │────────────────┐
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│       ╭ Confirm ─────────────────────────────────────────────────────╮       │
+│       │ No connection configured.                                    │       │
+│       │ Are you sure you want to quit?                               │       │
+│       │                                                              │───────┘
+│       │                [ Yes (Enter) ]   [ No (Esc) ]                │───────┐
+│       │                                                              │       │
+│       │                                                              │       │
+│       ╰ Enter/Y: Yes │ Esc/N: No ────────────────────────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

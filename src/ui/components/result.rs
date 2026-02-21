@@ -9,7 +9,6 @@ use super::atoms::panel_block_highlight;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
-use crate::app::input_mode::InputMode;
 use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::state::AppState;
 use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
@@ -52,7 +51,7 @@ impl ResultPane {
                     state.ui.result_horizontal_offset,
                     &state.ui.result_viewport_plan,
                     &state.ui.result_selection,
-                    if state.ui.input_mode == InputMode::CellEdit && state.cell_edit.is_active() {
+                    if state.cell_edit.is_active() {
                         Some((
                             state.cell_edit.row.unwrap_or_default(),
                             state.cell_edit.col.unwrap_or_default(),

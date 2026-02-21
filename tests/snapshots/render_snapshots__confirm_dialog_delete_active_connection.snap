@@ -8,18 +8,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│                 ╭ Delete Connection ────────────────────────╮                │
-│                 │           Delete "Production"?            │                │
-│                 │                                           │                │
-│                 │     ⚠ This is the active connection.      │                │
-│                 │         You will be disconnected.         │                │
-│                 │                                           │────────────────┘
-│                 │       This action cannot be undone.       │────────────────┐
-│                 │                                           │                │
-│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │                │
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│       ╭ Delete Connection ───────────────────────────────────────────╮       │
+│       │ Delete "Production"?                                         │       │
+│       │                                                              │       │
+│       │ ⚠ This is the active connection.                             │       │
+│       │ You will be disconnected.                                    │       │
+│       │                                                              │───────┘
+│       │ This action cannot be undone.                                │───────┐
+│       │                                                              │       │
+│       │                [ Yes (Enter) ]   [ No (Esc) ]                │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       ╰ Enter/Y: Yes │ Esc/N: No ────────────────────────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

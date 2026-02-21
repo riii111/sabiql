@@ -8,19 +8,19 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.posts      ││(select a table)                                          │
 │public.comments   ││                                                          │
 │                  ││                                                          │
-│                 ╭ Confirm UPDATE ───────────────────────────╮                │
-│                 │                 Risk: LOW                 │                │
-│                 │        Target: public.users (id=2)        │                │
-│                 │ Diff: email: bob@example.com -> new@examp │                │
-│                 │                                           │                │
-│                 │                   SQL:                    │────────────────┘
-│                 │ UPDATE "public"."users" SET "email" = 'ne │────────────────┐
-│                 │                                           │                │
-│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │                │
-│                 │                                           │                │
-│                 │                                           │                │
-│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
-│                  ││                                                          │
+│       ╭ Confirm UPDATE ──────────────────────────────────────────────╮       │
+│       │ Risk: LOW                                                    │       │
+│       │ Target: public.users (id=2)                                  │       │
+│       │ Diff: email: bob@example.com -> new@example.com              │       │
+│       │                                                              │       │
+│       │ SQL:                                                         │───────┘
+│       │ UPDATE "public"."users" SET "email" = 'new@example.com'      │───────┐
+│       │ WHERE "id" = '2';                                            │       │
+│       │                                                              │       │
+│       │                [ Yes (Enter) ]   [ No (Esc) ]                │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       ╰ Enter/Y: Yes │ Esc/N: No ────────────────────────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
