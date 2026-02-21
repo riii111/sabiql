@@ -66,6 +66,10 @@ pub enum Effect {
         dsn: String,
         query: String,
     },
+    ExecuteWrite {
+        dsn: String,
+        query: String,
+    },
 
     CacheTableInCompletionEngine {
         qualified_name: String,
