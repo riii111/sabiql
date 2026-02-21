@@ -15,13 +15,13 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ This action cannot be undone.                                │───────┘
 │       │                                                              │───────┐
-│       │                [ Yes (Enter) ]   [ No (Esc) ]                │       │
+│       │            [ Confirm (Enter) ]   [ Cancel (Esc) ]            │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       ╰ Enter/Y: Yes │ Esc/N: No ────────────────────────────────────╯       │
+│       ╰ Enter/Y: Confirm │ Esc/N: Cancel ────────────────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter/y:Yes  Esc/n:No
+Enter/y:Confirm  Esc/n:Cancel

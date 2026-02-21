@@ -681,7 +681,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Enter/y",
         key: "Enter / y",
-        desc_short: "Yes",
+        desc_short: "Confirm",
         description: "Confirm",
         action: Action::ConfirmDialogConfirm,
     },
@@ -689,7 +689,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Esc/n",
         key: "Esc / n",
-        desc_short: "No",
+        desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConfirmDialogCancel,
     },

@@ -10,7 +10,9 @@ use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
-use crate::app::write_guardrails::{ColumnDiff, WriteOperation, WritePreview, evaluate_guardrails};
+use crate::app::write_guardrails::{
+    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
+};
 use crate::app::write_update::{build_pk_pairs, build_update_sql};
 use crate::domain::{QueryResult, QuerySource};
 
@@ -289,17 +291,18 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
         Action::OpenWritePreviewConfirm(preview) => {
             state.pending_write_preview = Some((**preview).clone());
-            let diff_line = preview.diff.first().map_or_else(
+            let mut lines = Vec::new();
+            if preview.guardrail.risk_level != RiskLevel::Low {
+                lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
+            }
+            lines.push(preview.diff.first().map_or_else(
                 || "Diff: (none)".to_string(),
                 |d| format!("Diff: {}: {} -> {}", d.column, d.before, d.after),
-            );
-            let message = format!(
-                "Risk: {}\nTarget: {}\n{}\n\nSQL:\n{}",
-                preview.guardrail.risk_level.as_str(),
-                preview.target_summary.format_compact(),
-                diff_line,
-                preview.sql
-            );
+            ));
+            lines.push(String::new());
+            lines.push("SQL:".to_string());
+            lines.push(preview.sql.clone());
+            let message = lines.join("\n");
 
             state.confirm_dialog.title = "Confirm UPDATE".to_string();
             state.confirm_dialog.message = message;

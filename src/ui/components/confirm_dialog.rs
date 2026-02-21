@@ -34,7 +34,7 @@ impl ConfirmDialog {
         let max_modal_height = full_area.height.saturating_sub(2).max(8);
         let modal_height = (message_height + 6).min(max_modal_height);
 
-        let hint = " Enter/Y: Yes │ Esc/N: No ";
+        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
         let title = format!(" {} ", dialog.title);
         let (_, modal_inner) = render_modal(
             frame,
@@ -58,7 +58,7 @@ impl ConfirmDialog {
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, chunks[0]);
 
-        let buttons = "      [ Yes (Enter) ]   [ No (Esc) ]      ";
+        let buttons = "    [ Confirm (Enter) ]   [ Cancel (Esc) ]    ";
         let buttons_para = Paragraph::new(buttons)
             .style(Style::default().fg(Theme::MODAL_HINT))
             .alignment(Alignment::Center);
