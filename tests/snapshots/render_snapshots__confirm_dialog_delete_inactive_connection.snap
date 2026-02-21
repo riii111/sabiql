@@ -10,15 +10,15 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│       ╭ Delete Connection ───────────────────────────────────────────╮       │
-│       │ Delete "Staging"?                                            │       │
-│       │                                                              │       │
-│       │ This action cannot be undone.                                │───────┘
-│       │                                                              │───────┐
-│       │            [ Confirm (Enter) ]   [ Cancel (Esc) ]            │       │
-│       │                                                              │       │
-│       │                                                              │       │
-│       ╰──────────────────────────────────────────────────────────────╯       │
+│                  ││                                                          │
+│                 ╭ Delete Connection ────────────────────────╮                │
+│                 │ Delete "Staging"?                         │                │
+│                 │                                           │────────────────┘
+│                 │ This action cannot be undone.             │────────────────┐
+│                 │                                           │                │
+│                 │                                           │                │
+│                 ╰ Enter/Y: Confirm │ Esc/N: Cancel ─────────╯                │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
