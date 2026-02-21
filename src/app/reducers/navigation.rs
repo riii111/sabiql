@@ -153,6 +153,13 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
         .table_detail
         .as_ref()
         .ok_or_else(|| "Table metadata not loaded".to_string())?;
+
+    if table_detail.schema != state.query.pagination.schema
+        || table_detail.name != state.query.pagination.table
+    {
+        return Err("Table metadata does not match current preview target".to_string());
+    }
+
     let pk_cols = table_detail
         .primary_key
         .as_ref()
@@ -1631,6 +1638,60 @@ mod tests {
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_none());
+        }
+    }
+
+    mod cell_edit_entry_guardrails {
+        use super::*;
+        use crate::domain::{QueryResult, QuerySource, Table};
+        use std::sync::Arc;
+
+        fn preview_state_with_selection() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.query.current_result = Some(Arc::new(QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string(), "name".to_string()],
+                rows: vec![vec!["1".to_string(), "alice".to_string()]],
+                row_count: 1,
+                execution_time_ms: 1,
+                executed_at: Instant::now(),
+                source: QuerySource::Preview,
+                error: None,
+            }));
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+            state
+        }
+
+        #[test]
+        fn stale_table_detail_blocks_cell_edit_entry() {
+            let mut state = preview_state_with_selection();
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "posts".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            });
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                    .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Table metadata does not match current preview target")
+            );
         }
     }
 }

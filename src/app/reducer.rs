@@ -80,6 +80,7 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
+                    state.cache.table_detail = None;
                     state.ui.input_mode = InputMode::Normal;
                     state.cell_edit.clear();
                     state.pending_write_preview = None;
@@ -117,6 +118,7 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
+                    state.cache.table_detail = None;
                     state.cell_edit.clear();
                     state.pending_write_preview = None;
 
@@ -594,6 +596,70 @@ mod tests {
             reduce(&mut state, Action::ConnectionErrorCopied, now);
 
             assert!(state.connection_error.is_copied_visible_at(now));
+        }
+    }
+
+    mod confirm_selection_safety {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, Table, TableSummary};
+
+        fn stale_table_detail() -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: "old_table".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: None,
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        fn users_metadata(now: Instant) -> DatabaseMetadata {
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    Some(100),
+                    false,
+                )],
+                fetched_at: now,
+            }
+        }
+
+        #[test]
+        fn confirm_selection_in_normal_mode_clears_stale_table_detail() {
+            let now = Instant::now();
+            let mut state = create_test_state();
+            state.cache.metadata = Some(users_metadata(now));
+            state.cache.table_detail = Some(stale_table_detail());
+            state.ui.input_mode = InputMode::Normal;
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.set_explorer_selection(Some(0));
+
+            let _ = reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert!(state.cache.table_detail.is_none());
+        }
+
+        #[test]
+        fn confirm_selection_in_table_picker_mode_clears_stale_table_detail() {
+            let now = Instant::now();
+            let mut state = create_test_state();
+            state.cache.metadata = Some(users_metadata(now));
+            state.cache.table_detail = Some(stale_table_detail());
+            state.ui.input_mode = InputMode::TablePicker;
+            state.ui.picker_selected = 0;
+
+            let _ = reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert!(state.cache.table_detail.is_none());
         }
     }
 

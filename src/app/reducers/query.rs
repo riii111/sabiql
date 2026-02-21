@@ -58,6 +58,13 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         .table_detail
         .as_ref()
         .ok_or_else(|| "Table metadata not loaded".to_string())?;
+
+    if table_detail.schema != state.query.pagination.schema
+        || table_detail.name != state.query.pagination.table
+    {
+        return Err("Table metadata does not match current preview target".to_string());
+    }
+
     let pk_cols = table_detail
         .primary_key
         .as_ref()
@@ -282,6 +289,13 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state
                     .messages
                     .set_error_at("`:w` is only available in Cell Edit mode".to_string(), now);
+                return Some(vec![]);
+            }
+            if state.query.status != QueryStatus::Idle {
+                state.messages.set_error_at(
+                    "Write is unavailable while query is running".to_string(),
+                    now,
+                );
                 return Some(vec![]);
             }
 
@@ -825,6 +839,34 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("`:w` is only available in Cell Edit mode")
+            );
+        }
+
+        #[test]
+        fn write_requires_idle_query_status() {
+            let mut state = editable_state();
+            state.query.status = QueryStatus::Running;
+
+            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            assert!(effects.unwrap().is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Write is unavailable while query is running")
+            );
+        }
+
+        #[test]
+        fn write_rejects_stale_table_detail() {
+            let mut state = editable_state();
+            if let Some(detail) = state.cache.table_detail.as_mut() {
+                detail.name = "posts".to_string();
+            }
+
+            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            assert!(effects.unwrap().is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Table metadata does not match current preview target")
             );
         }
 
