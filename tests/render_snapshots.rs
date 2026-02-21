@@ -808,7 +808,8 @@ fn confirm_dialog_update_preview() {
     state.cache.state = MetadataState::Loaded;
     state.ui.input_mode = InputMode::ConfirmDialog;
     state.confirm_dialog.title = "Confirm UPDATE".to_string();
-    state.confirm_dialog.message = "Risk: LOW\nTarget: public.users (id=2)\nDiff: email: bob@example.com -> new@example.com\n\nSQL:\nUPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';".to_string();
+    state.confirm_dialog.message =
+        "Diff: email: bob@example.com -> new@example.com\n\nSQL:\nUPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';".to_string();
     state.confirm_dialog.on_confirm = Action::ExecuteWrite(
         "UPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';"
             .to_string(),
