@@ -28,7 +28,7 @@ pub fn build_update_sql(
         .join(" AND ");
 
     format!(
-        "UPDATE {}.{} SET {} = {} WHERE {};",
+        "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
         quote_ident(schema),
         quote_ident(table),
         quote_ident(column),
@@ -82,7 +82,7 @@ mod tests {
 
         assert_eq!(
             sql,
-            "UPDATE \"public\".\"users\" SET \"name\" = 'O''Reilly' WHERE \"id\" = '42';"
+            "UPDATE \"public\".\"users\"\nSET \"name\" = 'O''Reilly'\nWHERE \"id\" = '42';"
         );
     }
 
@@ -101,7 +101,7 @@ mod tests {
 
         assert_eq!(
             sql,
-            "UPDATE \"s\".\"t\" SET \"name\" = 'new' WHERE \"id\" = '1' AND \"tenant_id\" = '7';"
+            "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
         );
     }
 
