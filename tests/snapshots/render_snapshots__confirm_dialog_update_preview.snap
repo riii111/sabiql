@@ -9,16 +9,16 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.comments   ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
-│       ╭ Confirm UPDATE: users ───────────────────────────────────────╮       │
-│       │ email: bob@example.com -> new@example.com                    │       │
-│       │                                                              │       │
-│       │ UPDATE "public"."users" SET "email" = 'new@example.com'      │       │
-│       │ WHERE "id" = '2';                                            │───────┘
-│       │                                                              │───────┐
-│       │            [ Confirm (Enter) ]   [ Cancel (Esc) ]            │       │
-│       │                                                              │       │
-│       │                                                              │       │
-│       ╰──────────────────────────────────────────────────────────────╯       │
+│                  ││                                                          │
+│                ╭ Confirm UPDATE: users ──────────────────────╮               │
+│                │ email: bob@example.com -> new@example.com   │               │
+│                │                                             │               │
+│                │ UPDATE "public"."users"                     │───────────────┘
+│                │ SET "email" = 'new@example.com'             │───────────────┐
+│                │ WHERE "id" = '2';                           │               │
+│                │                                             │               │
+│                │                                             │               │
+│                ╰ Enter/Y: Confirm │ Esc/N: Cancel ───────────╯               │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

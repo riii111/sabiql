@@ -809,7 +809,7 @@ fn confirm_dialog_update_preview() {
     state.ui.input_mode = InputMode::ConfirmDialog;
     state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
     state.confirm_dialog.message =
-        "email: bob@example.com -> new@example.com\n\nUPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';".to_string();
+        "email: bob@example.com -> new@example.com\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
     state.confirm_dialog.on_confirm = Action::ExecuteWrite(
         "UPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';"
             .to_string(),

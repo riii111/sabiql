@@ -110,6 +110,19 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     Ok(preview)
 }
 
+fn format_update_sql_for_modal(sql: &str) -> String {
+    let Some((update_head, set_tail)) = sql.split_once(" SET ") else {
+        return sql.to_string();
+    };
+
+    match set_tail.rsplit_once(" WHERE ") {
+        Some((set_expr, where_expr)) => {
+            format!("{}\nSET {}\nWHERE {}", update_head, set_expr, where_expr)
+        }
+        None => format!("{}\nSET {}", update_head, set_tail),
+    }
+}
+
 /// Handles query execution and command line actions.
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -300,7 +313,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 |d| format!("{}: {} -> {}", d.column, d.before, d.after),
             ));
             lines.push(String::new());
-            lines.push(preview.sql.clone());
+            lines.push(format_update_sql_for_modal(&preview.sql));
             let message = lines.join("\n");
 
             state.confirm_dialog.title =
@@ -876,6 +889,28 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
             );
+        }
+    }
+
+    mod sql_preview_formatting {
+        use super::format_update_sql_for_modal;
+
+        #[test]
+        fn splits_update_into_multiline_blocks() {
+            let sql =
+                "UPDATE \"public\".\"users\" SET \"email\" = 'new@example.com' WHERE \"id\" = '2';";
+            let formatted = format_update_sql_for_modal(sql);
+            assert_eq!(
+                formatted,
+                "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
+            );
+        }
+
+        #[test]
+        fn returns_original_when_not_update_statement() {
+            let sql = "DELETE FROM \"public\".\"users\" WHERE \"id\" = '2';";
+            let formatted = format_update_sql_for_modal(sql);
+            assert_eq!(formatted, sql);
         }
     }
 }
