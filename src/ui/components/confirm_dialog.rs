@@ -10,6 +10,13 @@ use crate::ui::theme::Theme;
 pub struct ConfirmDialog;
 
 impl ConfirmDialog {
+    fn escape_diff_value(value: &str) -> String {
+        value
+            .replace('\\', "\\\\")
+            .replace('\"', "\\\"")
+            .replace('\n', "\\n")
+    }
+
     fn wrapped_line_count(text: &str, width: u16) -> u16 {
         if width == 0 {
             return 0;
@@ -84,8 +91,8 @@ impl ConfirmDialog {
             Style::default().fg(Theme::TEXT_SECONDARY),
         )]));
         for diff in &preview.diff {
-            let before = format!("\"{}\"", diff.before);
-            let after = format!("\"{}\"", diff.after);
+            let before = format!("\"{}\"", Self::escape_diff_value(&diff.before));
+            let after = format!("\"{}\"", Self::escape_diff_value(&diff.after));
             content_lines.push(Line::from(vec![
                 Span::styled(
                     format!("  {}: ", diff.column),
@@ -104,12 +111,7 @@ impl ConfirmDialog {
             "SQL Preview",
             Style::default().fg(Theme::TEXT_SECONDARY),
         )]));
-        for sql_line in state
-            .confirm_dialog
-            .message
-            .lines()
-            .skip_while(|l| !l.starts_with("UPDATE"))
-        {
+        for sql_line in preview.sql.lines() {
             let indented = format!("  {}", sql_line);
             content_lines.push(Self::highlight_sql_line(&indented));
         }
@@ -190,5 +192,16 @@ impl ConfirmDialog {
         }
 
         Line::from(spans)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConfirmDialog;
+
+    #[test]
+    fn escape_diff_value_escapes_control_chars() {
+        let escaped = ConfirmDialog::escape_diff_value("a\\b\"c\nd");
+        assert_eq!(escaped, "a\\\\b\\\"c\\nd");
     }
 }
