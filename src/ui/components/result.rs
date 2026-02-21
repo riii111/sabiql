@@ -9,6 +9,7 @@ use super::atoms::panel_block_highlight;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
+use crate::app::input_mode::InputMode;
 use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::state::AppState;
 use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
@@ -51,6 +52,15 @@ impl ResultPane {
                     state.ui.result_horizontal_offset,
                     &state.ui.result_viewport_plan,
                     &state.ui.result_selection,
+                    if state.ui.input_mode == InputMode::CellEdit && state.cell_edit.is_active() {
+                        Some((
+                            state.cell_edit.row.unwrap_or_default(),
+                            state.cell_edit.col.unwrap_or_default(),
+                            state.cell_edit.draft_value.as_str(),
+                        ))
+                    } else {
+                        None
+                    },
                 )
             }
         } else {
@@ -166,6 +176,7 @@ impl ResultPane {
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
         selection: &ResultSelection,
+        editing_cell: Option<(usize, usize, &str)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -253,10 +264,28 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let val = row.get(orig_idx).map(|s| s.as_str()).unwrap_or("");
-                        let display = truncate_cell(val, col_width as usize);
+                        let mut val = row
+                            .get(orig_idx)
+                            .map(|s| s.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let is_editing_cell = editing_cell
+                            .is_some_and(|(er, ec, _)| er == abs_row_idx && ec == orig_idx);
+                        if let Some((_, _, draft)) = editing_cell
+                            && is_editing_cell
+                        {
+                            val = format!("{}█", draft);
+                        }
+
+                        let display = truncate_cell(&val, col_width as usize);
                         let mut cell = Cell::from(display);
-                        if is_active_row && active_cell == Some(orig_idx) {
+                        if is_editing_cell {
+                            cell = cell.style(
+                                Style::default()
+                                    .bg(Theme::RESULT_CELL_ACTIVE_BG)
+                                    .fg(Color::Yellow),
+                            );
+                        } else if is_active_row && active_cell == Some(orig_idx) {
                             cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
                         }
                         cell

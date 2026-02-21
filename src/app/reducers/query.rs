@@ -446,6 +446,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 mod tests {
     use super::*;
     use crate::app::query_execution::PaginationState;
+    use crate::domain::{Column, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming};
 
     fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
@@ -478,6 +479,69 @@ mod tests {
             source: QuerySource::Adhoc,
             error: None,
         })
+    }
+
+    fn editable_preview_result() -> Arc<QueryResult> {
+        Arc::new(QueryResult {
+            query: "SELECT * FROM users".to_string(),
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows: vec![vec!["1".to_string(), "Alice".to_string()]],
+            row_count: 1,
+            execution_time_ms: 10,
+            executed_at: Instant::now(),
+            source: QuerySource::Preview,
+            error: None,
+        })
+    }
+
+    fn users_table_detail() -> Table {
+        Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            owner: None,
+            columns: vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "int".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "name".to_string(),
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            foreign_keys: vec![],
+            indexes: vec![Index {
+                name: "users_pkey".to_string(),
+                columns: vec!["id".to_string()],
+                is_unique: true,
+                is_primary: true,
+                index_type: IndexType::BTree,
+                definition: None,
+            }],
+            rls: None,
+            triggers: vec![Trigger {
+                name: "trg".to_string(),
+                timing: TriggerTiming::After,
+                events: vec![TriggerEvent::Update],
+                function_name: "f".to_string(),
+                security_definer: false,
+            }],
+            row_count_estimate: None,
+            comment: None,
+        }
     }
 
     mod next_page {
@@ -714,6 +778,101 @@ mod tests {
             assert_eq!(state.ui.result_selection.mode(), ResultNavMode::Scroll);
             assert_eq!(state.ui.result_scroll_offset, 0);
             assert_eq!(state.ui.result_horizontal_offset, 0);
+        }
+    }
+
+    mod write_flow {
+        use super::*;
+
+        fn editable_state() -> AppState {
+            let mut state = create_test_state();
+            state.query.current_result = Some(editable_preview_result());
+            state.cache.table_detail = Some(users_table_detail());
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.ui.input_mode = InputMode::CellEdit;
+            state.cell_edit.begin(0, 1, "Alice".to_string());
+            state.cell_edit.draft_value = "Bob".to_string();
+            state
+        }
+
+        #[test]
+        fn write_requires_cell_edit_mode() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::Normal;
+
+            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            assert!(effects.unwrap().is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("`:w` is only available in Cell Edit mode")
+            );
+        }
+
+        #[test]
+        fn submit_write_opens_confirm_dialog() {
+            let mut state = editable_state();
+
+            let effects =
+                reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            assert_eq!(effects.len(), 1);
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {:?}", other),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert!(preview.sql.contains("UPDATE"));
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn execute_write_success_refreshes_preview_page() {
+            let mut state = editable_state();
+            state.query.pagination.current_page = 2;
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded { affected_rows: 1 },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::ExecutePreview {
+                    offset,
+                    target_page,
+                    ..
+                } => {
+                    assert_eq!(*offset, 2 * PREVIEW_PAGE_SIZE);
+                    assert_eq!(*target_page, 2);
+                }
+                other => panic!("expected ExecutePreview, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn execute_write_with_non_one_row_sets_error() {
+            let mut state = editable_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded { affected_rows: 0 },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("UPDATE expected 1 row, but affected 0 rows")
+            );
         }
     }
 }

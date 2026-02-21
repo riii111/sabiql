@@ -848,6 +848,26 @@ mod tests {
             assert!(matches!(result, Action::OpenErTablePicker));
         }
 
+        #[test]
+        fn i_key_enters_cell_edit_when_cell_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+
+            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+
+            assert!(matches!(result, Action::ResultEnterCellEdit));
+        }
+
+        #[test]
+        fn i_key_is_noop_without_cell_active() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
         fn inspector_focused_state() -> AppState {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Inspector;

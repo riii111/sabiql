@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
+│public.posts      ││(select a table)                                          │
+│public.comments   ││                                                          │
+│                  ││                                                          │
+│                 ╭ Confirm UPDATE ───────────────────────────╮                │
+│                 │                 Risk: LOW                 │                │
+│                 │        Target: public.users (id=2)        │                │
+│                 │ Diff: email: bob@example.com -> new@examp │                │
+│                 │                                           │                │
+│                 │                   SQL:                    │────────────────┘
+│                 │ UPDATE "public"."users" SET "email" = 'ne │────────────────┐
+│                 │                                           │                │
+│                 │       [ Yes (Enter) ]   [ No (Esc) ]      │                │
+│                 │                                           │                │
+│                 │                                           │                │
+│                 ╰ Enter/Y: Yes │ Esc/N: No ─────────────────╯                │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+Enter/y:Yes  Esc/n:No
