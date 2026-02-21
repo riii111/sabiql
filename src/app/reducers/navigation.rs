@@ -12,6 +12,8 @@ use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::app::write_update::build_pk_pairs;
+use crate::domain::QuerySource;
 
 fn result_row_count(state: &AppState) -> usize {
     state
@@ -116,6 +118,71 @@ fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
+fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
+    if state.query.history_index.is_some() {
+        return Err("Editing is unavailable while browsing history".to_string());
+    }
+
+    let result = state
+        .query
+        .current_result
+        .as_ref()
+        .ok_or_else(|| "No result to edit".to_string())?;
+
+    if result.source != QuerySource::Preview || result.is_error() {
+        return Err("Only Preview results are editable".to_string());
+    }
+
+    if state.query.pagination.schema.is_empty() || state.query.pagination.table.is_empty() {
+        return Err("Preview target table is unknown".to_string());
+    }
+
+    let row_idx = state
+        .ui
+        .result_selection
+        .row()
+        .ok_or_else(|| "No active row".to_string())?;
+    let col_idx = state
+        .ui
+        .result_selection
+        .cell()
+        .ok_or_else(|| "No active cell".to_string())?;
+
+    let table_detail = state
+        .cache
+        .table_detail
+        .as_ref()
+        .ok_or_else(|| "Table metadata not loaded".to_string())?;
+    let pk_cols = table_detail
+        .primary_key
+        .as_ref()
+        .filter(|cols| !cols.is_empty())
+        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
+
+    let column_name = result
+        .columns
+        .get(col_idx)
+        .ok_or_else(|| "Column index out of bounds".to_string())?;
+    if pk_cols.iter().any(|pk| pk == column_name) {
+        return Err("Primary key columns are read-only".to_string());
+    }
+
+    let row = result
+        .rows
+        .get(row_idx)
+        .ok_or_else(|| "Row index out of bounds".to_string())?;
+    if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
+        return Err("Stable key columns are not present in current result".to_string());
+    }
+
+    let cell_value = row
+        .get(col_idx)
+        .ok_or_else(|| "Cell index out of bounds".to_string())?
+        .clone();
+
+    Ok((row_idx, col_idx, cell_value))
+}
+
 /// Handles focus, scroll, selection, filter, and command line actions.
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_navigation(
@@ -127,6 +194,11 @@ pub fn reduce_navigation(
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
                 state.ui.result_selection.reset();
+                state.cell_edit.clear();
+                state.pending_write_preview = None;
+                if state.ui.input_mode == InputMode::CellEdit {
+                    state.ui.input_mode = InputMode::Normal;
+                }
             }
             state.ui.focused_pane = *pane;
             Some(vec![])
@@ -136,6 +208,8 @@ pub fn reduce_navigation(
             state.toggle_focus();
             if was_focus {
                 state.ui.result_selection.reset();
+                state.cell_edit.clear();
+                state.pending_write_preview = None;
             }
             Some(vec![])
         }
@@ -167,6 +241,11 @@ pub fn reduce_navigation(
                 state.command_line_input.push_str(&clean);
                 Some(vec![])
             }
+            InputMode::CellEdit => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.cell_edit.draft_value.push_str(&clean);
+                Some(vec![])
+            }
             _ => None,
         },
 
@@ -184,12 +263,14 @@ pub fn reduce_navigation(
 
         // Command Line
         Action::EnterCommandLine => {
+            state.ui.command_line_return_mode = state.ui.input_mode;
             state.ui.input_mode = InputMode::CommandLine;
             state.command_line_input.clear();
             Some(vec![])
         }
         Action::ExitCommandLine => {
-            state.ui.input_mode = InputMode::Normal;
+            state.ui.input_mode = state.ui.command_line_return_mode;
+            state.ui.command_line_return_mode = InputMode::Normal;
             Some(vec![])
         }
         Action::CommandLineInput(c) => {
@@ -576,10 +657,14 @@ pub fn reduce_navigation(
         }
         Action::ResultExitToRowActive => {
             state.ui.result_selection.exit_to_row();
+            state.cell_edit.clear();
+            state.pending_write_preview = None;
             Some(vec![])
         }
         Action::ResultExitToScroll => {
             state.ui.result_selection.reset();
+            state.cell_edit.clear();
+            state.pending_write_preview = None;
             Some(vec![])
         }
         Action::ResultCellLeft => {
@@ -634,6 +719,32 @@ pub fn reduce_navigation(
             state.messages.set_success_at("Copied!".into(), now);
             Some(vec![])
         }
+        Action::ResultEnterCellEdit => match editable_cell_context(state) {
+            Ok((row_idx, col_idx, value)) => {
+                state.cell_edit.begin(row_idx, col_idx, value);
+                state.pending_write_preview = None;
+                state.ui.input_mode = InputMode::CellEdit;
+                Some(vec![])
+            }
+            Err(reason) => {
+                state.messages.set_error_at(reason, now);
+                Some(vec![])
+            }
+        },
+        Action::ResultCancelCellEdit => {
+            state.cell_edit.clear();
+            state.pending_write_preview = None;
+            state.ui.input_mode = InputMode::Normal;
+            Some(vec![])
+        }
+        Action::ResultCellEditInput(c) => {
+            state.cell_edit.draft_value.push(*c);
+            Some(vec![])
+        }
+        Action::ResultCellEditBackspace => {
+            state.cell_edit.draft_value.pop();
+            Some(vec![])
+        }
         Action::CopyFailed(msg) => {
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
@@ -641,6 +752,8 @@ pub fn reduce_navigation(
 
         Action::ResultNextPage | Action::ResultPrevPage => {
             state.ui.result_selection.reset();
+            state.cell_edit.clear();
+            state.pending_write_preview = None;
             None // Let the query reducer handle the actual page change
         }
 

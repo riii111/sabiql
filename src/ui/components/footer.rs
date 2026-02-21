@@ -10,9 +10,10 @@ use crate::app::er_state::ErStatus;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
-    COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS,
-    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
-    HELP_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS, idx,
+    CELL_EDIT_KEYS, COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS,
+    CONNECTION_SELECTOR_KEYS, CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_KEYS,
+    FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
+    TABLE_PICKER_KEYS, idx,
 };
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -70,6 +71,7 @@ impl Footer {
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     vec![
+                        RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::CELL_NAV].as_hint(),
                         RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
@@ -162,6 +164,13 @@ impl Footer {
             InputMode::CommandLine => vec![
                 OVERLAY_KEYS[idx::overlay::ENTER_EXECUTE].as_hint(),
                 OVERLAY_KEYS[idx::overlay::ESC_CANCEL].as_hint(),
+            ],
+            InputMode::CellEdit => vec![
+                CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
+                CELL_EDIT_KEYS[idx::cell_edit::TYPE].as_hint(),
+                GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                CELL_EDIT_KEYS[idx::cell_edit::ESC_CANCEL].as_hint(),
+                GLOBAL_KEYS[idx::global::QUIT].as_hint(),
             ],
             InputMode::TablePicker => vec![
                 TABLE_PICKER_KEYS[idx::table_picker::ENTER_SELECT].as_hint(),

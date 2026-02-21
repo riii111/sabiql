@@ -22,6 +22,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         InputMode::TablePicker
         | InputMode::ErTablePicker
         | InputMode::CommandLine
+        | InputMode::CellEdit
         | InputMode::ConnectionSetup
         | InputMode::SqlModal => Action::Paste(text),
         _ => Action::None,
@@ -32,6 +33,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     match state.ui.input_mode {
         InputMode::Normal => handle_normal_mode(key, state),
         InputMode::CommandLine => handle_command_line_mode(key),
+        InputMode::CellEdit => handle_cell_edit_keys(key),
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
         InputMode::Help => handle_help_keys(key),
@@ -57,6 +59,16 @@ fn handle_connection_selector_keys(key: KeyEvent) -> Action {
         KeyCode::Char('n') => Action::OpenConnectionSetup,
         KeyCode::Char('e') => Action::RequestEditSelectedConnection,
         KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
+        _ => Action::None,
+    }
+}
+
+fn handle_cell_edit_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::ResultCancelCellEdit,
+        KeyCode::Backspace => Action::ResultCellEditBackspace,
+        KeyCode::Char(':') => Action::EnterCommandLine,
+        KeyCode::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
 }
@@ -268,6 +280,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
 
         KeyCode::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
+        }
+        KeyCode::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
+            Action::ResultEnterCellEdit
         }
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,

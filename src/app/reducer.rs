@@ -81,6 +81,8 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
                     state.ui.input_mode = InputMode::Normal;
+                    state.cell_edit.clear();
+                    state.pending_write_preview = None;
 
                     state.cache.selection_generation += 1;
                     let current_gen = state.cache.selection_generation;
@@ -115,6 +117,8 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     let schema = table.schema.clone();
                     let table_name = table.name.clone();
                     state.cache.current_table = Some(table.qualified_name());
+                    state.cell_edit.clear();
+                    state.pending_write_preview = None;
 
                     state.cache.selection_generation += 1;
                     let current_gen = state.cache.selection_generation;
