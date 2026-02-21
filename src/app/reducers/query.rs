@@ -605,4 +605,117 @@ mod tests {
             assert_eq!(state.ui.result_horizontal_offset, 0);
         }
     }
+
+    mod delete_row {
+        use super::*;
+
+        #[test]
+        fn execute_delete_row_emits_effect() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteDeleteRow {
+                    sql: "DELETE FROM public.users WHERE id = 1;".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 9,
+                    target_page: 2,
+                    target_row: Some(10),
+                },
+                now,
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::ExecuteDeleteRow {
+                    sql,
+                    generation,
+                    target_page,
+                    target_row,
+                    ..
+                } => {
+                    assert!(sql.contains("DELETE FROM public.users"));
+                    assert_eq!(*generation, 9);
+                    assert_eq!(*target_page, 2);
+                    assert_eq!(*target_row, Some(10));
+                }
+                other => panic!("expected ExecuteDeleteRow, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn delete_row_completed_sets_refresh_and_success_message() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::DeleteRowCompleted {
+                    affected_rows: 1,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 5,
+                    target_page: 1,
+                    target_row: Some(499),
+                },
+                now,
+            )
+            .unwrap();
+
+            assert_eq!(state.query.pending_row_selection_after_refresh, Some(499));
+            assert!(!state.query.clear_row_selection_after_refresh);
+            assert_eq!(
+                state.messages.last_success.as_deref(),
+                Some("Deleted 1 row(s)")
+            );
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::ExecutePreview { .. }));
+        }
+
+        #[test]
+        fn query_completed_restores_pending_row_selection() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.query.pending_row_selection_after_refresh = Some(1000);
+            let now = Instant::now();
+
+            let _ = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(3),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                now,
+            );
+
+            assert_eq!(state.ui.result_selection.row(), Some(2));
+            assert_eq!(state.query.pending_row_selection_after_refresh, None);
+        }
+
+        #[test]
+        fn query_completed_clears_selection_when_requested() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.ui.result_selection.enter_row(0);
+            state.query.clear_row_selection_after_refresh = true;
+            let now = Instant::now();
+
+            let _ = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(2),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                now,
+            );
+
+            assert_eq!(state.ui.result_selection.row(), None);
+            assert!(!state.query.clear_row_selection_after_refresh);
+        }
+    }
 }

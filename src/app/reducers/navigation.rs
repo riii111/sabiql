@@ -1694,4 +1694,144 @@ mod tests {
             assert!(state.messages.last_error.is_none());
         }
     }
+
+    mod row_delete {
+        use super::*;
+        use crate::domain::{Column, QueryResult, Table};
+        use std::sync::Arc;
+
+        fn base_state(pk: Option<Vec<&str>>, rows: Vec<Vec<&str>>, current_page: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.cache.selection_generation = 7;
+            state.query.pagination.current_page = current_page;
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.query.current_result = Some(Arc::new(QueryResult {
+                query: "SELECT * FROM public.users".to_string(),
+                columns: vec!["id".to_string(), "name".to_string()],
+                row_count: rows.len(),
+                rows: rows
+                    .into_iter()
+                    .map(|r| r.into_iter().map(|v| v.to_string()).collect())
+                    .collect(),
+                execution_time_ms: 1,
+                executed_at: Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+            }));
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![Column {
+                    name: "id".to_string(),
+                    data_type: "integer".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: pk.map(|cols| cols.into_iter().map(|c| c.to_string()).collect()),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            });
+            state
+        }
+
+        #[test]
+        fn d_operator_sets_pending_in_row_active() {
+            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+
+            reduce_navigation(&mut state, &Action::ResultDeleteOperatorPending, Instant::now());
+
+            assert!(state.ui.result_delete_operator_pending);
+        }
+
+        #[test]
+        fn any_other_action_clears_pending_state() {
+            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_delete_operator_pending = true;
+
+            reduce_navigation(&mut state, &Action::ResultScrollDown, Instant::now());
+
+            assert!(!state.ui.result_delete_operator_pending);
+        }
+
+        #[test]
+        fn request_delete_builds_confirm_dialog_with_preview_sql() {
+            let mut state = base_state(
+                Some(vec!["id"]),
+                vec![vec!["1", "alice"], vec!["2", "bob"]],
+                0,
+            );
+            state.ui.result_selection.enter_row(1);
+
+            reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.confirm_dialog.title, "Delete Row");
+            match &state.confirm_dialog.on_confirm {
+                Action::ExecuteDeleteRow {
+                    sql,
+                    schema,
+                    table,
+                    generation,
+                    target_page,
+                    target_row,
+                } => {
+                    assert_eq!(schema, "public");
+                    assert_eq!(table, "users");
+                    assert_eq!(*generation, 7);
+                    assert_eq!(*target_page, 0);
+                    assert_eq!(*target_row, Some(0));
+                    assert_eq!(sql, "DELETE FROM \"public\".\"users\" WHERE \"id\" = '2';");
+                }
+                other => panic!("expected ExecuteDeleteRow, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn request_delete_without_pk_sets_error_and_keeps_mode() {
+            let mut state = base_state(Some(vec![]), vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+
+            reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state
+                .messages
+                .last_error
+                .as_ref()
+                .is_some_and(|m| m.contains("PRIMARY KEY")));
+        }
+
+        #[test]
+        fn request_delete_on_single_row_first_page_clears_selection_after_refresh() {
+            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+
+            reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now());
+
+            match &state.confirm_dialog.on_confirm {
+                Action::ExecuteDeleteRow {
+                    target_page,
+                    target_row,
+                    ..
+                } => {
+                    assert_eq!(*target_page, 0);
+                    assert_eq!(*target_row, None);
+                }
+                other => panic!("expected ExecuteDeleteRow, got {:?}", other),
+            }
+        }
+    }
 }

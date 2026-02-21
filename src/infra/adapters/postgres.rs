@@ -1409,6 +1409,22 @@ mod tests {
         }
     }
 
+    mod affected_rows {
+        use super::parse_affected_rows;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("DELETE 1", 1)]
+        #[case("UPDATE 5", 5)]
+        #[case("INSERT 0 3", 3)]
+        #[case("NOTICE: something\nDELETE 2", 2)]
+        #[case("", 0)]
+        #[case("SELECT 1", 0)]
+        fn parse_returns_expected(#[case] output: &str, #[case] expected: usize) {
+            assert_eq!(parse_affected_rows(output), expected);
+        }
+    }
+
     mod json_parse_errors {
         use super::*;
 
