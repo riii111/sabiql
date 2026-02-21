@@ -226,6 +226,23 @@ pub enum Action {
         generation: u64,
     },
     ExecuteAdhoc(String),
+    ExecuteDeleteRow {
+        sql: String,
+        schema: String,
+        table: String,
+        generation: u64,
+        target_page: usize,
+        target_row: Option<usize>,
+    },
+    DeleteRowCompleted {
+        affected_rows: usize,
+        schema: String,
+        table: String,
+        generation: u64,
+        target_page: usize,
+        target_row: Option<usize>,
+    },
+    DeleteRowFailed(String),
     QueryCompleted {
         result: Arc<QueryResult>,
         generation: u64,
@@ -255,6 +272,8 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
+    ResultDeleteOperatorPending,
+    RequestDeleteActiveRow,
     CellCopied,
     CopyFailed(String),
 

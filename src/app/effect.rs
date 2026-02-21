@@ -66,6 +66,15 @@ pub enum Effect {
         dsn: String,
         query: String,
     },
+    ExecuteDeleteRow {
+        dsn: String,
+        sql: String,
+        schema: String,
+        table: String,
+        generation: u64,
+        target_page: usize,
+        target_row: Option<usize>,
+    },
 
     CacheTableInCompletionEngine {
         qualified_name: String,

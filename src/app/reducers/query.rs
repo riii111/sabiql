@@ -50,6 +50,25 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
 
                 state.query.current_result = Some(Arc::clone(result));
+
+                if result.source == QuerySource::Preview {
+                    if state.query.clear_row_selection_after_refresh {
+                        state.ui.result_selection.reset();
+                        state.query.clear_row_selection_after_refresh = false;
+                        state.query.pending_row_selection_after_refresh = None;
+                    } else if let Some(row) = state.query.pending_row_selection_after_refresh.take()
+                    {
+                        if !result.rows.is_empty() {
+                            let clamped = row.min(result.rows.len() - 1);
+                            state.ui.result_selection.enter_row(clamped);
+
+                            let visible = state.result_visible_rows();
+                            if visible > 0 && clamped >= visible {
+                                state.ui.result_scroll_offset = clamped - visible + 1;
+                            }
+                        }
+                    }
+                }
             }
             Some(vec![])
         }
@@ -71,6 +90,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     ));
                     state.query.current_result = Some(error_result);
                 }
+                state.query.pending_row_selection_after_refresh = None;
+                state.query.clear_row_selection_after_refresh = false;
             }
             Some(vec![])
         }
@@ -162,6 +183,82 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             } else {
                 Some(vec![])
             }
+        }
+
+        Action::ExecuteDeleteRow {
+            sql,
+            schema,
+            table,
+            generation,
+            target_page,
+            target_row,
+        } => {
+            if let Some(dsn) = &state.runtime.dsn {
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(now);
+                Some(vec![Effect::ExecuteDeleteRow {
+                    dsn: dsn.clone(),
+                    sql: sql.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    generation: *generation,
+                    target_page: *target_page,
+                    target_row: *target_row,
+                }])
+            } else {
+                Some(vec![])
+            }
+        }
+
+        Action::DeleteRowCompleted {
+            affected_rows,
+            schema,
+            table,
+            generation,
+            target_page,
+            target_row,
+        } => {
+            state
+                .messages
+                .set_success_at(format!("Deleted {} row(s)", affected_rows), now);
+
+            if let Some(row) = target_row {
+                state.query.pending_row_selection_after_refresh = Some(*row);
+                state.query.clear_row_selection_after_refresh = false;
+            } else {
+                state.query.pending_row_selection_after_refresh = None;
+                state.query.clear_row_selection_after_refresh = true;
+            }
+
+            if let Some(dsn) = &state.runtime.dsn {
+                state.query.status = QueryStatus::Running;
+                state.query.start_time = Some(now);
+                state.query.pagination.schema = schema.clone();
+                state.query.pagination.table = table.clone();
+                state.query.pagination.reached_end = false;
+                Some(vec![Effect::ExecutePreview {
+                    dsn: dsn.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    generation: *generation,
+                    limit: PREVIEW_PAGE_SIZE,
+                    offset: target_page * PREVIEW_PAGE_SIZE,
+                    target_page: *target_page,
+                }])
+            } else {
+                state.query.status = QueryStatus::Idle;
+                state.query.start_time = None;
+                Some(vec![])
+            }
+        }
+
+        Action::DeleteRowFailed(error) => {
+            state.query.status = QueryStatus::Idle;
+            state.query.start_time = None;
+            state.messages.set_error_at(error.clone(), now);
+            state.query.pending_row_selection_after_refresh = None;
+            state.query.clear_row_selection_after_refresh = false;
+            Some(vec![])
         }
 
         Action::ResultNextPage => {

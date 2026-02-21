@@ -59,4 +59,10 @@ impl QueryExecutor for MySqlAdapter {
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
+
+    async fn execute_write(&self, _dsn: &str, _query: &str) -> Result<usize, MetadataError> {
+        Err(MetadataError::ConnectionFailed(
+            "MySQL adapter not yet implemented".to_string(),
+        ))
+    }
 }
