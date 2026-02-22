@@ -3,7 +3,7 @@ use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
-use crate::app::palette::PALETTE_COMMANDS;
+use crate::app::palette::palette_commands;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -21,10 +21,9 @@ impl CommandPalette {
             " j/k / ↑↓ Navigate │ Enter Select │ Esc Close ",
         );
 
-        let items: Vec<ListItem> = PALETTE_COMMANDS
-            .iter()
+        let items: Vec<ListItem> = palette_commands()
             .enumerate()
-            .map(|(i, cmd)| {
+            .map(|(i, kb)| {
                 let style = if i == state.ui.picker_selected {
                     Style::default()
                         .bg(Theme::COMPLETION_SELECTED_BG)
@@ -33,7 +32,7 @@ impl CommandPalette {
                 } else {
                     Style::default().fg(Theme::TEXT_SECONDARY)
                 };
-                let content = format!("  {:<18} {}", cmd.key, cmd.description);
+                let content = format!("  {:<18} {}", kb.key, kb.description);
                 ListItem::new(content).style(style)
             })
             .collect();

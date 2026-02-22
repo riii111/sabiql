@@ -144,29 +144,8 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
 
                 let cmd_action = palette_action_for_index(state.ui.picker_selected);
                 state.ui.input_mode = InputMode::Normal;
-
-                match cmd_action {
-                    Action::Quit => state.should_quit = true,
-                    Action::OpenHelp => state.ui.input_mode = InputMode::Help,
-                    Action::OpenTablePicker => {
-                        state.ui.input_mode = InputMode::TablePicker;
-                        state.ui.filter_input.clear();
-                        state.ui.picker_selected = 0;
-                    }
-                    Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
-                    Action::OpenSqlModal => {
-                        state.ui.input_mode = InputMode::SqlModal;
-                        state.sql_modal.status =
-                            crate::app::sql_modal_context::SqlModalStatus::Editing;
-                        if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                            effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-                        }
-                    }
-                    Action::ReloadMetadata => {
-                        effects.push(Effect::DispatchActions(vec![Action::ReloadMetadata]));
-                    }
-                    _ => {}
-                }
+                let mut sub_effects = reduce(state, cmd_action, now);
+                effects.append(&mut sub_effects);
             }
 
             effects

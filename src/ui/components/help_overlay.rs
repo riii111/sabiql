@@ -8,8 +8,9 @@ use crate::ui::theme::Theme;
 
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS,
-    CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS, ER_PICKER_KEYS, GLOBAL_KEYS, HELP_KEYS,
-    NAVIGATION_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS,
+    CONNECTION_ERROR_KEYS, CONNECTION_SELECTOR_KEYS, CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS,
+    ER_PICKER_KEYS, GLOBAL_KEYS, HELP_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS,
+    SQL_MODAL_KEYS, TABLE_PICKER_KEYS,
 };
 use crate::app::state::AppState;
 
@@ -78,6 +79,18 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Connection Error"));
         for kb in CONNECTION_ERROR_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Connections Mode"));
+        for kb in CONNECTIONS_MODE_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Connection Selector"));
+        for kb in CONNECTION_SELECTOR_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 
