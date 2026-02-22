@@ -1078,8 +1078,8 @@ impl QueryExecutor for PostgresAdapter {
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, MetadataError> {
-        // Keep preview ordering deterministic by primary key when available.
-        // Fallback to unordered preview if PK discovery fails.
+        // Editing a cell re-fetches the same page; stable ordering prevents the
+        // edited row from shifting position after the refresh.
         let order_columns = self
             .fetch_preview_order_columns(dsn, schema, table)
             .await

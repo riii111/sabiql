@@ -76,10 +76,8 @@ impl ConfirmDialog {
         let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
         let title = format!(" {} ", state.confirm_dialog.title);
 
-        // Build styled lines
         let mut content_lines: Vec<Line> = Vec::new();
 
-        // Section: Diff
         content_lines.push(Line::from(vec![Span::styled(
             "Diff",
             Style::default().fg(Theme::TEXT_SECONDARY),
@@ -100,7 +98,6 @@ impl ConfirmDialog {
 
         content_lines.push(Line::from(""));
 
-        // Section: SQL Preview
         content_lines.push(Line::from(vec![Span::styled(
             "SQL Preview",
             Style::default().fg(Theme::TEXT_SECONDARY),
@@ -110,10 +107,8 @@ impl ConfirmDialog {
             content_lines.push(Self::highlight_sql_line(&indented));
         }
 
-        // Trailing blank line for spacing before footer hint
         content_lines.push(Line::from(""));
 
-        // Calculate modal dimensions from content
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
         let hint_width = hint.chars().count() as u16;
@@ -161,7 +156,6 @@ impl ConfirmDialog {
             spans.push(Span::raw(indent.to_string()));
         }
 
-        // Check if line starts with a SQL keyword
         let keyword_hit = SQL_KEYWORDS.iter().find(|&&kw| {
             trimmed.starts_with(kw)
                 && trimmed[kw.len()..].starts_with(|c: char| c.is_whitespace() || c == ';')

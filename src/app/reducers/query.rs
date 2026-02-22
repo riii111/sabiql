@@ -88,8 +88,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
 }
 
 fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
-    // Plain-text fallback for generic confirm rendering paths.
-    // Rich SQL/diff rendering comes from `pending_write_preview`.
+    // `pending_write_preview` drives rich rendering; this is stored only as a fallback.
     let mut lines = Vec::new();
     if preview.guardrail.risk_level != RiskLevel::Low {
         lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
