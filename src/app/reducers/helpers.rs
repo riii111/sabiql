@@ -6,6 +6,8 @@ use crate::domain::{QueryResult, QuerySource};
 
 /// Shared prerequisites for preview-cell write operations.
 /// Entry checks in navigation and submit-time checks in query should both use this.
+/// Row/column selection source is intentionally left to each caller:
+/// navigation uses live selection, query submit uses cell_edit state.
 pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String]), String> {
     if state.query.history_index.is_some() {
         return Err("Editing is unavailable while browsing history".to_string());

@@ -65,13 +65,6 @@ pub struct WritePreview {
     pub guardrail: GuardrailDecision,
 }
 
-pub fn escape_preview_value(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\"', "\\\"")
-        .replace('\n', "\\n")
-}
-
 pub fn evaluate_guardrails(
     has_where: bool,
     has_stable_row_identity: bool,
@@ -141,10 +134,5 @@ mod tests {
             key_values: vec![("id".to_string(), "42".to_string())],
         };
         assert_eq!(target.format_compact(), "public.users (id=42)");
-    }
-
-    #[test]
-    fn value_with_control_chars_returns_escaped_preview_value() {
-        assert_eq!(escape_preview_value("a\\b\"c\nd"), "a\\\\b\\\"c\\nd");
     }
 }
