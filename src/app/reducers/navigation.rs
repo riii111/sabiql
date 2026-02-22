@@ -17,7 +17,10 @@ use crate::app::write_guardrails::{
 };
 use crate::app::write_update::{build_delete_sql, build_pk_pairs};
 
-use super::helpers::{deletion_refresh_target, editable_preview_base};
+use super::helpers::{
+    ERR_DELETION_REQUIRES_PRIMARY_KEY, ERR_EDITING_REQUIRES_PRIMARY_KEY, deletion_refresh_target,
+    editable_preview_base,
+};
 
 fn result_row_count(state: &AppState) -> usize {
     state
@@ -139,8 +142,8 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         .row()
         .ok_or_else(|| "No active row".to_string())?;
     let (result, pk_cols) = editable_preview_base(state).map_err(|msg| {
-        if msg == "Editing requires a PRIMARY KEY" {
-            "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.".to_string()
+        if msg == ERR_EDITING_REQUIRES_PRIMARY_KEY {
+            ERR_DELETION_REQUIRES_PRIMARY_KEY.to_string()
         } else {
             msg
         }
@@ -153,10 +156,14 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
     let key_values = build_pk_pairs(&result.columns, row, pk_cols)
         .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
 
+    let schema = state.query.pagination.schema.clone();
+    let table = state.query.pagination.table.clone();
+    let sql = build_delete_sql(&schema, &table, &key_values);
+
     let target = TargetSummary {
-        schema: state.query.pagination.schema.clone(),
-        table: state.query.pagination.table.clone(),
-        key_values: key_values.clone(),
+        schema,
+        table,
+        key_values,
     };
     let guardrail = GuardrailDecision {
         risk_level: RiskLevel::Low,
@@ -164,8 +171,6 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         reason: None,
         target_summary: Some(target.clone()),
     };
-
-    let sql = build_delete_sql(&target.schema, &target.table, &target.key_values);
     let (target_page, target_row) = deletion_refresh_target(
         result.rows.len(),
         row_idx,
@@ -1884,7 +1889,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")
+                Some(ERR_DELETION_REQUIRES_PRIMARY_KEY)
             );
         }
 
@@ -1900,7 +1905,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")
+                Some(ERR_DELETION_REQUIRES_PRIMARY_KEY)
             );
         }
     }

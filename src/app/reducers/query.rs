@@ -16,7 +16,7 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
-use super::helpers::{deletion_refresh_target, editable_preview_base};
+use super::helpers::editable_preview_base;
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     // Entry guard on `i` is handled in navigation; this path re-validates before write submit.
@@ -352,25 +352,6 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
 
         Action::ExecuteWrite(query) => {
-            if state.pending_write_preview.as_ref().map(|p| p.operation)
-                == Some(WriteOperation::Delete)
-                && state.query.pending_delete_refresh_target.is_none()
-            {
-                let plan = state
-                    .ui
-                    .result_selection
-                    .row()
-                    .zip(state.query.current_result.as_ref())
-                    .map(|(row_idx, result)| {
-                        deletion_refresh_target(
-                            result.rows.len(),
-                            row_idx,
-                            state.query.pagination.current_page,
-                        )
-                    });
-                state.query.pending_delete_refresh_target = plan;
-            }
-
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
