@@ -100,39 +100,43 @@ pub fn evaluate_guardrails(
 mod tests {
     use super::*;
 
-    #[test]
-    fn missing_where_is_blocked() {
-        let decision = evaluate_guardrails(false, true, None);
-        assert_eq!(decision.risk_level, RiskLevel::High);
-        assert!(decision.blocked);
-    }
+    mod guardrail_evaluation {
+        use super::*;
 
-    #[test]
-    fn missing_stable_identity_is_blocked() {
-        let decision = evaluate_guardrails(true, false, None);
-        assert_eq!(decision.risk_level, RiskLevel::High);
-        assert!(decision.blocked);
-    }
+        #[test]
+        fn missing_where_returns_blocked_high_risk() {
+            let decision = evaluate_guardrails(false, true, None);
+            assert_eq!(decision.risk_level, RiskLevel::High);
+            assert!(decision.blocked);
+        }
 
-    #[test]
-    fn stable_where_is_low_risk() {
-        let target = TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "42".to_string())],
-        };
-        let decision = evaluate_guardrails(true, true, Some(target));
-        assert_eq!(decision.risk_level, RiskLevel::Low);
-        assert!(!decision.blocked);
-    }
+        #[test]
+        fn missing_stable_identity_returns_blocked_high_risk() {
+            let decision = evaluate_guardrails(true, false, None);
+            assert_eq!(decision.risk_level, RiskLevel::High);
+            assert!(decision.blocked);
+        }
 
-    #[test]
-    fn target_summary_formats_compactly() {
-        let target = TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "42".to_string())],
-        };
-        assert_eq!(target.format_compact(), "public.users (id=42)");
+        #[test]
+        fn stable_where_and_identity_returns_unblocked_low_risk() {
+            let target = TargetSummary {
+                schema: "public".to_string(),
+                table: "users".to_string(),
+                key_values: vec![("id".to_string(), "42".to_string())],
+            };
+            let decision = evaluate_guardrails(true, true, Some(target));
+            assert_eq!(decision.risk_level, RiskLevel::Low);
+            assert!(!decision.blocked);
+        }
+
+        #[test]
+        fn target_summary_with_single_key_returns_compact_format() {
+            let target = TargetSummary {
+                schema: "public".to_string(),
+                table: "users".to_string(),
+                key_values: vec![("id".to_string(), "42".to_string())],
+            };
+            assert_eq!(target.format_compact(), "public.users (id=42)");
+        }
     }
 }
