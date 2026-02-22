@@ -65,6 +65,7 @@ impl Theme {
     pub const STATUS_SUCCESS: Color = Color::Green;
     pub const STATUS_ERROR: Color = Color::Red;
     pub const STATUS_WARNING: Color = Color::Yellow;
+    pub const STATUS_MEDIUM_RISK: Color = Color::Rgb(0xff, 0x99, 0x00);
 
     // ============ Component Colors ============
 

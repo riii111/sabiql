@@ -4,7 +4,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::molecules::{render_modal, render_modal_with_border_color};
 use crate::app::state::AppState;
-use crate::app::write_guardrails::{WriteOperation, WritePreview};
+use crate::app::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
 use crate::app::write_update::escape_preview_value;
 use crate::ui::theme::Theme;
 
@@ -73,10 +73,37 @@ impl ConfirmDialog {
     }
 
     fn render_write_preview(frame: &mut Frame, state: &AppState, preview: &WritePreview) {
-        let hint = " Enter: Confirm │ Esc: Cancel ";
+        let border_color = match preview.guardrail.risk_level {
+            RiskLevel::Low => Theme::STATUS_WARNING,
+            RiskLevel::Medium => Theme::STATUS_MEDIUM_RISK,
+            RiskLevel::High => Theme::STATUS_ERROR,
+        };
+        let hint = if preview.guardrail.blocked {
+            " Esc: Cancel "
+        } else {
+            " Enter: Confirm │ Esc: Cancel "
+        };
         let title = format!(" {} ", state.confirm_dialog.title);
 
         let mut content_lines: Vec<Line> = Vec::new();
+
+        let risk_label = match preview.guardrail.risk_level {
+            RiskLevel::Low => "✓ LOW RISK".to_string(),
+            RiskLevel::Medium => "⚠ MEDIUM RISK: Multiple rows may be affected".to_string(),
+            RiskLevel::High => format!(
+                "⚠ HIGH RISK: {}",
+                preview
+                    .guardrail
+                    .reason
+                    .as_deref()
+                    .unwrap_or("Execution is blocked")
+            ),
+        };
+        content_lines.push(Line::from(Span::styled(
+            risk_label,
+            Style::default().fg(border_color),
+        )));
+        content_lines.push(Line::from(""));
 
         match preview.operation {
             WriteOperation::Update => {
@@ -159,7 +186,7 @@ impl ConfirmDialog {
             Constraint::Length(modal_height),
             &title,
             hint,
-            Theme::STATUS_WARNING,
+            border_color,
         );
 
         let inner = modal_inner.inner(Margin::new(1, 0));

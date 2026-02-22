@@ -1,0 +1,26 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
+│public.posts      ││Owner:   postgres                                         │
+│public.comments   ││Comment: User accounts                                    │
+│                  ││Rows:    ~100                                             │
+│                  ││Schema:  public                                           │
+│                 ╭ Confirm DELETE: users ───────────────────╮                 │
+│                 │ ✓ LOW RISK                               │                 │
+│                 │                                          │                 │
+│                 │ Target                                   │                 │
+│                 │   id: "3"                                │─────────────────┘
+│                 │                                          │─────────────────┐
+│                 │ SQL Preview                              │                 │
+│                 │   DELETE FROM "public"."users"           │                 │
+│                 │   WHERE "id" = '3';                      │                 │
+│                 │                                          │                 │
+│                 ╰ Enter: Confirm │ Esc: Cancel ────────────╯                 │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘

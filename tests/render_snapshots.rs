@@ -868,6 +868,44 @@ fn confirm_dialog_update_preview_rich() {
     insta::assert_snapshot!(output);
 }
 
+#[test]
+fn confirm_dialog_delete_preview_low_risk() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+
+    let sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '3';".to_string();
+    state.pending_write_preview = Some(WritePreview {
+        operation: WriteOperation::Delete,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "3".to_string())],
+        },
+        diff: vec![],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Confirm DELETE: users".to_string();
+    state.confirm_dialog.message = String::new();
+    state.confirm_dialog.on_confirm = Action::ExecuteWrite(sql);
+    state.confirm_dialog.on_cancel = Action::None;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
 mod style_assertions {
     use super::*;
     use harness::{TEST_HEIGHT, TEST_WIDTH};
