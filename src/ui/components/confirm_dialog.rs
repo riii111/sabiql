@@ -34,7 +34,7 @@ impl ConfirmDialog {
 
     fn render_plain(frame: &mut Frame, state: &AppState) {
         let dialog = &state.confirm_dialog;
-        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
+        let hint = " Enter: Confirm │ Esc: Cancel ";
 
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
@@ -73,7 +73,7 @@ impl ConfirmDialog {
     }
 
     fn render_write_preview(frame: &mut Frame, state: &AppState, preview: &WritePreview) {
-        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
+        let hint = " Enter: Confirm │ Esc: Cancel ";
         let title = format!(" {} ", state.confirm_dialog.title);
 
         let mut content_lines: Vec<Line> = Vec::new();

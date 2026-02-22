@@ -1,5 +1,6 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 502
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -16,7 +17,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                      │───────────────────┘
 │                  ││ This action cannot be undone.        │───────────────────┐
 │                  ││                                      │                   │
-│                  │╰ Enter/Y: Confirm │ Esc/N: Cancel ────╯                   │
+│                  │╰ Enter: Confirm │ Esc: Cancel ────────╯                   │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
