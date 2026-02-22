@@ -128,6 +128,14 @@ pub mod idx {
         pub const ROW_NAV: usize = 4;
         pub const TOP_BOTTOM: usize = 5;
         pub const ESC_BACK: usize = 6;
+        pub const EDIT: usize = 7;
+    }
+
+    pub mod cell_edit {
+        pub const WRITE: usize = 0;
+        pub const TYPE: usize = 1;
+        pub const COMMAND: usize = 2;
+        pub const ESC_CANCEL: usize = 3;
     }
 
     pub mod connections_mode {
@@ -674,7 +682,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Enter/y",
         key: "Enter / y",
-        desc_short: "Yes",
+        desc_short: "Confirm",
         description: "Confirm",
         action: Action::ConfirmDialogConfirm,
     },
@@ -682,7 +690,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Esc/n",
         key: "Esc / n",
-        desc_short: "No",
+        desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConfirmDialogCancel,
     },
@@ -1039,6 +1047,49 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Exit to previous mode",
         action: Action::ResultExitToScroll,
     },
+    // idx 7: EDIT
+    KeyBinding {
+        key_short: "i",
+        key: "i",
+        desc_short: "Edit",
+        description: "Edit active cell",
+        action: Action::ResultEnterCellEdit,
+    },
+];
+
+pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
+    // idx 0: WRITE
+    KeyBinding {
+        key_short: ":w",
+        key: ":w",
+        desc_short: "Write",
+        description: "Preview and confirm UPDATE",
+        action: Action::SubmitCellEditWrite,
+    },
+    // idx 1: TYPE
+    KeyBinding {
+        key_short: "type",
+        key: "type",
+        desc_short: "Edit",
+        description: "Edit cell value",
+        action: Action::None,
+    },
+    // idx 2: COMMAND
+    KeyBinding {
+        key_short: ":",
+        key: ":",
+        desc_short: "Cmd",
+        description: "Open command line",
+        action: Action::EnterCommandLine,
+    },
+    // idx 3: ESC_CANCEL
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Cancel",
+        description: "Discard edit and return to Cell Active",
+        action: Action::ResultCancelCellEdit,
+    },
 ];
 
 // =============================================================================
@@ -1051,6 +1102,7 @@ pub const HELP_TOTAL_LINES: usize = 10
     + GLOBAL_KEYS.len()
     + NAVIGATION_KEYS.len()
     + RESULT_ACTIVE_KEYS.len()
+    + CELL_EDIT_KEYS.len()
     + SQL_MODAL_KEYS.len()
     + OVERLAY_KEYS.len()
     + COMMAND_LINE_KEYS.len()
@@ -1152,6 +1204,13 @@ mod tests {
         assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
+
+        // CELL_EDIT_KEYS
+        assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
+        assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
+        assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
+        assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
 
         // CONNECTIONS_MODE_KEYS
         assert!(idx::connections_mode::CONNECT < CONNECTIONS_MODE_KEYS.len());

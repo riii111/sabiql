@@ -1,5 +1,6 @@
 pub mod action;
 pub mod cache;
+pub mod cell_edit_state;
 pub mod command;
 pub mod completion;
 pub mod confirm_dialog_state;
@@ -33,3 +34,5 @@ pub mod sql_modal_context;
 pub mod state;
 pub mod ui_state;
 pub mod viewport;
+pub mod write_guardrails;
+pub mod write_update;

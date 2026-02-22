@@ -3,6 +3,7 @@ pub enum InputMode {
     #[default]
     Normal,
     CommandLine,
+    CellEdit,
     TablePicker,
     CommandPalette,
     Help,

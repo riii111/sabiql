@@ -6,6 +6,7 @@ pub enum Command {
     Help,
     Sql,
     Erd,
+    Write,
     Unknown(String),
 }
 
@@ -16,6 +17,7 @@ pub fn parse_command(input: &str) -> Command {
         "?" | "help" => Command::Help,
         "sql" => Command::Sql,
         "erd" => Command::Erd,
+        "w" | "write" => Command::Write,
         other => Command::Unknown(other.to_string()),
     }
 }
@@ -27,6 +29,7 @@ pub fn command_to_action(cmd: Command) -> Action {
         Command::Help => Action::OpenHelp,
         Command::Sql => Action::OpenSqlModal,
         Command::Erd => Action::OpenErTablePicker,
+        Command::Write => Action::SubmitCellEditWrite,
         Command::Unknown(_) => Action::None,
     }
 }
@@ -70,6 +73,14 @@ mod tests {
             let result = parse_command("erd");
 
             assert_eq!(result, Command::Erd);
+        }
+
+        #[rstest]
+        #[case("w", Command::Write)]
+        #[case("write", Command::Write)]
+        fn write_aliases(#[case] input: &str, #[case] expected: Command) {
+            let result = parse_command(input);
+            assert_eq!(result, expected);
         }
 
         #[test]
@@ -123,6 +134,12 @@ mod tests {
             let result = command_to_action(Command::Erd);
 
             assert!(matches!(result, Action::OpenErTablePicker));
+        }
+
+        #[test]
+        fn write_returns_submit_cell_edit_write_action() {
+            let result = command_to_action(Command::Write);
+            assert!(matches!(result, Action::SubmitCellEditWrite));
         }
 
         #[test]

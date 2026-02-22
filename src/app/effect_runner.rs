@@ -413,34 +413,21 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::ExecuteDeleteRow {
-                dsn,
-                sql,
-                schema,
-                table,
-                generation,
-                target_page,
-                target_row,
-            } => {
+            Effect::ExecuteWrite { dsn, query } => {
                 let executor = Arc::clone(&self.query_executor);
                 let tx = self.action_tx.clone();
 
                 tokio::spawn(async move {
-                    match executor.execute_write(&dsn, &sql).await {
-                        Ok(affected_rows) => {
+                    match executor.execute_write(&dsn, &query).await {
+                        Ok(result) => {
                             let _ = tx
-                                .send(Action::DeleteRowCompleted {
-                                    affected_rows,
-                                    schema,
-                                    table,
-                                    generation,
-                                    target_page,
-                                    target_row,
+                                .send(Action::ExecuteWriteSucceeded {
+                                    affected_rows: result.affected_rows,
                                 })
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::DeleteRowFailed(e.to_string())).await;
+                            let _ = tx.send(Action::ExecuteWriteFailed(e.to_string())).await;
                         }
                     }
                 });

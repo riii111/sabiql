@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::QueryResult;
+use crate::domain::{QueryResult, WriteExecutionResult};
 
 use super::MetadataError;
 
@@ -16,6 +16,9 @@ pub trait QueryExecutor: Send + Sync {
     ) -> Result<QueryResult, MetadataError>;
 
     async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError>;
-
-    async fn execute_write(&self, dsn: &str, query: &str) -> Result<usize, MetadataError>;
+    async fn execute_write(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError>;
 }

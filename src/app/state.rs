@@ -1,6 +1,7 @@
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
+use super::cell_edit_state::CellEditState;
 use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
@@ -11,6 +12,7 @@ use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
 use super::ui_state::UiState;
+use super::write_guardrails::WritePreview;
 use crate::domain::TableSummary;
 use crate::domain::connection::ConnectionProfile;
 
@@ -32,6 +34,8 @@ pub struct AppState {
     pub connection_setup: ConnectionSetupState,
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
+    pub cell_edit: CellEditState,
+    pub pending_write_preview: Option<WritePreview>,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
     pub connections: Vec<ConnectionProfile>,
@@ -54,6 +58,8 @@ impl AppState {
             connection_setup: ConnectionSetupState::default(),
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
+            cell_edit: CellEditState::default(),
+            pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
         }

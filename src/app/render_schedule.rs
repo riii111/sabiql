@@ -66,6 +66,7 @@ fn has_blinking_cursor(state: &AppState) -> bool {
         InputMode::SqlModal
             | InputMode::TablePicker
             | InputMode::CommandLine
+            | InputMode::CellEdit
             | InputMode::ConnectionSetup
     )
 }

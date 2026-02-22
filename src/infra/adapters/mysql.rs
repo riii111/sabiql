@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
-use crate::domain::{DatabaseMetadata, QueryResult, Table};
+use crate::domain::{DatabaseMetadata, QueryResult, Table, WriteExecutionResult};
 
 #[allow(dead_code)]
 pub struct MySqlAdapter;
@@ -60,7 +60,11 @@ impl QueryExecutor for MySqlAdapter {
         ))
     }
 
-    async fn execute_write(&self, _dsn: &str, _query: &str) -> Result<usize, MetadataError> {
+    async fn execute_write(
+        &self,
+        _dsn: &str,
+        _query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))

@@ -81,4 +81,11 @@ impl Theme {
     // Result pane selection
     pub const RESULT_ROW_ACTIVE_BG: Color = Color::Rgb(0x2e, 0x2e, 0x44);
     pub const RESULT_CELL_ACTIVE_BG: Color = Color::Rgb(0x3a, 0x3a, 0x5a);
+
+    // Cell edit mode
+    pub const CELL_EDIT_FG: Color = Color::Yellow;
+
+    // SQL syntax highlighting
+    pub const SQL_KEYWORD: Color = Color::Blue;
+    pub const SQL_TEXT: Color = Color::White;
 }
