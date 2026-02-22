@@ -148,6 +148,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ConfirmDialogCancel => {
             let action = std::mem::replace(&mut state.confirm_dialog.on_cancel, Action::None);
             state.confirm_dialog.on_confirm = Action::None;
+            state.pending_write_preview = None;
+            state.query.pending_delete_refresh_target = None;
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
             state.ui.input_mode = return_mode;

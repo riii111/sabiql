@@ -7,7 +7,7 @@ use crate::app::action::Action;
 use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
+use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
@@ -93,17 +93,27 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     if preview.guardrail.risk_level != RiskLevel::Low {
         lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
     }
-    lines.push(preview.diff.first().map_or_else(
-        || "(no changes)".to_string(),
-        |d| {
-            format!(
-                "{}: \"{}\" -> \"{}\"",
-                d.column,
-                escape_preview_value(&d.before),
-                escape_preview_value(&d.after)
-            )
-        },
-    ));
+    match preview.operation {
+        WriteOperation::Update => {
+            lines.push(preview.diff.first().map_or_else(
+                || "(no changes)".to_string(),
+                |d| {
+                    format!(
+                        "{}: \"{}\" -> \"{}\"",
+                        d.column,
+                        escape_preview_value(&d.before),
+                        escape_preview_value(&d.after)
+                    )
+                },
+            ));
+        }
+        WriteOperation::Delete => {
+            lines.push(format!(
+                "Target: {}",
+                preview.target_summary.format_compact()
+            ));
+        }
+    }
     lines.join("\n")
 }
 
@@ -147,6 +157,27 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
 
                 state.query.current_result = Some(Arc::clone(result));
+
+                if result.source == QuerySource::Preview {
+                    match state.query.post_delete_row_selection {
+                        PostDeleteRowSelection::Keep => {}
+                        PostDeleteRowSelection::Clear => {
+                            state.ui.result_selection.reset();
+                        }
+                        PostDeleteRowSelection::Select(row) => {
+                            if !result.rows.is_empty() {
+                                let clamped = row.min(result.rows.len() - 1);
+                                state.ui.result_selection.enter_row(clamped);
+
+                                let visible = state.result_visible_rows();
+                                if visible > 0 && clamped >= visible {
+                                    state.ui.result_scroll_offset = clamped - visible + 1;
+                                }
+                            }
+                        }
+                    }
+                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
+                }
             }
             Some(vec![])
         }
@@ -170,6 +201,8 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     ));
                     state.query.current_result = Some(error_result);
                 }
+                state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
+                state.query.pending_delete_refresh_target = None;
             }
             Some(vec![])
         }
@@ -295,13 +328,26 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
         Action::OpenWritePreviewConfirm(preview) => {
             state.pending_write_preview = Some((**preview).clone());
+            let operation = preview.operation;
+            let (title, return_mode) = match operation {
+                WriteOperation::Update => {
+                    state.query.pending_delete_refresh_target = None;
+                    (
+                        format!("Confirm UPDATE: {}", preview.target_summary.table),
+                        InputMode::CellEdit,
+                    )
+                }
+                WriteOperation::Delete => (
+                    format!("Confirm DELETE: {}", preview.target_summary.table),
+                    InputMode::Normal,
+                ),
+            };
 
-            state.confirm_dialog.title =
-                format!("Confirm UPDATE: {}", preview.target_summary.table);
+            state.confirm_dialog.title = title;
             state.confirm_dialog.message = build_write_preview_fallback_message(preview);
             state.confirm_dialog.on_confirm = Action::ExecuteWrite(preview.sql.clone());
             state.confirm_dialog.on_cancel = Action::None;
-            state.confirm_dialog.return_mode = InputMode::CellEdit;
+            state.confirm_dialog.return_mode = return_mode;
             state.ui.input_mode = InputMode::ConfirmDialog;
 
             Some(vec![])
@@ -326,47 +372,108 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ExecuteWriteSucceeded { affected_rows } => {
             state.query.status = QueryStatus::Idle;
             state.query.start_time = None;
+            let operation = state
+                .pending_write_preview
+                .as_ref()
+                .map(|p| p.operation)
+                .unwrap_or(WriteOperation::Update);
             state.pending_write_preview = None;
+            match operation {
+                WriteOperation::Update => {
+                    if *affected_rows != 1 {
+                        state.messages.set_error_at(
+                            format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
+                            now,
+                        );
+                        state.ui.input_mode = InputMode::CellEdit;
+                        return Some(vec![]);
+                    }
 
-            if *affected_rows != 1 {
-                state.messages.set_error_at(
-                    format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
-                    now,
-                );
-                state.ui.input_mode = InputMode::CellEdit;
-                return Some(vec![]);
-            }
+                    state
+                        .messages
+                        .set_success_at("Updated 1 row".to_string(), now);
+                    state.cell_edit.clear();
+                    state.ui.input_mode = InputMode::Normal;
 
-            state
-                .messages
-                .set_success_at("Updated 1 row".to_string(), now);
-            state.cell_edit.clear();
-            state.ui.input_mode = InputMode::Normal;
+                    if let Some(dsn) = &state.runtime.dsn {
+                        let page = state.query.pagination.current_page;
+                        state.query.status = QueryStatus::Running;
+                        state.query.start_time = Some(now);
+                        Some(vec![Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema: state.query.pagination.schema.clone(),
+                            table: state.query.pagination.table.clone(),
+                            generation: state.cache.selection_generation,
+                            limit: PREVIEW_PAGE_SIZE,
+                            offset: page * PREVIEW_PAGE_SIZE,
+                            target_page: page,
+                        }])
+                    } else {
+                        Some(vec![])
+                    }
+                }
+                WriteOperation::Delete => {
+                    if *affected_rows != 1 {
+                        state.messages.set_error_at(
+                            format!("DELETE expected 1 row, but affected {} rows", affected_rows),
+                            now,
+                        );
+                        state.query.pending_delete_refresh_target = None;
+                        state.ui.input_mode = InputMode::Normal;
+                        return Some(vec![]);
+                    }
 
-            if let Some(dsn) = &state.runtime.dsn {
-                let page = state.query.pagination.current_page;
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
-                Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
-                    schema: state.query.pagination.schema.clone(),
-                    table: state.query.pagination.table.clone(),
-                    generation: state.cache.selection_generation,
-                    limit: PREVIEW_PAGE_SIZE,
-                    offset: page * PREVIEW_PAGE_SIZE,
-                    target_page: page,
-                }])
-            } else {
-                Some(vec![])
+                    state
+                        .messages
+                        .set_success_at("Deleted 1 row".to_string(), now);
+                    state.cell_edit.clear();
+                    state.ui.input_mode = InputMode::Normal;
+
+                    let (target_page, target_row) = state
+                        .query
+                        .pending_delete_refresh_target
+                        .take()
+                        .unwrap_or((state.query.pagination.current_page, None));
+
+                    state.query.post_delete_row_selection = target_row
+                        .map(PostDeleteRowSelection::Select)
+                        .unwrap_or(PostDeleteRowSelection::Clear);
+
+                    if let Some(dsn) = &state.runtime.dsn {
+                        state.query.status = QueryStatus::Running;
+                        state.query.start_time = Some(now);
+                        state.query.pagination.reached_end = false;
+                        Some(vec![Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema: state.query.pagination.schema.clone(),
+                            table: state.query.pagination.table.clone(),
+                            generation: state.cache.selection_generation,
+                            limit: PREVIEW_PAGE_SIZE,
+                            offset: target_page * PREVIEW_PAGE_SIZE,
+                            target_page,
+                        }])
+                    } else {
+                        Some(vec![])
+                    }
+                }
             }
         }
 
         Action::ExecuteWriteFailed(error) => {
             state.query.status = QueryStatus::Idle;
             state.query.start_time = None;
+            let operation = state
+                .pending_write_preview
+                .as_ref()
+                .map(|p| p.operation)
+                .unwrap_or(WriteOperation::Update);
             state.pending_write_preview = None;
+            state.query.pending_delete_refresh_target = None;
             state.messages.set_error_at(error.clone(), now);
-            state.ui.input_mode = InputMode::CellEdit;
+            state.ui.input_mode = match operation {
+                WriteOperation::Update => InputMode::CellEdit,
+                WriteOperation::Delete => InputMode::Normal,
+            };
             Some(vec![])
         }
 
@@ -931,6 +1038,173 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
+            );
+        }
+    }
+
+    mod delete_write_flow {
+        use super::*;
+        use crate::app::write_guardrails::{
+            GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+        };
+
+        fn delete_preview() -> WritePreview {
+            WritePreview {
+                operation: WriteOperation::Delete,
+                sql: "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string(),
+                target_summary: TargetSummary {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    key_values: vec![("id".to_string(), "2".to_string())],
+                },
+                diff: vec![],
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
+            }
+        }
+
+        #[test]
+        fn open_write_preview_confirm_for_delete_sets_normal_return_mode() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::Normal;
+            let preview = delete_preview();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::OpenWritePreviewConfirm(Box::new(preview)),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
+            assert_eq!(state.confirm_dialog.title, "Confirm DELETE: users");
+        }
+
+        #[test]
+        fn execute_write_success_for_delete_refreshes_target_page() {
+            let mut state = create_test_state();
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.query.pending_delete_refresh_target = Some((1, Some(499)));
+            state.pending_write_preview = Some(delete_preview());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded { affected_rows: 1 },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Select(499)
+            );
+            assert_eq!(
+                state.messages.last_success.as_deref(),
+                Some("Deleted 1 row")
+            );
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::ExecutePreview {
+                    offset,
+                    target_page,
+                    ..
+                } => {
+                    assert_eq!(*offset, PREVIEW_PAGE_SIZE);
+                    assert_eq!(*target_page, 1);
+                }
+                other => panic!("expected ExecutePreview, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn execute_write_non_one_rows_for_delete_sets_error() {
+            let mut state = create_test_state();
+            state.pending_write_preview = Some(delete_preview());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded { affected_rows: 0 },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("DELETE expected 1 row, but affected 0 rows")
+            );
+        }
+
+        #[test]
+        fn execute_write_failed_for_delete_returns_to_normal_mode() {
+            let mut state = create_test_state();
+            state.pending_write_preview = Some(delete_preview());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::ExecuteWriteFailed("boom".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
+        }
+
+        #[test]
+        fn query_completed_restores_pending_row_selection() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
+
+            let _ = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(3),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.result_selection.row(), Some(2));
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Keep
+            );
+        }
+
+        #[test]
+        fn query_completed_clears_selection_when_requested() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.ui.result_selection.enter_row(0);
+            state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
+
+            let _ = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(2),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.result_selection.row(), None);
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Keep
             );
         }
     }

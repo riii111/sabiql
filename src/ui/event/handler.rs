@@ -281,6 +281,13 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
+        KeyCode::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+            if state.ui.result_delete_operator_pending {
+                Action::RequestDeleteActiveRow
+            } else {
+                Action::ResultDeleteOperatorPending
+            }
+        }
         KeyCode::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultEnterCellEdit
         }
@@ -478,8 +485,6 @@ fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Enter => Action::ConfirmDialogConfirm,
         KeyCode::Esc => Action::ConfirmDialogCancel,
-        KeyCode::Char('y') | KeyCode::Char('Y') => Action::ConfirmDialogConfirm,
-        KeyCode::Char('n') | KeyCode::Char('N') => Action::ConfirmDialogCancel,
         _ => Action::None,
     }
 }
@@ -819,6 +824,36 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
 
             assert!(matches!(result, Action::ResultScrollRight));
+        }
+
+        #[test]
+        fn d_sets_delete_operator_pending_in_row_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::ResultDeleteOperatorPending));
+        }
+
+        #[test]
+        fn second_d_requests_row_delete_when_pending() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_delete_operator_pending = true;
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::RequestDeleteActiveRow));
+        }
+
+        #[test]
+        fn d_in_scroll_mode_is_noop() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
@@ -1612,11 +1647,7 @@ mod tests {
 
         #[rstest]
         #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Char('y'), Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Char('Y'), Action::ConfirmDialogConfirm)]
         #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
-        #[case(KeyCode::Char('n'), Action::ConfirmDialogCancel)]
-        #[case(KeyCode::Char('N'), Action::ConfirmDialogCancel)]
         fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
             let result = handle_confirm_dialog_keys(key(code));
 
@@ -1626,9 +1657,14 @@ mod tests {
             );
         }
 
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_confirm_dialog_keys(key(KeyCode::Char('x')));
+        #[rstest]
+        #[case(KeyCode::Char('y'))]
+        #[case(KeyCode::Char('Y'))]
+        #[case(KeyCode::Char('n'))]
+        #[case(KeyCode::Char('N'))]
+        #[case(KeyCode::Char('x'))]
+        fn non_bound_keys_return_none(#[case] code: KeyCode) {
+            let result = handle_confirm_dialog_keys(key(code));
 
             assert!(matches!(result, Action::None));
         }
