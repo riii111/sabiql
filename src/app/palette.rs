@@ -1,61 +1,58 @@
 use super::action::Action;
+use super::keybindings::{GLOBAL_KEYS, KeyBinding, idx};
 
-pub struct PaletteCommand {
-    pub key: &'static str,
-    pub description: &'static str,
-    pub action: Action,
-}
-
-pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
-    PaletteCommand {
-        key: "q / :quit",
-        description: "Quit application",
-        action: Action::Quit,
-    },
-    PaletteCommand {
-        key: "? / :help",
-        description: "Show help",
-        action: Action::OpenHelp,
-    },
-    PaletteCommand {
-        key: "s / :sql",
-        description: "Open SQL Editor",
-        action: Action::OpenSqlModal,
-    },
-    PaletteCommand {
-        key: "e / :erd",
-        description: "Open ER Diagram",
-        action: Action::OpenErTablePicker,
-    },
-    PaletteCommand {
-        key: "c",
-        description: "Open connection settings",
-        action: Action::OpenConnectionSetup,
-    },
-    PaletteCommand {
-        key: "f",
-        description: "Toggle Focus mode",
-        action: Action::ToggleFocus,
-    },
-    PaletteCommand {
-        key: "Ctrl+P",
-        description: "Open Table Picker",
-        action: Action::OpenTablePicker,
-    },
-    PaletteCommand {
-        key: "r",
-        description: "Reload metadata",
-        action: Action::ReloadMetadata,
-    },
+/// Indices in GLOBAL_KEYS excluded from the Command Palette.
+/// - EXIT_FOCUS: duplicate of FOCUS (same key, context-dependent label)
+/// - PANE_SWITCH: Action::None — not executable
+/// - INSPECTOR_TABS: Action::None — not executable
+/// - PALETTE: opening the palette from inside itself makes no sense
+/// - COMMAND_LINE: command-line mode is a separate entry mechanism
+const EXCLUDED_GLOBAL_INDICES: &[usize] = &[
+    idx::global::PALETTE,
+    idx::global::COMMAND_LINE,
+    idx::global::EXIT_FOCUS,
+    idx::global::PANE_SWITCH,
+    idx::global::INSPECTOR_TABS,
 ];
 
+fn palette_entries() -> impl Iterator<Item = &'static KeyBinding> {
+    GLOBAL_KEYS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !EXCLUDED_GLOBAL_INDICES.contains(i))
+        .map(|(_, kb)| kb)
+}
+
 pub fn palette_command_count() -> usize {
-    PALETTE_COMMANDS.len()
+    palette_entries().count()
 }
 
 pub fn palette_action_for_index(index: usize) -> Action {
-    PALETTE_COMMANDS
-        .get(index)
-        .map(|cmd| cmd.action.clone())
+    palette_entries()
+        .nth(index)
+        .map(|kb| kb.action.clone())
         .unwrap_or(Action::None)
+}
+
+/// Returns an iterator of palette entries for UI rendering.
+pub fn palette_commands() -> impl Iterator<Item = &'static KeyBinding> {
+    palette_entries()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_commands_contains_no_none_actions() {
+        let none_entries: Vec<_> = palette_commands()
+            .filter(|kb| matches!(kb.action, Action::None))
+            .collect();
+
+        assert!(
+            none_entries.is_empty(),
+            "palette_commands must not contain Action::None entries: {:?}",
+            none_entries.iter().map(|kb| kb.key).collect::<Vec<_>>()
+        );
+    }
 }

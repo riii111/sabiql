@@ -57,6 +57,10 @@ pub mod idx {
         pub const RUN: usize = 0;
         pub const ESC_CLOSE: usize = 1;
         pub const MOVE: usize = 2;
+        pub const HOME_END: usize = 3;
+        pub const TAB: usize = 4;
+        pub const COMPLETION_TRIGGER: usize = 5;
+        pub const CLEAR: usize = 6;
     }
 
     pub mod overlay {
@@ -75,6 +79,8 @@ pub mod idx {
         pub const TAB_PREV: usize = 2;
         pub const SAVE: usize = 3;
         pub const ESC_CANCEL: usize = 4;
+        pub const ENTER_DROPDOWN: usize = 5;
+        pub const DROPDOWN_NAV: usize = 6;
     }
 
     pub mod conn_error {
@@ -490,7 +496,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         description: "Navigate items",
         action: Action::None,
     },
-    // idx 6: TYPE_FILTER
+    // idx 5: TYPE_FILTER
     KeyBinding {
         key_short: "type",
         key: "type",
@@ -498,7 +504,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         description: "Type to filter",
         action: Action::None,
     },
-    // idx 7: ERROR_OPEN
+    // idx 6: ERROR_OPEN
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -1102,11 +1108,12 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
 /// each section = 1 header + N key lines, separated by 1 blank line.
 /// Sections: Global, Navigation, Result Pane, Cell Edit, SQL Editor,
 /// Overlays, Command Line, Connection Setup, Connection Error,
-/// ER Diagram Picker, Table Picker, Command Palette, Help Overlay, Confirm Dialog.
+/// Connections Mode, Connection Selector, ER Diagram Picker,
+/// Table Picker, Command Palette, Help Overlay, Confirm Dialog.
 pub const fn help_content_line_count() -> usize {
-    // 14 sections × 1 header each = 14
-    // 13 blank-line separators between sections = 13
-    14 + 13
+    // 16 sections × 1 header each = 16
+    // 15 blank-line separators between sections = 15
+    16 + 15
         + GLOBAL_KEYS.len()
         + NAVIGATION_KEYS.len()
         + RESULT_ACTIVE_KEYS.len()
@@ -1116,6 +1123,8 @@ pub const fn help_content_line_count() -> usize {
         + COMMAND_LINE_KEYS.len()
         + CONNECTION_SETUP_KEYS.len()
         + CONNECTION_ERROR_KEYS.len()
+        + CONNECTIONS_MODE_KEYS.len()
+        + CONNECTION_SELECTOR_KEYS.len()
         + ER_PICKER_KEYS.len()
         + TABLE_PICKER_KEYS.len()
         + COMMAND_PALETTE_KEYS.len()
@@ -1157,6 +1166,10 @@ mod tests {
         assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::ESC_CLOSE < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
 
         // OVERLAY_KEYS
         assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
@@ -1173,6 +1186,8 @@ mod tests {
         assert!(idx::conn_setup::TAB_PREV < CONNECTION_SETUP_KEYS.len());
         assert!(idx::conn_setup::SAVE < CONNECTION_SETUP_KEYS.len());
         assert!(idx::conn_setup::ESC_CANCEL < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
+        assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
 
         // CONNECTION_ERROR_KEYS
         assert!(idx::conn_error::EDIT < CONNECTION_ERROR_KEYS.len());
@@ -1247,7 +1262,7 @@ mod tests {
     #[test]
     fn help_content_line_count_matches_section_structure() {
         // Build the same structure as HelpOverlay::render() and compare lengths.
-        // Sections in render order (14 total):
+        // Sections in render order (16 total):
         let sections: &[usize] = &[
             GLOBAL_KEYS.len(),
             NAVIGATION_KEYS.len(),
@@ -1258,6 +1273,8 @@ mod tests {
             COMMAND_LINE_KEYS.len(),
             CONNECTION_SETUP_KEYS.len(),
             CONNECTION_ERROR_KEYS.len(),
+            CONNECTIONS_MODE_KEYS.len(),
+            CONNECTION_SELECTOR_KEYS.len(),
             ER_PICKER_KEYS.len(),
             TABLE_PICKER_KEYS.len(),
             COMMAND_PALETTE_KEYS.len(),

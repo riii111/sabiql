@@ -144,29 +144,8 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
 
                 let cmd_action = palette_action_for_index(state.ui.picker_selected);
                 state.ui.input_mode = InputMode::Normal;
-
-                match cmd_action {
-                    Action::Quit => state.should_quit = true,
-                    Action::OpenHelp => state.ui.input_mode = InputMode::Help,
-                    Action::OpenTablePicker => {
-                        state.ui.input_mode = InputMode::TablePicker;
-                        state.ui.filter_input.clear();
-                        state.ui.picker_selected = 0;
-                    }
-                    Action::SetFocusedPane(pane) => state.ui.focused_pane = pane,
-                    Action::OpenSqlModal => {
-                        state.ui.input_mode = InputMode::SqlModal;
-                        state.sql_modal.status =
-                            crate::app::sql_modal_context::SqlModalStatus::Editing;
-                        if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
-                            effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-                        }
-                    }
-                    Action::ReloadMetadata => {
-                        effects.push(Effect::DispatchActions(vec![Action::ReloadMetadata]));
-                    }
-                    _ => {}
-                }
+                let mut sub_effects = reduce(state, cmd_action, now);
+                effects.append(&mut sub_effects);
             }
 
             effects
@@ -1764,6 +1743,82 @@ mod tests {
                 assert_eq!(schema, "public");
                 assert_eq!(table, "users");
             }
+        }
+    }
+
+    mod command_palette {
+        use super::*;
+        use crate::app::palette::palette_commands;
+        use rstest::rstest;
+
+        fn state_in_palette_mode() -> AppState {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::CommandPalette;
+            state
+        }
+
+        fn palette_index_of(target: impl Fn(&Action) -> bool) -> usize {
+            palette_commands()
+                .enumerate()
+                .find(|(_, kb)| target(&kb.action))
+                .map(|(i, _)| i)
+                .expect("action must exist in palette")
+        }
+
+        #[rstest]
+        #[case(Action::OpenHelp, InputMode::Help)]
+        #[case(Action::OpenTablePicker, InputMode::TablePicker)]
+        #[case(Action::OpenSqlModal, InputMode::SqlModal)]
+        fn confirm_selection_applies_sub_action(
+            #[case] target_action: Action,
+            #[case] expected_mode: InputMode,
+        ) {
+            let entry_index = palette_index_of(|a| {
+                std::mem::discriminant(a) == std::mem::discriminant(&target_action)
+            });
+
+            let mut state = state_in_palette_mode();
+            state.ui.picker_selected = entry_index;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert_eq!(state.ui.input_mode, expected_mode);
+        }
+
+        #[test]
+        fn confirm_selection_with_reload_emits_sequence_effect() {
+            let entry_index = palette_index_of(|a| matches!(a, Action::ReloadMetadata));
+
+            let mut state = state_in_palette_mode();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.ui.picker_selected = entry_index;
+            let now = Instant::now();
+
+            let effects = reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert!(
+                effects.iter().any(|e| matches!(e, Effect::Sequence(_))),
+                "expected Sequence effect for ReloadMetadata, got {:?}",
+                effects
+            );
+        }
+
+        #[test]
+        fn confirm_selection_toggle_explorer_mode_closes_palette() {
+            let entry_index = palette_index_of(|a| matches!(a, Action::ToggleExplorerMode));
+
+            let mut state = state_in_palette_mode();
+            state.ui.picker_selected = entry_index;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ConfirmSelection, now);
+
+            assert_ne!(
+                state.ui.input_mode,
+                InputMode::CommandPalette,
+                "palette must be closed after confirm"
+            );
         }
     }
 }

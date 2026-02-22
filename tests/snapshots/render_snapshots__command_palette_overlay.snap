@@ -9,14 +9,14 @@ test_project | - | - | no dsn | localhost:5432/test
 │  public.comments ││                                                          │
 │                  ││                                                          │
 │                  │╭ Command Palette ─────────────────────╮                   │
-│                  ││  q / :quit          Quit application │                   │
-│                  ││  ? / :help          Show help        │                   │
-│                  ││  s / :sql           Open SQL Editor  │                   │
-│                  ││  e / :erd           Open ER Diagram  │                   │
-│                  ││  c                  Open connection s│───────────────────┘
-│                  ││  f                  Toggle Focus mode│───────────────────┐
+│                  ││  q                  Quit application │                   │
+│                  ││  ?                  Toggle help      │                   │
 │                  ││  Ctrl+P             Open Table Picker│                   │
-│                  ││  r                  Reload metadata  │                   │
+│                  ││  f                  Toggle Focus mode│                   │
+│                  ││  r                  Reload metadata  │───────────────────┘
+│                  ││  s                  Open SQL Editor  │───────────────────┐
+│                  ││  e                  Open ER Diagram  │                   │
+│                  ││  c                  Toggle Connection│                   │
 │                  ││                                      │                   │
 │                  ││                                      │                   │
 │                  │╰ j/k / ↑↓ Navigate │ Enter Select │ Es╯                   │
