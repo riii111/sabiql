@@ -9,17 +9,17 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.comments   ││Comment: User accounts                                    │
 │                  ││Rows:    ~100                                             │
 │                  ││Schema:  public                                           │
-│                  ││Table:   users                                            │
 │                 ╭ Confirm DELETE: users ───────────────────╮                 │
+│                 │ ✓ LOW RISK                               │                 │
+│                 │                                          │                 │
 │                 │ Target                                   │                 │
-│                 │   id: "3"                                │                 │
-│                 │                                          │─────────────────┘
-│                 │ SQL Preview                              │─────────────────┐
+│                 │   id: "3"                                │─────────────────┘
+│                 │                                          │─────────────────┐
+│                 │ SQL Preview                              │                 │
 │                 │   DELETE FROM "public"."users"           │                 │
 │                 │   WHERE "id" = '3';                      │                 │
 │                 │                                          │                 │
 │                 ╰ Enter: Confirm │ Esc: Cancel ────────────╯                 │
-│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

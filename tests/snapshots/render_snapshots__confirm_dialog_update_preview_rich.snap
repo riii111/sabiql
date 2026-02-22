@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 868
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -9,18 +8,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │public.posts      ││Owner:   postgres                                         │
 │public.comments   ││Comment: User accounts                                    │
 │                  ││Rows:    ~100                                             │
-│                  ││Schema:  public                                           │
 │            ╭ Confirm UPDATE: users ─────────────────────────────╮            │
+│            │ ✓ LOW RISK                                         │            │
+│            │                                                    │            │
 │            │ Diff                                               │            │
 │            │   email: "bob@example.com"  →  "new@example.com"   │            │
-│            │                                                    │            │
-│            │ SQL Preview                                        │────────────┘
-│            │   UPDATE "public"."users"                          │────────────┐
+│            │                                                    │────────────┘
+│            │ SQL Preview                                        │────────────┐
+│            │   UPDATE "public"."users"                          │            │
 │            │   SET "email" = 'new@example.com'                  │            │
 │            │   WHERE "id" = '2';                                │            │
 │            │                                                    │            │
 │            ╰ Enter: Confirm │ Esc: Cancel ──────────────────────╯            │
-│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
