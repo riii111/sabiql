@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │  public.po│▸ Global Keys                                        ▲│           │
 │  public.co│  q                   Quit application               ┃│           │
 │           │  ?                   Toggle help                    ┃│           │
-│           │  Ctrl+P              Open Table Picker              ┃│           │
+│           │  Ctrl+P              Open Table Picker              ││           │
 │           │  Ctrl+K              Open Command Palette           ││           │
 │           │  :                   Enter command line             ││           │
 │           │  f                   Toggle Focus mode              ││           │

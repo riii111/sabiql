@@ -4,7 +4,7 @@ use super::explorer_mode::ExplorerMode;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
-use super::keybindings::HELP_TOTAL_LINES;
+use super::keybindings::help_content_line_count;
 use super::viewport::ViewportPlan;
 
 /// header (1) + scroll indicators (2), used by rendering (border already excluded)
@@ -182,7 +182,7 @@ impl UiState {
     /// Modal is 80% height with 2-line border, so viewport ≈ terminal_height * 0.8 - 2
     pub fn help_max_scroll(&self) -> usize {
         let viewport = (self.terminal_height as usize * 80 / 100).saturating_sub(2);
-        HELP_TOTAL_LINES.saturating_sub(viewport)
+        help_content_line_count().saturating_sub(viewport)
     }
 
     pub fn toggle_focus(&mut self) -> bool {
@@ -462,6 +462,46 @@ mod tests {
     #[test]
     fn result_overhead_constants_are_consistent() {
         assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
+    }
+
+    mod help_scroll {
+        use super::*;
+
+        #[test]
+        fn help_max_scroll_plus_viewport_equals_content_line_count() {
+            // terminal_height=24 → viewport = 24*80/100 - 2 = 17
+            // max_scroll should equal total_lines - viewport (not saturated)
+            let terminal_height: u16 = 24;
+            let state = UiState {
+                terminal_height,
+                ..Default::default()
+            };
+            let viewport = (terminal_height as usize * 80 / 100).saturating_sub(2);
+
+            let max = state.help_max_scroll();
+
+            assert_eq!(
+                max + viewport,
+                help_content_line_count(),
+                "max_scroll({}) + viewport({}) != total_lines({})",
+                max,
+                viewport,
+                help_content_line_count()
+            );
+        }
+
+        #[test]
+        fn help_max_scroll_is_zero_when_terminal_very_tall() {
+            let state = UiState {
+                terminal_height: 1000,
+                ..Default::default()
+            };
+
+            // viewport is huge, so max_scroll saturates at 0
+            let max = state.help_max_scroll();
+
+            assert_eq!(max, 0);
+        }
     }
 
     #[rstest]
