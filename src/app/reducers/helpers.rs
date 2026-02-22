@@ -4,7 +4,7 @@ use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
-pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY";
+pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
 

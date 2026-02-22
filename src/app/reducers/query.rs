@@ -7,7 +7,7 @@ use crate::app::action::Action;
 use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
+use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
@@ -159,21 +159,24 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.query.current_result = Some(Arc::clone(result));
 
                 if result.source == QuerySource::Preview {
-                    if state.query.clear_row_selection_after_refresh {
-                        state.ui.result_selection.reset();
-                        state.query.clear_row_selection_after_refresh = false;
-                        state.query.pending_row_selection_after_refresh = None;
-                    } else if let Some(row) = state.query.pending_row_selection_after_refresh.take()
-                        && !result.rows.is_empty()
-                    {
-                        let clamped = row.min(result.rows.len() - 1);
-                        state.ui.result_selection.enter_row(clamped);
+                    match state.query.post_delete_row_selection {
+                        PostDeleteRowSelection::Keep => {}
+                        PostDeleteRowSelection::Clear => {
+                            state.ui.result_selection.reset();
+                        }
+                        PostDeleteRowSelection::Select(row) => {
+                            if !result.rows.is_empty() {
+                                let clamped = row.min(result.rows.len() - 1);
+                                state.ui.result_selection.enter_row(clamped);
 
-                        let visible = state.result_visible_rows();
-                        if visible > 0 && clamped >= visible {
-                            state.ui.result_scroll_offset = clamped - visible + 1;
+                                let visible = state.result_visible_rows();
+                                if visible > 0 && clamped >= visible {
+                                    state.ui.result_scroll_offset = clamped - visible + 1;
+                                }
+                            }
                         }
                     }
+                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                 }
             }
             Some(vec![])
@@ -198,8 +201,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     ));
                     state.query.current_result = Some(error_result);
                 }
-                state.query.pending_row_selection_after_refresh = None;
-                state.query.clear_row_selection_after_refresh = false;
+                state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                 state.query.pending_delete_refresh_target = None;
             }
             Some(vec![])
@@ -433,13 +435,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         .take()
                         .unwrap_or((state.query.pagination.current_page, None));
 
-                    if let Some(row) = target_row {
-                        state.query.pending_row_selection_after_refresh = Some(row);
-                        state.query.clear_row_selection_after_refresh = false;
-                    } else {
-                        state.query.pending_row_selection_after_refresh = None;
-                        state.query.clear_row_selection_after_refresh = true;
-                    }
+                    state.query.post_delete_row_selection = target_row
+                        .map(PostDeleteRowSelection::Select)
+                        .unwrap_or(PostDeleteRowSelection::Clear);
 
                     if let Some(dsn) = &state.runtime.dsn {
                         state.query.status = QueryStatus::Running;
@@ -1104,8 +1102,10 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert_eq!(state.query.pending_row_selection_after_refresh, Some(499));
-            assert!(!state.query.clear_row_selection_after_refresh);
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Select(499)
+            );
             assert_eq!(
                 state.messages.last_success.as_deref(),
                 Some("Deleted 1 row")
@@ -1165,7 +1165,7 @@ mod tests {
         fn query_completed_restores_pending_row_selection() {
             let mut state = create_test_state();
             state.cache.selection_generation = 1;
-            state.query.pending_row_selection_after_refresh = Some(1000);
+            state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
 
             let _ = reduce_query(
                 &mut state,
@@ -1178,7 +1178,10 @@ mod tests {
             );
 
             assert_eq!(state.ui.result_selection.row(), Some(2));
-            assert_eq!(state.query.pending_row_selection_after_refresh, None);
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Keep
+            );
         }
 
         #[test]
@@ -1186,7 +1189,7 @@ mod tests {
             let mut state = create_test_state();
             state.cache.selection_generation = 1;
             state.ui.result_selection.enter_row(0);
-            state.query.clear_row_selection_after_refresh = true;
+            state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
 
             let _ = reduce_query(
                 &mut state,
@@ -1199,7 +1202,10 @@ mod tests {
             );
 
             assert_eq!(state.ui.result_selection.row(), None);
-            assert!(!state.query.clear_row_selection_after_refresh);
+            assert_eq!(
+                state.query.post_delete_row_selection,
+                PostDeleteRowSelection::Keep
+            );
         }
     }
 }
