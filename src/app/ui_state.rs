@@ -162,19 +162,16 @@ impl UiState {
         self.explorer_pane_height.saturating_sub(3) as usize
     }
 
-    /// border (2) + title (1)
     pub fn connection_list_visible_items(&self) -> usize {
-        self.connection_list_pane_height.saturating_sub(3) as usize
+        self.connection_list_pane_height as usize
     }
 
-    /// border (2) + filter row (1)
     pub fn picker_visible_items(&self) -> usize {
-        self.picker_pane_height.saturating_sub(3) as usize
+        self.picker_pane_height as usize
     }
 
-    /// border (2) + filter row (1) + preview rows (3)
     pub fn er_picker_visible_items(&self) -> usize {
-        self.er_picker_pane_height.saturating_sub(6) as usize
+        self.er_picker_pane_height as usize
     }
 
     pub fn inspector_ddl_visible_rows(&self) -> usize {

@@ -14,7 +14,7 @@ use super::atoms::panel_block;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused);
         let inner = block.inner(area);
@@ -36,7 +36,7 @@ impl Explorer {
     fn render_tables_section(
         frame: &mut Frame,
         area: Rect,
-        state: &AppState,
+        state: &mut AppState,
         has_cached_data: bool,
     ) {
         let highlight_symbol_width: u16 = 2; // "> "
@@ -139,7 +139,8 @@ impl Explorer {
         }
     }
 
-    fn render_connections_section(frame: &mut Frame, area: Rect, state: &AppState) {
+    fn render_connections_section(frame: &mut Frame, area: Rect, state: &mut AppState) {
+        state.ui.connection_list_pane_height = area.height;
         let active_id = state.runtime.active_connection_id.as_ref();
 
         let items: Vec<ListItem> = if state.connections.is_empty() {
