@@ -1,0 +1,26 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
+│public.posts      ││Owner:   postgres                                         │
+│public.comments   ││Comment: User accounts                                    │
+│                  ││Rows:    ~100                                             │
+│                  ││Schema:  public                                           │
+│                  ││Table:   users                                            │
+│               ╭ Confirm DELETE: users ────────────────────────╮              │
+│               │ ⚠ HIGH RISK: Stable row identity is missing   │              │
+│               │                                               │              │
+│               │ Target                                        │──────────────┘
+│               │                                               │──────────────┐
+│               │ SQL Preview                                   │              │
+│               │   DELETE FROM "public"."users";               │              │
+│               │                                               │              │
+│               ╰ Esc: Cancel ──────────────────────────────────╯              │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
