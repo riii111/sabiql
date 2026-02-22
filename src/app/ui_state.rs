@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use ratatui::widgets::ListState;
-
 use super::explorer_mode::ExplorerMode;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
@@ -104,19 +102,15 @@ pub struct UiState {
 
     pub explorer_selected: usize,
     pub explorer_horizontal_offset: usize,
-    pub explorer_list_state: ListState,
     pub explorer_mode: ExplorerMode,
 
     pub connection_list_selected: usize,
-    pub connection_list_state: ListState,
 
     pub picker_selected: usize,
-    pub picker_list_state: ListState,
     pub filter_input: String,
 
     pub er_filter_input: String,
     pub er_picker_selected: usize,
-    pub er_picker_list_state: ListState,
     pub er_selected_tables: BTreeSet<String>,
     pub pending_er_picker: bool,
 
@@ -186,34 +180,28 @@ impl UiState {
         true
     }
 
-    /// Update explorer selection, keeping explorer_selected and explorer_list_state in sync.
-    /// For "no selection", `explorer_list_state.selected()` is the source of truth.
+    /// Update explorer selection index.
+    /// `None` means no selection (explorer_selected is reset to 0).
     pub fn set_explorer_selection(&mut self, index: Option<usize>) {
         match index {
-            Some(i) => {
-                self.explorer_selected = i;
-                self.explorer_list_state.select(Some(i));
-            }
-            None => {
-                self.explorer_selected = 0;
-                self.explorer_list_state.select(None);
-            }
+            Some(i) => self.explorer_selected = i,
+            None => self.explorer_selected = 0,
         }
     }
 
-    /// Update connection list selection, keeping connection_list_selected and connection_list_state in sync.
+    /// Update connection list selection index.
     pub fn set_connection_list_selection(&mut self, index: Option<usize>) {
         match index {
-            Some(i) => {
-                self.connection_list_selected = i;
-                self.connection_list_state.select(Some(i));
-            }
-            None => {
-                self.connection_list_selected = 0;
-                self.connection_list_state.select(None);
-            }
+            Some(i) => self.connection_list_selected = i,
+            None => self.connection_list_selected = 0,
         }
     }
+}
+
+/// Compute the scroll offset for a list given selected index and viewport height.
+/// Mirrors the internal arithmetic used by Ratatui's `ListState`.
+pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
+    selected.saturating_sub(viewport.saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -341,24 +329,22 @@ mod tests {
     }
 
     #[test]
-    fn set_explorer_selection_with_some_syncs_both_fields() {
+    fn set_explorer_selection_with_some_sets_index() {
         let mut state = UiState::default();
 
         state.set_explorer_selection(Some(5));
 
         assert_eq!(state.explorer_selected, 5);
-        assert_eq!(state.explorer_list_state.selected(), Some(5));
     }
 
     #[test]
-    fn set_explorer_selection_with_none_resets_to_zero_and_none() {
+    fn set_explorer_selection_with_none_resets_to_zero() {
         let mut state = UiState::default();
         state.set_explorer_selection(Some(10));
 
         state.set_explorer_selection(None);
 
         assert_eq!(state.explorer_selected, 0);
-        assert_eq!(state.explorer_list_state.selected(), None);
     }
 
     #[test]
@@ -369,24 +355,22 @@ mod tests {
     }
 
     #[test]
-    fn set_connection_list_selection_with_some_syncs_both_fields() {
+    fn set_connection_list_selection_with_some_sets_index() {
         let mut state = UiState::default();
 
         state.set_connection_list_selection(Some(3));
 
         assert_eq!(state.connection_list_selected, 3);
-        assert_eq!(state.connection_list_state.selected(), Some(3));
     }
 
     #[test]
-    fn set_connection_list_selection_with_none_resets_to_zero_and_none() {
+    fn set_connection_list_selection_with_none_resets_to_zero() {
         let mut state = UiState::default();
         state.set_connection_list_selection(Some(5));
 
         state.set_connection_list_selection(None);
 
         assert_eq!(state.connection_list_selected, 0);
-        assert_eq!(state.connection_list_state.selected(), None);
     }
 
     #[test]

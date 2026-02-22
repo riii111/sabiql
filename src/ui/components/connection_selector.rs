@@ -1,18 +1,19 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{List, ListItem};
+use ratatui::widgets::{List, ListItem, ListState};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
 use crate::app::state::AppState;
+use crate::app::ui_state::list_scroll_offset;
 use crate::ui::theme::Theme;
 
 pub struct ConnectionSelector;
 
 impl ConnectionSelector {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) {
         let hint = Self::build_hint_string();
         let (_outer, inner) = render_modal(
             frame,
@@ -25,11 +26,7 @@ impl ConnectionSelector {
         Self::render_connection_list(frame, inner, state);
     }
 
-    fn render_connection_list(
-        frame: &mut Frame,
-        area: ratatui::layout::Rect,
-        state: &mut AppState,
-    ) {
+    fn render_connection_list(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
         let active_id = state.runtime.active_connection_id.as_ref();
 
         let items: Vec<ListItem> = if state.connections.is_empty() {
@@ -60,7 +57,9 @@ impl ConnectionSelector {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, area, &mut state.ui.connection_list_state);
+        let mut list_state =
+            ListState::default().with_selected(Some(state.ui.connection_list_selected));
+        frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render vertical scrollbar if needed
         if !state.connections.is_empty() {
@@ -68,7 +67,8 @@ impl ConnectionSelector {
             let viewport_size = area.height as usize;
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.connection_list_state.offset();
+                let scroll_offset =
+                    list_scroll_offset(state.ui.connection_list_selected, viewport_size);
 
                 render_vertical_scroll_indicator_bar(
                     frame,

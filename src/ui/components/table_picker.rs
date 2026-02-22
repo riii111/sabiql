@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -12,7 +12,7 @@ use super::molecules::render_modal;
 pub struct TablePicker;
 
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) {
         let filtered = state.filtered_tables();
         let (_, inner) = render_modal(
             frame,
@@ -56,15 +56,12 @@ impl TablePicker {
             )
             .highlight_symbol("▸ ");
 
-        if !filtered.is_empty() {
-            state
-                .ui
-                .picker_list_state
-                .select(Some(state.ui.picker_selected));
+        let selected = if !filtered.is_empty() {
+            Some(state.ui.picker_selected)
         } else {
-            state.ui.picker_list_state.select(None);
-        }
-
-        frame.render_stateful_widget(list, list_area, &mut state.ui.picker_list_state);
+            None
+        };
+        let mut list_state = ListState::default().with_selected(selected);
+        frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

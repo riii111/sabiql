@@ -1,11 +1,12 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{List, ListItem};
+use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
+use crate::app::ui_state::list_scroll_offset;
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
 
@@ -14,7 +15,7 @@ use super::atoms::panel_block;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused);
         let inner = block.inner(area);
@@ -36,7 +37,7 @@ impl Explorer {
     fn render_tables_section(
         frame: &mut Frame,
         area: Rect,
-        state: &mut AppState,
+        state: &AppState,
         has_cached_data: bool,
     ) {
         let highlight_symbol_width: u16 = 2; // "> "
@@ -89,7 +90,13 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, area, &mut state.ui.explorer_list_state);
+        let selected = if has_cached_data {
+            Some(state.ui.explorer_selected)
+        } else {
+            None
+        };
+        let mut list_state = ListState::default().with_selected(selected);
+        frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render scrollbars
         if has_cached_data {
@@ -97,7 +104,7 @@ impl Explorer {
             let viewport_size = area.height.saturating_sub(1) as usize; // Reserve for horizontal scrollbar
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.explorer_list_state.offset();
+                let scroll_offset = list_scroll_offset(state.ui.explorer_selected, viewport_size);
 
                 use super::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
@@ -131,7 +138,7 @@ impl Explorer {
         }
     }
 
-    fn render_connections_section(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    fn render_connections_section(frame: &mut Frame, area: Rect, state: &AppState) {
         let active_id = state.runtime.active_connection_id.as_ref();
 
         let items: Vec<ListItem> = if state.connections.is_empty() {
@@ -162,7 +169,9 @@ impl Explorer {
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, area, &mut state.ui.connection_list_state);
+        let mut conn_list_state =
+            ListState::default().with_selected(Some(state.ui.connection_list_selected));
+        frame.render_stateful_widget(list, area, &mut conn_list_state);
 
         // Render vertical scrollbar if needed
         if !state.connections.is_empty() {
@@ -170,7 +179,8 @@ impl Explorer {
             let viewport_size = area.height as usize;
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.connection_list_state.offset();
+                let scroll_offset =
+                    list_scroll_offset(state.ui.connection_list_selected, viewport_size);
 
                 use super::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,

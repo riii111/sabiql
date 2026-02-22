@@ -1247,7 +1247,6 @@ mod tests {
             );
 
             assert_eq!(state.ui.connection_list_selected, 0);
-            assert_eq!(state.ui.connection_list_state.selected(), Some(0));
         }
     }
 
