@@ -164,15 +164,14 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         state.query.clear_row_selection_after_refresh = false;
                         state.query.pending_row_selection_after_refresh = None;
                     } else if let Some(row) = state.query.pending_row_selection_after_refresh.take()
+                        && !result.rows.is_empty()
                     {
-                        if !result.rows.is_empty() {
-                            let clamped = row.min(result.rows.len() - 1);
-                            state.ui.result_selection.enter_row(clamped);
+                        let clamped = row.min(result.rows.len() - 1);
+                        state.ui.result_selection.enter_row(clamped);
 
-                            let visible = state.result_visible_rows();
-                            if visible > 0 && clamped >= visible {
-                                state.ui.result_scroll_offset = clamped - visible + 1;
-                            }
+                        let visible = state.result_visible_rows();
+                        if visible > 0 && clamped >= visible {
+                            state.ui.result_scroll_offset = clamped - visible + 1;
                         }
                     }
                 }
