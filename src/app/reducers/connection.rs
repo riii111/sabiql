@@ -432,8 +432,7 @@ pub fn reduce_connection(
 
             let len = state.connections.len();
             if state.ui.connection_list_selected >= len && len > 0 {
-                state.ui.connection_list_selected = len - 1;
-                state.ui.connection_list_state.select(Some(len - 1));
+                state.ui.set_connection_list_selection(Some(len - 1));
             }
 
             if state.connections.is_empty() {

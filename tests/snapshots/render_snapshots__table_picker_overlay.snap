@@ -4,9 +4,9 @@ expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
-│public.posts      ││(select a table)                                          │
-│public.comments╭ Table Picker ────────────────────────────────╮               │
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││(select a table)                                          │
+│  public.commen╭ Table Picker ────────────────────────────────╮               │
 │               │  > user█                                     │               │
 │               │▸   public.users                              │               │
 │               │                                              │               │

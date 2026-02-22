@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
 use crate::domain::er::er_output_filename;
@@ -13,7 +13,7 @@ use super::molecules::render_modal;
 pub struct ErTablePicker;
 
 impl ErTablePicker {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) {
         let filtered = state.er_filtered_tables();
         let selected_count = state.ui.er_selected_tables.len();
         let total_count = state.tables().len();
@@ -117,15 +117,12 @@ impl ErTablePicker {
             )
             .highlight_symbol("▸ ");
 
-        if !filtered.is_empty() {
-            state
-                .ui
-                .er_picker_list_state
-                .select(Some(state.ui.er_picker_selected));
+        let selected = if !filtered.is_empty() {
+            Some(state.ui.er_picker_selected)
         } else {
-            state.ui.er_picker_list_state.select(None);
-        }
-
-        frame.render_stateful_widget(list, list_area, &mut state.ui.er_picker_list_state);
+            None
+        };
+        let mut list_state = ListState::default().with_selected(selected);
+        frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

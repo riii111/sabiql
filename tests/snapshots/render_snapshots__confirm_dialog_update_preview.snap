@@ -1,13 +1,12 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 825
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│public.users      │┌ [2] Inspector ───────────────────────────────────────────┐
-│public.posts      ││Owner:   postgres                                         │
-│public.comments   ││Comment: User accounts                                    │
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││Owner:   postgres                                         │
+│  public.comments ││Comment: User accounts                                    │
 │                  ││Rows:    ~100                                             │
 │                  ││Schema:  public                                           │
 │                  ││Table:   users                                            │

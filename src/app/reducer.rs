@@ -241,12 +241,12 @@ mod tests {
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
             state.ui.focused_pane = FocusedPane::Explorer;
-            state.ui.explorer_list_state.select(None);
+            state.ui.explorer_selected = 0;
             let now = Instant::now();
 
             let _ = reduce(&mut state, action, now);
 
-            assert_eq!(state.ui.explorer_list_state.selected(), None);
+            assert_eq!(state.ui.explorer_selected, 0);
         }
     }
 
@@ -429,7 +429,6 @@ mod tests {
         fn metadata_loaded_with_empty_tables_selects_none() {
             let mut state = create_test_state();
             state.ui.explorer_selected = 5;
-            state.ui.explorer_list_state.select(Some(5));
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -442,7 +441,6 @@ mod tests {
 
             assert!(state.cache.metadata.is_some());
             assert_eq!(state.ui.explorer_selected, 0);
-            assert_eq!(state.ui.explorer_list_state.selected(), None);
         }
 
         #[test]
@@ -466,7 +464,6 @@ mod tests {
 
             assert!(state.cache.metadata.is_some());
             assert_eq!(state.ui.explorer_selected, 0);
-            assert_eq!(state.ui.explorer_list_state.selected(), Some(0));
         }
 
         #[test]
