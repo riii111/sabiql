@@ -278,6 +278,67 @@ impl PostgresAdapter {
         )
     }
 
+    fn preview_pk_columns_query(schema: &str, table: &str) -> String {
+        format!(
+            r#"
+            SELECT COALESCE(json_agg(a.attname ORDER BY array_position(i.indkey, a.attnum)), '[]'::json)
+            FROM pg_index i
+            JOIN pg_class c ON c.oid = i.indrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+            WHERE i.indisprimary
+              AND n.nspname = {}
+              AND c.relname = {}
+            "#,
+            quote_literal(schema),
+            quote_literal(table)
+        )
+    }
+
+    async fn fetch_preview_order_columns(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<String>, MetadataError> {
+        let query = Self::preview_pk_columns_query(schema, table);
+        let raw = self.execute_query(dsn, &query).await?;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(vec![]);
+        }
+
+        serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))
+    }
+
+    fn build_preview_query(
+        schema: &str,
+        table: &str,
+        order_columns: &[String],
+        limit: usize,
+        offset: usize,
+    ) -> String {
+        let order_clause = if order_columns.is_empty() {
+            String::new()
+        } else {
+            let cols = order_columns
+                .iter()
+                .map(|col| quote_ident(col))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" ORDER BY {}", cols)
+        };
+
+        format!(
+            "SELECT * FROM {}.{}{} LIMIT {} OFFSET {}",
+            quote_ident(schema),
+            quote_ident(table),
+            order_clause,
+            limit,
+            offset
+        )
+    }
+
     fn indexes_query(schema: &str, table: &str) -> String {
         format!(
             r#"
@@ -1017,13 +1078,13 @@ impl QueryExecutor for PostgresAdapter {
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, MetadataError> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {} OFFSET {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit,
-            offset
-        );
+        // Keep preview ordering deterministic by primary key when available.
+        // Fallback to unordered preview if PK discovery fails.
+        let order_columns = self
+            .fetch_preview_order_columns(dsn, schema, table)
+            .await
+            .unwrap_or_default();
+        let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
         self.execute_query_raw(dsn, &query, QuerySource::Preview)
             .await
     }
@@ -1050,6 +1111,44 @@ impl QueryExecutor for PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod preview_query {
+        use super::*;
+
+        #[test]
+        fn with_primary_key_columns_returns_ordered_preview_query() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "users",
+                &["id".to_string(), "tenant_id".to_string()],
+                100,
+                200,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"users\" ORDER BY \"id\", \"tenant_id\" LIMIT 100 OFFSET 200"
+            );
+        }
+
+        #[test]
+        fn without_primary_key_columns_returns_unordered_preview_query() {
+            let sql = PostgresAdapter::build_preview_query("public", "users", &[], 100, 0);
+
+            assert_eq!(sql, "SELECT * FROM \"public\".\"users\" LIMIT 100 OFFSET 0");
+        }
+
+        #[test]
+        fn primary_key_query_returns_json_aggregate_sql() {
+            let sql = PostgresAdapter::preview_pk_columns_query("public", "users");
+
+            assert!(
+                sql.contains("json_agg(a.attname ORDER BY array_position(i.indkey, a.attnum))")
+            );
+            assert!(sql.contains("n.nspname = 'public'"));
+            assert!(sql.contains("c.relname = 'users'"));
+        }
+    }
 
     #[test]
     fn test_extract_database_name_uri_format() {
