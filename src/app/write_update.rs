@@ -44,6 +44,21 @@ pub fn build_update_sql(
     )
 }
 
+pub fn build_delete_sql(schema: &str, table: &str, pk_pairs: &[(String, String)]) -> String {
+    let where_clause = pk_pairs
+        .iter()
+        .map(|(col, val)| format!("{} = {}", quote_ident(col), quote_literal(val)))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+
+    format!(
+        "DELETE FROM {}.{}\nWHERE {};",
+        quote_ident(schema),
+        quote_ident(table),
+        where_clause
+    )
+}
+
 pub fn build_pk_pairs(
     columns: &[String],
     row: &[String],
@@ -115,6 +130,23 @@ mod tests {
             assert_eq!(
                 sql,
                 "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
+            );
+        }
+
+        #[test]
+        fn delete_with_composite_pk_returns_where_with_all_keys() {
+            let sql = build_delete_sql(
+                "s",
+                "t",
+                &[
+                    (String::from("id"), String::from("1")),
+                    (String::from("tenant_id"), String::from("7")),
+                ],
+            );
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"s\".\"t\"\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
             );
         }
     }

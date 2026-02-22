@@ -261,6 +261,8 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
+    ResultDeleteOperatorPending,
+    RequestDeleteActiveRow,
     ResultEnterCellEdit,
     ResultCancelCellEdit,
     ResultCellEditInput(char),

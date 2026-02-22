@@ -1,5 +1,6 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 758
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -24,4 +25,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  ?:Help  Esc:Back  q:Quit
+Enter:Select  dd:Delete  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  ?:Help  Esc:Ba

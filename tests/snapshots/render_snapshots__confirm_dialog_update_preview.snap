@@ -1,5 +1,6 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 825
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -17,7 +18,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │              │ UPDATE "public"."users"                         │─────────────┐
 │              │ SET "email" = 'new@example.com'                 │             │
 │              │ WHERE "id" = '2';                               │             │
-│              ╰ Enter/Y: Confirm │ Esc/N: Cancel ───────────────╯             │
+│              ╰ Enter: Confirm │ Esc: Cancel ───────────────────╯             │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

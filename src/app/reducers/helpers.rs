@@ -4,6 +4,10 @@ use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
+pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
+pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
+    "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
+
 /// Shared prerequisites for preview-cell write operations.
 /// Entry checks in navigation and submit-time checks in query should both use this.
 /// Row/column selection source is intentionally left to each caller:
@@ -44,9 +48,29 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .as_ref()
         .filter(|cols| !cols.is_empty())
         .map(|cols| cols.as_slice())
-        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
+        .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
 
     Ok((result, pk_cols))
+}
+
+/// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
+/// after refetch, because the previous page row count is not known yet.
+pub fn deletion_refresh_target(
+    row_count: usize,
+    selected_row: usize,
+    current_page: usize,
+) -> (usize, Option<usize>) {
+    if row_count <= 1 {
+        if current_page > 0 {
+            (current_page - 1, Some(usize::MAX))
+        } else {
+            (0, None)
+        }
+    } else if selected_row < row_count - 1 {
+        (current_page, Some(selected_row))
+    } else {
+        (current_page, Some(row_count - 2))
+    }
 }
 
 pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
@@ -267,6 +291,38 @@ mod tests {
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));
+        }
+    }
+
+    mod delete_refresh_target {
+        use super::*;
+
+        #[test]
+        fn single_row_first_page_clears_selection() {
+            let (page, row) = deletion_refresh_target(1, 0, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, None);
+        }
+
+        #[test]
+        fn single_row_non_first_page_goes_previous_page_last_row() {
+            let (page, row) = deletion_refresh_target(1, 0, 2);
+            assert_eq!(page, 1);
+            assert_eq!(row, Some(usize::MAX));
+        }
+
+        #[test]
+        fn middle_row_keeps_same_index() {
+            let (page, row) = deletion_refresh_target(3, 1, 4);
+            assert_eq!(page, 4);
+            assert_eq!(row, Some(1));
+        }
+
+        #[test]
+        fn last_row_selects_previous_row() {
+            let (page, row) = deletion_refresh_target(3, 2, 4);
+            assert_eq!(page, 4);
+            assert_eq!(row, Some(1));
         }
     }
 }

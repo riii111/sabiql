@@ -4,7 +4,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::molecules::{render_modal, render_modal_with_border_color};
 use crate::app::state::AppState;
-use crate::app::write_guardrails::WritePreview;
+use crate::app::write_guardrails::{WriteOperation, WritePreview};
 use crate::app::write_update::escape_preview_value;
 use crate::ui::theme::Theme;
 
@@ -34,7 +34,7 @@ impl ConfirmDialog {
 
     fn render_plain(frame: &mut Frame, state: &AppState) {
         let dialog = &state.confirm_dialog;
-        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
+        let hint = " Enter: Confirm │ Esc: Cancel ";
 
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
@@ -73,27 +73,49 @@ impl ConfirmDialog {
     }
 
     fn render_write_preview(frame: &mut Frame, state: &AppState, preview: &WritePreview) {
-        let hint = " Enter/Y: Confirm │ Esc/N: Cancel ";
+        let hint = " Enter: Confirm │ Esc: Cancel ";
         let title = format!(" {} ", state.confirm_dialog.title);
 
         let mut content_lines: Vec<Line> = Vec::new();
 
-        content_lines.push(Line::from(vec![Span::styled(
-            "Diff",
-            Style::default().fg(Theme::TEXT_SECONDARY),
-        )]));
-        for diff in &preview.diff {
-            let before = format!("\"{}\"", escape_preview_value(&diff.before));
-            let after = format!("\"{}\"", escape_preview_value(&diff.after));
-            content_lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {}: ", diff.column),
+        match preview.operation {
+            WriteOperation::Update => {
+                content_lines.push(Line::from(vec![Span::styled(
+                    "Diff",
                     Style::default().fg(Theme::TEXT_SECONDARY),
-                ),
-                Span::styled(before, Style::default().fg(Theme::TEXT_PRIMARY)),
-                Span::styled("  →  ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                Span::styled(after, Style::default().fg(Theme::TEXT_PRIMARY)),
-            ]));
+                )]));
+                for diff in &preview.diff {
+                    let before = format!("\"{}\"", escape_preview_value(&diff.before));
+                    let after = format!("\"{}\"", escape_preview_value(&diff.after));
+                    content_lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("  {}: ", diff.column),
+                            Style::default().fg(Theme::TEXT_SECONDARY),
+                        ),
+                        Span::styled(before, Style::default().fg(Theme::TEXT_PRIMARY)),
+                        Span::styled("  →  ", Style::default().fg(Theme::TEXT_SECONDARY)),
+                        Span::styled(after, Style::default().fg(Theme::TEXT_PRIMARY)),
+                    ]));
+                }
+            }
+            WriteOperation::Delete => {
+                content_lines.push(Line::from(vec![Span::styled(
+                    "Target",
+                    Style::default().fg(Theme::TEXT_SECONDARY),
+                )]));
+                for (key, value) in &preview.target_summary.key_values {
+                    content_lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("  {}: ", key),
+                            Style::default().fg(Theme::TEXT_SECONDARY),
+                        ),
+                        Span::styled(
+                            format!("\"{}\"", escape_preview_value(value)),
+                            Style::default().fg(Theme::TEXT_PRIMARY),
+                        ),
+                    ]));
+                }
+            }
         }
 
         content_lines.push(Line::from(""));
@@ -146,7 +168,9 @@ impl ConfirmDialog {
     }
 
     fn highlight_sql_line(line: &str) -> Line<'static> {
-        const SQL_KEYWORDS: &[&str] = &["UPDATE", "SET", "WHERE", "AND", "OR", "NULL"];
+        const SQL_KEYWORDS: &[&str] = &[
+            "UPDATE", "DELETE", "FROM", "SET", "WHERE", "AND", "OR", "NULL",
+        ];
 
         let trimmed = line.trim_start();
         let indent = &line[..line.len() - trimmed.len()];
