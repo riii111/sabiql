@@ -1,13 +1,19 @@
 use super::action::Action;
-use super::keybindings::{GLOBAL_KEYS, KeyBinding};
+use super::keybindings::{GLOBAL_KEYS, KeyBinding, idx};
 
 /// Indices in GLOBAL_KEYS excluded from the Command Palette.
-/// - EXIT_FOCUS (idx 6): duplicate of FOCUS (same key, context-dependent label)
-/// - PANE_SWITCH (idx 7): Action::None — not executable
-/// - INSPECTOR_TABS (idx 8): Action::None — not executable
-/// - PALETTE (idx 3): opening the palette from inside itself makes no sense
-/// - COMMAND_LINE (idx 4): command-line mode is a separate entry mechanism
-const EXCLUDED_GLOBAL_INDICES: &[usize] = &[3, 4, 6, 7, 8];
+/// - EXIT_FOCUS: duplicate of FOCUS (same key, context-dependent label)
+/// - PANE_SWITCH: Action::None — not executable
+/// - INSPECTOR_TABS: Action::None — not executable
+/// - PALETTE: opening the palette from inside itself makes no sense
+/// - COMMAND_LINE: command-line mode is a separate entry mechanism
+const EXCLUDED_GLOBAL_INDICES: &[usize] = &[
+    idx::global::PALETTE,
+    idx::global::COMMAND_LINE,
+    idx::global::EXIT_FOCUS,
+    idx::global::PANE_SWITCH,
+    idx::global::INSPECTOR_TABS,
+];
 
 fn palette_entries() -> impl Iterator<Item = &'static KeyBinding> {
     GLOBAL_KEYS
