@@ -13,7 +13,7 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::app::write_guardrails::{
-    GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+    TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::app::write_update::{build_delete_sql, build_pk_pairs};
 
@@ -165,12 +165,14 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         table,
         key_values,
     };
-    let guardrail = GuardrailDecision {
-        risk_level: RiskLevel::Low,
-        blocked: false,
-        reason: None,
-        target_summary: None,
-    };
+    let has_where = !target.key_values.is_empty();
+    let has_stable_row_identity = true; // editable_preview_base already guarantees PK exists
+    let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
+    if guardrail.blocked {
+        return Err(guardrail
+            .reason
+            .unwrap_or_else(|| "DELETE blocked by guardrails".to_string()));
+    }
     let (target_page, target_row) = deletion_refresh_target(
         result.rows.len(),
         row_idx,
