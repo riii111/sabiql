@@ -485,8 +485,6 @@ fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
     match key.code {
         KeyCode::Enter => Action::ConfirmDialogConfirm,
         KeyCode::Esc => Action::ConfirmDialogCancel,
-        KeyCode::Char('y') | KeyCode::Char('Y') => Action::ConfirmDialogConfirm,
-        KeyCode::Char('n') | KeyCode::Char('N') => Action::ConfirmDialogCancel,
         _ => Action::None,
     }
 }
@@ -1649,11 +1647,7 @@ mod tests {
 
         #[rstest]
         #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Char('y'), Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Char('Y'), Action::ConfirmDialogConfirm)]
         #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
-        #[case(KeyCode::Char('n'), Action::ConfirmDialogCancel)]
-        #[case(KeyCode::Char('N'), Action::ConfirmDialogCancel)]
         fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
             let result = handle_confirm_dialog_keys(key(code));
 
@@ -1663,9 +1657,14 @@ mod tests {
             );
         }
 
-        #[test]
-        fn unknown_key_returns_none() {
-            let result = handle_confirm_dialog_keys(key(KeyCode::Char('x')));
+        #[rstest]
+        #[case(KeyCode::Char('y'))]
+        #[case(KeyCode::Char('Y'))]
+        #[case(KeyCode::Char('n'))]
+        #[case(KeyCode::Char('N'))]
+        #[case(KeyCode::Char('x'))]
+        fn non_bound_keys_return_none(#[case] code: KeyCode) {
+            let result = handle_confirm_dialog_keys(key(code));
 
             assert!(matches!(result, Action::None));
         }
