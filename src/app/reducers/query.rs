@@ -345,7 +345,11 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
             state.confirm_dialog.title = title;
             state.confirm_dialog.message = build_write_preview_fallback_message(preview);
-            state.confirm_dialog.on_confirm = Action::ExecuteWrite(preview.sql.clone());
+            state.confirm_dialog.on_confirm = if preview.guardrail.blocked {
+                Action::None
+            } else {
+                Action::ExecuteWrite(preview.sql.clone())
+            };
             state.confirm_dialog.on_cancel = Action::None;
             state.confirm_dialog.return_mode = return_mode;
             state.ui.input_mode = InputMode::ConfirmDialog;
