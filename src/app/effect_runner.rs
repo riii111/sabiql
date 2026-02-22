@@ -563,6 +563,8 @@ impl EffectRunner {
                 {
                     let writer = Arc::clone(&self.er_log_writer);
                     tokio::task::spawn_blocking(move || {
+                        // Log write failure is intentionally ignored: the app has no
+                        // output channel (TUI is active) and tracing is not available.
                         let _ = writer.write_er_failure_log(failed_tables, cache_dir);
                     });
                 }
