@@ -4,6 +4,7 @@ use crate::domain::{QueryResult, WriteExecutionResult};
 
 use super::MetadataError;
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait QueryExecutor: Send + Sync {
     async fn execute_preview(

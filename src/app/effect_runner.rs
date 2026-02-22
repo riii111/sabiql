@@ -610,3 +610,502 @@ impl EffectRunner {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::completion::CompletionEngine;
+    use crate::app::ports::connection_store::MockConnectionStore;
+    use crate::app::ports::metadata::MockMetadataProvider;
+    use crate::app::ports::query_executor::MockQueryExecutor;
+    use crate::app::ports::{
+        ConfigWriter, ErDiagramExporter, ErExportResult, ErLogWriter, RenderOutput, Renderer,
+    };
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
+    use color_eyre::eyre::Result;
+    use std::path::{Path, PathBuf};
+    use std::time::Instant;
+    use tokio::sync::mpsc;
+
+    struct NoopRenderer;
+    impl Renderer for NoopRenderer {
+        fn draw(&mut self, _state: &mut AppState) -> Result<RenderOutput> {
+            Ok(RenderOutput::default())
+        }
+    }
+
+    struct NoopConfigWriter;
+    impl ConfigWriter for NoopConfigWriter {
+        fn get_cache_dir(&self, _project_name: &str) -> Result<PathBuf> {
+            Ok(PathBuf::from("/tmp"))
+        }
+    }
+
+    struct NoopErExporter;
+    impl ErDiagramExporter for NoopErExporter {
+        fn generate_and_export(
+            &self,
+            _tables: &[crate::domain::ErTableInfo],
+            _filename: &str,
+            _cache_dir: &Path,
+        ) -> ErExportResult<PathBuf> {
+            Ok(PathBuf::from("/tmp/er.svg"))
+        }
+    }
+
+    struct NoopErLogWriter;
+    impl ErLogWriter for NoopErLogWriter {
+        fn write_er_failure_log(
+            &self,
+            _failed_tables: Vec<(String, String)>,
+            _cache_dir: PathBuf,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn make_runner(
+        metadata_provider: Arc<dyn MetadataProvider>,
+        query_executor: Arc<dyn QueryExecutor>,
+        connection_store: Arc<dyn ConnectionStore>,
+        cache: TtlCache<String, DatabaseMetadata>,
+        action_tx: mpsc::Sender<Action>,
+    ) -> EffectRunner {
+        EffectRunner::new(
+            metadata_provider,
+            query_executor,
+            Arc::new(NoopErExporter),
+            Arc::new(NoopConfigWriter),
+            Arc::new(NoopErLogWriter),
+            connection_store,
+            cache,
+            action_tx,
+        )
+    }
+
+    fn sample_metadata() -> DatabaseMetadata {
+        DatabaseMetadata {
+            database_name: "testdb".to_string(),
+            schemas: vec![],
+            tables: vec![],
+            fetched_at: Instant::now(),
+        }
+    }
+
+    fn sample_query_result() -> QueryResult {
+        QueryResult {
+            query: "SELECT 1".to_string(),
+            columns: vec!["id".to_string()],
+            rows: vec![vec!["1".to_string()]],
+            row_count: 1,
+            execution_time_ms: 5,
+            executed_at: Instant::now(),
+            source: QuerySource::Preview,
+            error: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_metadata_cache_hit_skips_provider() {
+        let mut mock_provider = MockMetadataProvider::new();
+        mock_provider.expect_fetch_metadata().never();
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        cache.set("dsn://test".to_string(), sample_metadata()).await;
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(mock_provider),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::FetchMetadata {
+                    dsn: "dsn://test".to_string(),
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::MetadataLoaded(_)),
+            "expected MetadataLoaded, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_metadata_cache_miss_calls_provider_ok() {
+        let mut mock_provider = MockMetadataProvider::new();
+        mock_provider
+            .expect_fetch_metadata()
+            .once()
+            .returning(|_| Ok(sample_metadata()));
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(mock_provider),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::FetchMetadata {
+                    dsn: "dsn://miss".to_string(),
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::MetadataLoaded(_)),
+            "expected MetadataLoaded, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_metadata_provider_error_sends_failed() {
+        let mut mock_provider = MockMetadataProvider::new();
+        mock_provider.expect_fetch_metadata().once().returning(|_| {
+            Err(crate::app::ports::MetadataError::ConnectionFailed(
+                "timeout".to_string(),
+            ))
+        });
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(mock_provider),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::FetchMetadata {
+                    dsn: "dsn://err".to_string(),
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::MetadataFailed(_)),
+            "expected MetadataFailed, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_preview_ok_sends_query_completed() {
+        let mut mock_executor = MockQueryExecutor::new();
+        mock_executor
+            .expect_execute_preview()
+            .once()
+            .returning(|_, _, _, _, _| Ok(sample_query_result()));
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(mock_executor),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::ExecutePreview {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    limit: 100,
+                    offset: 0,
+                    target_page: 0,
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::QueryCompleted { .. }),
+            "expected QueryCompleted, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_preview_error_sends_query_failed() {
+        let mut mock_executor = MockQueryExecutor::new();
+        mock_executor
+            .expect_execute_preview()
+            .once()
+            .returning(|_, _, _, _, _| {
+                Err(crate::app::ports::MetadataError::QueryFailed(
+                    "syntax error".to_string(),
+                ))
+            });
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(mock_executor),
+            Arc::new(MockConnectionStore::new()),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::ExecutePreview {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    limit: 100,
+                    offset: 0,
+                    target_page: 0,
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::QueryFailed(_, _)),
+            "expected QueryFailed, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_connection_ok_sends_deleted() {
+        let mut mock_store = MockConnectionStore::new();
+        mock_store.expect_delete().once().returning(|_| Ok(()));
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(mock_store),
+            cache,
+            tx,
+        );
+
+        let id = ConnectionId::new();
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::DeleteConnection { id: id.clone() }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::ConnectionDeleted(_)),
+            "expected ConnectionDeleted, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_connection_error_sends_failed() {
+        let mut mock_store = MockConnectionStore::new();
+        mock_store.expect_delete().once().returning(|_| {
+            Err(crate::app::ports::ConnectionStoreError::NotFound(
+                "id".to_string(),
+            ))
+        });
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(mock_store),
+            cache,
+            tx,
+        );
+
+        let id = ConnectionId::new();
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::DeleteConnection { id }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::ConnectionDeleteFailed(_)),
+            "expected ConnectionDeleteFailed, got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn load_connections_error_sends_empty_list() {
+        let mut mock_store = MockConnectionStore::new();
+        mock_store.expect_load_all().once().returning(|| {
+            Err(crate::app::ports::ConnectionStoreError::ReadError(
+                "file not found".to_string(),
+            ))
+        });
+
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        let (tx, mut rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(mock_store),
+            cache,
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(vec![Effect::LoadConnections], &mut renderer, state, &ce)
+            .await
+            .unwrap();
+
+        let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+            .await
+            .expect("action timeout")
+            .expect("channel closed");
+        assert!(
+            matches!(action, Action::ConnectionsLoaded(ref v) if v.is_empty()),
+            "expected ConnectionsLoaded([]), got {:?}",
+            action
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_invalidate_removes_entry() {
+        let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+        cache
+            .set("dsn://target".to_string(), sample_metadata())
+            .await;
+
+        assert!(cache.get(&"dsn://target".to_string()).await.is_some());
+
+        let (tx, _rx) = mpsc::channel(8);
+        let runner = make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            cache.clone(),
+            tx,
+        );
+
+        let state = &mut AppState::new("test".to_string());
+        let ce = RefCell::new(CompletionEngine::new());
+        let mut renderer = NoopRenderer;
+
+        runner
+            .run(
+                vec![Effect::CacheInvalidate {
+                    dsn: "dsn://target".to_string(),
+                }],
+                &mut renderer,
+                state,
+                &ce,
+            )
+            .await
+            .unwrap();
+
+        assert!(cache.get(&"dsn://target".to_string()).await.is_none());
+    }
+}

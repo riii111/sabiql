@@ -35,6 +35,7 @@ impl std::fmt::Display for ConnectionStoreError {
 
 impl std::error::Error for ConnectionStoreError {}
 
+#[cfg_attr(test, mockall::automock)]
 pub trait ConnectionStore: Send + Sync {
     fn load(&self) -> Result<Option<ConnectionProfile>, ConnectionStoreError>;
 
