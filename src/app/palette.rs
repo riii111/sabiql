@@ -38,3 +38,21 @@ pub fn palette_action_for_index(index: usize) -> Action {
 pub fn palette_commands() -> impl Iterator<Item = &'static KeyBinding> {
     palette_entries()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn palette_commands_contains_no_none_actions() {
+        let none_entries: Vec<_> = palette_commands()
+            .filter(|kb| matches!(kb.action, Action::None))
+            .collect();
+
+        assert!(
+            none_entries.is_empty(),
+            "palette_commands must not contain Action::None entries: {:?}",
+            none_entries.iter().map(|kb| kb.key).collect::<Vec<_>>()
+        );
+    }
+}
