@@ -16,7 +16,7 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
-use super::helpers::editable_preview_base;
+use super::helpers::{deletion_refresh_target, editable_preview_base};
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     // Entry guard on `i` is handled in navigation; this path re-validates before write submit.
@@ -115,24 +115,6 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
         }
     }
     lines.join("\n")
-}
-
-fn deletion_refresh_target(
-    row_count: usize,
-    selected_row: usize,
-    current_page: usize,
-) -> (usize, Option<usize>) {
-    if row_count <= 1 {
-        if current_page > 0 {
-            (current_page - 1, Some(usize::MAX))
-        } else {
-            (0, None)
-        }
-    } else if selected_row < row_count - 1 {
-        (current_page, Some(selected_row))
-    } else {
-        (current_page, Some(row_count - 2))
-    }
 }
 
 /// Handles query execution and command line actions.

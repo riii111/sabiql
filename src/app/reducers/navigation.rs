@@ -17,7 +17,7 @@ use crate::app::write_guardrails::{
 };
 use crate::app::write_update::{build_delete_sql, build_pk_pairs};
 
-use super::helpers::editable_preview_base;
+use super::helpers::{deletion_refresh_target, editable_preview_base};
 
 fn result_row_count(state: &AppState) -> usize {
     state
@@ -122,24 +122,6 @@ fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
-fn deletion_refresh_target(
-    row_count: usize,
-    selected_row: usize,
-    current_page: usize,
-) -> (usize, Option<usize>) {
-    if row_count <= 1 {
-        if current_page > 0 {
-            (current_page - 1, Some(usize::MAX))
-        } else {
-            (0, None)
-        }
-    } else if selected_row < row_count - 1 {
-        (current_page, Some(selected_row))
-    } else {
-        (current_page, Some(row_count - 2))
-    }
-}
-
 fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option<usize>), String> {
     if state.ui.result_selection.mode() != crate::app::ui_state::ResultNavMode::RowActive {
         return Err("No active row".to_string());
@@ -156,7 +138,13 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         .result_selection
         .row()
         .ok_or_else(|| "No active row".to_string())?;
-    let (result, pk_cols) = editable_preview_base(state)?;
+    let (result, pk_cols) = editable_preview_base(state).map_err(|msg| {
+        if msg == "Editing requires a PRIMARY KEY" {
+            "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.".to_string()
+        } else {
+            msg
+        }
+    })?;
     let row = result
         .rows
         .get(row_idx)
@@ -164,9 +152,6 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
 
     let key_values = build_pk_pairs(&result.columns, row, pk_cols)
         .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
-    if key_values.is_empty() {
-        return Err("Deletion requires PRIMARY KEY. This table has no PRIMARY KEY.".to_string());
-    }
 
     let target = TargetSummary {
         schema: state.query.pagination.schema.clone(),
@@ -1899,7 +1884,23 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("Editing requires a PRIMARY KEY")
+                Some("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")
+            );
+        }
+
+        #[test]
+        fn request_delete_with_none_pk_sets_same_error() {
+            let mut state = base_state(None, vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now())
+                    .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")
             );
         }
     }
