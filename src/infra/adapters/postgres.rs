@@ -10,7 +10,7 @@ use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary, Trigger, TriggerEvent,
-    TriggerTiming,
+    TriggerTiming, WriteExecutionResult,
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
@@ -109,25 +109,6 @@ fn is_select_query(query: &str) -> bool {
     }
 
     found_select
-}
-
-fn parse_affected_rows(output: &str) -> usize {
-    output
-        .lines()
-        .rev()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let mut parts = trimmed.split_whitespace();
-            let tag = parts.next()?.to_uppercase();
-            if !matches!(tag.as_str(), "DELETE" | "UPDATE" | "INSERT") {
-                return None;
-            }
-            parts.last().and_then(|n| n.parse::<usize>().ok())
-        })
-        .unwrap_or(0)
 }
 
 fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
@@ -294,6 +275,67 @@ impl PostgresAdapter {
             "#,
             quote_literal(schema),
             quote_literal(table)
+        )
+    }
+
+    fn preview_pk_columns_query(schema: &str, table: &str) -> String {
+        format!(
+            r#"
+            SELECT COALESCE(json_agg(a.attname ORDER BY array_position(i.indkey, a.attnum)), '[]'::json)
+            FROM pg_index i
+            JOIN pg_class c ON c.oid = i.indrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+            WHERE i.indisprimary
+              AND n.nspname = {}
+              AND c.relname = {}
+            "#,
+            quote_literal(schema),
+            quote_literal(table)
+        )
+    }
+
+    async fn fetch_preview_order_columns(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<String>, MetadataError> {
+        let query = Self::preview_pk_columns_query(schema, table);
+        let raw = self.execute_query(dsn, &query).await?;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(vec![]);
+        }
+
+        serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))
+    }
+
+    fn build_preview_query(
+        schema: &str,
+        table: &str,
+        order_columns: &[String],
+        limit: usize,
+        offset: usize,
+    ) -> String {
+        let order_clause = if order_columns.is_empty() {
+            String::new()
+        } else {
+            let cols = order_columns
+                .iter()
+                .map(|col| quote_ident(col))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" ORDER BY {}", cols)
+        };
+
+        format!(
+            "SELECT * FROM {}.{}{} LIMIT {} OFFSET {}",
+            quote_ident(schema),
+            quote_ident(table),
+            order_clause,
+            limit,
+            offset
         )
     }
 
@@ -841,6 +883,91 @@ impl PostgresAdapter {
         ))
     }
 
+    pub async fn execute_write_raw(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError> {
+        let start = Instant::now();
+
+        let mut child = Command::new("psql")
+            .arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("-c")
+            .arg(query)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let elapsed = start.elapsed().as_millis() as u64;
+        let (status, stdout, stderr) = result;
+
+        if !status.success() {
+            return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
+        }
+
+        let affected_rows = Self::parse_affected_rows(&stdout).ok_or_else(|| {
+            MetadataError::QueryFailed("Failed to parse affected row count".to_string())
+        })?;
+
+        Ok(WriteExecutionResult {
+            affected_rows,
+            execution_time_ms: elapsed,
+        })
+    }
+
+    fn parse_affected_rows(stdout: &str) -> Option<usize> {
+        stdout.lines().rev().find_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() != 2 {
+                return None;
+            }
+            match parts[0] {
+                "UPDATE" | "DELETE" => parts[1].parse::<usize>().ok(),
+                _ => None,
+            }
+        })
+    }
+
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
@@ -951,13 +1078,13 @@ impl QueryExecutor for PostgresAdapter {
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, MetadataError> {
-        let query = format!(
-            "SELECT * FROM {}.{} LIMIT {} OFFSET {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit,
-            offset
-        );
+        // Editing a cell re-fetches the same page; stable ordering prevents the
+        // edited row from shifting position after the refresh.
+        let order_columns = self
+            .fetch_preview_order_columns(dsn, schema, table)
+            .await
+            .unwrap_or_default();
+        let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
         self.execute_query_raw(dsn, &query, QuerySource::Preview)
             .await
     }
@@ -972,69 +1099,56 @@ impl QueryExecutor for PostgresAdapter {
         self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 
-    async fn execute_write(&self, dsn: &str, query: &str) -> Result<usize, MetadataError> {
-        let mut child = Command::new("psql")
-            .arg(dsn)
-            .arg("-X")
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1")
-            .arg("-c")
-            .arg(query)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
-
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
-
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut out) = stdout_handle {
-                        out.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                },
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut err) = stderr_handle {
-                        err.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                }
-            );
-
-            let stdout = stdout_result?;
-            let stderr = stderr_result?;
-            let status = child.wait().await?;
-
-            Ok::<_, std::io::Error>((status, stdout, stderr))
-        })
-        .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
-
-        let (status, stdout, stderr) = result;
-        if !status.success() {
-            let err = if stderr.trim().is_empty() {
-                stdout.trim().to_string()
-            } else {
-                stderr.trim().to_string()
-            };
-            return Err(MetadataError::QueryFailed(err));
-        }
-
-        let combined = format!("{}\n{}", stdout, stderr);
-        Ok(parse_affected_rows(&combined))
+    async fn execute_write(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<WriteExecutionResult, MetadataError> {
+        self.execute_write_raw(dsn, query).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod preview_query {
+        use super::*;
+
+        #[test]
+        fn with_primary_key_columns_returns_ordered_preview_query() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "users",
+                &["id".to_string(), "tenant_id".to_string()],
+                100,
+                200,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"users\" ORDER BY \"id\", \"tenant_id\" LIMIT 100 OFFSET 200"
+            );
+        }
+
+        #[test]
+        fn without_primary_key_columns_returns_unordered_preview_query() {
+            let sql = PostgresAdapter::build_preview_query("public", "users", &[], 100, 0);
+
+            assert_eq!(sql, "SELECT * FROM \"public\".\"users\" LIMIT 100 OFFSET 0");
+        }
+
+        #[test]
+        fn primary_key_query_returns_json_aggregate_sql() {
+            let sql = PostgresAdapter::preview_pk_columns_query("public", "users");
+
+            assert!(
+                sql.contains("json_agg(a.attname ORDER BY array_position(i.indkey, a.attnum))")
+            );
+            assert!(sql.contains("n.nspname = 'public'"));
+            assert!(sql.contains("c.relname = 'users'"));
+        }
+    }
 
     #[test]
     fn test_extract_database_name_uri_format() {
@@ -1406,22 +1520,6 @@ mod tests {
         #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
-        }
-    }
-
-    mod affected_rows {
-        use super::parse_affected_rows;
-        use rstest::rstest;
-
-        #[rstest]
-        #[case("DELETE 1", 1)]
-        #[case("UPDATE 5", 5)]
-        #[case("INSERT 0 3", 3)]
-        #[case("NOTICE: something\nDELETE 2", 2)]
-        #[case("", 0)]
-        #[case("SELECT 1", 0)]
-        fn parse_returns_expected(#[case] output: &str, #[case] expected: usize) {
-            assert_eq!(parse_affected_rows(output), expected);
         }
     }
 
@@ -1881,6 +1979,28 @@ mod tests {
             let json = r#"[]"#;
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
+        }
+    }
+
+    mod write_command_tag {
+        use super::*;
+
+        #[test]
+        fn parse_affected_rows_for_update() {
+            let out = "UPDATE 1\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
+        }
+
+        #[test]
+        fn parse_affected_rows_for_delete() {
+            let out = "DELETE 3\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(3));
+        }
+
+        #[test]
+        fn parse_affected_rows_returns_none_for_unknown_output() {
+            let out = "SELECT 1\n";
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), None);
         }
     }
 }

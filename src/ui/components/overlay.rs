@@ -36,6 +36,14 @@ pub fn render_scrim(frame: &mut Frame) {
 }
 
 pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {
+    modal_block_with_hint_color(title, hint, Theme::MODAL_BORDER)
+}
+
+pub fn modal_block_with_hint_color(
+    title: String,
+    hint: String,
+    border_color: Color,
+) -> Block<'static> {
     Block::default()
         .title(title)
         .title_style(
@@ -46,6 +54,6 @@ pub fn modal_block_with_hint(title: String, hint: String) -> Block<'static> {
         .title_bottom(hint)
         .borders(Borders::ALL)
         .border_set(border::ROUNDED)
-        .border_style(Style::default().fg(Theme::MODAL_BORDER))
+        .border_style(Style::default().fg(border_color))
         .style(Style::default())
 }

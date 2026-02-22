@@ -100,6 +100,7 @@ pub struct UiState {
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
     pub input_mode: InputMode,
+    pub command_line_return_mode: InputMode,
 
     pub explorer_selected: usize,
     pub explorer_horizontal_offset: usize,

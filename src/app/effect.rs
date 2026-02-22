@@ -66,14 +66,9 @@ pub enum Effect {
         dsn: String,
         query: String,
     },
-    ExecuteDeleteRow {
+    ExecuteWrite {
         dsn: String,
-        sql: String,
-        schema: String,
-        table: String,
-        generation: u64,
-        target_page: usize,
-        target_row: Option<usize>,
+        query: String,
     },
 
     CacheTableInCompletionEngine {

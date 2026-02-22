@@ -4,6 +4,7 @@ use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
+use crate::app::write_guardrails::WritePreview;
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
@@ -226,29 +227,17 @@ pub enum Action {
         generation: u64,
     },
     ExecuteAdhoc(String),
-    ExecuteDeleteRow {
-        sql: String,
-        schema: String,
-        table: String,
-        generation: u64,
-        target_page: usize,
-        target_row: Option<usize>,
-    },
-    DeleteRowCompleted {
-        affected_rows: usize,
-        schema: String,
-        table: String,
-        generation: u64,
-        target_page: usize,
-        target_row: Option<usize>,
-    },
-    DeleteRowFailed(String),
+    ExecuteWrite(String),
     QueryCompleted {
         result: Arc<QueryResult>,
         generation: u64,
         target_page: Option<usize>,
     },
     QueryFailed(String, u64),
+    ExecuteWriteSucceeded {
+        affected_rows: usize,
+    },
+    ExecuteWriteFailed(String),
 
     // Result pane
     ResultScrollUp,
@@ -274,6 +263,12 @@ pub enum Action {
     ResultCellYank,
     ResultDeleteOperatorPending,
     RequestDeleteActiveRow,
+    ResultEnterCellEdit,
+    ResultCancelCellEdit,
+    ResultCellEditInput(char),
+    ResultCellEditBackspace,
+    SubmitCellEditWrite,
+    OpenWritePreviewConfirm(Box<WritePreview>),
     CellCopied,
     CopyFailed(String),
 

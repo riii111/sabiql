@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-y:Yank  h/l:Cell  j/k:Row  g/G:Top/Bot  ?:Help  Esc:Back  q:Quit
+i:Edit  y:Yank  h/l:Cell  j/k:Row  g/G:Top/Bot  ?:Help  Esc:Back  q:Quit

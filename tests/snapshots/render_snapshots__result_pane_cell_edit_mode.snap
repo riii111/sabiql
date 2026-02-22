@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 758
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -18,11 +17,11 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  │┌ [3] Result [PREVIEW p.1 (rows 1–2)] (2 rows, 15ms) ──────┐
 │                  ││id   name    email                                        │
 │                  ││1    Alice   alice@example.com                            │
-│                  ││2    Bob     bob@example.com                              │
+│                  ││2    Bob     new@example.com█                             │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  dd:Delete  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot  ?:Help  Esc:Ba
+:w:Write  type:Edit  ?:Help  Esc:Cancel  q:Quit

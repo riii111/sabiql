@@ -22,6 +22,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         InputMode::TablePicker
         | InputMode::ErTablePicker
         | InputMode::CommandLine
+        | InputMode::CellEdit
         | InputMode::ConnectionSetup
         | InputMode::SqlModal => Action::Paste(text),
         _ => Action::None,
@@ -32,6 +33,7 @@ fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
     match state.ui.input_mode {
         InputMode::Normal => handle_normal_mode(key, state),
         InputMode::CommandLine => handle_command_line_mode(key),
+        InputMode::CellEdit => handle_cell_edit_keys(key),
         InputMode::TablePicker => handle_table_picker_keys(key),
         InputMode::CommandPalette => handle_command_palette_keys(key),
         InputMode::Help => handle_help_keys(key),
@@ -57,6 +59,16 @@ fn handle_connection_selector_keys(key: KeyEvent) -> Action {
         KeyCode::Char('n') => Action::OpenConnectionSetup,
         KeyCode::Char('e') => Action::RequestEditSelectedConnection,
         KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
+        _ => Action::None,
+    }
+}
+
+fn handle_cell_edit_keys(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::ResultCancelCellEdit,
+        KeyCode::Backspace => Action::ResultCellEditBackspace,
+        KeyCode::Char(':') => Action::EnterCommandLine,
+        KeyCode::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
 }
@@ -275,6 +287,9 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             } else {
                 Action::ResultDeleteOperatorPending
             }
+        }
+        KeyCode::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
+            Action::ResultEnterCellEdit
         }
         KeyCode::Char('s') => Action::OpenSqlModal,
         KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
@@ -835,7 +850,7 @@ mod tests {
         }
 
         #[test]
-        fn d_in_scroll_mode_keeps_existing_behavior() {
+        fn d_in_scroll_mode_is_noop() {
             let state = result_focused_state();
 
             let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
@@ -868,6 +883,26 @@ mod tests {
             let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
 
             assert!(matches!(result, Action::OpenErTablePicker));
+        }
+
+        #[test]
+        fn i_key_enters_cell_edit_when_cell_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+
+            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+
+            assert!(matches!(result, Action::ResultEnterCellEdit));
+        }
+
+        #[test]
+        fn i_key_is_noop_without_cell_active() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         fn inspector_focused_state() -> AppState {
