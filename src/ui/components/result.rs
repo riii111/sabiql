@@ -282,7 +282,7 @@ impl ResultPane {
                             cell = cell.style(
                                 Style::default()
                                     .bg(Theme::RESULT_CELL_ACTIVE_BG)
-                                    .fg(Color::Yellow),
+                                    .fg(Theme::CELL_EDIT_FG),
                             );
                         } else if is_active_row && active_cell == Some(orig_idx) {
                             cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));

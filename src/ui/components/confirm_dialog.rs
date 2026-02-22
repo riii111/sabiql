@@ -66,7 +66,7 @@ impl ConfirmDialog {
 
         let inner = modal_inner.inner(Margin::new(1, 0));
         let message_para = Paragraph::new(dialog.message.clone())
-            .style(Style::default().fg(Color::White))
+            .style(Style::default().fg(Theme::TEXT_PRIMARY))
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
@@ -171,17 +171,17 @@ impl ConfirmDialog {
             spans.push(Span::styled(
                 kw.to_string(),
                 Style::default()
-                    .fg(Color::Blue)
+                    .fg(Theme::SQL_KEYWORD)
                     .add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
                 trimmed[kw.len()..].to_string(),
-                Style::default().fg(Color::White),
+                Style::default().fg(Theme::SQL_TEXT),
             ));
         } else {
             spans.push(Span::styled(
                 trimmed.to_string(),
-                Style::default().fg(Color::White),
+                Style::default().fg(Theme::SQL_TEXT),
             ));
         }
 
