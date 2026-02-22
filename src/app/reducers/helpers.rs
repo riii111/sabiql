@@ -1,14 +1,12 @@
 //! Shared helper functions for sub-reducers.
 
-use std::sync::Arc;
-
 use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
 /// Shared prerequisites for preview-cell write operations.
 /// Entry checks in navigation and submit-time checks in query should both use this.
-pub fn editable_preview_base(state: &AppState) -> Result<(Arc<QueryResult>, Vec<String>), String> {
+pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String]), String> {
     if state.query.history_index.is_some() {
         return Err("Editing is unavailable while browsing history".to_string());
     }
@@ -17,7 +15,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(Arc<QueryResult>, Vec<
         .query
         .current_result
         .as_ref()
-        .cloned()
+        .map(|r| r.as_ref())
         .ok_or_else(|| "No result to edit".to_string())?;
     if result.source != QuerySource::Preview || result.is_error() {
         return Err("Only Preview results are editable".to_string());
@@ -43,7 +41,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(Arc<QueryResult>, Vec<
         .primary_key
         .as_ref()
         .filter(|cols| !cols.is_empty())
-        .cloned()
+        .map(|cols| cols.as_slice())
         .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
 
     Ok((result, pk_cols))

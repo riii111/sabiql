@@ -11,7 +11,7 @@ use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
-    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
+    ColumnDiff, RiskLevel, WriteOperation, WritePreview, escape_preview_value, evaluate_guardrails,
 };
 use crate::app::write_update::{build_pk_pairs, build_update_sql};
 use crate::domain::{QueryResult, QuerySource};
@@ -49,7 +49,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         return Err("Primary key columns are read-only".to_string());
     }
 
-    let pk_pairs = build_pk_pairs(&result.columns, row, &pk_cols);
+    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
     let target = crate::app::write_guardrails::TargetSummary {
         schema: state.query.pagination.schema.clone(),
         table: state.query.pagination.table.clone(),
@@ -87,13 +87,6 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     Ok(preview)
 }
 
-fn escape_modal_diff_value(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\"', "\\\"")
-        .replace('\n', "\\n")
-}
-
 fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     // Plain-text fallback for generic confirm rendering paths.
     // Rich SQL/diff rendering comes from `pending_write_preview`.
@@ -107,8 +100,8 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
             format!(
                 "{}: \"{}\" -> \"{}\"",
                 d.column,
-                escape_modal_diff_value(&d.before),
-                escape_modal_diff_value(&d.after)
+                escape_preview_value(&d.before),
+                escape_preview_value(&d.after)
             )
         },
     ));

@@ -4,19 +4,12 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::molecules::{render_modal, render_modal_with_border_color};
 use crate::app::state::AppState;
-use crate::app::write_guardrails::WritePreview;
+use crate::app::write_guardrails::{WritePreview, escape_preview_value};
 use crate::ui::theme::Theme;
 
 pub struct ConfirmDialog;
 
 impl ConfirmDialog {
-    fn escape_diff_value(value: &str) -> String {
-        value
-            .replace('\\', "\\\\")
-            .replace('\"', "\\\"")
-            .replace('\n', "\\n")
-    }
-
     fn wrapped_line_count(text: &str, width: u16) -> u16 {
         if width == 0 {
             return 0;
@@ -91,8 +84,8 @@ impl ConfirmDialog {
             Style::default().fg(Theme::TEXT_SECONDARY),
         )]));
         for diff in &preview.diff {
-            let before = format!("\"{}\"", Self::escape_diff_value(&diff.before));
-            let after = format!("\"{}\"", Self::escape_diff_value(&diff.after));
+            let before = format!("\"{}\"", escape_preview_value(&diff.before));
+            let after = format!("\"{}\"", escape_preview_value(&diff.after));
             content_lines.push(Line::from(vec![
                 Span::styled(
                     format!("  {}: ", diff.column),
@@ -192,16 +185,5 @@ impl ConfirmDialog {
         }
 
         Line::from(spans)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ConfirmDialog;
-
-    #[test]
-    fn escape_diff_value_escapes_control_chars() {
-        let escaped = ConfirmDialog::escape_diff_value("a\\b\"c\nd");
-        assert_eq!(escaped, "a\\\\b\\\"c\\nd");
     }
 }

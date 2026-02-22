@@ -145,7 +145,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
         .rows
         .get(row_idx)
         .ok_or_else(|| "Row index out of bounds".to_string())?;
-    if build_pk_pairs(&result.columns, row, &pk_cols).is_none() {
+    if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
         return Err("Stable key columns are not present in current result".to_string());
     }
 
