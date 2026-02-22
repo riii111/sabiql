@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use ratatui::widgets::ListState;
-
 use super::explorer_mode::ExplorerMode;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
@@ -103,20 +101,23 @@ pub struct UiState {
     pub command_line_return_mode: InputMode,
 
     pub explorer_selected: usize,
+    pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
-    pub explorer_list_state: ListState,
     pub explorer_mode: ExplorerMode,
 
     pub connection_list_selected: usize,
-    pub connection_list_state: ListState,
+    pub connection_list_scroll_offset: usize,
+    pub connection_list_pane_height: u16,
 
     pub picker_selected: usize,
-    pub picker_list_state: ListState,
+    pub picker_scroll_offset: usize,
+    pub picker_pane_height: u16,
     pub filter_input: String,
 
     pub er_filter_input: String,
     pub er_picker_selected: usize,
-    pub er_picker_list_state: ListState,
+    pub er_picker_scroll_offset: usize,
+    pub er_picker_pane_height: u16,
     pub er_selected_tables: BTreeSet<String>,
     pub pending_er_picker: bool,
 
@@ -161,6 +162,18 @@ impl UiState {
         self.explorer_pane_height.saturating_sub(3) as usize
     }
 
+    pub fn connection_list_visible_items(&self) -> usize {
+        self.connection_list_pane_height as usize
+    }
+
+    pub fn picker_visible_items(&self) -> usize {
+        self.picker_pane_height as usize
+    }
+
+    pub fn er_picker_visible_items(&self) -> usize {
+        self.er_picker_pane_height as usize
+    }
+
     pub fn inspector_ddl_visible_rows(&self) -> usize {
         self.inspector_pane_height.saturating_sub(3) as usize
     }
@@ -186,34 +199,95 @@ impl UiState {
         true
     }
 
-    /// Update explorer selection, keeping explorer_selected and explorer_list_state in sync.
-    /// For "no selection", `explorer_list_state.selected()` is the source of truth.
+    /// `None` resets both selected index and scroll offset.
     pub fn set_explorer_selection(&mut self, index: Option<usize>) {
         match index {
             Some(i) => {
+                self.explorer_scroll_offset = clamp_scroll_offset(
+                    i,
+                    self.explorer_scroll_offset,
+                    self.explorer_visible_items(),
+                );
                 self.explorer_selected = i;
-                self.explorer_list_state.select(Some(i));
             }
             None => {
                 self.explorer_selected = 0;
-                self.explorer_list_state.select(None);
+                self.explorer_scroll_offset = 0;
             }
         }
     }
 
-    /// Update connection list selection, keeping connection_list_selected and connection_list_state in sync.
+    /// `None` resets both selected index and scroll offset.
     pub fn set_connection_list_selection(&mut self, index: Option<usize>) {
         match index {
             Some(i) => {
+                self.connection_list_scroll_offset = clamp_scroll_offset(
+                    i,
+                    self.connection_list_scroll_offset,
+                    self.connection_list_visible_items(),
+                );
                 self.connection_list_selected = i;
-                self.connection_list_state.select(Some(i));
             }
             None => {
                 self.connection_list_selected = 0;
-                self.connection_list_state.select(None);
+                self.connection_list_scroll_offset = 0;
             }
         }
     }
+
+    pub fn set_picker_selection(&mut self, index: usize) {
+        self.picker_scroll_offset = clamp_scroll_offset(
+            index,
+            self.picker_scroll_offset,
+            self.picker_visible_items(),
+        );
+        self.picker_selected = index;
+    }
+
+    pub fn reset_picker_selection(&mut self) {
+        self.picker_selected = 0;
+        self.picker_scroll_offset = 0;
+    }
+
+    pub fn set_er_picker_selection(&mut self, index: usize) {
+        self.er_picker_scroll_offset = clamp_scroll_offset(
+            index,
+            self.er_picker_scroll_offset,
+            self.er_picker_visible_items(),
+        );
+        self.er_picker_selected = index;
+    }
+
+    pub fn reset_er_picker_selection(&mut self) {
+        self.er_picker_selected = 0;
+        self.er_picker_scroll_offset = 0;
+    }
+}
+
+/// Adjusts `current_offset` just enough to keep `selected` visible, without
+/// snapping selected to an edge when it is already in view.
+/// - Scrolls down only when selected falls below the bottom edge.
+/// - Scrolls up only when selected rises above the top edge.
+pub fn clamp_scroll_offset(selected: usize, current_offset: usize, viewport: usize) -> usize {
+    if viewport == 0 {
+        return 0;
+    }
+    let bottom_edge = current_offset + viewport.saturating_sub(1);
+    if selected > bottom_edge {
+        // selected fell below viewport bottom — scroll down minimally
+        selected - viewport.saturating_sub(1)
+    } else if selected < current_offset {
+        // selected rose above viewport top — scroll up minimally
+        selected
+    } else {
+        current_offset
+    }
+}
+
+/// Returns the scroll offset that places `selected` at the bottom of the viewport.
+/// Used for scrollbar position calculation.
+pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
+    selected.saturating_sub(viewport.saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -341,24 +415,22 @@ mod tests {
     }
 
     #[test]
-    fn set_explorer_selection_with_some_syncs_both_fields() {
+    fn set_explorer_selection_with_some_sets_index() {
         let mut state = UiState::default();
 
         state.set_explorer_selection(Some(5));
 
         assert_eq!(state.explorer_selected, 5);
-        assert_eq!(state.explorer_list_state.selected(), Some(5));
     }
 
     #[test]
-    fn set_explorer_selection_with_none_resets_to_zero_and_none() {
+    fn set_explorer_selection_with_none_resets_to_zero() {
         let mut state = UiState::default();
         state.set_explorer_selection(Some(10));
 
         state.set_explorer_selection(None);
 
         assert_eq!(state.explorer_selected, 0);
-        assert_eq!(state.explorer_list_state.selected(), None);
     }
 
     #[test]
@@ -369,24 +441,22 @@ mod tests {
     }
 
     #[test]
-    fn set_connection_list_selection_with_some_syncs_both_fields() {
+    fn set_connection_list_selection_with_some_sets_index() {
         let mut state = UiState::default();
 
         state.set_connection_list_selection(Some(3));
 
         assert_eq!(state.connection_list_selected, 3);
-        assert_eq!(state.connection_list_state.selected(), Some(3));
     }
 
     #[test]
-    fn set_connection_list_selection_with_none_resets_to_zero_and_none() {
+    fn set_connection_list_selection_with_none_resets_to_zero() {
         let mut state = UiState::default();
         state.set_connection_list_selection(Some(5));
 
         state.set_connection_list_selection(None);
 
         assert_eq!(state.connection_list_selected, 0);
-        assert_eq!(state.connection_list_state.selected(), None);
     }
 
     #[test]

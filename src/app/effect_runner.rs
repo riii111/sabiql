@@ -23,9 +23,10 @@ use crate::app::action::Action;
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
-use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
+use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
-    ConfigWriter, ConnectionStore, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
+    ConfigWriter, ConnectionStore, ErDiagramExporter, ErLogWriter, MetadataProvider, QueryExecutor,
+    Renderer,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
@@ -36,17 +37,20 @@ pub struct EffectRunner {
     query_executor: Arc<dyn QueryExecutor>,
     er_exporter: Arc<dyn ErDiagramExporter>,
     config_writer: Arc<dyn ConfigWriter>,
+    er_log_writer: Arc<dyn ErLogWriter>,
     connection_store: Arc<dyn ConnectionStore>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
 
 impl EffectRunner {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
         er_exporter: Arc<dyn ErDiagramExporter>,
         config_writer: Arc<dyn ConfigWriter>,
+        er_log_writer: Arc<dyn ErLogWriter>,
         connection_store: Arc<dyn ConnectionStore>,
         metadata_cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
@@ -56,6 +60,7 @@ impl EffectRunner {
             query_executor,
             er_exporter,
             config_writer,
+            er_log_writer,
             connection_store,
             metadata_cache,
             action_tx,
@@ -556,8 +561,11 @@ impl EffectRunner {
                     .config_writer
                     .get_cache_dir(&state.runtime.project_name)
                 {
+                    let writer = Arc::clone(&self.er_log_writer);
                     tokio::task::spawn_blocking(move || {
-                        let _ = write_er_failure_log_blocking(failed_tables, cache_dir);
+                        // Log write failure is intentionally ignored: the app has no
+                        // output channel (TUI is active) and tracing is not available.
+                        let _ = writer.write_er_failure_log(failed_tables, cache_dir);
                     });
                 }
                 Ok(())

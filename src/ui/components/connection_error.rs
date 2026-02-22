@@ -2,9 +2,10 @@ use std::time::Instant;
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::*;
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+
+use crate::ui::theme::Theme;
 
 use super::atoms::key_chip;
 use super::molecules::render_modal;
@@ -62,10 +63,12 @@ impl ConnectionError {
 
     fn render_summary(frame: &mut Frame, area: Rect, summary: &str) {
         let line = Line::from(vec![
-            Span::styled("✗ ", Style::default().fg(Color::Red)),
+            Span::styled("✗ ", Style::default().fg(Theme::STATUS_ERROR)),
             Span::styled(
                 summary,
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Theme::STATUS_ERROR)
+                    .add_modifier(Modifier::BOLD),
             ),
         ]);
         frame.render_widget(Paragraph::new(line), area);
@@ -73,8 +76,8 @@ impl ConnectionError {
 
     fn render_hint(frame: &mut Frame, area: Rect, hint: &str) {
         let line = Line::from(vec![
-            Span::styled("Hint: ", Style::default().fg(Color::Yellow)),
-            Span::styled(hint, Style::default().fg(Color::Gray)),
+            Span::styled("Hint: ", Style::default().fg(Theme::TEXT_ACCENT)),
+            Span::styled(hint, Style::default().fg(Theme::TEXT_SECONDARY)),
         ]);
         frame.render_widget(Paragraph::new(line), area);
     }
@@ -91,7 +94,7 @@ impl ConnectionError {
             let toggle_line = Line::from(vec![Span::styled(
                 "▼ Details",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(Theme::SECTION_HEADER)
                     .add_modifier(Modifier::BOLD),
             )]);
             frame.render_widget(Paragraph::new(toggle_line), chunks[0]);
@@ -105,14 +108,17 @@ impl ConnectionError {
                 let para = Paragraph::new(lines)
                     .scroll((scroll as u16, 0))
                     .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(Color::DarkGray));
+                    .style(Style::default().fg(Theme::TEXT_MUTED));
                 frame.render_widget(para, chunks[1]);
             }
         } else {
             let toggle_line = Line::from(vec![
-                Span::styled("▶ ", Style::default().fg(Color::Cyan)),
-                Span::styled("Details ", Style::default().fg(Color::Cyan)),
-                Span::styled("(press d to expand)", Style::default().fg(Color::DarkGray)),
+                Span::styled("▶ ", Style::default().fg(Theme::SECTION_HEADER)),
+                Span::styled("Details ", Style::default().fg(Theme::SECTION_HEADER)),
+                Span::styled(
+                    "(press d to expand)",
+                    Style::default().fg(Theme::TEXT_MUTED),
+                ),
             ]);
             frame.render_widget(Paragraph::new(toggle_line), area);
         }
@@ -125,7 +131,7 @@ impl ConnectionError {
         now: Instant,
     ) {
         let mut spans = vec![
-            Span::styled("Actions: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Actions: ", Style::default().fg(Theme::TEXT_MUTED)),
             key_chip("e"),
             Span::raw(" Re-enter  "),
             key_chip("s"),
@@ -143,7 +149,7 @@ impl ConnectionError {
             spans.push(Span::styled(
                 "Copied!",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(Theme::STATUS_SUCCESS)
                     .add_modifier(Modifier::BOLD),
             ));
         }

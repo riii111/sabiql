@@ -1,5 +1,7 @@
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+
+use crate::ui::theme::Theme;
 
 pub enum MessageType {
     Error,
@@ -11,8 +13,8 @@ pub struct StatusMessage;
 impl StatusMessage {
     pub fn render_line(message: &str, msg_type: MessageType) -> Line<'static> {
         let (prefix, color) = match msg_type {
-            MessageType::Error => ("", Color::Red),
-            MessageType::Success => ("", Color::Green),
+            MessageType::Error => ("", Theme::STATUS_ERROR),
+            MessageType::Success => ("", Theme::STATUS_SUCCESS),
         };
 
         Line::from(vec![Span::styled(

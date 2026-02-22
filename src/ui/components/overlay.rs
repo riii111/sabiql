@@ -30,7 +30,7 @@ pub fn render_scrim(frame: &mut Frame) {
     buf.set_style(
         area,
         Style::default()
-            .fg(Color::DarkGray)
+            .fg(Theme::TEXT_MUTED)
             .add_modifier(Modifier::DIM),
     );
 }

@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
 use crate::app::palette::PALETTE_COMMANDS;
@@ -28,10 +28,10 @@ impl CommandPalette {
                 let style = if i == state.ui.picker_selected {
                     Style::default()
                         .bg(Theme::COMPLETION_SELECTED_BG)
-                        .fg(Color::White)
+                        .fg(Theme::TEXT_PRIMARY)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(Theme::TEXT_SECONDARY)
                 };
                 let content = format!("  {:<18} {}", cmd.key, cmd.description);
                 ListItem::new(content).style(style)

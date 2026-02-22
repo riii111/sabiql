@@ -1,8 +1,8 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
 use crate::domain::er::er_output_filename;
@@ -14,26 +14,26 @@ pub struct ErTablePicker;
 
 impl ErTablePicker {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let filtered = state.er_filtered_tables();
         let selected_count = state.ui.er_selected_tables.len();
         let total_count = state.tables().len();
+        let filtered_count = state.er_filtered_tables().len();
 
         let (mode_label, targets_label, preview_color) = if selected_count == 0 {
-            ("Invalid".to_string(), "—".to_string(), Color::Red)
+            ("Invalid".to_string(), "—".to_string(), Theme::STATUS_ERROR)
         } else if selected_count == total_count {
             (
                 "Full ER".to_string(),
                 format!("all {} tables", total_count),
-                Color::DarkGray,
+                Theme::TEXT_MUTED,
             )
         } else if selected_count == 1 {
             let name = state.ui.er_selected_tables.iter().next().unwrap().clone();
-            ("Partial ER".to_string(), name, Color::Green)
+            ("Partial ER".to_string(), name, Theme::ACTIVE_INDICATOR)
         } else {
             (
                 "Partial ER".to_string(),
                 format!("{} tables", selected_count),
-                Color::Cyan,
+                Theme::SECTION_HEADER,
             )
         };
 
@@ -62,6 +62,8 @@ impl ErTablePicker {
         ])
         .areas(inner);
 
+        state.ui.er_picker_pane_height = list_area.height;
+
         // Filter input
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
@@ -69,7 +71,7 @@ impl ErTablePicker {
             Span::styled(
                 "█",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(Theme::CURSOR_FG)
                     .add_modifier(Modifier::SLOW_BLINK),
             ),
         ]);
@@ -78,21 +80,22 @@ impl ErTablePicker {
         // 3-line execution preview
         let preview_lines = vec![
             Line::from(vec![
-                Span::styled("  Mode:    ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Mode:    ", Style::default().fg(Theme::TEXT_MUTED)),
                 Span::styled(mode_label, Style::default().fg(preview_color)),
             ]),
             Line::from(vec![
-                Span::styled("  Targets: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Targets: ", Style::default().fg(Theme::TEXT_MUTED)),
                 Span::styled(targets_label, Style::default().fg(preview_color)),
             ]),
             Line::from(vec![
-                Span::styled("  Output:  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Output:  ", Style::default().fg(Theme::TEXT_MUTED)),
                 Span::styled(output_label, Style::default().fg(preview_color)),
             ]),
         ];
         frame.render_widget(Paragraph::new(preview_lines), preview_area);
 
         // Table list with checkboxes
+        let filtered = state.er_filtered_tables();
         let items: Vec<ListItem> = filtered
             .iter()
             .map(|t| {
@@ -100,9 +103,9 @@ impl ErTablePicker {
                 let is_selected = state.ui.er_selected_tables.contains(&qn);
                 let mark = if is_selected { "✔ " } else { "  " };
                 let style = if is_selected {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(Theme::ACTIVE_INDICATOR)
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(Theme::TEXT_SECONDARY)
                 };
                 ListItem::new(format!("  {}{}", mark, qn)).style(style)
             })
@@ -112,20 +115,19 @@ impl ErTablePicker {
             .highlight_style(
                 Style::default()
                     .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Color::White)
+                    .fg(Theme::TEXT_PRIMARY)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▸ ");
 
-        if !filtered.is_empty() {
-            state
-                .ui
-                .er_picker_list_state
-                .select(Some(state.ui.er_picker_selected));
+        let selected = if filtered_count > 0 {
+            Some(state.ui.er_picker_selected)
         } else {
-            state.ui.er_picker_list_state.select(None);
-        }
-
-        frame.render_stateful_widget(list, list_area, &mut state.ui.er_picker_list_state);
+            None
+        };
+        let mut list_state = ListState::default()
+            .with_selected(selected)
+            .with_offset(state.ui.er_picker_scroll_offset);
+        frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

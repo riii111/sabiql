@@ -1,7 +1,9 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
+
+use crate::ui::theme::Theme;
 
 pub struct HorizontalScrollParams {
     pub position: usize,
@@ -46,7 +48,7 @@ pub fn render_horizontal_scroll_indicator(
     let scrollbar_width = available_width.saturating_sub(fixed_parts_len).max(5);
 
     use ratatui::text::{Line, Span};
-    let text_style = Style::default().fg(Color::Yellow);
+    let text_style = Style::default().fg(Theme::SCROLLBAR_ACTIVE);
 
     let position_span = Span::styled(format!("{} ", position_text), text_style);
 
@@ -67,16 +69,16 @@ pub fn render_horizontal_scroll_indicator(
         height: 1,
     };
 
-    let arrow_active = Style::default().fg(Color::Yellow);
-    let arrow_inactive = Style::default().fg(Color::DarkGray);
+    let arrow_active = Style::default().fg(Theme::SCROLLBAR_ACTIVE);
+    let arrow_inactive = Style::default().fg(Theme::SCROLLBAR_INACTIVE);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
         .thumb_symbol("═")
         .track_symbol(Some("─"))
         .begin_symbol(Some("◀︎"))
         .end_symbol(Some("▶︎"))
-        .thumb_style(Style::default().fg(Color::Yellow))
-        .track_style(Style::default().fg(Color::DarkGray))
+        .thumb_style(Style::default().fg(Theme::SCROLLBAR_ACTIVE))
+        .track_style(Style::default().fg(Theme::SCROLLBAR_INACTIVE))
         .begin_style(if can_scroll_left {
             arrow_active
         } else {
@@ -137,7 +139,7 @@ pub fn render_vertical_scroll_indicator_bar(
 
     // Render position text at bottom-right
     let position_text = format!("row {:>3}%", percentage.min(100));
-    let text_style = Style::default().fg(Color::Yellow);
+    let text_style = Style::default().fg(Theme::SCROLLBAR_ACTIVE);
     let text_width = position_text.len() as u16;
 
     let text_area = Rect {
@@ -161,16 +163,16 @@ pub fn render_vertical_scroll_indicator_bar(
         height: scrollbar_height,
     };
 
-    let arrow_active = Style::default().fg(Color::Yellow);
-    let arrow_inactive = Style::default().fg(Color::DarkGray);
+    let arrow_active = Style::default().fg(Theme::SCROLLBAR_ACTIVE);
+    let arrow_inactive = Style::default().fg(Theme::SCROLLBAR_INACTIVE);
 
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_symbol("┃")
         .track_symbol(Some("│"))
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"))
-        .thumb_style(Style::default().fg(Color::Yellow))
-        .track_style(Style::default().fg(Color::DarkGray))
+        .thumb_style(Style::default().fg(Theme::SCROLLBAR_ACTIVE))
+        .track_style(Style::default().fg(Theme::SCROLLBAR_INACTIVE))
         .begin_style(if can_scroll_up {
             arrow_active
         } else {

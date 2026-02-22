@@ -4,9 +4,9 @@ expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
-│public.user╭ Help ────────────────────────────────────────────────╮───────────┐
-│public.post│▸ Global Keys                                        ▲│           │
-│public.comm│  q                   Quit application               ┃│           │
+│> public.us╭ Help ────────────────────────────────────────────────╮───────────┐
+│  public.po│▸ Global Keys                                        ▲│           │
+│  public.co│  q                   Quit application               ┃│           │
 │           │  ?                   Toggle help                    ┃│           │
 │           │  Ctrl+P              Open Table Picker              ┃│           │
 │           │  Ctrl+K              Open Command Palette           ││           │

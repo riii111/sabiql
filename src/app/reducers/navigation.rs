@@ -283,13 +283,13 @@ pub fn reduce_navigation(
             InputMode::TablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.ui.filter_input.push_str(&clean);
-                state.ui.picker_selected = 0;
+                state.ui.reset_picker_selection();
                 Some(vec![])
             }
             InputMode::ErTablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.ui.er_filter_input.push_str(&clean);
-                state.ui.er_picker_selected = 0;
+                state.ui.reset_er_picker_selection();
                 Some(vec![])
             }
             InputMode::CommandLine => {
@@ -308,12 +308,12 @@ pub fn reduce_navigation(
         // Filter
         Action::FilterInput(c) => {
             state.ui.filter_input.push(*c);
-            state.ui.picker_selected = 0;
+            state.ui.reset_picker_selection();
             Some(vec![])
         }
         Action::FilterBackspace => {
             state.ui.filter_input.pop();
-            state.ui.picker_selected = 0;
+            state.ui.reset_picker_selection();
             Some(vec![])
         }
 
@@ -344,19 +344,21 @@ pub fn reduce_navigation(
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     if state.ui.picker_selected < max {
-                        state.ui.picker_selected += 1;
+                        state.ui.set_picker_selection(state.ui.picker_selected + 1);
                     }
                 }
                 InputMode::ErTablePicker => {
                     let max = state.er_filtered_tables().len().saturating_sub(1);
                     if state.ui.er_picker_selected < max {
-                        state.ui.er_picker_selected += 1;
+                        state
+                            .ui
+                            .set_er_picker_selection(state.ui.er_picker_selected + 1);
                     }
                 }
                 InputMode::CommandPalette => {
                     let max = palette_command_count() - 1;
                     if state.ui.picker_selected < max {
-                        state.ui.picker_selected += 1;
+                        state.ui.set_picker_selection(state.ui.picker_selected + 1);
                     }
                 }
                 InputMode::Normal => {
@@ -376,10 +378,14 @@ pub fn reduce_navigation(
         Action::SelectPrevious => {
             match state.ui.input_mode {
                 InputMode::TablePicker | InputMode::CommandPalette => {
-                    state.ui.picker_selected = state.ui.picker_selected.saturating_sub(1);
+                    state
+                        .ui
+                        .set_picker_selection(state.ui.picker_selected.saturating_sub(1));
                 }
                 InputMode::ErTablePicker => {
-                    state.ui.er_picker_selected = state.ui.er_picker_selected.saturating_sub(1);
+                    state
+                        .ui
+                        .set_er_picker_selection(state.ui.er_picker_selected.saturating_sub(1));
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
@@ -395,10 +401,10 @@ pub fn reduce_navigation(
         Action::SelectFirst => {
             match state.ui.input_mode {
                 InputMode::TablePicker | InputMode::CommandPalette => {
-                    state.ui.picker_selected = 0;
+                    state.ui.reset_picker_selection();
                 }
                 InputMode::ErTablePicker => {
-                    state.ui.er_picker_selected = 0;
+                    state.ui.reset_er_picker_selection();
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
@@ -414,14 +420,14 @@ pub fn reduce_navigation(
             match state.ui.input_mode {
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
-                    state.ui.picker_selected = max;
+                    state.ui.set_picker_selection(max);
                 }
                 InputMode::ErTablePicker => {
                     let max = state.er_filtered_tables().len().saturating_sub(1);
-                    state.ui.er_picker_selected = max;
+                    state.ui.set_er_picker_selection(max);
                 }
                 InputMode::CommandPalette => {
-                    state.ui.picker_selected = palette_command_count() - 1;
+                    state.ui.set_picker_selection(palette_command_count() - 1);
                 }
                 InputMode::Normal => {
                     if state.ui.focused_pane == FocusedPane::Explorer {
@@ -1247,7 +1253,6 @@ mod tests {
             );
 
             assert_eq!(state.ui.connection_list_selected, 0);
-            assert_eq!(state.ui.connection_list_state.selected(), Some(0));
         }
     }
 

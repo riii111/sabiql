@@ -1,12 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{List, ListItem};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{List, ListItem, ListState};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 pub struct ConnectionSelector;
 
@@ -29,6 +30,7 @@ impl ConnectionSelector {
         area: ratatui::layout::Rect,
         state: &mut AppState,
     ) {
+        state.ui.connection_list_pane_height = area.height;
         let active_id = state.runtime.active_connection_id.as_ref();
 
         let items: Vec<ListItem> = if state.connections.is_empty() {
@@ -42,7 +44,7 @@ impl ConnectionSelector {
                     let prefix = if is_active { "● " } else { "  " };
                     let text = format!("{}{}", prefix, conn.display_name());
                     let style = if is_active {
-                        Style::default().fg(Color::Green)
+                        Style::default().fg(Theme::ACTIVE_INDICATOR)
                     } else {
                         Style::default()
                     };
@@ -54,12 +56,15 @@ impl ConnectionSelector {
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::TEXT_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
 
-        frame.render_stateful_widget(list, area, &mut state.ui.connection_list_state);
+        let mut list_state = ListState::default()
+            .with_selected(Some(state.ui.connection_list_selected))
+            .with_offset(state.ui.connection_list_scroll_offset);
+        frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render vertical scrollbar if needed
         if !state.connections.is_empty() {
@@ -67,7 +72,7 @@ impl ConnectionSelector {
             let viewport_size = area.height as usize;
 
             if total_items > viewport_size {
-                let scroll_offset = state.ui.connection_list_state.offset();
+                let scroll_offset = state.ui.connection_list_scroll_offset;
 
                 render_vertical_scroll_indicator_bar(
                     frame,

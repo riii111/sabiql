@@ -89,4 +89,21 @@ impl Theme {
     // SQL syntax highlighting
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
+
+    // Alternating row background (striped tables)
+    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x2a, 0x2a, 0x2e);
+
+    // Text selection / cursor background in editors
+    pub const SELECTION_BG: Color = Color::Black;
+
+    // Inspector tab states
+    pub const TAB_ACTIVE: Color = Color::Cyan;
+    pub const TAB_INACTIVE: Color = Color::DarkGray;
+
+    // Active/inactive toggle indicators
+    pub const ACTIVE_INDICATOR: Color = Color::Green;
+    pub const INACTIVE_INDICATOR: Color = Color::DarkGray;
+
+    // Placeholder / empty-value text
+    pub const PLACEHOLDER_TEXT: Color = Color::DarkGray;
 }

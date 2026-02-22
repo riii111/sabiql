@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
 use super::atoms::panel_block_highlight;
@@ -141,26 +141,26 @@ impl ResultPane {
     fn render_placeholder(frame: &mut Frame, area: Rect, block: Block) {
         let content = Paragraph::new("(select a table to preview)")
             .block(block)
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
         frame.render_widget(content, area);
     }
 
     fn render_empty(frame: &mut Frame, area: Rect, block: Block) {
         let content = Paragraph::new("No rows returned")
             .block(block)
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
         frame.render_widget(content, area);
     }
 
     fn render_error(frame: &mut Frame, area: Rect, result: &QueryResult, block: Block) {
         let error_msg = result.error.as_deref().unwrap_or("Unknown error");
 
-        let block = block.style(Style::default().fg(Color::Red));
+        let block = block.style(Style::default().fg(Theme::STATUS_ERROR));
 
         let content = Paragraph::new(error_msg)
             .block(block)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::Red));
+            .style(Style::default().fg(Theme::STATUS_ERROR));
 
         frame.render_widget(content, area);
     }
@@ -234,7 +234,7 @@ impl ResultPane {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(Color::White),
+                .fg(Theme::TEXT_PRIMARY),
         )
         .height(1);
 
@@ -254,7 +254,7 @@ impl ResultPane {
                 let row_bg = if is_active_row {
                     Some(Theme::RESULT_ROW_ACTIVE_BG)
                 } else if (abs_row_idx - scroll_offset) % 2 == 1 {
-                    Some(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    Some(Theme::STRIPED_ROW_BG)
                 } else {
                     None
                 };
