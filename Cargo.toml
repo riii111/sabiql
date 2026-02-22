@@ -33,6 +33,7 @@ pretty_assertions = "1"
 rstest = "0.19"
 tempfile = "3"
 insta = "1"
+mockall = "0.13"
 
 [profile.release]
 lto = true

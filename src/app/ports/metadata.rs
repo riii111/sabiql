@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::domain::{DatabaseMetadata, Table};
 
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, MetadataError>;
