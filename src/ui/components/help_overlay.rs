@@ -1,8 +1,10 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+
+use crate::ui::theme::Theme;
 
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS,
@@ -116,11 +118,11 @@ impl HelpOverlay {
 
     fn section(title: &str) -> Line<'static> {
         Line::from(vec![
-            Span::styled("▸ ", Style::default().fg(Color::Cyan)),
+            Span::styled("▸ ", Style::default().fg(Theme::SECTION_HEADER)),
             Span::styled(
                 title.to_string(),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(Theme::SECTION_HEADER)
                     .add_modifier(Modifier::BOLD),
             ),
         ])
@@ -131,10 +133,10 @@ impl HelpOverlay {
             Span::styled(
                 format!("  {:<20}", key),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::TEXT_ACCENT)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(desc.to_string(), Style::default().fg(Color::Gray)),
+            Span::styled(desc.to_string(), Style::default().fg(Theme::TEXT_SECONDARY)),
         ])
     }
 }

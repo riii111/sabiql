@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
@@ -53,8 +53,11 @@ impl SqlModal {
             // Show placeholder with cursor (highlighted)
             vec![
                 Line::from(vec![
-                    Span::styled("█", Style::default().fg(Color::White)),
-                    Span::styled(" Enter SQL query...", Style::default().fg(Color::DarkGray)),
+                    Span::styled("█", Style::default().fg(Theme::CURSOR_FG)),
+                    Span::styled(
+                        " Enter SQL query...",
+                        Style::default().fg(Theme::PLACEHOLDER_TEXT),
+                    ),
                 ])
                 .style(current_line_style),
             ]
@@ -75,8 +78,11 @@ impl SqlModal {
         // If content ends with newline, add cursor on new line (highlighted)
         if content.ends_with('\n') && cursor_row == content.lines().count() {
             lines.push(
-                Line::from(vec![Span::styled("█", Style::default().fg(Color::White))])
-                    .style(current_line_style),
+                Line::from(vec![Span::styled(
+                    "█",
+                    Style::default().fg(Theme::CURSOR_FG),
+                )])
+                .style(current_line_style),
             );
         }
 
@@ -93,7 +99,7 @@ impl SqlModal {
         if cursor_col >= chars.len() {
             // Cursor at end of line
             let mut spans = vec![Span::raw(line.to_string())];
-            spans.push(Span::styled("█", Style::default().fg(Color::White)));
+            spans.push(Span::styled("█", Style::default().fg(Theme::CURSOR_FG)));
             Line::from(spans)
         } else {
             // Cursor in middle of line
@@ -106,8 +112,8 @@ impl SqlModal {
                 Span::styled(
                     cursor_char,
                     Style::default()
-                        .bg(Color::White)
-                        .fg(Color::Black)
+                        .bg(Theme::CURSOR_FG)
+                        .fg(Theme::SELECTION_BG)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(after),
@@ -117,7 +123,9 @@ impl SqlModal {
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
         let (status_text, status_style) = match state.sql_modal.status {
-            SqlModalStatus::Editing => ("Ready".to_string(), Style::default().fg(Color::DarkGray)),
+            SqlModalStatus::Editing => {
+                ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
+            }
             SqlModalStatus::Running => {
                 let elapsed = state
                     .query
@@ -127,10 +135,15 @@ impl SqlModal {
                 let spinner = spinner_char(elapsed.as_millis());
                 let elapsed_secs = elapsed.as_secs_f32();
                 let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
-                (status, Style::default().fg(Color::Yellow))
+                (status, Style::default().fg(Theme::TEXT_ACCENT))
             }
-            SqlModalStatus::Success => ("OK".to_string(), Style::default().fg(Color::Green)),
-            SqlModalStatus::Error => ("Error".to_string(), Style::default().fg(Color::Red)),
+            SqlModalStatus::Success => {
+                ("OK".to_string(), Style::default().fg(Theme::STATUS_SUCCESS))
+            }
+            SqlModalStatus::Error => (
+                "Error".to_string(),
+                Style::default().fg(Theme::STATUS_ERROR),
+            ),
         };
 
         let line = Line::from(vec![Span::styled(status_text, status_style)]);
@@ -234,9 +247,9 @@ impl SqlModal {
                 let style = if is_selected {
                     Style::default()
                         .bg(Theme::COMPLETION_SELECTED_BG)
-                        .fg(Color::White)
+                        .fg(Theme::TEXT_PRIMARY)
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(Theme::TEXT_SECONDARY)
                 };
 
                 ListItem::new(text).style(style)
@@ -246,7 +259,7 @@ impl SqlModal {
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(Theme::MODAL_BORDER))
                 .style(Style::default()),
         );
 

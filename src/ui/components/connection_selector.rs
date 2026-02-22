@@ -1,12 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
 use crate::app::state::AppState;
+use crate::ui::theme::Theme;
 
 pub struct ConnectionSelector;
 
@@ -42,7 +43,7 @@ impl ConnectionSelector {
                     let prefix = if is_active { "● " } else { "  " };
                     let text = format!("{}{}", prefix, conn.display_name());
                     let style = if is_active {
-                        Style::default().fg(Color::Green)
+                        Style::default().fg(Theme::ACTIVE_INDICATOR)
                     } else {
                         Style::default()
                     };
@@ -54,7 +55,7 @@ impl ConnectionSelector {
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::TEXT_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");

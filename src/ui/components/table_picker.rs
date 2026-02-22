@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, Paragraph};
 
@@ -31,7 +31,7 @@ impl TablePicker {
             Span::styled(
                 "█",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(Theme::CURSOR_FG)
                     .add_modifier(Modifier::SLOW_BLINK),
             ),
         ]);
@@ -43,7 +43,7 @@ impl TablePicker {
             .iter()
             .map(|t| {
                 let content = format!("  {}", t.qualified_name());
-                ListItem::new(content).style(Style::default().fg(Color::Gray))
+                ListItem::new(content).style(Style::default().fg(Theme::TEXT_SECONDARY))
             })
             .collect();
 
@@ -51,7 +51,7 @@ impl TablePicker {
             .highlight_style(
                 Style::default()
                     .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Color::White)
+                    .fg(Theme::TEXT_PRIMARY)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▸ ");

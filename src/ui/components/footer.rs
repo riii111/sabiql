@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -54,7 +54,7 @@ impl Footer {
         let cached = total.saturating_sub(remaining + failed_count);
 
         let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
-        Line::from(Span::styled(text, Style::default().fg(Color::Yellow)))
+        Line::from(Span::styled(text, Style::default().fg(Theme::TEXT_ACCENT)))
     }
 
     /// Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
@@ -238,7 +238,7 @@ impl Footer {
         if let Some(msg) = success_msg {
             spans.push(Span::styled(
                 format!("✓ {}  ", msg),
-                Style::default().fg(Color::Green),
+                Style::default().fg(Theme::STATUS_SUCCESS),
             ));
         }
 

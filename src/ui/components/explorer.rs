@@ -1,12 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
+use crate::ui::theme::Theme;
 
 use super::atoms::panel_block;
 
@@ -83,7 +84,7 @@ impl Explorer {
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::TEXT_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
@@ -144,7 +145,7 @@ impl Explorer {
                     let prefix = if is_active { "● " } else { "  " };
                     let text = format!("{}{}", prefix, conn.display_name());
                     let style = if is_active {
-                        Style::default().fg(Color::Green)
+                        Style::default().fg(Theme::ACTIVE_INDICATOR)
                     } else {
                         Style::default()
                     };
@@ -156,7 +157,7 @@ impl Explorer {
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Theme::TEXT_ACCENT)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");

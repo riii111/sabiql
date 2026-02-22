@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table, Wrap};
 
@@ -15,6 +15,7 @@ use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::domain::Table as TableDetail;
+use crate::ui::theme::Theme;
 
 pub struct Inspector;
 
@@ -36,10 +37,10 @@ impl Inspector {
                 let is_selected = *tab == state.ui.inspector_tab;
                 let style = if is_selected {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(Theme::TAB_ACTIVE)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(Theme::TAB_INACTIVE)
                 };
 
                 let mut spans = vec![];
@@ -110,7 +111,7 @@ impl Inspector {
         } else {
             let content = Paragraph::new("(select a table)")
                 .block(block)
-                .style(Style::default().fg(Color::DarkGray));
+                .style(Style::default().fg(Theme::PLACEHOLDER_TEXT));
             frame.render_widget(content, area);
             ViewportPlan::default()
         }
@@ -118,7 +119,7 @@ impl Inspector {
 
     fn render_info(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
         let label_style = Style::default().add_modifier(Modifier::BOLD);
-        let none_style = Style::default().fg(Color::DarkGray);
+        let none_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
 
         let owner_value = table.owner.as_deref().unwrap_or("(none)");
         let comment_value = table.comment.as_deref().unwrap_or("(none)");
@@ -273,7 +274,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::UNDERLINED)
                 .add_modifier(Modifier::BOLD)
-                .fg(Color::White),
+                .fg(Theme::TEXT_PRIMARY),
         )
         .height(1);
 
@@ -295,7 +296,7 @@ impl Inspector {
                 let is_striped = (row_idx - clamped_scroll_offset) % 2 == 1;
 
                 let base_style = if is_striped {
-                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    Style::default().bg(Theme::STRIPED_ROW_BG)
                 } else {
                     Style::default()
                 };
@@ -307,9 +308,9 @@ impl Inspector {
 
                         // Special styling for PK and Comment columns
                         let cell_style = if col_idx == 3 && !text.is_empty() {
-                            Style::default().fg(Color::Yellow)
+                            Style::default().fg(Theme::TEXT_ACCENT)
                         } else if col_idx == 5 {
-                            Style::default().fg(Color::DarkGray)
+                            Style::default().fg(Theme::TEXT_MUTED)
                         } else {
                             Style::default()
                         };
@@ -366,7 +367,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
-                .fg(Color::White),
+                .fg(Theme::TEXT_PRIMARY),
         )
         .height(1);
 
@@ -406,7 +407,7 @@ impl Inspector {
                 let unique_marker = if idx.is_unique { "✓" } else { "" };
                 let type_str = format!("{:?}", idx.index_type).to_lowercase();
                 let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    Style::default().bg(Theme::STRIPED_ROW_BG)
                 } else {
                     Style::default()
                 };
@@ -459,7 +460,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
-                .fg(Color::White),
+                .fg(Theme::TEXT_PRIMARY),
         )
         .height(1);
 
@@ -503,7 +504,7 @@ impl Inspector {
                     fk.to_columns.join(", ")
                 );
                 let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    Style::default().bg(Theme::STRIPED_ROW_BG)
                 } else {
                     Style::default()
                 };
@@ -556,9 +557,9 @@ impl Inspector {
                     Span::styled(
                         status,
                         Style::default().fg(if rls.enabled {
-                            Color::Green
+                            Theme::STATUS_SUCCESS
                         } else {
-                            Color::Red
+                            Theme::STATUS_ERROR
                         }),
                     ),
                 ])];
@@ -636,7 +637,7 @@ impl Inspector {
             Style::default()
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
-                .fg(Color::White),
+                .fg(Theme::TEXT_PRIMARY),
         )
         .height(1);
 
@@ -665,7 +666,7 @@ impl Inspector {
                     ""
                 };
                 let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Color::Rgb(0x2a, 0x2a, 0x2e))
+                    Style::default().bg(Theme::STRIPED_ROW_BG)
                 } else {
                     Style::default()
                 };
@@ -714,7 +715,7 @@ impl Inspector {
 
         let paragraph = Paragraph::new(ddl)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::White))
+            .style(Style::default().fg(Theme::TEXT_PRIMARY))
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 
