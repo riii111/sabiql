@@ -7,9 +7,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::ui::theme::Theme;
 
 use crate::app::keybindings::{
-    CELL_EDIT_KEYS, COMMAND_LINE_KEYS, CONFIRM_DIALOG_KEYS, CONNECTION_ERROR_KEYS,
-    CONNECTION_SETUP_KEYS, ER_PICKER_KEYS, GLOBAL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS,
-    RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
+    CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_KEYS, CONFIRM_DIALOG_KEYS,
+    CONNECTION_ERROR_KEYS, CONNECTION_SETUP_KEYS, ER_PICKER_KEYS, GLOBAL_KEYS, HELP_KEYS,
+    NAVIGATION_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_KEYS,
 };
 use crate::app::state::AppState;
 
@@ -84,6 +84,24 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("ER Diagram Picker"));
         for kb in ER_PICKER_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Table Picker"));
+        for kb in TABLE_PICKER_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Command Palette"));
+        for kb in COMMAND_PALETTE_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("Help Overlay"));
+        for kb in HELP_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 
