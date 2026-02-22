@@ -32,6 +32,12 @@ Built to be driver-less and lightweight (requires psql, but no Rust database dri
 - **Focus Mode**: Expand any pane to full screen with `f`
   ![focus-mode-1400](https://github.com/user-attachments/assets/7412e206-cc64-4652-9185-2269592e8d65)
 
+- **Inline Cell Editing**: Edit result cells in-place with a guarded UPDATE preview before committing
+  Press `e` on any result cell to enter edit mode, then `:w` to preview and confirm the UPDATE.
+
+- **Row Deletion**: Delete rows via `dd` with a mandatory DELETE preview and confirmation
+  Risk-aware guardrails color-code the preview (yellow/orange/red) and block dangerous operations automatically.
+
 
 ## Installation
 
@@ -71,7 +77,9 @@ sabiql
 | `g`/`G` | Jump to top/bottom |
 | `f` | Toggle focus mode |
 | `s` | Open SQL modal |
-| `e` | Open ER diagram |
+| `e` | Open ER diagram / Edit cell (in Result pane) |
+| `dd` | Delete row (in Result pane, with preview) |
+| `y` | Yank (copy) cell value |
 | `Ctrl+K` | Command palette |
 | `?` | Show help |
 | `q` | Quit |
