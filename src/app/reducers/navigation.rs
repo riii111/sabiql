@@ -169,7 +169,7 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         risk_level: RiskLevel::Low,
         blocked: false,
         reason: None,
-        target_summary: Some(target.clone()),
+        target_summary: None,
     };
     let (target_page, target_row) = deletion_refresh_target(
         result.rows.len(),

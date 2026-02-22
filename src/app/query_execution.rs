@@ -51,6 +51,14 @@ impl PaginationState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PostDeleteRowSelection {
+    #[default]
+    Keep,
+    Clear,
+    Select(usize),
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
     pub status: QueryStatus,
@@ -61,8 +69,7 @@ pub struct QueryExecution {
     pub result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
     pub pending_delete_refresh_target: Option<(usize, Option<usize>)>,
-    pub pending_row_selection_after_refresh: Option<usize>,
-    pub clear_row_selection_after_refresh: bool,
+    pub post_delete_row_selection: PostDeleteRowSelection,
 }
 
 #[cfg(test)]
