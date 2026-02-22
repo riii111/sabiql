@@ -1,5 +1,4 @@
 use ratatui::prelude::*;
-use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
@@ -76,7 +75,7 @@ impl ConfirmDialog {
     fn render_write_preview(frame: &mut Frame, state: &AppState, preview: &WritePreview) {
         let border_color = match preview.guardrail.risk_level {
             RiskLevel::Low => Theme::STATUS_WARNING,
-            RiskLevel::Medium => Color::Rgb(0xff, 0x99, 0x00),
+            RiskLevel::Medium => Theme::STATUS_MEDIUM_RISK,
             RiskLevel::High => Theme::STATUS_ERROR,
         };
         let hint = if preview.guardrail.blocked {
