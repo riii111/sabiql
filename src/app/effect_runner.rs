@@ -23,13 +23,14 @@ use crate::app::action::Action;
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
-use crate::app::er_task::{spawn_er_diagram_task, write_er_failure_log_blocking};
+use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
     ConfigWriter, ConnectionStore, ErDiagramExporter, MetadataProvider, QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
+use crate::infra::adapters::write_er_failure_log_blocking;
 
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
