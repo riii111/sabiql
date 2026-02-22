@@ -11,9 +11,9 @@ use crate::app::query_execution::{PREVIEW_PAGE_SIZE, QueryStatus};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
-    ColumnDiff, RiskLevel, WriteOperation, WritePreview, escape_preview_value, evaluate_guardrails,
+    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_pk_pairs, build_update_sql};
+use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
 use super::helpers::editable_preview_base;

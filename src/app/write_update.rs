@@ -6,6 +6,13 @@ fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+pub fn escape_preview_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+}
+
 pub fn sql_value_expr(value: &str) -> String {
     if value == "NULL" {
         "NULL".to_string()
@@ -119,5 +126,10 @@ mod tests {
         let row = vec!["alice".to_string()];
         let pairs = build_pk_pairs(&columns, &row, &["id".to_string()]);
         assert!(pairs.is_none());
+    }
+
+    #[test]
+    fn value_with_control_chars_returns_escaped_preview_value() {
+        assert_eq!(escape_preview_value("a\\b\"c\nd"), "a\\\\b\\\"c\\nd");
     }
 }
