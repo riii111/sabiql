@@ -15,22 +15,19 @@ Built to be driver-less and lightweight (requires psql, but no Rust database dri
 
 ## Features
 
+https://github.com/user-attachments/assets/7d2c34ae-94b7-4746-86a5-6aadd0a4ab45
+
 - **SQL Modal**: Execute ad-hoc queries with auto-completion
-  ![sql-modal-1200](https://github.com/user-attachments/assets/7505e3b8-bd26-4de9-8cda-a59e6fdbe936)
   Type a few characters and get instant suggestions for tables, columns, and keywords — no manual schema lookup needed.
 
 - **ER Diagram**: Generate relationship diagrams via Graphviz
   Press `e` to instantly open an ER diagram in your browser — see table relationships at a glance.
-  ![er-diagram-1400](https://github.com/user-attachments/assets/53d09bea-5013-4b0b-b20c-a861a3d90e1f)
 
 - **Inspector Pane**: View column details, types, constraints, and indexes for any table
-  ![inspector-1400](https://github.com/user-attachments/assets/fde64b47-fe1f-417b-9b9f-f65dcdac32c6)
 
 - **Fuzzy Search**: Quickly find tables with incremental filtering
-  ![fuzzy-search-1400](https://github.com/user-attachments/assets/4daf8b7a-cf24-4a09-b93a-f7aa9a63cadd)
 
 - **Focus Mode**: Expand any pane to full screen with `f`
-  ![focus-mode-1400](https://github.com/user-attachments/assets/7412e206-cc64-4652-9185-2269592e8d65)
 
 - **Inline Cell Editing**: Edit result cells in-place with a guarded UPDATE preview before committing
   Press `e` on any result cell to enter edit mode, then `:w` to preview and confirm the UPDATE.
