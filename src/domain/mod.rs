@@ -12,6 +12,7 @@ pub mod rls;
 pub mod schema;
 pub mod table;
 pub mod trigger;
+pub mod write_result;
 
 pub use column::Column;
 #[cfg(test)]
@@ -25,5 +26,6 @@ pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use table::{Table, TableSummary};
 pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
+pub use write_result::WriteExecutionResult;
 
 pub use connection::{ConnectionId, ConnectionProfile, SslMode};
