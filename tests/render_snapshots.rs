@@ -15,6 +15,9 @@ use sabiql::app::er_state::ErStatus;
 use sabiql::app::focused_pane::FocusedPane;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::sql_modal_context::SqlModalStatus;
+use sabiql::app::write_guardrails::{
+    ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+};
 use sabiql::domain::MetadataState;
 
 #[test]
@@ -769,6 +772,96 @@ fn result_pane_cell_active_mode() {
     state.ui.focused_pane = FocusedPane::Result;
     state.ui.result_selection.enter_row(1);
     state.ui.result_selection.enter_cell(2);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_cell_edit_mode() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.result_selection.enter_row(1);
+    state.ui.result_selection.enter_cell(2);
+    state.ui.input_mode = InputMode::CellEdit;
+    state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+    state.cell_edit.draft_value = "new@example.com".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
+    state.confirm_dialog.message =
+        "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
+    state.confirm_dialog.on_confirm = Action::ExecuteWrite(
+        "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
+            .to_string(),
+    );
+    state.confirm_dialog.on_cancel = Action::None;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview_rich() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+
+    let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
+        .to_string();
+    state.pending_write_preview = Some(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "2".to_string())],
+        },
+        diff: vec![ColumnDiff {
+            column: "email".to_string(),
+            before: "bob@example.com".to_string(),
+            after: "new@example.com".to_string(),
+        }],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.ui.input_mode = InputMode::ConfirmDialog;
+    state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
+    state.confirm_dialog.message = "email: \"bob@example.com\" -> \"new@example.com\"".to_string();
+    state.confirm_dialog.on_confirm = Action::ExecuteWrite(sql);
+    state.confirm_dialog.on_cancel = Action::None;
 
     let output = render_to_string(&mut terminal, &mut state);
 
