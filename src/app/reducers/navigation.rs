@@ -13,7 +13,8 @@ use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::app::write_update::build_pk_pairs;
-use crate::domain::QuerySource;
+
+use super::helpers::editable_preview_base;
 
 fn result_row_count(state: &AppState) -> usize {
     state
@@ -119,24 +120,6 @@ fn explorer_item_count(state: &AppState) -> usize {
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
-    if state.query.history_index.is_some() {
-        return Err("Editing is unavailable while browsing history".to_string());
-    }
-
-    let result = state
-        .query
-        .current_result
-        .as_ref()
-        .ok_or_else(|| "No result to edit".to_string())?;
-
-    if result.source != QuerySource::Preview || result.is_error() {
-        return Err("Only Preview results are editable".to_string());
-    }
-
-    if state.query.pagination.schema.is_empty() || state.query.pagination.table.is_empty() {
-        return Err("Preview target table is unknown".to_string());
-    }
-
     let row_idx = state
         .ui
         .result_selection
@@ -148,23 +131,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
         .cell()
         .ok_or_else(|| "No active cell".to_string())?;
 
-    let table_detail = state
-        .cache
-        .table_detail
-        .as_ref()
-        .ok_or_else(|| "Table metadata not loaded".to_string())?;
-
-    if table_detail.schema != state.query.pagination.schema
-        || table_detail.name != state.query.pagination.table
-    {
-        return Err("Table metadata does not match current preview target".to_string());
-    }
-
-    let pk_cols = table_detail
-        .primary_key
-        .as_ref()
-        .filter(|cols| !cols.is_empty())
-        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
+    let (result, pk_cols) = editable_preview_base(state)?;
 
     let column_name = result
         .columns
@@ -178,7 +145,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
         .rows
         .get(row_idx)
         .ok_or_else(|| "Row index out of bounds".to_string())?;
-    if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
+    if build_pk_pairs(&result.columns, row, &pk_cols).is_none() {
         return Err("Stable key columns are not present in current result".to_string());
     }
 

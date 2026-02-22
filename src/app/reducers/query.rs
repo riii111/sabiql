@@ -16,23 +16,15 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::{build_pk_pairs, build_update_sql};
 use crate::domain::{QueryResult, QuerySource};
 
+use super::helpers::editable_preview_base;
+
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
+    // Entry guard on `i` is handled in navigation; this path re-validates before write submit.
     if state.ui.input_mode != InputMode::CellEdit || !state.cell_edit.is_active() {
         return Err("Cell edit mode is not active".to_string());
     }
 
-    if state.query.history_index.is_some() {
-        return Err("Editing is unavailable while browsing history".to_string());
-    }
-
-    let result = state
-        .query
-        .current_result
-        .as_ref()
-        .ok_or_else(|| "No result to edit".to_string())?;
-    if result.source != QuerySource::Preview || result.is_error() {
-        return Err("Only Preview results are editable".to_string());
-    }
+    let (result, pk_cols) = editable_preview_base(state)?;
 
     let row_idx = state
         .cell_edit
@@ -53,40 +45,18 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         .ok_or_else(|| "Column index out of bounds".to_string())?
         .clone();
 
-    let table_detail = state
-        .cache
-        .table_detail
-        .as_ref()
-        .ok_or_else(|| "Table metadata not loaded".to_string())?;
-
-    if table_detail.schema != state.query.pagination.schema
-        || table_detail.name != state.query.pagination.table
-    {
-        return Err("Table metadata does not match current preview target".to_string());
-    }
-
-    let pk_cols = table_detail
-        .primary_key
-        .as_ref()
-        .filter(|cols| !cols.is_empty())
-        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
-
     if pk_cols.iter().any(|pk| pk == &column_name) {
         return Err("Primary key columns are read-only".to_string());
     }
 
+    let pk_pairs = build_pk_pairs(&result.columns, row, &pk_cols);
     let target = crate::app::write_guardrails::TargetSummary {
         schema: state.query.pagination.schema.clone(),
         table: state.query.pagination.table.clone(),
-        key_values: vec![],
+        key_values: pk_pairs.clone().unwrap_or_default(),
     };
-    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
     let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
     let has_stable_row_identity = pk_pairs.is_some();
-    let mut target = target;
-    if let Some(pairs) = &pk_pairs {
-        target.key_values = pairs.clone();
-    }
     let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
     if guardrail.blocked {
         let reason = guardrail
@@ -122,6 +92,27 @@ fn escape_modal_diff_value(value: &str) -> String {
         .replace('\\', "\\\\")
         .replace('\"', "\\\"")
         .replace('\n', "\\n")
+}
+
+fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
+    // Plain-text fallback for generic confirm rendering paths.
+    // Rich SQL/diff rendering comes from `pending_write_preview`.
+    let mut lines = Vec::new();
+    if preview.guardrail.risk_level != RiskLevel::Low {
+        lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
+    }
+    lines.push(preview.diff.first().map_or_else(
+        || "(no changes)".to_string(),
+        |d| {
+            format!(
+                "{}: \"{}\" -> \"{}\"",
+                d.column,
+                escape_modal_diff_value(&d.before),
+                escape_modal_diff_value(&d.after)
+            )
+        },
+    ));
+    lines.join("\n")
 }
 
 /// Handles query execution and command line actions.
@@ -312,28 +303,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
         Action::OpenWritePreviewConfirm(preview) => {
             state.pending_write_preview = Some((**preview).clone());
-            let mut lines = Vec::new();
-            if preview.guardrail.risk_level != RiskLevel::Low {
-                lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
-            }
-            lines.push(preview.diff.first().map_or_else(
-                || "(no changes)".to_string(),
-                |d| {
-                    format!(
-                        "{}: \"{}\" -> \"{}\"",
-                        d.column,
-                        escape_modal_diff_value(&d.before),
-                        escape_modal_diff_value(&d.after)
-                    )
-                },
-            ));
-            lines.push(String::new());
-            lines.push(preview.sql.clone());
-            let message = lines.join("\n");
 
             state.confirm_dialog.title =
                 format!("Confirm UPDATE: {}", preview.target_summary.table);
-            state.confirm_dialog.message = message;
+            state.confirm_dialog.message = build_write_preview_fallback_message(preview);
             state.confirm_dialog.on_confirm = Action::ExecuteWrite(preview.sql.clone());
             state.confirm_dialog.on_cancel = Action::None;
             state.confirm_dialog.return_mode = InputMode::CellEdit;
@@ -911,7 +884,10 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.confirm_dialog.message.contains(&expected_sql));
+            assert_eq!(
+                state.pending_write_preview.as_ref().map(|p| p.sql.as_str()),
+                Some(expected_sql.as_str())
+            );
             match &state.confirm_dialog.on_confirm {
                 Action::ExecuteWrite(sql) => assert_eq!(sql, &expected_sql),
                 other => panic!("expected ExecuteWrite, got {:?}", other),
