@@ -4,6 +4,10 @@ use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
 use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
+pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY";
+pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
+    "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
+
 /// Shared prerequisites for preview-cell write operations.
 /// Entry checks in navigation and submit-time checks in query should both use this.
 /// Row/column selection source is intentionally left to each caller:
@@ -44,12 +48,13 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .as_ref()
         .filter(|cols| !cols.is_empty())
         .map(|cols| cols.as_slice())
-        .ok_or_else(|| "Editing requires a PRIMARY KEY".to_string())?;
+        .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
 
     Ok((result, pk_cols))
 }
 
-/// Compute page/row selection after deleting one row from current preview page.
+/// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
+/// after refetch, because the previous page row count is not known yet.
 pub fn deletion_refresh_target(
     row_count: usize,
     selected_row: usize,
