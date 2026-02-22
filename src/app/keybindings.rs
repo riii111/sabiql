@@ -1096,20 +1096,32 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
 // Help Overlay Layout
 // =============================================================================
 
-/// Total lines in help overlay content (sections + blank lines + key entries)
-pub const HELP_TOTAL_LINES: usize = 10
-    + 9
-    + GLOBAL_KEYS.len()
-    + NAVIGATION_KEYS.len()
-    + RESULT_ACTIVE_KEYS.len()
-    + CELL_EDIT_KEYS.len()
-    + SQL_MODAL_KEYS.len()
-    + OVERLAY_KEYS.len()
-    + COMMAND_LINE_KEYS.len()
-    + CONNECTION_SETUP_KEYS.len()
-    + CONNECTION_ERROR_KEYS.len()
-    + ER_PICKER_KEYS.len()
-    + CONFIRM_DIALOG_KEYS.len();
+/// Returns total line count of help overlay content.
+///
+/// Derived from the same section order as `HelpOverlay::render()`:
+/// each section = 1 header + N key lines, separated by 1 blank line.
+/// Sections: Global, Navigation, Result Pane, Cell Edit, SQL Editor,
+/// Overlays, Command Line, Connection Setup, Connection Error,
+/// ER Diagram Picker, Table Picker, Command Palette, Help Overlay, Confirm Dialog.
+pub const fn help_content_line_count() -> usize {
+    // 14 sections × 1 header each = 14
+    // 13 blank-line separators between sections = 13
+    14 + 13
+        + GLOBAL_KEYS.len()
+        + NAVIGATION_KEYS.len()
+        + RESULT_ACTIVE_KEYS.len()
+        + CELL_EDIT_KEYS.len()
+        + SQL_MODAL_KEYS.len()
+        + OVERLAY_KEYS.len()
+        + COMMAND_LINE_KEYS.len()
+        + CONNECTION_SETUP_KEYS.len()
+        + CONNECTION_ERROR_KEYS.len()
+        + ER_PICKER_KEYS.len()
+        + TABLE_PICKER_KEYS.len()
+        + COMMAND_PALETTE_KEYS.len()
+        + HELP_KEYS.len()
+        + CONFIRM_DIALOG_KEYS.len()
+}
 
 #[cfg(test)]
 mod tests {
@@ -1230,5 +1242,32 @@ mod tests {
         assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_KEYS.len());
         assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_KEYS.len());
         assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_KEYS.len());
+    }
+
+    #[test]
+    fn help_content_line_count_matches_section_structure() {
+        // Build the same structure as HelpOverlay::render() and compare lengths.
+        // Sections in render order (14 total):
+        let sections: &[usize] = &[
+            GLOBAL_KEYS.len(),
+            NAVIGATION_KEYS.len(),
+            RESULT_ACTIVE_KEYS.len(),
+            CELL_EDIT_KEYS.len(),
+            SQL_MODAL_KEYS.len(),
+            OVERLAY_KEYS.len(),
+            COMMAND_LINE_KEYS.len(),
+            CONNECTION_SETUP_KEYS.len(),
+            CONNECTION_ERROR_KEYS.len(),
+            ER_PICKER_KEYS.len(),
+            TABLE_PICKER_KEYS.len(),
+            COMMAND_PALETTE_KEYS.len(),
+            HELP_KEYS.len(),
+            CONFIRM_DIALOG_KEYS.len(),
+        ];
+        let section_count = sections.len();
+        // 1 header per section + entries + (section_count - 1) blank separators
+        let expected: usize = section_count + sections.iter().sum::<usize>() + (section_count - 1);
+
+        assert_eq!(help_content_line_count(), expected);
     }
 }
