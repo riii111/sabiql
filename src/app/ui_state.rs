@@ -468,15 +468,24 @@ mod tests {
         use super::*;
 
         #[test]
-        fn help_max_scroll_does_not_exceed_content_line_count() {
-            let state = UiState::new();
+        fn help_max_scroll_plus_viewport_equals_content_line_count() {
+            // terminal_height=24 → viewport = 24*80/100 - 2 = 17
+            // max_scroll should equal total_lines - viewport (not saturated)
+            let terminal_height: u16 = 24;
+            let state = UiState {
+                terminal_height,
+                ..Default::default()
+            };
+            let viewport = (terminal_height as usize * 80 / 100).saturating_sub(2);
 
             let max = state.help_max_scroll();
 
-            assert!(
-                max <= help_content_line_count(),
-                "max_scroll={} > total_lines={}",
+            assert_eq!(
+                max + viewport,
+                help_content_line_count(),
+                "max_scroll({}) + viewport({}) != total_lines({})",
                 max,
+                viewport,
                 help_content_line_count()
             );
         }
