@@ -18,7 +18,9 @@ use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
 use sabiql::error;
-use sabiql::infra::adapters::{FileConfigWriter, PostgresAdapter, TomlConnectionStore};
+use sabiql::infra::adapters::{
+    FileConfigWriter, FsErLogWriter, PostgresAdapter, TomlConnectionStore,
+};
 use sabiql::infra::config::project_root::{find_project_root, get_project_name};
 use sabiql::infra::export::DotExporter;
 use sabiql::ui::adapters::TuiAdapter;
@@ -65,6 +67,7 @@ async fn main() -> Result<()> {
         Arc::clone(&adapter) as _,
         Arc::new(DotExporter::new()),
         Arc::new(FileConfigWriter::new()),
+        Arc::new(FsErLogWriter),
         Arc::clone(&connection_store) as _,
         metadata_cache.clone(),
         action_tx.clone(),

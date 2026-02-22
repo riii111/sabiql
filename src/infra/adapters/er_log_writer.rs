@@ -1,5 +1,19 @@
 use std::path::PathBuf;
 
+use crate::app::ports::ErLogWriter;
+
+pub struct FsErLogWriter;
+
+impl ErLogWriter for FsErLogWriter {
+    fn write_er_failure_log(
+        &self,
+        failed_tables: Vec<(String, String)>,
+        cache_dir: PathBuf,
+    ) -> std::io::Result<()> {
+        write_er_failure_log_blocking(failed_tables, cache_dir)
+    }
+}
+
 pub fn write_er_failure_log_blocking(
     failed_tables: Vec<(String, String)>,
     cache_dir: PathBuf,

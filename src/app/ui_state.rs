@@ -198,8 +198,10 @@ impl UiState {
     }
 }
 
-/// Compute the scroll offset for a list given selected index and viewport height.
-/// Mirrors the internal arithmetic used by Ratatui's `ListState`.
+/// Compute the minimum scroll offset needed to keep `selected` visible at the bottom
+/// of the viewport. This is an approximation: it always aligns `selected` to the
+/// bottom edge, so it does not preserve the previous frame's offset when `selected`
+/// is already visible without scrolling.
 pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
     selected.saturating_sub(viewport.saturating_sub(1))
 }
