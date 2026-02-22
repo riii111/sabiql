@@ -13,10 +13,10 @@ use super::molecules::render_modal;
 pub struct ErTablePicker;
 
 impl ErTablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) {
-        let filtered = state.er_filtered_tables();
+    pub fn render(frame: &mut Frame, state: &mut AppState) {
         let selected_count = state.ui.er_selected_tables.len();
         let total_count = state.tables().len();
+        let filtered_count = state.er_filtered_tables().len();
 
         let (mode_label, targets_label, preview_color) = if selected_count == 0 {
             ("Invalid".to_string(), "—".to_string(), Theme::STATUS_ERROR)
@@ -62,6 +62,8 @@ impl ErTablePicker {
         ])
         .areas(inner);
 
+        state.ui.er_picker_pane_height = list_area.height;
+
         // Filter input
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
@@ -93,6 +95,7 @@ impl ErTablePicker {
         frame.render_widget(Paragraph::new(preview_lines), preview_area);
 
         // Table list with checkboxes
+        let filtered = state.er_filtered_tables();
         let items: Vec<ListItem> = filtered
             .iter()
             .map(|t| {
@@ -117,12 +120,14 @@ impl ErTablePicker {
             )
             .highlight_symbol("▸ ");
 
-        let selected = if !filtered.is_empty() {
+        let selected = if filtered_count > 0 {
             Some(state.ui.er_picker_selected)
         } else {
             None
         };
-        let mut list_state = ListState::default().with_selected(selected);
+        let mut list_state = ListState::default()
+            .with_selected(selected)
+            .with_offset(state.ui.er_picker_scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

@@ -15,7 +15,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::OpenTablePicker => {
             state.ui.input_mode = InputMode::TablePicker;
             state.ui.filter_input.clear();
-            state.ui.picker_selected = 0;
+            state.ui.reset_picker_selection();
             Some(vec![])
         }
         Action::CloseTablePicker => {
@@ -24,7 +24,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::OpenCommandPalette => {
             state.ui.input_mode = InputMode::CommandPalette;
-            state.ui.picker_selected = 0;
+            state.ui.reset_picker_selection();
             Some(vec![])
         }
         Action::CloseCommandPalette => {
@@ -71,7 +71,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.er_selected_tables.clear();
             state.ui.input_mode = InputMode::ErTablePicker;
             state.ui.er_filter_input.clear();
-            state.ui.er_picker_selected = 0;
+            state.ui.reset_er_picker_selection();
             Some(vec![])
         }
         Action::CloseErTablePicker => {
@@ -83,12 +83,12 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::ErFilterInput(c) => {
             state.ui.er_filter_input.push(*c);
-            state.ui.er_picker_selected = 0;
+            state.ui.reset_er_picker_selection();
             Some(vec![])
         }
         Action::ErFilterBackspace => {
             state.ui.er_filter_input.pop();
-            state.ui.er_picker_selected = 0;
+            state.ui.reset_er_picker_selection();
             Some(vec![])
         }
         Action::ErToggleSelection => {

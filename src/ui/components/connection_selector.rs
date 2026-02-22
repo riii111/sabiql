@@ -7,13 +7,12 @@ use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
 use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
 use crate::app::state::AppState;
-use crate::app::ui_state::list_scroll_offset;
 use crate::ui::theme::Theme;
 
 pub struct ConnectionSelector;
 
 impl ConnectionSelector {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &mut AppState) {
         let hint = Self::build_hint_string();
         let (_outer, inner) = render_modal(
             frame,
@@ -26,7 +25,12 @@ impl ConnectionSelector {
         Self::render_connection_list(frame, inner, state);
     }
 
-    fn render_connection_list(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
+    fn render_connection_list(
+        frame: &mut Frame,
+        area: ratatui::layout::Rect,
+        state: &mut AppState,
+    ) {
+        state.ui.connection_list_pane_height = area.height;
         let active_id = state.runtime.active_connection_id.as_ref();
 
         let items: Vec<ListItem> = if state.connections.is_empty() {
@@ -57,8 +61,9 @@ impl ConnectionSelector {
             )
             .highlight_symbol("> ");
 
-        let mut list_state =
-            ListState::default().with_selected(Some(state.ui.connection_list_selected));
+        let mut list_state = ListState::default()
+            .with_selected(Some(state.ui.connection_list_selected))
+            .with_offset(state.ui.connection_list_scroll_offset);
         frame.render_stateful_widget(list, area, &mut list_state);
 
         // Render vertical scrollbar if needed
@@ -67,8 +72,7 @@ impl ConnectionSelector {
             let viewport_size = area.height as usize;
 
             if total_items > viewport_size {
-                let scroll_offset =
-                    list_scroll_offset(state.ui.connection_list_selected, viewport_size);
+                let scroll_offset = state.ui.connection_list_scroll_offset;
 
                 render_vertical_scroll_indicator_bar(
                     frame,
