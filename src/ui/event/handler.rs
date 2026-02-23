@@ -907,7 +907,6 @@ mod tests {
             let mut state = result_focused_state();
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
-            // No pending draft
 
             let result = handle_normal_mode(key(KeyCode::Esc), &state);
 
@@ -1510,7 +1509,6 @@ mod tests {
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {
-            // ResultCancelCellEdit now preserves the draft (semantics changed in reducer).
             let result = handle_cell_edit_keys(key(KeyCode::Esc));
 
             assert!(matches!(result, Action::ResultCancelCellEdit));

@@ -69,7 +69,6 @@ impl Footer {
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
                     if state.cell_edit.has_pending_draft() {
-                        // Draft-pending: Actions → Save → Help → Discard → Quit
                         vec![
                             RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
                             CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),

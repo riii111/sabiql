@@ -1,16 +1,3 @@
-//! Crossterm key event adapter seam.
-//!
-//! This is the **single designated import point** for crossterm key types
-//! in the event-handling path. All key event handling in `handler.rs` must
-//! import `KeyCode`, `KeyEvent`, and `KeyModifiers` from this module, not
-//! directly from `crossterm`.
-//!
-//! # Boundary rule
-//! Only `key_translator.rs` is permitted to import crossterm key types for
-//! event handling. This keeps the crossterm dependency contained at one
-//! adapter seam, making future key-type changes or crossterm upgrades
-//! easier to manage.
-
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[cfg(test)]

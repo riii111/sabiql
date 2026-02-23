@@ -19,8 +19,6 @@ use crate::domain::{QueryResult, QuerySource};
 use super::helpers::editable_preview_base;
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
-    // Entry guard on `i` is handled in navigation; this path re-validates before write submit.
-    // Allow :w from both CellEdit and Normal (CellActive with pending draft).
     if !state.cell_edit.is_active() {
         return Err("No active cell edit session".to_string());
     }
@@ -334,7 +332,6 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let (title, return_mode) = match operation {
                 WriteOperation::Update => {
                     state.query.pending_delete_refresh_target = None;
-                    // Return to whatever mode the caller was in (CellEdit or Normal/CellActive).
                     (
                         format!("Confirm UPDATE: {}", preview.target_summary.table),
                         caller_mode,

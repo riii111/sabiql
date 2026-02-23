@@ -816,8 +816,6 @@ pub fn reduce_navigation(
             }
         },
         Action::ResultCancelCellEdit => {
-            // Preserve draft: just exit CellEdit InputMode, keep cell_edit state.
-            // ResultNavMode stays CellActive so the draft is visible.
             state.pending_write_preview = None;
             state.ui.input_mode = InputMode::Normal;
             Some(vec![])
