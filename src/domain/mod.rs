@@ -1,5 +1,4 @@
 // Domain models - fields/methods defined to match DB schema
-#![allow(dead_code)]
 
 pub mod column;
 pub mod connection;

@@ -13,7 +13,7 @@ use crate::app::state::AppState;
 use crate::app::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_value};
+use crate::app::write_update::{build_pk_pairs, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
 use super::helpers::editable_preview_base;
@@ -66,7 +66,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         return Err(reason);
     }
 
-    let sql = build_update_sql(
+    let sql = state.sql_dialect.build_update_sql(
         &target.schema,
         &target.table,
         &column_name,
@@ -929,9 +929,54 @@ mod tests {
 
     mod write_flow {
         use super::*;
+        use crate::app::ports::{DdlGenerator, SqlDialect};
+        use crate::domain::Table;
+
+        struct FakeDdlGenerator;
+        impl DdlGenerator for FakeDdlGenerator {
+            fn generate_ddl(&self, _table: &Table) -> String {
+                String::new()
+            }
+        }
+
+        struct FakeSqlDialect;
+        impl SqlDialect for FakeSqlDialect {
+            fn build_update_sql(
+                &self,
+                schema: &str,
+                table: &str,
+                column: &str,
+                new_value: &str,
+                pk_pairs: &[(String, String)],
+            ) -> String {
+                let set_clause = format!("\"{}\" = '{}'", column, new_value);
+                let where_clause: Vec<String> = pk_pairs
+                    .iter()
+                    .map(|(k, v)| format!("\"{}\" = '{}'", k, v))
+                    .collect();
+                format!(
+                    "UPDATE \"{}\".\"{}\" SET {} WHERE {}",
+                    schema,
+                    table,
+                    set_clause,
+                    where_clause.join(" AND ")
+                )
+            }
+            fn build_bulk_delete_sql(
+                &self,
+                _schema: &str,
+                _table: &str,
+                _pk_pairs_per_row: &[Vec<(String, String)>],
+            ) -> String {
+                String::new()
+            }
+        }
 
         fn editable_state() -> AppState {
-            let mut state = create_test_state();
+            let ddl: std::sync::Arc<dyn DdlGenerator> = std::sync::Arc::new(FakeDdlGenerator);
+            let dialect: std::sync::Arc<dyn SqlDialect> = std::sync::Arc::new(FakeSqlDialect);
+            let mut state = AppState::with_ports("test_project".to_string(), ddl, dialect);
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.query.current_result = Some(editable_preview_result());
             state.cache.table_detail = Some(users_table_detail());
             state.query.pagination.schema = "public".to_string();

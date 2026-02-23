@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
@@ -8,6 +10,7 @@ use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
+use super::ports::{DdlGenerator, SqlDialect};
 use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
@@ -39,10 +42,56 @@ pub struct AppState {
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
     pub connections: Vec<ConnectionProfile>,
+    pub ddl_generator: Arc<dyn DdlGenerator>,
+    pub sql_dialect: Arc<dyn SqlDialect>,
+}
+
+struct StubDdlGenerator;
+impl DdlGenerator for StubDdlGenerator {
+    fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
+        unimplemented!("inject a real DdlGenerator via AppState::with_ports()")
+    }
+    fn ddl_line_count(&self, _table: &crate::domain::Table) -> usize {
+        0
+    }
+}
+
+struct StubSqlDialect;
+impl SqlDialect for StubSqlDialect {
+    fn build_update_sql(
+        &self,
+        _schema: &str,
+        _table: &str,
+        _column: &str,
+        _new_value: &str,
+        _pk_pairs: &[(String, String)],
+    ) -> String {
+        unimplemented!("inject a real SqlDialect via AppState::with_ports()")
+    }
+    fn build_bulk_delete_sql(
+        &self,
+        _schema: &str,
+        _table: &str,
+        _pk_pairs_per_row: &[Vec<(String, String)>],
+    ) -> String {
+        unimplemented!("inject a real SqlDialect via AppState::with_ports()")
+    }
 }
 
 impl AppState {
     pub fn new(project_name: String) -> Self {
+        Self::with_ports(
+            project_name,
+            Arc::new(StubDdlGenerator),
+            Arc::new(StubSqlDialect),
+        )
+    }
+
+    pub fn with_ports(
+        project_name: String,
+        ddl_generator: Arc<dyn DdlGenerator>,
+        sql_dialect: Arc<dyn SqlDialect>,
+    ) -> Self {
         Self {
             should_quit: false,
             command_line_input: String::new(),
@@ -62,6 +111,8 @@ impl AppState {
             pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
+            ddl_generator,
+            sql_dialect,
         }
     }
 
