@@ -28,6 +28,7 @@ src/
 - `app/` → `ui/` (use Renderer port instead)
 - `app/` → `infra/` (use ports like MetadataProvider, ConfigWriter)
 - `ui/` → `infra/`
+- `handler.rs` importing crossterm key types directly (must go via `key_translator`)
 
 ## Ports & Adapters Pattern
 
@@ -49,6 +50,7 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
 | Add domain model | `domain/` |
 | Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
+| Convert crossterm key events | `ui/event/key_translator.rs` (only permitted crossterm import in event path) |
 
 ## Key Principles
 
