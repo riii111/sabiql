@@ -785,6 +785,7 @@ mod tests {
         // 7. ALL_MODE_BINDINGS exhaustiveness
         // ------------------------------------------------------------------ //
 
+        // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
         #[test]
         fn all_mode_bindings_count() {
             assert_eq!(ALL_MODE_BINDINGS.len(), 6);

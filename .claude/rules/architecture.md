@@ -64,8 +64,8 @@ crossterm::KeyEvent
 ```
 
 **Responsibilities:**
-- `app/keybindings/`: SSOT module — `KeyBinding` structs with `combos`, `Action`, display strings. Split by domain: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`. Modes with display+hidden split use `ModeBindings` (paired slices, resolved via `.resolve()`).
-- `app/keymap.rs`: `resolve(combo, bindings)` — linear scan, skips `Action::None` entries
+- `app/keybindings/`: SSOT module — `KeyBinding` (simple modes) and `ModeRow` (mixed modes with unified display+exec). Split by domain: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`. Mixed modes use `ModeBindings { rows: &[ModeRow] }`, resolved via `.resolve()`.
+- `app/keymap.rs`: `resolve(combo, bindings)` for `KeyBinding` slices; `resolve_mode(combo, rows)` for `ModeRow` slices
 - `ui/event/key_translator.rs`: UI adapter — converts `crossterm::KeyEvent` → app-layer `KeyCombo`
 - `ui/event/handler.rs`: mode dispatch — calls `ModeBindings::resolve()` or predicate fns, applies context logic
 

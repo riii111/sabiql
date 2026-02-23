@@ -43,8 +43,8 @@ Keybinding and command definitions follow this architecture:
 
 | Concept | Location | Responsibility |
 |---------|----------|----------------|
-| Data definitions | `app/keybindings/` | SSOT module: `KeyBinding` + `ModeBindings` (display/hidden pair). Submodules: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs` |
-| Key resolution | `app/keymap.rs` | `resolve(combo, bindings)` — called by `ModeBindings::resolve()` and simple-mode handlers |
+| Data definitions | `app/keybindings/` | SSOT module: `KeyBinding` (simple modes) + `ModeRow`/`ModeBindings` (mixed modes). Submodules: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs` |
+| Key resolution | `app/keymap.rs` | `resolve(combo, bindings)` for `KeyBinding` slices; `resolve_mode(combo, rows)` for `ModeRow` slices — both called via `ModeBindings::resolve()` or directly |
 | Key translation | `ui/event/key_translator.rs` | `translate(KeyEvent) -> KeyCombo` — crossterm adapter |
 | Mode dispatch | `ui/event/handler.rs` | Routes `KeyCombo` to handler by `InputMode` |
 | Display logic | `ui/components/footer.rs` | Context-sensitive hint selection by InputMode/state |
@@ -52,8 +52,8 @@ Keybinding and command definitions follow this architecture:
 | Command list | `app/palette.rs` | Commands shown in Command Palette |
 
 When adding a new keybinding:
-1. Add a `KeyBinding` entry to the appropriate submodule in `keybindings/` (`normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`)
-2. **Modes with `ModeBindings`** (Help, ConnectionError, ConnectionSelector, CommandPalette, TablePicker, ErTablePicker): add exec-only entries to `*_HIDDEN`, display-only to `*_KEYS`. `ModeBindings::resolve()` handles dispatch automatically.
+1. Add an entry to the appropriate submodule in `keybindings/` (`normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`)
+2. **Modes with `ModeBindings`** (Help, ConnectionError, ConnectionSelector, CommandPalette, TablePicker, ErTablePicker): add a `ModeRow` entry to the corresponding `*_ROWS` constant with display text and `bindings: &[ExecBinding { ... }]`. `ModeBindings::resolve()` handles dispatch automatically.
 3. **Normal mode**: also add a predicate function (e.g., `pub fn is_foo(combo: &KeyCombo) -> bool`) in `mod.rs` and wire it in `handle_normal_mode` in `handler.rs`
 4. Update Footer/Help/Palette display as needed
 
