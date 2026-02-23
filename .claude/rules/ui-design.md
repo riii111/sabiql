@@ -37,6 +37,11 @@ All input modes must follow this ordering:
 Actions → Navigation → Help → Close/Cancel → Quit
 ```
 
+## Interaction Contract
+
+See `interaction-contract.md` for keybinding consistency rules (SSOT, derived displays, anti-patterns).
+When adding keybindings, follow the full checklist defined there.
+
 ## Keybindings & Commands
 
 Keybinding and command definitions follow this architecture:

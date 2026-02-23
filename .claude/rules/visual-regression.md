@@ -43,6 +43,11 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 
 ## Coverage Criteria
 
+### Mode Coverage Obligation (MUST)
+
+- Every `InputMode` variant MUST have at least one snapshot test
+- When adding a new `InputMode`, add a corresponding snapshot BEFORE the PR is merged
+
 ### When to Add a Snapshot Test
 
 - **Each InputMode** - At least one scenario per mode
