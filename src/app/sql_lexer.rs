@@ -1,12 +1,14 @@
 //! Lightweight SQL lexer for completion context detection.
 //!
-//! Handles PostgreSQL-specific syntax including:
+//! Handles standard and extended SQL syntax including:
 //! - Dollar-quoted strings ($tag$...$tag$)
 //! - Escape strings (E'...')
 //! - Line comments (--)
 //! - Block comments (/* */)
 //! - Cast operator (::)
 //! - Array access ([])
+//!
+//! Currently optimized for PostgreSQL but most constructs are standard SQL.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
