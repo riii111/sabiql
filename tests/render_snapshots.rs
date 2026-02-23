@@ -906,7 +906,31 @@ fn confirm_dialog_delete_preview_low_risk() {
     insta::assert_snapshot!(output);
 }
 
+#[test]
+fn result_pane_cell_active_pending_draft() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.result_selection.enter_row(1);
+    state.ui.result_selection.enter_cell(2);
+    state.ui.input_mode = InputMode::Normal;
+    state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+    state.cell_edit.draft_value = "new@example.com".to_string();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
 mod style_assertions {
+
     use super::*;
     use harness::{TEST_HEIGHT, TEST_WIDTH};
     use ratatui::style::{Color, Modifier};
@@ -919,6 +943,64 @@ mod style_assertions {
         let x = (TEST_WIDTH - modal_w) / 2;
         let y = (TEST_HEIGHT - modal_h) / 2;
         (x, y)
+    }
+
+    #[test]
+    fn pending_draft_cell_uses_orange_fg() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.result_selection.enter_row(1);
+        state.ui.result_selection.enter_cell(2);
+        state.ui.input_mode = InputMode::Normal;
+        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.cell_edit.draft_value = "new@example.com".to_string();
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        let orange = Color::Rgb(0xff, 0x99, 0x00);
+        let draft_cell = (0..TEST_HEIGHT)
+            .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+            .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == orange));
+        assert!(
+            draft_cell.is_some(),
+            "Expected at least one cell with CELL_DRAFT_PENDING_FG (orange) in the buffer"
+        );
+    }
+
+    #[test]
+    fn active_cell_edit_uses_yellow_fg() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.result_selection.enter_row(1);
+        state.ui.result_selection.enter_cell(2);
+        state.ui.input_mode = InputMode::CellEdit;
+        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.cell_edit.draft_value = "new@example.com".to_string();
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        let yellow = Color::Yellow;
+        let edit_cell = (0..TEST_HEIGHT)
+            .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+            .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == yellow));
+        assert!(
+            edit_cell.is_some(),
+            "Expected at least one cell with CELL_EDIT_FG (yellow) in the buffer"
+        );
     }
 
     #[test]
