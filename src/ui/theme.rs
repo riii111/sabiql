@@ -1,19 +1,15 @@
 use ratatui::style::Color;
 
 /// Base color palette
-#[allow(dead_code)]
 pub struct Palette;
 
-#[allow(dead_code)]
 impl Palette {
     pub const CATPPUCCIN_MOCHA: Color = Color::Rgb(0x1e, 0x1e, 0x2e);
 }
 
 /// Application color theme constants
-#[allow(dead_code)]
 pub struct Theme;
 
-#[allow(dead_code)]
 impl Theme {
     // Modal border
     pub const MODAL_BORDER: Color = Color::DarkGray;

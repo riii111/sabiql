@@ -5,7 +5,6 @@ use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum Effect {
     Render,
 
