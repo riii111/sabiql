@@ -49,8 +49,8 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
 | Add domain model | `domain/` |
 | Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
-| Add key-to-action mapping (simple mode) | `app/keybindings.rs` (add entry with `combos`); `keymap::resolve()` handles it automatically |
-| Add key-to-action mapping (Normal mode) | `app/keybindings.rs` + add predicate fn + wire in `handler.rs` |
+| Add key-to-action mapping (simple mode) | `app/keybindings/` (add entry with `combos` to appropriate submodule); `keymap::resolve()` handles it automatically |
+| Add key-to-action mapping (Normal mode) | `app/keybindings/normal.rs` + add predicate fn in `mod.rs` + wire in `handler.rs` |
 
 ## Key Translation Flow
 
@@ -64,10 +64,10 @@ crossterm::KeyEvent
 ```
 
 **Responsibilities:**
-- `app/keybindings.rs`: SSOT — `KeyBinding` structs with `combos: &'static [KeyCombo]`, `Action`, display strings
+- `app/keybindings/`: SSOT module — `KeyBinding` structs with `combos`, `Action`, display strings. Split by domain: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`. Modes with display+hidden split use `ModeBindings` (paired slices, resolved via `.resolve()`).
 - `app/keymap.rs`: `resolve(combo, bindings)` — linear scan, skips `Action::None` entries
 - `ui/event/key_translator.rs`: UI adapter — converts `crossterm::KeyEvent` → app-layer `KeyCombo`
-- `ui/event/handler.rs`: mode dispatch — calls `keymap::resolve()` or predicate fns, applies context logic
+- `ui/event/handler.rs`: mode dispatch — calls `ModeBindings::resolve()` or predicate fns, applies context logic
 
 ## Key Principles
 
