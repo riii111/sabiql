@@ -3,6 +3,103 @@
 
 use super::action::Action;
 
+// =============================================================================
+// App-layer key types (crossterm-free)
+// =============================================================================
+
+/// Application-level key code, independent of the terminal backend.
+/// Only includes keys that sabiql actually uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Key {
+    Char(char),
+    Enter,
+    Esc,
+    Tab,
+    BackTab,
+    Up,
+    Down,
+    Left,
+    Right,
+    Home,
+    End,
+    Backspace,
+    Delete,
+    PageUp,
+    PageDown,
+    F(u8),
+    Null,
+    Other,
+}
+
+/// Modifier flags for a key press.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+impl Modifiers {
+    pub const NONE: Self = Self {
+        ctrl: false,
+        alt: false,
+        shift: false,
+    };
+    pub const CTRL: Self = Self {
+        ctrl: true,
+        alt: false,
+        shift: false,
+    };
+    pub const ALT: Self = Self {
+        ctrl: false,
+        alt: true,
+        shift: false,
+    };
+    pub const SHIFT: Self = Self {
+        ctrl: false,
+        alt: false,
+        shift: true,
+    };
+}
+
+/// A key + modifier combination, used as the app-layer abstraction for input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyCombo {
+    pub key: Key,
+    pub modifiers: Modifiers,
+}
+
+impl KeyCombo {
+    pub const fn plain(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::NONE,
+        }
+    }
+    pub const fn ctrl(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::CTRL,
+        }
+    }
+    pub const fn alt(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::ALT,
+        }
+    }
+    pub const fn shift(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::SHIFT,
+        }
+    }
+}
+
+// =============================================================================
+// KeyBinding
+// =============================================================================
+
 #[derive(Clone)]
 pub struct KeyBinding {
     /// Short key for Footer (e.g., "^P", "j/k")
@@ -20,6 +117,11 @@ pub struct KeyBinding {
     /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
     /// actual matching is handled directly in handler match arms.
     pub action: Action,
+    /// The key combinations that trigger this binding.
+    /// For display-only entries (`Action::None`), these represent the keys
+    /// shown in the hint text. For executable entries, `keymap::resolve()`
+    /// matches against these combos.
+    pub combos: &'static [KeyCombo],
 }
 
 impl KeyBinding {
@@ -186,6 +288,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit application",
         action: Action::Quit,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
     // idx 1: HELP
     KeyBinding {
@@ -194,6 +297,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Help",
         description: "Toggle help",
         action: Action::OpenHelp,
+        combos: &[KeyCombo::plain(Key::Char('?'))],
     },
     // idx 2: TABLE_PICKER
     KeyBinding {
@@ -202,6 +306,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Tables",
         description: "Open Table Picker",
         action: Action::OpenTablePicker,
+        combos: &[KeyCombo::ctrl(Key::Char('p'))],
     },
     // idx 3: PALETTE
     KeyBinding {
@@ -210,6 +315,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Palette",
         description: "Open Command Palette",
         action: Action::OpenCommandPalette,
+        combos: &[KeyCombo::ctrl(Key::Char('k'))],
     },
     // idx 4: COMMAND_LINE
     KeyBinding {
@@ -218,6 +324,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Cmd",
         description: "Enter command line",
         action: Action::EnterCommandLine,
+        combos: &[KeyCombo::plain(Key::Char(':'))],
     },
     // idx 5: FOCUS
     KeyBinding {
@@ -226,6 +333,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Focus",
         description: "Toggle Focus mode",
         action: Action::ToggleFocus,
+        combos: &[KeyCombo::plain(Key::Char('f'))],
     },
     // idx 6: EXIT_FOCUS (same key, different display)
     KeyBinding {
@@ -234,6 +342,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Exit Focus",
         description: "Exit Focus mode",
         action: Action::ToggleFocus,
+        combos: &[KeyCombo::plain(Key::Char('f'))],
     },
     // idx 7: PANE_SWITCH
     KeyBinding {
@@ -242,6 +351,11 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Pane",
         description: "Switch pane focus",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('1')),
+            KeyCombo::plain(Key::Char('2')),
+            KeyCombo::plain(Key::Char('3')),
+        ],
     },
     // idx 8: INSPECTOR_TABS
     KeyBinding {
@@ -250,6 +364,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "InsTabs",
         description: "Inspector prev/next tab",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Tab), KeyCombo::plain(Key::BackTab)],
     },
     // idx 9: RELOAD
     KeyBinding {
@@ -258,6 +373,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Reload",
         description: "Reload metadata",
         action: Action::ReloadMetadata,
+        combos: &[KeyCombo::plain(Key::Char('r'))],
     },
     // idx 10: SQL
     KeyBinding {
@@ -266,6 +382,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "SQL",
         description: "Open SQL Editor",
         action: Action::OpenSqlModal,
+        combos: &[KeyCombo::plain(Key::Char('s'))],
     },
     // idx 11: ER_DIAGRAM
     KeyBinding {
@@ -274,6 +391,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
         action: Action::OpenErTablePicker,
+        combos: &[KeyCombo::plain(Key::Char('e'))],
     },
     // idx 12: CONNECTIONS
     KeyBinding {
@@ -282,6 +400,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         desc_short: "Connections",
         description: "Toggle Connections mode",
         action: Action::ToggleExplorerMode,
+        combos: &[KeyCombo::plain(Key::Char('c'))],
     },
 ];
 
@@ -293,6 +412,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Down",
         description: "Move down / scroll",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
     },
     KeyBinding {
         key_short: "k",
@@ -300,6 +420,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Up",
         description: "Move up / scroll",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
     },
     KeyBinding {
         key_short: "g",
@@ -307,6 +428,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Top",
         description: "First item / top",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
     },
     KeyBinding {
         key_short: "G",
@@ -314,6 +436,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Bottom",
         description: "Last item / bottom",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
     },
     KeyBinding {
         key_short: "^D/^U",
@@ -321,6 +444,10 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Half Page",
         description: "Scroll half page down/up",
         action: Action::None,
+        combos: &[
+            KeyCombo::ctrl(Key::Char('d')),
+            KeyCombo::ctrl(Key::Char('u')),
+        ],
     },
     KeyBinding {
         key_short: "^F/^B",
@@ -328,6 +455,12 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Full Page",
         description: "Scroll full page down/up",
         action: Action::None,
+        combos: &[
+            KeyCombo::ctrl(Key::Char('f')),
+            KeyCombo::ctrl(Key::Char('b')),
+            KeyCombo::plain(Key::PageDown),
+            KeyCombo::plain(Key::PageUp),
+        ],
     },
     KeyBinding {
         key_short: "h/l / ←→",
@@ -335,6 +468,12 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "H-Scroll",
         description: "Scroll left/right",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('h')),
+            KeyCombo::plain(Key::Char('l')),
+            KeyCombo::plain(Key::Left),
+            KeyCombo::plain(Key::Right),
+        ],
     },
     KeyBinding {
         key_short: "]",
@@ -342,6 +481,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Next Page",
         description: "Next page (Preview)",
         action: Action::ResultNextPage,
+        combos: &[KeyCombo::plain(Key::Char(']'))],
     },
     KeyBinding {
         key_short: "[",
@@ -349,6 +489,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Prev Page",
         description: "Previous page (Preview)",
         action: Action::ResultPrevPage,
+        combos: &[KeyCombo::plain(Key::Char('['))],
     },
 ];
 
@@ -361,6 +502,12 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 1: SCROLL_SHORT (same as SCROLL for now)
     KeyBinding {
@@ -369,6 +516,12 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 2: TOP_BOTTOM
     KeyBinding {
@@ -377,6 +530,10 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Top/Bottom",
         description: "First/Last item",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('g')),
+            KeyCombo::plain(Key::Char('G')),
+        ],
     },
     // idx 3: H_SCROLL
     KeyBinding {
@@ -385,6 +542,12 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "H-Scroll",
         description: "Scroll left/right",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('h')),
+            KeyCombo::plain(Key::Char('l')),
+            KeyCombo::plain(Key::Left),
+            KeyCombo::plain(Key::Right),
+        ],
     },
     // idx 4: PAGE_NAV
     KeyBinding {
@@ -393,6 +556,10 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Page",
         description: "Next/Previous page",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char(']')),
+            KeyCombo::plain(Key::Char('[')),
+        ],
     },
 ];
 
@@ -408,6 +575,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Run",
         description: "Execute query",
         action: Action::SqlModalSubmit,
+        combos: &[KeyCombo::alt(Key::Enter)],
     },
     // idx 1: ESC_CLOSE
     KeyBinding {
@@ -416,6 +584,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close editor",
         action: Action::CloseSqlModal,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 2: SQL_MOVE
     KeyBinding {
@@ -424,6 +593,12 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Move",
         description: "Move cursor",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+            KeyCombo::plain(Key::Left),
+            KeyCombo::plain(Key::Right),
+        ],
     },
     // idx 3: HOME_END
     KeyBinding {
@@ -432,6 +607,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Line",
         description: "Line start/end",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Home), KeyCombo::plain(Key::End)],
     },
     // idx 4: TAB
     KeyBinding {
@@ -440,6 +616,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Tab/Complete",
         description: "Insert tab / Accept completion",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Tab)],
     },
     // idx 5: COMPLETION_TRIGGER
     KeyBinding {
@@ -448,6 +625,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Complete",
         description: "Trigger completion",
         action: Action::CompletionTrigger,
+        combos: &[KeyCombo::ctrl(Key::Char(' '))],
     },
     // idx 6: CLEAR
     KeyBinding {
@@ -456,6 +634,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Clear",
         description: "Clear editor",
         action: Action::SqlModalClear,
+        combos: &[KeyCombo::ctrl(Key::Char('l'))],
     },
 ];
 
@@ -471,6 +650,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Cancel",
         description: "Close overlay / Cancel",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 1: ESC_CLOSE
     KeyBinding {
@@ -479,6 +659,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close overlay",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 2: ENTER_EXECUTE
     KeyBinding {
@@ -487,6 +668,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Execute",
         description: "Execute command",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 3: ENTER_SELECT
     KeyBinding {
@@ -495,6 +677,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Confirm selection",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 4: NAVIGATE_JK
     KeyBinding {
@@ -503,6 +686,12 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate items",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 5: TYPE_FILTER
     KeyBinding {
@@ -511,6 +700,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Filter",
         description: "Type to filter",
         action: Action::None,
+        combos: &[],
     },
     // idx 6: ERROR_OPEN
     KeyBinding {
@@ -519,6 +709,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Error",
         description: "View error details",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
 ];
 
@@ -534,6 +725,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit application",
         action: Action::Quit,
+        combos: &[], // command-line commands, not key combos
     },
     // idx 1
     KeyBinding {
@@ -542,6 +734,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         desc_short: "Help",
         description: "Show help",
         action: Action::OpenHelp,
+        combos: &[],
     },
     // idx 2
     KeyBinding {
@@ -550,6 +743,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         desc_short: "SQL",
         description: "Open SQL Editor",
         action: Action::OpenSqlModal,
+        combos: &[],
     },
     // idx 3
     KeyBinding {
@@ -558,6 +752,7 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         desc_short: "ER Diagram",
         description: "Open ER Diagram",
         action: Action::OpenErTablePicker,
+        combos: &[],
     },
 ];
 
@@ -573,6 +768,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Next/Prev",
         description: "Next/Previous field",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Tab), KeyCombo::plain(Key::BackTab)],
     },
     // idx 1: TAB_NEXT
     KeyBinding {
@@ -581,6 +777,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Next",
         description: "Next field",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Tab)],
     },
     // idx 2: TAB_PREV
     KeyBinding {
@@ -589,6 +786,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Prev",
         description: "Previous field",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::BackTab)],
     },
     // idx 3: SAVE
     KeyBinding {
@@ -597,6 +795,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Connect",
         description: "Save and connect",
         action: Action::ConnectionSetupSave,
+        combos: &[KeyCombo::ctrl(Key::Char('s'))],
     },
     // idx 4: ESC_CANCEL
     KeyBinding {
@@ -605,6 +804,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConnectionSetupCancel,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 5: ENTER_DROPDOWN
     KeyBinding {
@@ -613,6 +813,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Toggle",
         description: "Toggle dropdown (SSL field)",
         action: Action::ConnectionSetupToggleDropdown,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 6: DROPDOWN_NAV
     KeyBinding {
@@ -621,6 +822,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Dropdown navigation",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
     },
 ];
 
@@ -636,6 +838,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Edit",
         description: "Edit connection settings",
         action: Action::ReenterConnectionSetup,
+        combos: &[KeyCombo::plain(Key::Char('e'))],
     },
     // idx 1: SWITCH
     KeyBinding {
@@ -644,6 +847,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Switch",
         description: "Switch to another connection",
         action: Action::OpenConnectionSelector,
+        combos: &[KeyCombo::plain(Key::Char('s'))],
     },
     // idx 2: DETAILS
     KeyBinding {
@@ -652,6 +856,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Details",
         description: "Toggle error details",
         action: Action::ToggleConnectionErrorDetails,
+        combos: &[KeyCombo::plain(Key::Char('d'))],
     },
     // idx 3: COPY
     KeyBinding {
@@ -660,14 +865,21 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Copy",
         description: "Copy error to clipboard",
         action: Action::CopyConnectionError,
+        combos: &[KeyCombo::plain(Key::Char('c'))],
     },
-    // idx 4: SCROLL
+    // idx 4: SCROLL (display-only)
     KeyBinding {
         key_short: "j/k",
         key: "j/k",
         desc_short: "Scroll",
         description: "Scroll error",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 5: ESC_CLOSE
     KeyBinding {
@@ -676,6 +888,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close",
         action: Action::CloseConnectionError,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 6: QUIT
     KeyBinding {
@@ -684,6 +897,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit",
         action: Action::Quit,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
 ];
 
@@ -699,6 +913,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         desc_short: "Confirm",
         description: "Confirm",
         action: Action::ConfirmDialogConfirm,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 1: CANCEL
     KeyBinding {
@@ -707,6 +922,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConfirmDialogCancel,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
@@ -722,22 +938,25 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Select table",
         action: Action::ConfirmSelection,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: NAVIGATE
+    // idx 1: NAVIGATE (display-only)
     KeyBinding {
         key_short: "↑↓",
         key: "↑↓",
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
     },
-    // idx 2: TYPE_FILTER
+    // idx 2: TYPE_FILTER (display-only)
     KeyBinding {
         key_short: "type",
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
         action: Action::None,
+        combos: &[],
     },
     // idx 3: ESC_CLOSE
     KeyBinding {
@@ -746,6 +965,7 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close",
         action: Action::CloseTablePicker,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
@@ -761,6 +981,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Generate",
         description: "Generate ER diagram",
         action: Action::ErConfirmSelection,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 1: SELECT
     KeyBinding {
@@ -769,6 +990,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Toggle table selection",
         action: Action::ErToggleSelection,
+        combos: &[KeyCombo::plain(Key::Char(' '))],
     },
     // idx 2: SELECT_ALL
     KeyBinding {
@@ -777,22 +999,25 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "All",
         description: "Select/deselect all tables",
         action: Action::ErSelectAll,
+        combos: &[KeyCombo::ctrl(Key::Char('a'))],
     },
-    // idx 3: NAVIGATE
+    // idx 3: NAVIGATE (display-only)
     KeyBinding {
         key_short: "↑↓",
         key: "↑↓",
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
     },
-    // idx 4: TYPE_FILTER
+    // idx 4: TYPE_FILTER (display-only)
     KeyBinding {
         key_short: "type",
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
         action: Action::None,
+        combos: &[],
     },
     // idx 5: ESC_CLOSE
     KeyBinding {
@@ -801,6 +1026,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close",
         action: Action::CloseErTablePicker,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
@@ -809,21 +1035,28 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
-    // idx 0: ENTER_EXECUTE
+    // idx 0: ENTER_EXECUTE (display-only)
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Execute",
         description: "Execute command",
         action: Action::None,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: NAVIGATE_JK
+    // idx 1: NAVIGATE_JK (display-only)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j/k / ↑↓",
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 2: ESC_CLOSE
     KeyBinding {
@@ -832,6 +1065,7 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close",
         action: Action::CloseCommandPalette,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
@@ -840,13 +1074,19 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const HELP_KEYS: &[KeyBinding] = &[
-    // idx 0: HELP_SCROLL
+    // idx 0: HELP_SCROLL (display-only, covers both scroll directions)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         action: Action::HelpScrollDown,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 1: HELP_CLOSE
     KeyBinding {
@@ -855,6 +1095,7 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close help",
         action: Action::CloseHelp,
+        combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
     },
     // idx 2: QUIT
     KeyBinding {
@@ -863,6 +1104,7 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit",
         action: Action::Quit,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
 ];
 
@@ -878,6 +1120,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Connect",
         description: "Connect to selected",
         action: Action::ConfirmConnectionSelection,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 1: NEW
     KeyBinding {
@@ -886,6 +1129,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "New",
         description: "New connection",
         action: Action::OpenConnectionSetup,
+        combos: &[KeyCombo::plain(Key::Char('n'))],
     },
     // idx 2: EDIT
     KeyBinding {
@@ -894,6 +1138,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Edit",
         description: "Edit connection",
         action: Action::RequestEditSelectedConnection,
+        combos: &[KeyCombo::plain(Key::Char('e'))],
     },
     // idx 3: DELETE
     KeyBinding {
@@ -902,14 +1147,24 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Delete",
         description: "Delete connection",
         action: Action::RequestDeleteSelectedConnection,
+        combos: &[
+            KeyCombo::plain(Key::Char('d')),
+            KeyCombo::plain(Key::Delete),
+        ],
     },
-    // idx 4: NAVIGATE
+    // idx 4: NAVIGATE (display-only)
     KeyBinding {
         key_short: "j/k",
         key: "j / k / ↑ / ↓",
         desc_short: "Navigate",
         description: "Navigate list",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+        ],
     },
     // idx 5: HELP
     KeyBinding {
@@ -918,6 +1173,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Help",
         description: "Show help",
         action: Action::OpenHelp,
+        combos: &[KeyCombo::plain(Key::Char('?'))],
     },
     // idx 6: TABLES
     KeyBinding {
@@ -926,6 +1182,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Tables",
         description: "Switch to Tables mode",
         action: Action::ToggleExplorerMode,
+        combos: &[KeyCombo::plain(Key::Char('c'))],
     },
     // idx 7: BACK
     KeyBinding {
@@ -934,6 +1191,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Back",
         description: "Back to Tables mode",
         action: Action::ToggleExplorerMode,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 8: QUIT
     KeyBinding {
@@ -942,6 +1200,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit application",
         action: Action::Quit,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
 ];
 
@@ -957,14 +1216,21 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "Confirm",
         description: "Confirm selection",
         action: Action::ConfirmConnectionSelection,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: SELECT
+    // idx 1: SELECT (display-only)
     KeyBinding {
         key_short: "↑/↓",
         key: "↑ / ↓ / j / k",
         desc_short: "Select",
         description: "Select connection",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Up),
+            KeyCombo::plain(Key::Down),
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+        ],
     },
     // idx 2: NEW
     KeyBinding {
@@ -973,6 +1239,7 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "New",
         description: "New connection",
         action: Action::OpenConnectionSetup,
+        combos: &[KeyCombo::plain(Key::Char('n'))],
     },
     // idx 3: EDIT
     KeyBinding {
@@ -981,6 +1248,7 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "Edit",
         description: "Edit connection",
         action: Action::RequestEditSelectedConnection,
+        combos: &[KeyCombo::plain(Key::Char('e'))],
     },
     // idx 4: DELETE
     KeyBinding {
@@ -989,6 +1257,7 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "Delete",
         description: "Delete connection",
         action: Action::RequestDeleteSelectedConnection,
+        combos: &[KeyCombo::plain(Key::Char('d'))],
     },
     // idx 5: QUIT
     KeyBinding {
@@ -997,6 +1266,7 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "Quit",
         description: "Quit application",
         action: Action::Quit,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
 ];
 
@@ -1012,6 +1282,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Enter row / cell selection",
         action: Action::ResultEnterRowActive,
+        combos: &[KeyCombo::plain(Key::Enter)],
     },
     // idx 1: YANK
     KeyBinding {
@@ -1020,6 +1291,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Yank",
         description: "Copy cell value to clipboard",
         action: Action::ResultCellYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
     },
     // idx 2: STAGE_DELETE
     KeyBinding {
@@ -1028,6 +1300,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Stage Del",
         description: "Stage row for deletion (red highlight; :w to commit)",
         action: Action::StageRowForDelete,
+        combos: &[], // dd is a two-key sequence, not a single combo
     },
     // idx 3: UNSTAGE_DELETE
     KeyBinding {
@@ -1036,30 +1309,43 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Unstage",
         description: "Unstage last staged row",
         action: Action::UnstageLastStagedRow,
+        combos: &[KeyCombo::plain(Key::Char('u'))],
     },
-    // idx 4: CELL_NAV
+    // idx 4: CELL_NAV (display-only)
     KeyBinding {
         key_short: "h/l",
         key: "h / l",
         desc_short: "Cell",
         description: "Move cell left/right",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('h')),
+            KeyCombo::plain(Key::Char('l')),
+        ],
     },
-    // idx 5: ROW_NAV
+    // idx 5: ROW_NAV (display-only)
     KeyBinding {
         key_short: "j/k",
         key: "j / k",
         desc_short: "Row",
         description: "Move row up/down",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('j')),
+            KeyCombo::plain(Key::Char('k')),
+        ],
     },
-    // idx 6: TOP_BOTTOM
+    // idx 6: TOP_BOTTOM (display-only)
     KeyBinding {
         key_short: "g/G",
         key: "g / G",
         desc_short: "Top/Bot",
         description: "First/Last row",
         action: Action::None,
+        combos: &[
+            KeyCombo::plain(Key::Char('g')),
+            KeyCombo::plain(Key::Char('G')),
+        ],
     },
     // idx 7: ESC_BACK
     KeyBinding {
@@ -1068,6 +1354,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Back",
         description: "Exit to previous mode",
         action: Action::ResultExitToScroll,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 8: EDIT
     KeyBinding {
@@ -1076,6 +1363,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Edit",
         description: "Edit active cell",
         action: Action::ResultEnterCellEdit,
+        combos: &[KeyCombo::plain(Key::Char('i'))],
     },
     // idx 9: DRAFT_DISCARD
     KeyBinding {
@@ -1084,6 +1372,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Discard",
         description: "Discard pending draft and exit to Row Active",
         action: Action::ResultDiscardCellEdit,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
@@ -1095,14 +1384,16 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         desc_short: "Write",
         description: "Preview and confirm UPDATE",
         action: Action::SubmitCellEditWrite,
+        combos: &[], // :w is a command sequence, not a single combo
     },
-    // idx 1: TYPE
+    // idx 1: TYPE (display-only)
     KeyBinding {
         key_short: "type",
         key: "type",
         desc_short: "Edit",
         description: "Edit cell value",
         action: Action::None,
+        combos: &[],
     },
     // idx 2: COMMAND
     KeyBinding {
@@ -1111,6 +1402,7 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         desc_short: "Cmd",
         description: "Open command line",
         action: Action::EnterCommandLine,
+        combos: &[KeyCombo::plain(Key::Char(':'))],
     },
     // idx 3: ESC_CANCEL
     KeyBinding {
@@ -1119,6 +1411,7 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         desc_short: "Normal",
         description: "Exit to Cell Active (draft preserved)",
         action: Action::ResultCancelCellEdit,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 
