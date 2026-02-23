@@ -1,8 +1,8 @@
 [package]
 name = "sabiql"
-version = "1.4.0"
+version = "1.5.0"
 edition = "2024"
-description = "A fast, driver-less TUI for browsing PostgreSQL databases"
+description = "A fast, driver-less TUI for browsing and editing PostgreSQL databases"
 license = "MIT"
 repository = "https://github.com/riii111/sabiql"
 
