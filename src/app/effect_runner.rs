@@ -25,8 +25,8 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
-    ConfigWriter, ConnectionStore, ErDiagramExporter, ErLogWriter, MetadataProvider, QueryExecutor,
-    Renderer,
+    ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
+    QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
@@ -35,6 +35,7 @@ use crate::domain::{DatabaseMetadata, ErTableInfo};
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
+    dsn_builder: Arc<dyn DsnBuilder>,
     er_exporter: Arc<dyn ErDiagramExporter>,
     config_writer: Arc<dyn ConfigWriter>,
     er_log_writer: Arc<dyn ErLogWriter>,
@@ -43,27 +44,85 @@ pub struct EffectRunner {
     action_tx: mpsc::Sender<Action>,
 }
 
+pub struct EffectRunnerBuilder {
+    metadata_provider: Option<Arc<dyn MetadataProvider>>,
+    query_executor: Option<Arc<dyn QueryExecutor>>,
+    dsn_builder: Option<Arc<dyn DsnBuilder>>,
+    er_exporter: Option<Arc<dyn ErDiagramExporter>>,
+    config_writer: Option<Arc<dyn ConfigWriter>>,
+    er_log_writer: Option<Arc<dyn ErLogWriter>>,
+    connection_store: Option<Arc<dyn ConnectionStore>>,
+    metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
+    action_tx: Option<mpsc::Sender<Action>>,
+}
+
+impl EffectRunnerBuilder {
+    pub fn metadata_provider(mut self, v: Arc<dyn MetadataProvider>) -> Self {
+        self.metadata_provider = Some(v);
+        self
+    }
+    pub fn query_executor(mut self, v: Arc<dyn QueryExecutor>) -> Self {
+        self.query_executor = Some(v);
+        self
+    }
+    pub fn dsn_builder(mut self, v: Arc<dyn DsnBuilder>) -> Self {
+        self.dsn_builder = Some(v);
+        self
+    }
+    pub fn er_exporter(mut self, v: Arc<dyn ErDiagramExporter>) -> Self {
+        self.er_exporter = Some(v);
+        self
+    }
+    pub fn config_writer(mut self, v: Arc<dyn ConfigWriter>) -> Self {
+        self.config_writer = Some(v);
+        self
+    }
+    pub fn er_log_writer(mut self, v: Arc<dyn ErLogWriter>) -> Self {
+        self.er_log_writer = Some(v);
+        self
+    }
+    pub fn connection_store(mut self, v: Arc<dyn ConnectionStore>) -> Self {
+        self.connection_store = Some(v);
+        self
+    }
+    pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
+        self.metadata_cache = Some(v);
+        self
+    }
+    pub fn action_tx(mut self, v: mpsc::Sender<Action>) -> Self {
+        self.action_tx = Some(v);
+        self
+    }
+
+    pub fn build(self) -> EffectRunner {
+        EffectRunner {
+            metadata_provider: self
+                .metadata_provider
+                .expect("metadata_provider is required"),
+            query_executor: self.query_executor.expect("query_executor is required"),
+            dsn_builder: self.dsn_builder.expect("dsn_builder is required"),
+            er_exporter: self.er_exporter.expect("er_exporter is required"),
+            config_writer: self.config_writer.expect("config_writer is required"),
+            er_log_writer: self.er_log_writer.expect("er_log_writer is required"),
+            connection_store: self.connection_store.expect("connection_store is required"),
+            metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
+            action_tx: self.action_tx.expect("action_tx is required"),
+        }
+    }
+}
+
 impl EffectRunner {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        metadata_provider: Arc<dyn MetadataProvider>,
-        query_executor: Arc<dyn QueryExecutor>,
-        er_exporter: Arc<dyn ErDiagramExporter>,
-        config_writer: Arc<dyn ConfigWriter>,
-        er_log_writer: Arc<dyn ErLogWriter>,
-        connection_store: Arc<dyn ConnectionStore>,
-        metadata_cache: TtlCache<String, DatabaseMetadata>,
-        action_tx: mpsc::Sender<Action>,
-    ) -> Self {
-        Self {
-            metadata_provider,
-            query_executor,
-            er_exporter,
-            config_writer,
-            er_log_writer,
-            connection_store,
-            metadata_cache,
-            action_tx,
+    pub fn builder() -> EffectRunnerBuilder {
+        EffectRunnerBuilder {
+            metadata_provider: None,
+            query_executor: None,
+            dsn_builder: None,
+            er_exporter: None,
+            config_writer: None,
+            er_log_writer: None,
+            connection_store: None,
+            metadata_cache: None,
+            action_tx: None,
         }
     }
 
@@ -169,7 +228,7 @@ impl EffectRunner {
                     }
                 };
                 let id = profile.id.clone();
-                let dsn = profile.to_dsn();
+                let dsn = self.dsn_builder.build_dsn(&profile);
                 let name = profile.name.as_str().to_string();
                 let store = Arc::clone(&self.connection_store);
                 let tx = self.action_tx.clone();
@@ -583,6 +642,19 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::SwitchConnection { connection_index } => {
+                if let Some(profile) = state.connections.get(connection_index) {
+                    let dsn = self.dsn_builder.build_dsn(profile);
+                    let name = profile.display_name().to_string();
+                    let id = profile.id.clone();
+                    let _ = self
+                        .action_tx
+                        .send(Action::SwitchConnection { id, dsn, name })
+                        .await;
+                }
+                Ok(())
+            }
+
             Effect::CopyToClipboard {
                 content,
                 on_success,
@@ -665,6 +737,13 @@ mod tests {
         }
     }
 
+    struct NoopDsnBuilder;
+    impl DsnBuilder for NoopDsnBuilder {
+        fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+            String::new()
+        }
+    }
+
     fn make_runner(
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
@@ -672,16 +751,17 @@ mod tests {
         cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
     ) -> EffectRunner {
-        EffectRunner::new(
-            metadata_provider,
-            query_executor,
-            Arc::new(NoopErExporter),
-            Arc::new(NoopConfigWriter),
-            Arc::new(NoopErLogWriter),
-            connection_store,
-            cache,
-            action_tx,
-        )
+        EffectRunner::builder()
+            .metadata_provider(metadata_provider)
+            .query_executor(query_executor)
+            .dsn_builder(Arc::new(NoopDsnBuilder))
+            .er_exporter(Arc::new(NoopErExporter))
+            .config_writer(Arc::new(NoopConfigWriter))
+            .er_log_writer(Arc::new(NoopErLogWriter))
+            .connection_store(connection_store)
+            .metadata_cache(cache)
+            .action_tx(action_tx)
+            .build()
     }
 
     fn sample_metadata() -> DatabaseMetadata {
@@ -1126,6 +1206,106 @@ mod tests {
                 .unwrap();
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
+        }
+    }
+
+    mod switch_connection {
+        use super::*;
+        use crate::domain::connection::SslMode;
+
+        struct FakeDsnBuilder;
+        impl DsnBuilder for FakeDsnBuilder {
+            fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+                format!(
+                    "fake://{}:{}/{}",
+                    profile.host, profile.port, profile.database
+                )
+            }
+        }
+
+        fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
+            EffectRunner::builder()
+                .metadata_provider(Arc::new(MockMetadataProvider::new()))
+                .query_executor(Arc::new(MockQueryExecutor::new()))
+                .dsn_builder(Arc::new(FakeDsnBuilder))
+                .er_exporter(Arc::new(NoopErExporter))
+                .config_writer(Arc::new(NoopConfigWriter))
+                .er_log_writer(Arc::new(NoopErLogWriter))
+                .connection_store(Arc::new(MockConnectionStore::new()))
+                .metadata_cache(TtlCache::new(60))
+                .action_tx(action_tx)
+                .build()
+        }
+
+        #[tokio::test]
+        async fn dispatches_action_with_built_dsn() {
+            let (tx, mut rx) = mpsc::channel::<Action>(16);
+            let runner = make_runner_with_dsn_builder(tx);
+
+            let profile = ConnectionProfile::new(
+                "My DB",
+                "db.example.com",
+                5432,
+                "mydb",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap();
+
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![profile];
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 0,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            let action = rx.recv().await.expect("action dispatched");
+            match action {
+                Action::SwitchConnection { id, dsn, name } => {
+                    assert_eq!(dsn, "fake://db.example.com:5432/mydb");
+                    assert_eq!(name, "My DB");
+                    assert_eq!(id, state.connections[0].id);
+                }
+                other => panic!("expected SwitchConnection, got {:?}", other),
+            }
+        }
+
+        #[tokio::test]
+        async fn out_of_bounds_index_is_noop() {
+            let (tx, mut rx) = mpsc::channel::<Action>(16);
+            let runner = make_runner_with_dsn_builder(tx);
+
+            let mut state = AppState::new("test".to_string());
+            // no connections
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 99,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            assert!(rx.try_recv().is_err());
         }
     }
 }

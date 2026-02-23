@@ -8,7 +8,7 @@ static ENV_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
-    PsqlNotFound,
+    CliNotFound,
     HostUnreachable,
     AuthFailed,
     DatabaseNotFound,
@@ -23,9 +23,10 @@ impl ConnectionErrorKind {
 
         if stderr_lower.contains("command not found")
             || stderr_lower.contains("not found: psql")
+            || stderr_lower.contains("not found: mysql")
             || stderr_lower.contains("not recognized")
         {
-            return Self::PsqlNotFound;
+            return Self::CliNotFound;
         }
 
         if stderr_lower.contains("could not translate host name")
@@ -61,7 +62,7 @@ impl ConnectionErrorKind {
 
     pub fn summary(&self) -> &'static str {
         match self {
-            Self::PsqlNotFound => "psql command not found",
+            Self::CliNotFound => "Database CLI not found",
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
             Self::DatabaseNotFound => "Database does not exist",
@@ -72,7 +73,7 @@ impl ConnectionErrorKind {
 
     pub fn hint(&self) -> &'static str {
         match self {
-            Self::PsqlNotFound => "Install PostgreSQL or add psql to PATH",
+            Self::CliNotFound => "Install the database CLI (e.g. psql) and add it to PATH",
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
             Self::DatabaseNotFound => "Check database name",
@@ -122,15 +123,17 @@ impl ConnectionErrorInfo {
     }
 
     fn mask_password(text: &str) -> String {
-        let url_re =
-            URL_RE.get_or_init(|| Regex::new(r"(?i)(postgres(?:ql)?://[^:]+:)[^@]+(@)").unwrap());
+        let url_re = URL_RE.get_or_init(|| {
+            Regex::new(r"(?i)((?:postgres(?:ql)?|mysql)://[^:]+:)[^@]+(@)").unwrap()
+        });
         let result = url_re.replace_all(text, "${1}****${2}");
 
         let param_re = PARAM_RE.get_or_init(|| Regex::new(r"(?i)(password=)[^\s]+").unwrap());
         let result = param_re.replace_all(&result, "${1}****");
 
-        let env_re = ENV_RE.get_or_init(|| Regex::new(r"(PGPASSWORD=)[^\s]+").unwrap());
-        env_re.replace_all(&result, "${1}****").into_owned()
+        let env_re = ENV_RE
+            .get_or_init(|| Regex::new(r"((?:PG|MYSQL_)PASSWORD|MYSQL_PWD)(=)[^\s]+").unwrap());
+        env_re.replace_all(&result, "${1}${2}****").into_owned()
     }
 }
 
@@ -153,9 +156,10 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case("psql: command not found", ConnectionErrorKind::PsqlNotFound)]
-        #[case("/bin/sh: psql: command not found", ConnectionErrorKind::PsqlNotFound)]
-        #[case("zsh: command not found: psql", ConnectionErrorKind::PsqlNotFound)]
+        #[case("psql: command not found", ConnectionErrorKind::CliNotFound)]
+        #[case("/bin/sh: psql: command not found", ConnectionErrorKind::CliNotFound)]
+        #[case("zsh: command not found: psql", ConnectionErrorKind::CliNotFound)]
+        #[case("not found: mysql", ConnectionErrorKind::CliNotFound)]
         #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#, ConnectionErrorKind::HostUnreachable)]
         #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#, ConnectionErrorKind::HostUnreachable)]
         #[case(
@@ -184,7 +188,7 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(ConnectionErrorKind::PsqlNotFound)]
+        #[case(ConnectionErrorKind::CliNotFound)]
         #[case(ConnectionErrorKind::HostUnreachable)]
         #[case(ConnectionErrorKind::AuthFailed)]
         #[case(ConnectionErrorKind::DatabaseNotFound)]
@@ -202,7 +206,7 @@ mod tests {
         #[test]
         fn new_auto_classifies() {
             let info = ConnectionErrorInfo::new("psql: command not found");
-            assert_eq!(info.kind, ConnectionErrorKind::PsqlNotFound);
+            assert_eq!(info.kind, ConnectionErrorKind::CliNotFound);
         }
 
         #[test]
@@ -214,8 +218,11 @@ mod tests {
         #[test]
         fn delegates_summary_and_hint() {
             let info = ConnectionErrorInfo::new("psql: command not found");
-            assert_eq!(info.summary(), "psql command not found");
-            assert_eq!(info.hint(), "Install PostgreSQL or add psql to PATH");
+            assert_eq!(info.summary(), "Database CLI not found");
+            assert_eq!(
+                info.hint(),
+                "Install the database CLI (e.g. psql) and add it to PATH"
+            );
         }
     }
 
@@ -230,6 +237,9 @@ mod tests {
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
+        #[case("mysql://user:secret@host", "mysql://user:****@host")]
+        #[case("MYSQL_PASSWORD=secret123 mysql", "MYSQL_PASSWORD=**** mysql")]
+        #[case("MYSQL_PWD=secret123 mysql", "MYSQL_PWD=**** mysql")]
         #[case("no password here", "no password here")]
         fn masks_correctly(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);

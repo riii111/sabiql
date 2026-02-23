@@ -9,7 +9,6 @@ pub mod connection_error;
 pub mod connection_error_state;
 pub mod connection_setup_state;
 pub mod connection_state;
-pub mod ddl;
 pub mod effect;
 pub mod effect_runner;
 pub mod er_state;
