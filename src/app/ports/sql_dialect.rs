@@ -1,6 +1,4 @@
 pub trait SqlDialect: Send + Sync {
-    fn quote_ident(&self, name: &str) -> String;
-    fn quote_literal(&self, value: &str) -> String;
     fn build_update_sql(
         &self,
         schema: &str,

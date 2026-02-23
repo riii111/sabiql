@@ -76,21 +76,9 @@ impl DdlGenerator for MySqlAdapter {
     fn generate_ddl(&self, _table: &Table) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
-
-    fn ddl_line_count(&self, _table: &Table) -> usize {
-        unimplemented!("MySQL adapter not yet implemented")
-    }
 }
 
 impl SqlDialect for MySqlAdapter {
-    fn quote_ident(&self, _name: &str) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
-    }
-
-    fn quote_literal(&self, _value: &str) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
-    }
-
     fn build_update_sql(
         &self,
         _schema: &str,
@@ -114,10 +102,6 @@ impl SqlDialect for MySqlAdapter {
 
 impl DsnBuilder for MySqlAdapter {
     fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
-    }
-
-    fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
 }

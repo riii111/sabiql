@@ -742,9 +742,6 @@ mod tests {
         fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
             String::new()
         }
-        fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
-            String::new()
-        }
     }
 
     fn make_runner(
@@ -1223,9 +1220,6 @@ mod tests {
                     "fake://{}:{}/{}",
                     profile.host, profile.port, profile.database
                 )
-            }
-            fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
-                String::new()
             }
         }
 

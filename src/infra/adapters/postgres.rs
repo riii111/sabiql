@@ -1191,21 +1191,9 @@ impl DdlGenerator for PostgresAdapter {
 
         ddl
     }
-
-    fn ddl_line_count(&self, table: &Table) -> usize {
-        self.generate_ddl(table).lines().count()
-    }
 }
 
 impl SqlDialect for PostgresAdapter {
-    fn quote_ident(&self, name: &str) -> String {
-        pg_quote_ident(name)
-    }
-
-    fn quote_literal(&self, value: &str) -> String {
-        pg_quote_literal(value)
-    }
-
     fn build_update_sql(
         &self,
         schema: &str,
@@ -1293,13 +1281,6 @@ impl DsnBuilder for PostgresAdapter {
             profile.ssl_mode
         )
     }
-
-    fn build_masked_dsn(&self, profile: &ConnectionProfile) -> String {
-        format!(
-            "postgres://{}:****@{}:{}/{}?sslmode={}",
-            profile.username, profile.host, profile.port, profile.database, profile.ssl_mode
-        )
-    }
 }
 
 #[cfg(test)]
@@ -1354,15 +1335,6 @@ mod tests {
             assert!(dsn.contains("user%40org"));
             assert!(dsn.contains("p%40ss%3Aword"));
             assert!(dsn.contains("my%2Fdb"));
-        }
-
-        #[test]
-        fn masked_dsn_hides_password() {
-            let adapter = PostgresAdapter::new();
-            let profile = make_test_profile();
-            let masked = adapter.build_masked_dsn(&profile);
-            assert!(masked.contains("****"));
-            assert!(!masked.contains("testpass"));
         }
     }
 
