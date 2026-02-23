@@ -125,6 +125,7 @@ fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
+#[allow(dead_code)]
 fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option<usize>), String> {
     if state.ui.result_selection.mode() != crate::app::ui_state::ResultNavMode::RowActive {
         return Err("No active row".to_string());
@@ -237,15 +238,6 @@ pub fn reduce_navigation(
     action: &Action,
     now: Instant,
 ) -> Option<Vec<Effect>> {
-    if state.ui.result_delete_operator_pending
-        && !matches!(
-            action,
-            Action::ResultDeleteOperatorPending | Action::RequestDeleteActiveRow
-        )
-    {
-        state.ui.result_delete_operator_pending = false;
-    }
-
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
@@ -777,27 +769,23 @@ pub fn reduce_navigation(
                 Some(vec![])
             }
         }
-        Action::ResultDeleteOperatorPending => {
-            if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive {
-                state.ui.result_delete_operator_pending = true;
+        Action::StageRowForDelete => {
+            if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
+                && let Some(row_idx) = state.ui.result_selection.row()
+            {
+                state.ui.staged_delete_rows.insert(row_idx);
             }
             Some(vec![])
         }
-        Action::RequestDeleteActiveRow => {
-            state.ui.result_delete_operator_pending = false;
-
-            match build_delete_preview(state) {
-                Ok((preview, target_page, target_row)) => {
-                    state.query.pending_delete_refresh_target = Some((target_page, target_row));
-                    Some(vec![Effect::DispatchActions(vec![
-                        Action::OpenWritePreviewConfirm(Box::new(preview)),
-                    ])])
-                }
-                Err(reason) => {
-                    state.messages.set_error_at(reason, now);
-                    Some(vec![])
-                }
+        Action::UnstageLastStagedRow => {
+            if let Some(&last) = state.ui.staged_delete_rows.iter().next_back() {
+                state.ui.staged_delete_rows.remove(&last);
             }
+            Some(vec![])
+        }
+        Action::ClearStagedDeletes => {
+            state.ui.staged_delete_rows.clear();
+            Some(vec![])
         }
         Action::CellCopied => {
             state.messages.set_success_at("Copied!".into(), now);
@@ -1885,94 +1873,64 @@ mod tests {
         }
 
         #[test]
-        fn d_operator_sets_pending_in_row_active() {
+        fn dd_stages_active_row() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.ui.result_selection.enter_row(0);
 
-            reduce_navigation(
-                &mut state,
-                &Action::ResultDeleteOperatorPending,
-                Instant::now(),
-            );
+            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
 
-            assert!(state.ui.result_delete_operator_pending);
+            assert!(state.ui.staged_delete_rows.contains(&0));
         }
 
         #[test]
-        fn any_other_action_clears_pending_state() {
+        fn dd_on_already_staged_row_is_noop() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.ui.result_selection.enter_row(0);
-            state.ui.result_delete_operator_pending = true;
+            state.ui.staged_delete_rows.insert(0);
 
-            reduce_navigation(&mut state, &Action::ResultScrollDown, Instant::now());
+            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
 
-            assert!(!state.ui.result_delete_operator_pending);
+            assert_eq!(state.ui.staged_delete_rows.len(), 1);
         }
 
         #[test]
-        fn request_delete_dispatches_write_preview_confirm() {
+        fn staging_requires_row_active_mode() {
+            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+
+            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
+
+            assert!(state.ui.staged_delete_rows.is_empty());
+        }
+
+        #[test]
+        fn u_unstages_last_staged_row() {
             let mut state = base_state(
                 Some(vec!["id"]),
                 vec![vec!["1", "alice"], vec!["2", "bob"]],
                 0,
             );
-            state.ui.result_selection.enter_row(1);
+            state.ui.staged_delete_rows.insert(0);
+            state.ui.staged_delete_rows.insert(1);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now())
-                    .unwrap();
+            reduce_navigation(&mut state, &Action::UnstageLastStagedRow, Instant::now());
 
-            assert_eq!(effects.len(), 1);
-            let action = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {:?}", other),
-            };
-            match action {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(preview.operation, WriteOperation::Delete);
-                    assert_eq!(
-                        preview.sql,
-                        "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';"
-                    );
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {:?}", other),
-            }
-            assert_eq!(
-                state.query.pending_delete_refresh_target,
-                Some((0, Some(0)))
-            );
+            assert_eq!(state.ui.staged_delete_rows.len(), 1);
+            assert!(state.ui.staged_delete_rows.contains(&0));
         }
 
         #[test]
-        fn request_delete_without_pk_sets_error() {
-            let mut state = base_state(Some(vec![]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-
-            let effects =
-                reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now())
-                    .unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some(ERR_DELETION_REQUIRES_PRIMARY_KEY)
+        fn clear_staged_deletes_removes_all() {
+            let mut state = base_state(
+                Some(vec!["id"]),
+                vec![vec!["1", "alice"], vec!["2", "bob"]],
+                0,
             );
-        }
+            state.ui.staged_delete_rows.insert(0);
+            state.ui.staged_delete_rows.insert(1);
 
-        #[test]
-        fn request_delete_with_none_pk_sets_same_error() {
-            let mut state = base_state(None, vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
+            reduce_navigation(&mut state, &Action::ClearStagedDeletes, Instant::now());
 
-            let effects =
-                reduce_navigation(&mut state, &Action::RequestDeleteActiveRow, Instant::now())
-                    .unwrap();
-
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some(ERR_DELETION_REQUIRES_PRIMARY_KEY)
-            );
+            assert!(state.ui.staged_delete_rows.is_empty());
         }
     }
 }

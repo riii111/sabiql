@@ -288,11 +288,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             Action::ResultCellYank
         }
         KeyCode::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
-            if state.ui.result_delete_operator_pending {
-                Action::RequestDeleteActiveRow
-            } else {
-                Action::ResultDeleteOperatorPending
-            }
+            Action::StageRowForDelete
         }
         KeyCode::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultEnterCellEdit
@@ -833,24 +829,13 @@ mod tests {
         }
 
         #[test]
-        fn d_sets_delete_operator_pending_in_row_active() {
+        fn d_stages_row_for_delete_in_row_active() {
             let mut state = result_focused_state();
             state.ui.result_selection.enter_row(0);
 
             let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
 
-            assert!(matches!(result, Action::ResultDeleteOperatorPending));
-        }
-
-        #[test]
-        fn second_d_requests_row_delete_when_pending() {
-            let mut state = result_focused_state();
-            state.ui.result_selection.enter_row(0);
-            state.ui.result_delete_operator_pending = true;
-
-            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
-
-            assert!(matches!(result, Action::RequestDeleteActiveRow));
+            assert!(matches!(result, Action::StageRowForDelete));
         }
 
         #[test]

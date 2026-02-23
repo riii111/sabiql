@@ -5,6 +5,7 @@ use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
+#[allow(dead_code)]
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
 
@@ -55,6 +56,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
 
 /// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
 /// after refetch, because the previous page row count is not known yet.
+#[allow(dead_code)]
 pub fn deletion_refresh_target(
     row_count: usize,
     selected_row: usize,
