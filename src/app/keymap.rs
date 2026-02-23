@@ -166,10 +166,9 @@ mod tests {
             assert!(matches!(result, Some(Action::Quit)));
         }
 
-        // TABLE_PICKER_ROWS has a display-only row (TYPE_FILTER at idx 2, bindings for Backspace only)
-        // — Enter still resolves to ConfirmSelection at idx 0
+        // TYPE_FILTER row has no Enter combo — Enter resolves to ConfirmSelection at idx 0
         #[test]
-        fn display_only_row_does_not_block_later_match() {
+        fn unrelated_row_does_not_block_later_match() {
             let result = resolve_mode(&KeyCombo::plain(Key::Enter), TABLE_PICKER_ROWS);
 
             assert!(matches!(result, Some(Action::ConfirmSelection)));
