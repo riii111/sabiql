@@ -304,7 +304,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if !state.ui.staged_delete_rows.is_empty() {
                 match build_bulk_delete_preview(state) {
                     Ok((preview, target_page, target_row)) => {
-                        state.query.pending_delete_refresh_target = Some((target_page, target_row));
+                        let staged_count = state.ui.staged_delete_rows.len();
+                        state.query.pending_delete_refresh_target =
+                            Some((target_page, target_row, staged_count));
                         return Some(vec![Effect::DispatchActions(vec![
                             Action::OpenWritePreviewConfirm(Box::new(preview)),
                         ])]);
@@ -354,7 +356,12 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     )
                 }
                 WriteOperation::Delete => {
-                    let n = state.ui.staged_delete_rows.len().max(1);
+                    let n = state
+                        .query
+                        .pending_delete_refresh_target
+                        .as_ref()
+                        .map(|(_, _, count)| *count)
+                        .unwrap_or(1);
                     (
                         format!(
                             "Confirm DELETE: {} row(s) from {}",
@@ -439,7 +446,12 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     }
                 }
                 WriteOperation::Delete => {
-                    let expected = state.ui.staged_delete_rows.len().max(1);
+                    let (target_page, target_row, expected) = state
+                        .query
+                        .pending_delete_refresh_target
+                        .take()
+                        .unwrap_or((state.query.pagination.current_page, None, 1));
+
                     if *affected_rows != expected {
                         state.messages.set_error_at(
                             format!(
@@ -456,12 +468,6 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.cell_edit.clear();
                     state.ui.staged_delete_rows.clear();
                     state.ui.input_mode = InputMode::Normal;
-
-                    let (target_page, target_row) = state
-                        .query
-                        .pending_delete_refresh_target
-                        .take()
-                        .unwrap_or((state.query.pagination.current_page, None));
 
                     state.query.post_delete_row_selection = target_row
                         .map(PostDeleteRowSelection::Select)
@@ -1123,7 +1129,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.query.pending_delete_refresh_target = Some((1, Some(499)));
+            state.query.pending_delete_refresh_target = Some((1, Some(499), 1));
             state.pending_write_preview = Some(delete_preview());
 
             let effects = reduce_query(
