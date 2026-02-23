@@ -117,10 +117,15 @@ pub struct KeyBinding {
     /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
     /// actual matching is handled directly in handler match arms.
     pub action: Action,
-    /// The key combinations that trigger this binding.
-    /// For display-only entries (`Action::None`), these represent the keys
-    /// shown in the hint text. For executable entries, `keymap::resolve()`
-    /// matches against these combos.
+    /// The key combinations that trigger this binding (executable triggers only).
+    ///
+    /// `keymap::resolve()` matches incoming events against these combos.
+    /// In **display-only arrays** (those never passed to `keymap::resolve()`:
+    /// `NAVIGATION_KEYS`, `FOOTER_NAV_KEYS`, `SQL_MODAL_KEYS`, `OVERLAY_KEYS`,
+    /// `CONNECTION_SETUP_KEYS`, `RESULT_ACTIVE_KEYS`, `CONNECTIONS_MODE_KEYS`),
+    /// all `Action::None` entries must have `combos: &[]`, because non-empty
+    /// combos on a display-only entry create a false impression of being an
+    /// executable trigger when they are never matched at runtime.
     pub combos: &'static [KeyCombo],
 }
 
@@ -412,7 +417,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Down",
         description: "Move down / scroll",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+        combos: &[],
     },
     KeyBinding {
         key_short: "k",
@@ -420,7 +425,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Up",
         description: "Move up / scroll",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        combos: &[],
     },
     KeyBinding {
         key_short: "g",
@@ -428,7 +433,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Top",
         description: "First item / top",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Char('g')), KeyCombo::plain(Key::Home)],
+        combos: &[],
     },
     KeyBinding {
         key_short: "G",
@@ -436,7 +441,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Bottom",
         description: "Last item / bottom",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Char('G')), KeyCombo::plain(Key::End)],
+        combos: &[],
     },
     KeyBinding {
         key_short: "^D/^U",
@@ -444,10 +449,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Half Page",
         description: "Scroll half page down/up",
         action: Action::None,
-        combos: &[
-            KeyCombo::ctrl(Key::Char('d')),
-            KeyCombo::ctrl(Key::Char('u')),
-        ],
+        combos: &[],
     },
     KeyBinding {
         key_short: "^F/^B",
@@ -455,12 +457,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "Full Page",
         description: "Scroll full page down/up",
         action: Action::None,
-        combos: &[
-            KeyCombo::ctrl(Key::Char('f')),
-            KeyCombo::ctrl(Key::Char('b')),
-            KeyCombo::plain(Key::PageDown),
-            KeyCombo::plain(Key::PageUp),
-        ],
+        combos: &[],
     },
     KeyBinding {
         key_short: "h/l / ←→",
@@ -468,12 +465,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         desc_short: "H-Scroll",
         description: "Scroll left/right",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('h')),
-            KeyCombo::plain(Key::Char('l')),
-            KeyCombo::plain(Key::Left),
-            KeyCombo::plain(Key::Right),
-        ],
+        combos: &[],
     },
     KeyBinding {
         key_short: "]",
@@ -502,12 +494,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 1: SCROLL_SHORT (same as SCROLL for now)
     KeyBinding {
@@ -516,12 +503,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Scroll",
         description: "Move down/up",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 2: TOP_BOTTOM
     KeyBinding {
@@ -530,10 +512,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Top/Bottom",
         description: "First/Last item",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('g')),
-            KeyCombo::plain(Key::Char('G')),
-        ],
+        combos: &[],
     },
     // idx 3: H_SCROLL
     KeyBinding {
@@ -542,12 +521,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "H-Scroll",
         description: "Scroll left/right",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('h')),
-            KeyCombo::plain(Key::Char('l')),
-            KeyCombo::plain(Key::Left),
-            KeyCombo::plain(Key::Right),
-        ],
+        combos: &[],
     },
     // idx 4: PAGE_NAV
     KeyBinding {
@@ -556,10 +530,7 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         desc_short: "Page",
         description: "Next/Previous page",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char(']')),
-            KeyCombo::plain(Key::Char('[')),
-        ],
+        combos: &[],
     },
 ];
 
@@ -593,12 +564,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Move",
         description: "Move cursor",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-            KeyCombo::plain(Key::Left),
-            KeyCombo::plain(Key::Right),
-        ],
+        combos: &[],
     },
     // idx 3: HOME_END
     KeyBinding {
@@ -607,7 +573,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Line",
         description: "Line start/end",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Home), KeyCombo::plain(Key::End)],
+        combos: &[],
     },
     // idx 4: TAB
     KeyBinding {
@@ -616,7 +582,7 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         desc_short: "Tab/Complete",
         description: "Insert tab / Accept completion",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Tab)],
+        combos: &[],
     },
     // idx 5: COMPLETION_TRIGGER
     KeyBinding {
@@ -650,7 +616,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Cancel",
         description: "Close overlay / Cancel",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Esc)],
+        combos: &[],
     },
     // idx 1: ESC_CLOSE
     KeyBinding {
@@ -659,7 +625,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Close",
         description: "Close overlay",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Esc)],
+        combos: &[],
     },
     // idx 2: ENTER_EXECUTE
     KeyBinding {
@@ -668,7 +634,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Execute",
         description: "Execute command",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        combos: &[],
     },
     // idx 3: ENTER_SELECT
     KeyBinding {
@@ -677,7 +643,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Confirm selection",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        combos: &[],
     },
     // idx 4: NAVIGATE_JK
     KeyBinding {
@@ -686,12 +652,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate items",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 5: TYPE_FILTER
     KeyBinding {
@@ -709,7 +670,7 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         desc_short: "Error",
         description: "View error details",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        combos: &[],
     },
 ];
 
@@ -786,7 +747,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Next/Prev",
         description: "Next/Previous field",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Tab), KeyCombo::plain(Key::BackTab)],
+        combos: &[],
     },
     // idx 1: TAB_NEXT
     KeyBinding {
@@ -795,7 +756,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Next",
         description: "Next field",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Tab)],
+        combos: &[],
     },
     // idx 2: TAB_PREV
     KeyBinding {
@@ -804,7 +765,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Prev",
         description: "Previous field",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::BackTab)],
+        combos: &[],
     },
     // idx 3: SAVE
     KeyBinding {
@@ -840,7 +801,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Dropdown navigation",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
+        combos: &[],
     },
 ];
 
@@ -1286,12 +1247,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate list",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 5: HELP
     KeyBinding {
@@ -1462,10 +1418,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Cell",
         description: "Move cell left/right",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('h')),
-            KeyCombo::plain(Key::Char('l')),
-        ],
+        combos: &[],
     },
     // idx 5: ROW_NAV (display-only)
     KeyBinding {
@@ -1474,10 +1427,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Row",
         description: "Move row up/down",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-        ],
+        combos: &[],
     },
     // idx 6: TOP_BOTTOM (display-only)
     KeyBinding {
@@ -1486,10 +1436,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         desc_short: "Top/Bot",
         description: "First/Last row",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('g')),
-            KeyCombo::plain(Key::Char('G')),
-        ],
+        combos: &[],
     },
     // idx 7: ESC_BACK
     KeyBinding {
@@ -2071,6 +2018,43 @@ mod tests {
             // CellEdit: Char(':') for EnterCommandLine is intentional.
             // Verify only ':' appears as a plain Char combo.
             check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
+        }
+
+        // ------------------------------------------------------------------ //
+        // 6. Display-only arrays: Action::None entries must have no combos
+        // ------------------------------------------------------------------ //
+        //
+        // In display-only arrays (never passed to keymap::resolve()), combos
+        // serve no runtime purpose and their presence creates a false impression
+        // that they are executable triggers. All Action::None entries in these
+        // arrays must have combos: &[].
+
+        fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
+            for (i, kb) in bindings.iter().enumerate() {
+                if matches!(kb.action, Action::None) && !kb.combos.is_empty() {
+                    panic!(
+                        "{name}[{i}] has action Action::None but non-empty combos: {:?}",
+                        kb.combos
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn display_only_array_entries_have_no_combos() {
+            check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
+            check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
+            check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
+            check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
+            check_none_action_entries_have_no_combos(
+                CONNECTION_SETUP_KEYS,
+                "CONNECTION_SETUP_KEYS",
+            );
+            check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
+            check_none_action_entries_have_no_combos(
+                CONNECTIONS_MODE_KEYS,
+                "CONNECTIONS_MODE_KEYS",
+            );
         }
     }
 }
