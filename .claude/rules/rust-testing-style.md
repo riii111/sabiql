@@ -1,7 +1,5 @@
 ---
-description: Rust testing style guidelines - test structure, naming conventions, rstest usage
-alwaysApply: false
-globs:
+paths:
   - "**/src/**/*.rs"
   - "**/tests/**/*.rs"
 ---
@@ -13,16 +11,6 @@ globs:
 - Use standard `#[test]` + `rstest`
 - Use `mockall` for mocking (only when necessary)
 - Use `#[tokio::test]` for async tests
-
-## Testing Targets by Layer
-
-| Layer | Testing Target | Location |
-| ----- | -------------- | -------- |
-| **Domain** | Value validation, invariants | `#[cfg(test)]` in `src/domain/*.rs` |
-| **App** | State transitions, action processing | `#[cfg(test)]` in `src/app/*.rs` |
-| **Infra** | CLI output parsing, cache behavior | `#[cfg(test)]` in `src/infra/*.rs` |
-| **UI** | Component rendering logic | `#[cfg(test)]` in `src/ui/*.rs` |
-| **Integration** | Multi-layer integration | `tests/*.rs` |
 
 ## Test Structure
 

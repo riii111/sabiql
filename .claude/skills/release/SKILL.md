@@ -1,6 +1,7 @@
 ---
 name: release
 description: Release workflow for sabiql - version bump, tag, and GitHub release
+disable-model-invocation: true
 ---
 
 # Release Workflow

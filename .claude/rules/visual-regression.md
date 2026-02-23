@@ -1,7 +1,5 @@
 ---
-description: Visual regression testing with insta snapshots - when to add/update snapshots
-alwaysApply: false
-globs:
+paths:
   - "**/tests/render_snapshots.rs"
   - "**/tests/snapshots/**"
 ---
@@ -42,6 +40,11 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 4. Run `mise exec -- cargo insta accept`
 
 ## Coverage Criteria
+
+### Mode Coverage Obligation (MUST)
+
+- Every `InputMode` variant MUST have at least one snapshot test
+- When adding a new `InputMode`, add a corresponding snapshot BEFORE the PR is merged
 
 ### When to Add a Snapshot Test
 

@@ -1,7 +1,5 @@
 ---
-description: UI design rules for sabiql - Atomic Design pattern, footer hints, keybindings
-alwaysApply: false
-globs:
+paths:
   - "**/src/ui/**/*.rs"
 ---
 
@@ -36,6 +34,11 @@ All input modes must follow this ordering:
 ```
 Actions → Navigation → Help → Close/Cancel → Quit
 ```
+
+## Interaction Contract
+
+See `interaction-contract.md` for keybinding consistency rules (SSOT, derived displays, anti-patterns).
+When adding keybindings, follow the full checklist defined there.
 
 ## Keybindings & Commands
 

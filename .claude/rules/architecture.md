@@ -1,7 +1,5 @@
 ---
-description: Hexagonal architecture rules for sabiql - layer structure, dependency rules, ports & adapters
-alwaysApply: false
-globs:
+paths:
   - "**/src/**/*.rs"
 ---
 
@@ -24,10 +22,13 @@ src/
 - `infra/adapters/` → `app/ports/` (implements traits)
 - `ui/adapters/` → `app/ports/` (implements traits)
 
-**Forbidden:**
-- `app/` → `ui/` (use Renderer port instead)
-- `app/` → `infra/` (use ports like MetadataProvider, ConfigWriter)
+## Forbidden Dependencies (MUST NOT violate)
+
+- `app/` → `ui/` — use Renderer port instead
+- `app/` → `infra/` — use ports like MetadataProvider, ConfigWriter
 - `ui/` → `infra/`
+
+If you need app→infra communication, you MUST define a port trait in `app/ports/` and implement it in `infra/adapters/`.
 
 ## Ports & Adapters Pattern
 
@@ -52,6 +53,7 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
 | Add key-to-action mapping (simple mode) | `app/keybindings/` (add entry with `combos` to appropriate submodule); `keymap::resolve()` handles it automatically |
 | Add key-to-action mapping (Normal mode) | `app/keybindings/normal.rs` + add predicate fn in `mod.rs` + wire in `handler.rs` |
+| Add DB-specific SQL or dialect logic | `infra/adapters/{postgres,mysql}/` (NEVER in `app/ports/`) |
 
 ## Key Translation Flow
 
@@ -69,6 +71,13 @@ crossterm::KeyEvent
 - `app/keymap.rs`: `resolve(combo, bindings)` for `KeyBinding` slices; `resolve_mode(combo, rows)` for `ModeRow` slices
 - `ui/event/key_translator.rs`: UI adapter — converts `crossterm::KeyEvent` → app-layer `KeyCombo`
 - `ui/event/handler.rs`: mode dispatch — calls `ModeBindings::resolve()` or predicate fns, applies context logic
+
+## Side-Effect Boundaries (MUST)
+
+- `app/` MUST be I/O-free. No filesystem, network, or process spawning.
+- `domain/` MUST be pure data. No methods with side effects.
+- Side effects are ONLY allowed in: `infra/adapters/`, `ui/adapters/`, `main.rs`
+- Reducers MUST return `Vec<Effect>` for side effects; NEVER execute them inline.
 
 ## Key Principles
 
