@@ -364,8 +364,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         .unwrap_or(1);
                     (
                         format!(
-                            "Confirm DELETE: {} row(s) from {}",
-                            n, preview.target_summary.table
+                            "Confirm DELETE: {} {} from {}",
+                            n,
+                            if n == 1 { "row" } else { "rows" },
+                            preview.target_summary.table
                         ),
                         InputMode::Normal,
                     )
@@ -452,18 +454,23 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         .take()
                         .unwrap_or((state.query.pagination.current_page, None, 1));
 
+                    let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
                     if *affected_rows != expected {
                         state.messages.set_error_at(
                             format!(
-                                "DELETE expected {} row(s), but affected {} rows",
-                                expected, affected_rows
+                                "DELETE expected {} {}, but affected {} {}",
+                                expected,
+                                row_word(expected),
+                                affected_rows,
+                                row_word(*affected_rows),
                             ),
                             now,
                         );
                     } else {
-                        state
-                            .messages
-                            .set_success_at(format!("Deleted {} row(s)", expected), now);
+                        state.messages.set_success_at(
+                            format!("Deleted {} {}", expected, row_word(expected)),
+                            now,
+                        );
                     }
                     state.cell_edit.clear();
                     state.ui.staged_delete_rows.clear();
@@ -1120,7 +1127,7 @@ mod tests {
             assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
             assert_eq!(
                 state.confirm_dialog.title,
-                "Confirm DELETE: 1 row(s) from users"
+                "Confirm DELETE: 1 row from users"
             );
         }
 
@@ -1146,7 +1153,7 @@ mod tests {
             );
             assert_eq!(
                 state.messages.last_success.as_deref(),
-                Some("Deleted 1 row(s)")
+                Some("Deleted 1 row")
             );
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1179,7 +1186,7 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("DELETE expected 1 row(s), but affected 0 rows")
+                Some("DELETE expected 1 row, but affected 0 rows")
             );
             assert_eq!(effects.len(), 1);
         }

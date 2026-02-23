@@ -147,9 +147,6 @@ pub fn build_bulk_delete_preview(
         }
     })?;
 
-    let schema = state.query.pagination.schema.clone();
-    let table = state.query.pagination.table.clone();
-
     let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
     for &row_idx in &state.ui.staged_delete_rows {
         let row = result
@@ -161,7 +158,11 @@ pub fn build_bulk_delete_preview(
         pk_pairs_per_row.push(pairs);
     }
 
-    let sql = build_bulk_delete_sql(&schema, &table, &pk_pairs_per_row);
+    let sql = build_bulk_delete_sql(
+        &state.query.pagination.schema,
+        &state.query.pagination.table,
+        &pk_pairs_per_row,
+    );
 
     let staged_count = state.ui.staged_delete_rows.len();
     let first_deleted_idx = *state.ui.staged_delete_rows.iter().next().unwrap();
@@ -173,8 +174,8 @@ pub fn build_bulk_delete_preview(
     );
 
     let target = TargetSummary {
-        schema: schema.clone(),
-        table: table.clone(),
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
         key_values: pk_pairs_per_row.first().cloned().unwrap_or_default(),
     };
     let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
@@ -776,7 +777,6 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::StageRowForDelete => {
-            state.ui.delete_op_pending = false;
             if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
                 && let Some(row_idx) = state.ui.result_selection.row()
             {

@@ -44,21 +44,6 @@ pub fn build_update_sql(
     )
 }
 
-pub fn build_delete_sql(schema: &str, table: &str, pk_pairs: &[(String, String)]) -> String {
-    let where_clause = pk_pairs
-        .iter()
-        .map(|(col, val)| format!("{} = {}", quote_ident(col), quote_literal(val)))
-        .collect::<Vec<_>>()
-        .join(" AND ");
-
-    format!(
-        "DELETE FROM {}.{}\nWHERE {};",
-        quote_ident(schema),
-        quote_ident(table),
-        where_clause
-    )
-}
-
 /// Generates a single bulk DELETE using PostgreSQL row constructor IN-clause syntax.
 ///
 /// - Single PK:    `WHERE "id" IN ('1', '2', '3')`
@@ -152,6 +137,21 @@ mod tests {
 
     mod sql_generation {
         use super::*;
+
+        fn build_delete_sql(schema: &str, table: &str, pk_pairs: &[(String, String)]) -> String {
+            let where_clause = pk_pairs
+                .iter()
+                .map(|(col, val)| format!("{} = {}", quote_ident(col), quote_literal(val)))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+
+            format!(
+                "DELETE FROM {}.{}\nWHERE {};",
+                quote_ident(schema),
+                quote_ident(table),
+                where_clause
+            )
+        }
 
         #[test]
         fn update_with_single_pk_returns_escaped_sql() {
