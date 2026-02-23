@@ -43,8 +43,8 @@ Keybinding and command definitions follow this architecture:
 
 | Concept | Location | Responsibility |
 |---------|----------|----------------|
-| Data definitions | `app/keybindings.rs` | SSOT: `KeyBinding` struct with `combos`, `action`, display strings |
-| Key resolution | `app/keymap.rs` | `resolve(combo, bindings)` — used by simple-mode handlers |
+| Data definitions | `app/keybindings/` | SSOT module: `KeyBinding` (simple modes) + `ModeRow`/`ModeBindings` (mixed modes). Submodules: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs` |
+| Key resolution | `app/keymap.rs` | `resolve(combo, bindings)` for `KeyBinding` slices; `resolve_mode(combo, rows)` for `ModeRow` slices — both called via `ModeBindings::resolve()` or directly |
 | Key translation | `ui/event/key_translator.rs` | `translate(KeyEvent) -> KeyCombo` — crossterm adapter |
 | Mode dispatch | `ui/event/handler.rs` | Routes `KeyCombo` to handler by `InputMode` |
 | Display logic | `ui/components/footer.rs` | Context-sensitive hint selection by InputMode/state |
@@ -52,9 +52,9 @@ Keybinding and command definitions follow this architecture:
 | Command list | `app/palette.rs` | Commands shown in Command Palette |
 
 When adding a new keybinding:
-1. Add a `KeyBinding` entry with `combos: &[KeyCombo]` to `keybindings.rs`
-2. **Simple modes** (Help, ConfirmDialog, ConnectionError, ConnectionSelector, CommandPalette, TablePicker, ErTablePicker, CommandLine, CellEdit): `keymap::resolve()` handles it automatically — no handler changes needed
-3. **Normal mode**: also add a predicate function (e.g., `pub fn is_foo(combo: &KeyCombo) -> bool`) and wire it in `handle_normal_mode` in `handler.rs`
+1. Add an entry to the appropriate submodule in `keybindings/` (`normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`)
+2. **Modes with `ModeBindings`** (Help, ConnectionError, ConnectionSelector, CommandPalette, TablePicker, ErTablePicker): add a `ModeRow` entry to the corresponding `*_ROWS` constant with display text and `bindings: &[ExecBinding { ... }]`. `ModeBindings::resolve()` handles dispatch automatically.
+3. **Normal mode**: also add a predicate function (e.g., `pub fn is_foo(combo: &KeyCombo) -> bool`) in `mod.rs` and wire it in `handle_normal_mode` in `handler.rs`
 4. Update Footer/Help/Palette display as needed
 
 **Char fallback rule**: Modes with freeform text input (TablePicker, ErTablePicker, CommandLine, CellEdit) use `keymap::resolve()` first, then fall through to `Char(c)` for text input. Do NOT add plain `KeyCombo::plain(Key::Char(x))` combos to these modes for command keys — use non-Char keys (Up/Down/Esc/Enter) instead.

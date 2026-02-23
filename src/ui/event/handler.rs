@@ -51,7 +51,9 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 }
 
 fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
-    keymap::resolve(&combo, keybindings::CONNECTION_SELECTOR_KEYS).unwrap_or(Action::None)
+    keybindings::CONNECTION_SELECTOR
+        .resolve(&combo)
+        .unwrap_or(Action::None)
 }
 
 fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
@@ -346,7 +348,7 @@ fn handle_command_line_mode(combo: KeyCombo) -> Action {
 }
 
 fn handle_table_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keymap::resolve(&combo, keybindings::TABLE_PICKER_KEYS) {
+    if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
         return action;
     }
     match combo.key {
@@ -356,11 +358,13 @@ fn handle_table_picker_keys(combo: KeyCombo) -> Action {
 }
 
 fn handle_command_palette_keys(combo: KeyCombo) -> Action {
-    keymap::resolve(&combo, keybindings::COMMAND_PALETTE_KEYS).unwrap_or(Action::None)
+    keybindings::COMMAND_PALETTE
+        .resolve(&combo)
+        .unwrap_or(Action::None)
 }
 
 fn handle_help_keys(combo: KeyCombo) -> Action {
-    keymap::resolve(&combo, keybindings::HELP_KEYS).unwrap_or(Action::None)
+    keybindings::HELP.resolve(&combo).unwrap_or(Action::None)
 }
 
 fn handle_sql_modal_keys(combo: KeyCombo, completion_visible: bool) -> Action {
@@ -459,11 +463,13 @@ fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
 }
 
 fn handle_connection_error_keys(combo: KeyCombo) -> Action {
-    keymap::resolve(&combo, keybindings::CONNECTION_ERROR_KEYS).unwrap_or(Action::None)
+    keybindings::CONNECTION_ERROR
+        .resolve(&combo)
+        .unwrap_or(Action::None)
 }
 
 fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keymap::resolve(&combo, keybindings::ER_PICKER_KEYS) {
+    if let Some(action) = keybindings::ER_PICKER.resolve(&combo) {
         return action;
     }
     match combo.key {

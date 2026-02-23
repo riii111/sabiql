@@ -5,7 +5,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
-use crate::app::keybindings::{CONNECTION_SELECTOR_KEYS, idx};
+use crate::app::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -89,12 +89,12 @@ impl ConnectionSelector {
 
     fn build_hint_string() -> String {
         let hints = [
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::SELECT].as_hint(),
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::CONFIRM].as_hint(),
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::NEW].as_hint(),
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::EDIT].as_hint(),
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::DELETE].as_hint(),
-            CONNECTION_SELECTOR_KEYS[idx::connection_selector::QUIT].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint(),
         ];
         let hint_parts: Vec<String> = hints
             .iter()

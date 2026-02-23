@@ -1,5 +1,5 @@
 use super::action::Action;
-use super::keybindings::{KeyBinding, KeyCombo};
+use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
 
 /// Look up the action for a `KeyCombo` in a binding array.
 ///
@@ -11,6 +11,18 @@ pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
         .filter(|kb| !matches!(kb.action, Action::None))
         .find(|kb| kb.combos.contains(combo))
         .map(|kb| kb.action.clone())
+}
+
+/// Look up the action for a `KeyCombo` in a `ModeRow` slice.
+pub fn resolve_mode(combo: &KeyCombo, rows: &[ModeRow]) -> Option<Action> {
+    for row in rows {
+        for eb in row.bindings {
+            if !matches!(eb.action, Action::None) && eb.combos.contains(combo) {
+                return Some(eb.action.clone());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -119,5 +131,47 @@ mod tests {
         let result = resolve(&KeyCombo::plain(Key::Char('q')), &bindings);
 
         assert!(result.is_none());
+    }
+
+    mod resolve_mode_tests {
+        use super::*;
+        use crate::app::keybindings::{HELP_ROWS, TABLE_PICKER_ROWS};
+
+        #[test]
+        fn empty_rows_returns_none() {
+            let result = resolve_mode(&KeyCombo::plain(Key::Char('q')), &[]);
+
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn matches_binding_in_rows() {
+            let result = resolve_mode(&KeyCombo::plain(Key::Esc), HELP_ROWS);
+
+            assert!(matches!(result, Some(Action::CloseHelp)));
+        }
+
+        #[test]
+        fn no_match_returns_none() {
+            let result = resolve_mode(&KeyCombo::plain(Key::F(12)), HELP_ROWS);
+
+            assert!(result.is_none());
+        }
+
+        // HELP_ROWS: CloseHelp (Esc) at idx 1, Quit (q) at idx 2 — first match wins
+        #[test]
+        fn first_matching_binding_wins() {
+            let result = resolve_mode(&KeyCombo::plain(Key::Char('q')), HELP_ROWS);
+
+            assert!(matches!(result, Some(Action::Quit)));
+        }
+
+        // TYPE_FILTER row has no Enter combo — Enter resolves to ConfirmSelection at idx 0
+        #[test]
+        fn unrelated_row_does_not_block_later_match() {
+            let result = resolve_mode(&KeyCombo::plain(Key::Enter), TABLE_PICKER_ROWS);
+
+            assert!(matches!(result, Some(Action::ConfirmSelection)));
+        }
     }
 }
