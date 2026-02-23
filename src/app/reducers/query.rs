@@ -937,19 +937,10 @@ mod tests {
             fn generate_ddl(&self, _table: &Table) -> String {
                 String::new()
             }
-            fn ddl_line_count(&self, _table: &Table) -> usize {
-                0
-            }
         }
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
-            fn quote_ident(&self, name: &str) -> String {
-                format!("\"{}\"", name)
-            }
-            fn quote_literal(&self, value: &str) -> String {
-                format!("'{}'", value)
-            }
             fn build_update_sql(
                 &self,
                 schema: &str,

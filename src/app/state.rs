@@ -58,12 +58,6 @@ impl DdlGenerator for StubDdlGenerator {
 
 struct StubSqlDialect;
 impl SqlDialect for StubSqlDialect {
-    fn quote_ident(&self, name: &str) -> String {
-        format!("\"{}\"", name)
-    }
-    fn quote_literal(&self, value: &str) -> String {
-        format!("'{}'", value)
-    }
     fn build_update_sql(
         &self,
         _schema: &str,
