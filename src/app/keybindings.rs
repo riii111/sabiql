@@ -120,14 +120,9 @@ pub struct KeyBinding {
     pub action: Action,
     /// The key combinations that trigger this binding.
     ///
-    /// `keymap::resolve()` skips `Action::None` entries, so combos on them are
-    /// never matched at runtime. Two array categories exist:
-    ///
-    /// - **Display-only arrays** (never passed to `resolve()`): `Action::None`
-    ///   entries must have `combos: &[]`.
-    /// - **Executable arrays** (passed to `resolve()`): `Action::None` entries
-    ///   may keep non-empty combos as metadata describing which keys the
-    ///   display hint covers. The appended executable entries hold the real combos.
+    /// `Action::None` entries always have `combos: &[]` — display text comes
+    /// from `key_short`/`key` strings. Exec-only bindings that don't appear
+    /// in Footer/Help live in separate `*_HIDDEN` constants.
     pub combos: &'static [KeyCombo],
 }
 
@@ -856,12 +851,7 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         desc_short: "Scroll",
         description: "Scroll error",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 5: ESC_CLOSE
     KeyBinding {
@@ -881,7 +871,9 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
-    // Executable entries for scroll (idx 4 SCROLL is display-only)
+];
+
+pub const CONNECTION_ERROR_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
@@ -946,7 +938,7 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
+        combos: &[],
     },
     // idx 2: TYPE_FILTER (display-only)
     KeyBinding {
@@ -966,7 +958,9 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
         action: Action::CloseTablePicker,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // Executable entries (idx 1 NAVIGATE is display-only; Up/Down only, j/k are filter input)
+];
+
+pub const TABLE_PICKER_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
@@ -1032,7 +1026,7 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Up), KeyCombo::plain(Key::Down)],
+        combos: &[],
     },
     // idx 4: TYPE_FILTER (display-only)
     KeyBinding {
@@ -1052,7 +1046,9 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         action: Action::CloseErTablePicker,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // Executable entries (idx 3 NAVIGATE is display-only; Up/Down only, j/k are filter input)
+];
+
+pub const ER_PICKER_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
@@ -1091,7 +1087,7 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         desc_short: "Execute",
         description: "Execute command",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        combos: &[],
     },
     // idx 1: NAVIGATE_JK (display-only)
     KeyBinding {
@@ -1100,12 +1096,7 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         desc_short: "Navigate",
         description: "Navigate",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 2: ESC_CLOSE
     KeyBinding {
@@ -1116,7 +1107,9 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         action: Action::CloseCommandPalette,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // Executable entries (idx 0 and 1 are display-only)
+];
+
+pub const COMMAND_PALETTE_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
@@ -1148,19 +1141,14 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const HELP_KEYS: &[KeyBinding] = &[
-    // idx 0: HELP_SCROLL (display-only; executable entries appended below)
+    // idx 0: HELP_SCROLL (display-only)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-        ],
+        combos: &[],
     },
     // idx 1: HELP_CLOSE
     KeyBinding {
@@ -1180,7 +1168,10 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
-    // Executable entries (not shown in Footer/Help display, used by keymap::resolve)
+];
+
+/// Exec-only bindings resolved by `keymap::resolve()` but excluded from display.
+pub const HELP_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
@@ -1311,12 +1302,7 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         desc_short: "Select",
         description: "Select connection",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Up),
-            KeyCombo::plain(Key::Down),
-            KeyCombo::plain(Key::Char('j')),
-            KeyCombo::plain(Key::Char('k')),
-        ],
+        combos: &[],
     },
     // idx 2: NEW
     KeyBinding {
@@ -1354,7 +1340,9 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
-    // Executable entries (idx 1 SELECT is display-only)
+];
+
+pub const CONNECTION_SELECTOR_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
         key: "",
