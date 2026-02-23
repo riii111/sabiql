@@ -1,10 +1,10 @@
-use super::key_translator::{KeyCode, KeyEvent, KeyModifiers};
-
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
+use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
+use crate::app::{keybindings, keymap};
 
 use super::Event;
 
@@ -12,7 +12,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
     match event {
         Event::Init => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
-        Event::Key(key) => handle_key_event(key, state),
+        Event::Key(combo) => handle_key_event(combo, state),
         Event::Paste(text) => handle_paste_event(text, state),
     }
 }
@@ -29,52 +29,45 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
+fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     match state.ui.input_mode {
-        InputMode::Normal => handle_normal_mode(key, state),
-        InputMode::CommandLine => handle_command_line_mode(key),
-        InputMode::CellEdit => handle_cell_edit_keys(key),
-        InputMode::TablePicker => handle_table_picker_keys(key),
-        InputMode::CommandPalette => handle_command_palette_keys(key),
-        InputMode::Help => handle_help_keys(key),
+        InputMode::Normal => handle_normal_mode(combo, state),
+        InputMode::CommandLine => handle_command_line_mode(combo),
+        InputMode::CellEdit => handle_cell_edit_keys(combo),
+        InputMode::TablePicker => handle_table_picker_keys(combo),
+        InputMode::CommandPalette => handle_command_palette_keys(combo),
+        InputMode::Help => handle_help_keys(combo),
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty();
-            handle_sql_modal_keys(key, completion_visible)
+            handle_sql_modal_keys(combo, completion_visible)
         }
-        InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
-        InputMode::ConnectionError => handle_connection_error_keys(key),
-        InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
-        InputMode::ConnectionSelector => handle_connection_selector_keys(key),
-        InputMode::ErTablePicker => handle_er_table_picker_keys(key),
+        InputMode::ConnectionSetup => handle_connection_setup_keys(combo, state),
+        InputMode::ConnectionError => handle_connection_error_keys(combo),
+        InputMode::ConfirmDialog => handle_confirm_dialog_keys(combo),
+        InputMode::ConnectionSelector => handle_connection_selector_keys(combo),
+        InputMode::ErTablePicker => handle_er_table_picker_keys(combo),
     }
 }
 
-fn handle_connection_selector_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Char('j') | KeyCode::Down => Action::ConnectionListSelectNext,
-        KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
-        KeyCode::Enter => Action::ConfirmConnectionSelection,
-        KeyCode::Char('n') => Action::OpenConnectionSetup,
-        KeyCode::Char('e') => Action::RequestEditSelectedConnection,
-        KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
+fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONNECTION_SELECTOR_KEYS).unwrap_or(Action::None)
+}
+
+fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Backspace => Action::ResultCellEditBackspace,
+        Key::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_cell_edit_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::ResultCancelCellEdit,
-        KeyCode::Backspace => Action::ResultCellEditBackspace,
-        KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char(c) => Action::ResultCellEditInput(c),
-        _ => Action::None,
-    }
-}
-
-fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
+fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     use crate::app::focused_pane::FocusedPane;
+    use keybindings as kb;
 
     let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
     let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
@@ -82,67 +75,78 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         && state.ui.focused_pane == FocusedPane::Explorer;
     let result_nav_mode = state.ui.result_selection.mode();
 
-    match (key.code, key.modifiers) {
-        (KeyCode::Char('p'), m) if m.contains(KeyModifiers::CONTROL) => {
-            return Action::OpenTablePicker;
-        }
-        (KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
-            return Action::OpenCommandPalette;
-        }
-        (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
-            if result_navigation {
-                return Action::ResultScrollHalfPageDown;
-            } else if inspector_navigation {
-                return Action::InspectorScrollHalfPageDown;
-            } else if connections_mode {
-                return Action::None;
-            } else {
-                return Action::SelectHalfPageDown;
+    // Ctrl combos (context-independent)
+    if combo.modifiers.ctrl {
+        match combo.key {
+            Key::Char('p') => return Action::OpenTablePicker,
+            Key::Char('k') => return Action::OpenCommandPalette,
+            Key::Char('d') => {
+                return if result_navigation {
+                    Action::ResultScrollHalfPageDown
+                } else if inspector_navigation {
+                    Action::InspectorScrollHalfPageDown
+                } else if connections_mode {
+                    Action::None
+                } else {
+                    Action::SelectHalfPageDown
+                };
             }
-        }
-        (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
-            if result_navigation {
-                return Action::ResultScrollHalfPageUp;
-            } else if inspector_navigation {
-                return Action::InspectorScrollHalfPageUp;
-            } else if connections_mode {
-                return Action::None;
-            } else {
-                return Action::SelectHalfPageUp;
+            Key::Char('u') => {
+                return if result_navigation {
+                    Action::ResultScrollHalfPageUp
+                } else if inspector_navigation {
+                    Action::InspectorScrollHalfPageUp
+                } else if connections_mode {
+                    Action::None
+                } else {
+                    Action::SelectHalfPageUp
+                };
             }
-        }
-        (KeyCode::Char('f'), m) if m.contains(KeyModifiers::CONTROL) => {
-            if result_navigation {
-                return Action::ResultScrollFullPageDown;
-            } else if inspector_navigation {
-                return Action::InspectorScrollFullPageDown;
-            } else if connections_mode {
-                return Action::None;
-            } else {
-                return Action::SelectFullPageDown;
+            Key::Char('f') => {
+                return if result_navigation {
+                    Action::ResultScrollFullPageDown
+                } else if inspector_navigation {
+                    Action::InspectorScrollFullPageDown
+                } else if connections_mode {
+                    Action::None
+                } else {
+                    Action::SelectFullPageDown
+                };
             }
-        }
-        (KeyCode::Char('b'), m) if m.contains(KeyModifiers::CONTROL) => {
-            if result_navigation {
-                return Action::ResultScrollFullPageUp;
-            } else if inspector_navigation {
-                return Action::InspectorScrollFullPageUp;
-            } else if connections_mode {
-                return Action::None;
-            } else {
-                return Action::SelectFullPageUp;
+            Key::Char('b') => {
+                return if result_navigation {
+                    Action::ResultScrollFullPageUp
+                } else if inspector_navigation {
+                    Action::InspectorScrollFullPageUp
+                } else if connections_mode {
+                    Action::None
+                } else {
+                    Action::SelectFullPageUp
+                };
             }
+            _ => {}
         }
-        _ => {}
     }
 
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Char('?') => Action::OpenHelp,
-        KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char('r') => Action::ReloadMetadata,
-        KeyCode::Char('f') => Action::ToggleFocus,
-        KeyCode::Esc => {
+    // Global actions (predicate-based, no modifiers)
+    if kb::is_quit(&combo) {
+        return Action::Quit;
+    }
+    if kb::is_help(&combo) {
+        return Action::OpenHelp;
+    }
+    if kb::is_command_line(&combo) {
+        return Action::EnterCommandLine;
+    }
+    if kb::is_reload(&combo) {
+        return Action::ReloadMetadata;
+    }
+    if kb::is_focus_toggle(&combo) {
+        return Action::ToggleFocus;
+    }
+
+    match combo.key {
+        Key::Esc => {
             if result_navigation {
                 match result_nav_mode {
                     ResultNavMode::CellActive => {
@@ -162,7 +166,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        KeyCode::Up | KeyCode::Char('k') => {
+        Key::Up | Key::Char('k') => {
             if result_navigation {
                 Action::ResultScrollUp
             } else if inspector_navigation {
@@ -173,7 +177,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::SelectPrevious
             }
         }
-        KeyCode::Down | KeyCode::Char('j') => {
+        Key::Down | Key::Char('j') => {
             if result_navigation {
                 Action::ResultScrollDown
             } else if inspector_navigation {
@@ -184,7 +188,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::SelectNext
             }
         }
-        KeyCode::Char('g') | KeyCode::Home => {
+        Key::Char('g') | Key::Home => {
             if result_navigation {
                 Action::ResultScrollTop
             } else if inspector_navigation {
@@ -193,7 +197,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::SelectFirst
             }
         }
-        KeyCode::Char('G') | KeyCode::End => {
+        Key::Char('G') | Key::End => {
             if result_navigation {
                 Action::ResultScrollBottom
             } else if inspector_navigation {
@@ -203,7 +207,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        KeyCode::Char('h') | KeyCode::Left => {
+        Key::Char('h') | Key::Left => {
             if result_navigation && result_nav_mode == ResultNavMode::CellActive {
                 Action::ResultCellLeft
             } else if result_navigation {
@@ -216,7 +220,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::None
             }
         }
-        KeyCode::Char('l') | KeyCode::Right => {
+        Key::Char('l') | Key::Right => {
             if result_navigation && result_nav_mode == ResultNavMode::CellActive {
                 Action::ResultCellRight
             } else if result_navigation {
@@ -230,14 +234,14 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        KeyCode::Char(']') => {
+        Key::Char(']') => {
             if result_navigation {
                 Action::ResultNextPage
             } else {
                 Action::None
             }
         }
-        KeyCode::Char('[') => {
+        Key::Char('[') => {
             if result_navigation {
                 Action::ResultPrevPage
             } else {
@@ -245,7 +249,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
             }
         }
 
-        KeyCode::PageDown => {
+        Key::PageDown => {
             if result_navigation {
                 Action::ResultScrollFullPageDown
             } else if inspector_navigation {
@@ -256,7 +260,7 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
                 Action::None
             }
         }
-        KeyCode::PageUp => {
+        Key::PageUp => {
             if result_navigation {
                 Action::ResultScrollFullPageUp
             } else if inspector_navigation {
@@ -269,9 +273,8 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         }
 
         // Pane switching: exit focus mode first if active
-        KeyCode::Char(c @ '1'..='3') => {
+        Key::Char(c @ '1'..='3') => {
             if state.ui.focus_mode {
-                // Exit focus mode before switching panes
                 Action::ToggleFocus
             } else {
                 FocusedPane::from_browse_key(c)
@@ -281,37 +284,35 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         }
 
         // Inspector sub-tab navigation (Tab/Shift+Tab, only when Inspector focused)
-        KeyCode::Tab if inspector_navigation => Action::InspectorNextTab,
-        KeyCode::BackTab if inspector_navigation => Action::InspectorPrevTab,
+        Key::Tab if inspector_navigation => Action::InspectorNextTab,
+        Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        KeyCode::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
+        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
-        KeyCode::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+        Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             if state.ui.delete_op_pending {
                 Action::StageRowForDelete
             } else {
                 Action::ResultDeleteOperatorPending
             }
         }
-        KeyCode::Char('u') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+        Key::Char('u') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             Action::UnstageLastStagedRow
         }
-        KeyCode::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
+        Key::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultEnterCellEdit
         }
-        KeyCode::Char('s') => Action::OpenSqlModal,
-        KeyCode::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
-        KeyCode::Char('e') => Action::OpenErTablePicker,
-        KeyCode::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+        Key::Char('s') => Action::OpenSqlModal,
+        Key::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
+        Key::Char('e') => Action::OpenErTablePicker,
+        Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
             Action::ToggleExplorerMode
         }
-        KeyCode::Char('n') if connections_mode => Action::OpenConnectionSetup,
-        KeyCode::Char('d') | KeyCode::Delete if connections_mode => {
-            Action::RequestDeleteSelectedConnection
-        }
+        Key::Char('n') if connections_mode => Action::OpenConnectionSetup,
+        Key::Char('d') | Key::Delete if connections_mode => Action::RequestDeleteSelectedConnection,
 
-        KeyCode::Enter => {
+        Key::Enter => {
             if state.connection_error.error_info.is_some() {
                 Action::ConfirmSelection
             } else if result_navigation {
@@ -333,181 +334,163 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     }
 }
 
-fn handle_command_line_mode(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Enter => Action::CommandLineSubmit,
-        KeyCode::Esc => Action::ExitCommandLine,
-        KeyCode::Backspace => Action::CommandLineBackspace,
-        KeyCode::Char(c) => Action::CommandLineInput(c),
+fn handle_command_line_mode(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::COMMAND_LINE_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Backspace => Action::CommandLineBackspace,
+        Key::Char(c) => Action::CommandLineInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_table_picker_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseTablePicker,
-        KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Up => Action::SelectPrevious,
-        KeyCode::Down => Action::SelectNext,
-        KeyCode::Backspace => Action::FilterBackspace,
-        KeyCode::Char(c) => Action::FilterInput(c),
+fn handle_table_picker_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::TABLE_PICKER_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Char(c) => Action::FilterInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_command_palette_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseCommandPalette,
-        KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        _ => Action::None,
-    }
+fn handle_command_palette_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::COMMAND_PALETTE_KEYS).unwrap_or(Action::None)
 }
 
-fn handle_help_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
-        KeyCode::Char('j') | KeyCode::Down => Action::HelpScrollDown,
-        KeyCode::Char('k') | KeyCode::Up => Action::HelpScrollUp,
-        _ => Action::None,
-    }
+fn handle_help_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::HELP_KEYS).unwrap_or(Action::None)
 }
 
-fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
+fn handle_sql_modal_keys(combo: KeyCombo, completion_visible: bool) -> Action {
     use crate::app::action::CursorMove;
 
-    match (key.code, key.modifiers, completion_visible) {
-        // Alt+Enter: most reliable across terminal emulators
-        (KeyCode::Enter, m, _) if m.contains(KeyModifiers::ALT) => Action::SqlModalSubmit,
+    let ctrl = combo.modifiers.ctrl;
+    let alt = combo.modifiers.alt;
 
+    // Alt+Enter: submit query
+    if alt && combo.key == Key::Enter {
+        return Action::SqlModalSubmit;
+    }
+
+    // Ctrl+Space: trigger completion
+    if ctrl && combo.key == Key::Char(' ') {
+        return Action::CompletionTrigger;
+    }
+
+    // Ctrl+L: clear
+    if ctrl && combo.key == Key::Char('l') {
+        return Action::SqlModalClear;
+    }
+
+    match (combo.key, completion_visible) {
         // Completion navigation (when popup is visible)
-        (KeyCode::Up, _, true) => Action::CompletionPrev,
-        (KeyCode::Down, _, true) => Action::CompletionNext,
-        (KeyCode::Tab | KeyCode::Enter, _, true) => Action::CompletionAccept,
-        (KeyCode::Esc, _, true) => Action::CompletionDismiss,
-
-        // Manual completion trigger
-        (KeyCode::Char(' '), m, _) if m.contains(KeyModifiers::CONTROL) => {
-            Action::CompletionTrigger
-        }
-        // Esc: Close modal (when completion not visible)
-        (KeyCode::Esc, _, false) => Action::CloseSqlModal,
+        (Key::Up, true) => Action::CompletionPrev,
+        (Key::Down, true) => Action::CompletionNext,
+        (Key::Tab | Key::Enter, true) => Action::CompletionAccept,
+        (Key::Esc, true) => Action::CompletionDismiss,
         // Navigation: dismiss completion on horizontal movement
-        (KeyCode::Left, _, true) => Action::CompletionDismiss,
-        (KeyCode::Right, _, true) => Action::CompletionDismiss,
-        (KeyCode::Left, _, false) => Action::SqlModalMoveCursor(CursorMove::Left),
-        (KeyCode::Right, _, false) => Action::SqlModalMoveCursor(CursorMove::Right),
-        (KeyCode::Up, _, false) => Action::SqlModalMoveCursor(CursorMove::Up),
-        (KeyCode::Down, _, false) => Action::SqlModalMoveCursor(CursorMove::Down),
-        (KeyCode::Home, _, _) => Action::SqlModalMoveCursor(CursorMove::Home),
-        (KeyCode::End, _, _) => Action::SqlModalMoveCursor(CursorMove::End),
+        (Key::Left | Key::Right, true) => Action::CompletionDismiss,
+
+        // Esc: Close modal (when completion not visible)
+        (Key::Esc, false) => Action::CloseSqlModal,
+        (Key::Left, false) => Action::SqlModalMoveCursor(CursorMove::Left),
+        (Key::Right, false) => Action::SqlModalMoveCursor(CursorMove::Right),
+        (Key::Up, false) => Action::SqlModalMoveCursor(CursorMove::Up),
+        (Key::Down, false) => Action::SqlModalMoveCursor(CursorMove::Down),
+        (Key::Home, _) => Action::SqlModalMoveCursor(CursorMove::Home),
+        (Key::End, _) => Action::SqlModalMoveCursor(CursorMove::End),
         // Editing
-        (KeyCode::Backspace, _, _) => Action::SqlModalBackspace,
-        (KeyCode::Delete, _, _) => Action::SqlModalDelete,
-        (KeyCode::Enter, _, _) => Action::SqlModalNewLine,
-        (KeyCode::Tab, _, false) => Action::SqlModalTab,
-        (KeyCode::Char('l'), m, _) if m.contains(KeyModifiers::CONTROL) => Action::SqlModalClear,
-        (KeyCode::Char(c), _, _) => Action::SqlModalInput(c),
+        (Key::Backspace, _) => Action::SqlModalBackspace,
+        (Key::Delete, _) => Action::SqlModalDelete,
+        (Key::Enter, false) => Action::SqlModalNewLine,
+        (Key::Tab, false) => Action::SqlModalTab,
+        (Key::Char(c), _) => Action::SqlModalInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
+fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
     use crate::app::action::CursorMove;
     use crate::app::connection_setup_state::ConnectionField;
 
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
+    let ctrl = combo.modifiers.ctrl;
+    let alt = combo.modifiers.alt;
 
-    match (key.code, key.modifiers, dropdown_open) {
-        // Dropdown navigation
-        (KeyCode::Up, _, true) => Action::ConnectionSetupDropdownPrev,
-        (KeyCode::Down, _, true) => Action::ConnectionSetupDropdownNext,
-        (KeyCode::Enter, _, true) => Action::ConnectionSetupDropdownConfirm,
-        (KeyCode::Esc, _, true) => Action::ConnectionSetupDropdownCancel,
+    if dropdown_open {
+        return match combo.key {
+            Key::Up => Action::ConnectionSetupDropdownPrev,
+            Key::Down => Action::ConnectionSetupDropdownNext,
+            Key::Enter => Action::ConnectionSetupDropdownConfirm,
+            Key::Esc => Action::ConnectionSetupDropdownCancel,
+            _ => Action::None,
+        };
+    }
 
-        // Form navigation
-        (KeyCode::Tab, _, false) => Action::ConnectionSetupNextField,
-        (KeyCode::BackTab, _, false) => Action::ConnectionSetupPrevField,
+    // Ctrl+S: save
+    if ctrl && combo.key == Key::Char('s') {
+        return Action::ConnectionSetupSave;
+    }
 
-        // Save & Cancel
-        (KeyCode::Char('s'), m, false) if m.contains(KeyModifiers::CONTROL) => {
-            Action::ConnectionSetupSave
-        }
-        (KeyCode::Esc, _, false) => Action::ConnectionSetupCancel,
+    match combo.key {
+        Key::Tab => Action::ConnectionSetupNextField,
+        Key::BackTab => Action::ConnectionSetupPrevField,
+        Key::Esc => Action::ConnectionSetupCancel,
 
         // SSL Mode toggle (Enter on SslMode field)
-        (KeyCode::Enter, _, false)
-            if state.connection_setup.focused_field == ConnectionField::SslMode =>
-        {
+        Key::Enter if state.connection_setup.focused_field == ConnectionField::SslMode => {
             Action::ConnectionSetupToggleDropdown
         }
 
         // Cursor movement
-        (KeyCode::Left, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Left),
-        (KeyCode::Right, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Right),
-        (KeyCode::Home, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::Home),
-        (KeyCode::End, _, false) => Action::ConnectionSetupMoveCursor(CursorMove::End),
+        Key::Left => Action::ConnectionSetupMoveCursor(CursorMove::Left),
+        Key::Right => Action::ConnectionSetupMoveCursor(CursorMove::Right),
+        Key::Home => Action::ConnectionSetupMoveCursor(CursorMove::Home),
+        Key::End => Action::ConnectionSetupMoveCursor(CursorMove::End),
 
         // Text input (allow Alt for international keyboards, block Ctrl-only)
-        (KeyCode::Backspace, _, false) => Action::ConnectionSetupBackspace,
-        (KeyCode::Char(c), m, false)
-            if !m.contains(KeyModifiers::CONTROL) || m.contains(KeyModifiers::ALT) =>
-        {
-            Action::ConnectionSetupInput(c)
-        }
+        Key::Backspace => Action::ConnectionSetupBackspace,
+        Key::Char(c) if !ctrl || alt => Action::ConnectionSetupInput(c),
 
         _ => Action::None,
     }
 }
 
-fn handle_connection_error_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Esc => Action::CloseConnectionError,
-        KeyCode::Char('e') => Action::ReenterConnectionSetup,
-        KeyCode::Char('s') => Action::OpenConnectionSelector,
-        KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
-        KeyCode::Char('c') => Action::CopyConnectionError,
-        KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
-        KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
+fn handle_connection_error_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONNECTION_ERROR_KEYS).unwrap_or(Action::None)
+}
+
+fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::ER_PICKER_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Char(c) => Action::ErFilterInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_er_table_picker_keys(key: KeyEvent) -> Action {
-    match (key.code, key.modifiers) {
-        (KeyCode::Esc, _) => Action::CloseErTablePicker,
-        (KeyCode::Enter, _) => Action::ErConfirmSelection,
-        (KeyCode::Up, _) => Action::SelectPrevious,
-        (KeyCode::Down, _) => Action::SelectNext,
-        (KeyCode::Char(' '), _) => Action::ErToggleSelection,
-        (KeyCode::Char('a'), m) if m.contains(KeyModifiers::CONTROL) => Action::ErSelectAll,
-        (KeyCode::Backspace, _) => Action::ErFilterBackspace,
-        (KeyCode::Char(c), _) => Action::ErFilterInput(c),
-        _ => Action::None,
-    }
-}
-
-fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Enter => Action::ConfirmDialogConfirm,
-        KeyCode::Esc => Action::ConfirmDialogCancel,
-        _ => Action::None,
-    }
+fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::keybindings::{Key, KeyCombo};
 
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
+    fn combo(k: Key) -> KeyCombo {
+        KeyCombo::plain(k)
     }
 
-    fn key_with_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
-        KeyEvent::new(code, modifiers)
+    fn combo_ctrl(k: Key) -> KeyCombo {
+        KeyCombo::ctrl(k)
+    }
+
+    fn combo_alt(k: Key) -> KeyCombo {
+        KeyCombo::alt(k)
     }
 
     mod normal_mode {
@@ -522,20 +505,18 @@ mod tests {
         // Important keys with special handling: keep individual tests
         #[test]
         fn ctrl_p_opens_table_picker() {
-            let key = key_with_mod(KeyCode::Char('p'), KeyModifiers::CONTROL);
             let state = browse_state();
 
-            let result = handle_normal_mode(key, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
 
             assert!(matches!(result, Action::OpenTablePicker));
         }
 
         #[test]
         fn ctrl_k_opens_command_palette() {
-            let key = key_with_mod(KeyCode::Char('k'), KeyModifiers::CONTROL);
             let state = browse_state();
 
-            let result = handle_normal_mode(key, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
 
             assert!(matches!(result, Action::OpenCommandPalette));
         }
@@ -544,7 +525,7 @@ mod tests {
         fn q_returns_quit() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('q')), &state);
+            let result = handle_normal_mode(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -553,7 +534,7 @@ mod tests {
         fn question_mark_opens_help() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('?')), &state);
+            let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
             assert!(matches!(result, Action::OpenHelp));
         }
@@ -562,7 +543,7 @@ mod tests {
         fn colon_enters_command_line() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char(':')), &state);
+            let result = handle_normal_mode(combo(Key::Char(':')), &state);
 
             assert!(matches!(result, Action::EnterCommandLine));
         }
@@ -571,7 +552,7 @@ mod tests {
         fn r_reloads_metadata() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('r')), &state);
+            let result = handle_normal_mode(combo(Key::Char('r')), &state);
 
             assert!(matches!(result, Action::ReloadMetadata));
         }
@@ -580,7 +561,7 @@ mod tests {
         fn f_toggles_focus() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('f')), &state);
+            let result = handle_normal_mode(combo(Key::Char('f')), &state);
 
             assert!(matches!(result, Action::ToggleFocus));
         }
@@ -589,52 +570,52 @@ mod tests {
         fn esc_returns_escape() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Esc), &state);
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::Escape));
         }
 
         // Navigation keys: equivalent actions
         #[rstest]
-        #[case(KeyCode::Up, "up arrow")]
-        #[case(KeyCode::Char('k'), "k")]
-        fn navigation_selects_previous(#[case] code: KeyCode, #[case] _desc: &str) {
+        #[case(Key::Up, "up arrow")]
+        #[case(Key::Char('k'), "k")]
+        fn navigation_selects_previous(#[case] code: Key, #[case] _desc: &str) {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::SelectPrevious));
         }
 
         #[rstest]
-        #[case(KeyCode::Down, "down arrow")]
-        #[case(KeyCode::Char('j'), "j")]
-        fn navigation_selects_next(#[case] code: KeyCode, #[case] _desc: &str) {
+        #[case(Key::Down, "down arrow")]
+        #[case(Key::Char('j'), "j")]
+        fn navigation_selects_next(#[case] code: Key, #[case] _desc: &str) {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::SelectNext));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('g'), "g")]
-        #[case(KeyCode::Home, "home")]
-        fn navigation_selects_first(#[case] code: KeyCode, #[case] _desc: &str) {
+        #[case(Key::Char('g'), "g")]
+        #[case(Key::Home, "home")]
+        fn navigation_selects_first(#[case] code: Key, #[case] _desc: &str) {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::SelectFirst));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('G'), "capital G")]
-        #[case(KeyCode::End, "end")]
-        fn navigation_selects_last(#[case] code: KeyCode, #[case] _desc: &str) {
+        #[case(Key::Char('G'), "capital G")]
+        #[case(Key::End, "end")]
+        fn navigation_selects_last(#[case] code: Key, #[case] _desc: &str) {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::SelectLast));
         }
@@ -644,7 +625,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ConfirmSelection));
         }
@@ -654,7 +635,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Inspector;
 
-            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -664,7 +645,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Result;
 
-            let result = handle_normal_mode(key(KeyCode::Enter), &state);
+            let result = handle_normal_mode(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ResultEnterRowActive));
         }
@@ -677,7 +658,7 @@ mod tests {
         fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char(key_char)), &state);
+            let result = handle_normal_mode(combo(Key::Char(key_char)), &state);
 
             assert!(matches!(result, Action::SetFocusedPane(pane) if pane == expected_pane));
         }
@@ -687,7 +668,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Inspector;
 
-            let result = handle_normal_mode(key(KeyCode::Tab), &state);
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
             assert!(matches!(result, Action::InspectorNextTab));
         }
@@ -697,7 +678,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Inspector;
 
-            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
+            let result = handle_normal_mode(combo(Key::BackTab), &state);
 
             assert!(matches!(result, Action::InspectorPrevTab));
         }
@@ -707,7 +688,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(key(KeyCode::Tab), &state);
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -717,7 +698,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Result;
 
-            let result = handle_normal_mode(key(KeyCode::Tab), &state);
+            let result = handle_normal_mode(combo(Key::Tab), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -727,7 +708,7 @@ mod tests {
             let mut state = browse_state();
             state.ui.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(key(KeyCode::BackTab), &state);
+            let result = handle_normal_mode(combo(Key::BackTab), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -736,7 +717,7 @@ mod tests {
         fn unknown_key_returns_none() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('z')), &state);
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -755,56 +736,56 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('j'))]
-        #[case(KeyCode::Down)]
-        fn focus_mode_j_scrolls_down(#[case] code: KeyCode) {
+        #[case(Key::Char('j'))]
+        #[case(Key::Down)]
+        fn focus_mode_j_scrolls_down(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollDown));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('k'))]
-        #[case(KeyCode::Up)]
-        fn focus_mode_k_scrolls_up(#[case] code: KeyCode) {
+        #[case(Key::Char('k'))]
+        #[case(Key::Up)]
+        fn focus_mode_k_scrolls_up(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollUp));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('g'))]
-        #[case(KeyCode::Home)]
-        fn focus_mode_g_scrolls_top(#[case] code: KeyCode) {
+        #[case(Key::Char('g'))]
+        #[case(Key::Home)]
+        fn focus_mode_g_scrolls_top(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollTop));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('G'))]
-        #[case(KeyCode::End)]
-        fn focus_mode_shift_g_scrolls_bottom(#[case] code: KeyCode) {
+        #[case(Key::Char('G'))]
+        #[case(Key::End)]
+        fn focus_mode_shift_g_scrolls_bottom(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollBottom));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('h'))]
-        #[case(KeyCode::Left)]
-        fn focus_mode_h_scrolls_left(#[case] code: KeyCode) {
+        #[case(Key::Char('h'))]
+        #[case(Key::Left)]
+        fn focus_mode_h_scrolls_left(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollLeft));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('l'))]
-        #[case(KeyCode::Right)]
-        fn focus_mode_l_scrolls_right(#[case] code: KeyCode) {
+        #[case(Key::Char('l'))]
+        #[case(Key::Right)]
+        fn focus_mode_l_scrolls_right(#[case] code: Key) {
             let state = focus_mode_state();
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
             assert!(matches!(result, Action::ResultScrollRight));
         }
 
@@ -812,7 +793,7 @@ mod tests {
         fn result_focused_navigation_scrolls_result() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('j')), &state);
+            let result = handle_normal_mode(combo(Key::Char('j')), &state);
 
             assert!(matches!(result, Action::ResultScrollDown));
         }
@@ -821,7 +802,7 @@ mod tests {
         fn result_focused_h_scrolls_left() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
 
             assert!(matches!(result, Action::ResultScrollLeft));
         }
@@ -830,7 +811,7 @@ mod tests {
         fn result_focused_l_scrolls_right() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
 
             assert!(matches!(result, Action::ResultScrollRight));
         }
@@ -840,7 +821,7 @@ mod tests {
             let mut state = result_focused_state();
             state.ui.result_selection.enter_row(0);
 
-            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::ResultDeleteOperatorPending));
         }
@@ -851,7 +832,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.delete_op_pending = true;
 
-            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::StageRowForDelete));
         }
@@ -860,7 +841,7 @@ mod tests {
         fn d_in_scroll_mode_is_noop() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('d')), &state);
+            let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -869,7 +850,7 @@ mod tests {
         fn h_key_scrolls_left_when_explorer_focused() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
 
             assert!(matches!(result, Action::ExplorerScrollLeft));
         }
@@ -878,7 +859,7 @@ mod tests {
         fn l_key_scrolls_right_when_explorer_focused() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('l')), &state);
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
 
             assert!(matches!(result, Action::ExplorerScrollRight));
         }
@@ -887,7 +868,7 @@ mod tests {
         fn e_key_opens_er_table_picker() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+            let result = handle_normal_mode(combo(Key::Char('e')), &state);
 
             assert!(matches!(result, Action::OpenErTablePicker));
         }
@@ -900,7 +881,7 @@ mod tests {
             state.cell_edit.begin(0, 1, "original".to_string());
             state.cell_edit.draft_value = "modified".to_string();
 
-            let result = handle_normal_mode(key(KeyCode::Esc), &state);
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::ResultDiscardCellEdit));
         }
@@ -911,7 +892,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
 
-            let result = handle_normal_mode(key(KeyCode::Esc), &state);
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::ResultExitToRowActive));
         }
@@ -922,7 +903,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
 
-            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+            let result = handle_normal_mode(combo(Key::Char('i')), &state);
 
             assert!(matches!(result, Action::ResultEnterCellEdit));
         }
@@ -931,7 +912,7 @@ mod tests {
         fn i_key_is_noop_without_cell_active() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('i')), &state);
+            let result = handle_normal_mode(combo(Key::Char('i')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -943,23 +924,23 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('g'))]
-        #[case(KeyCode::Home)]
-        fn g_scrolls_inspector_top(#[case] code: KeyCode) {
+        #[case(Key::Char('g'))]
+        #[case(Key::Home)]
+        fn g_scrolls_inspector_top(#[case] code: Key) {
             let state = inspector_focused_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::InspectorScrollTop));
         }
 
         #[rstest]
-        #[case(KeyCode::Char('G'))]
-        #[case(KeyCode::End)]
-        fn shift_g_scrolls_inspector_bottom(#[case] code: KeyCode) {
+        #[case(Key::Char('G'))]
+        #[case(Key::End)]
+        fn shift_g_scrolls_inspector_bottom(#[case] code: Key) {
             let state = inspector_focused_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::InspectorScrollBottom));
         }
@@ -968,7 +949,7 @@ mod tests {
         fn c_key_toggles_when_explorer_focused() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
             assert!(matches!(result, Action::ToggleExplorerMode));
         }
@@ -977,7 +958,7 @@ mod tests {
         fn c_key_noop_when_result_focused() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -986,7 +967,7 @@ mod tests {
         fn c_key_noop_when_inspector_focused() {
             let state = inspector_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('c')), &state);
+            let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -995,7 +976,7 @@ mod tests {
         fn bracket_right_returns_next_page_when_result_focused() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
+            let result = handle_normal_mode(combo(Key::Char(']')), &state);
 
             assert!(matches!(result, Action::ResultNextPage));
         }
@@ -1004,7 +985,7 @@ mod tests {
         fn bracket_left_returns_prev_page_when_result_focused() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
+            let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
             assert!(matches!(result, Action::ResultPrevPage));
         }
@@ -1013,8 +994,8 @@ mod tests {
         fn brackets_return_none_when_explorer_focused() {
             let state = browse_state();
 
-            let right = handle_normal_mode(key(KeyCode::Char(']')), &state);
-            let left = handle_normal_mode(key(KeyCode::Char('[')), &state);
+            let right = handle_normal_mode(combo(Key::Char(']')), &state);
+            let left = handle_normal_mode(combo(Key::Char('[')), &state);
 
             assert!(matches!(right, Action::None));
             assert!(matches!(left, Action::None));
@@ -1024,7 +1005,7 @@ mod tests {
         fn bracket_right_returns_next_page_in_focus_mode() {
             let state = focus_mode_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char(']')), &state);
+            let result = handle_normal_mode(combo(Key::Char(']')), &state);
 
             assert!(matches!(result, Action::ResultNextPage));
         }
@@ -1033,7 +1014,7 @@ mod tests {
         fn bracket_left_returns_prev_page_in_focus_mode() {
             let state = focus_mode_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('[')), &state);
+            let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
             assert!(matches!(result, Action::ResultPrevPage));
         }
@@ -1042,9 +1023,8 @@ mod tests {
         #[test]
         fn ctrl_d_scrolls_result_half_page_down() {
             let state = result_focused_state();
-            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::ResultScrollHalfPageDown));
         }
@@ -1052,9 +1032,8 @@ mod tests {
         #[test]
         fn ctrl_u_scrolls_result_half_page_up() {
             let state = result_focused_state();
-            let k = key_with_mod(KeyCode::Char('u'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('u')), &state);
 
             assert!(matches!(result, Action::ResultScrollHalfPageUp));
         }
@@ -1062,9 +1041,8 @@ mod tests {
         #[test]
         fn ctrl_f_scrolls_result_full_page_down() {
             let state = result_focused_state();
-            let k = key_with_mod(KeyCode::Char('f'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
 
             assert!(matches!(result, Action::ResultScrollFullPageDown));
         }
@@ -1072,9 +1050,8 @@ mod tests {
         #[test]
         fn ctrl_b_scrolls_result_full_page_up() {
             let state = result_focused_state();
-            let k = key_with_mod(KeyCode::Char('b'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
 
             assert!(matches!(result, Action::ResultScrollFullPageUp));
         }
@@ -1082,9 +1059,8 @@ mod tests {
         #[test]
         fn ctrl_d_scrolls_inspector_half_page_down() {
             let state = inspector_focused_state();
-            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::InspectorScrollHalfPageDown));
         }
@@ -1092,9 +1068,8 @@ mod tests {
         #[test]
         fn ctrl_d_scrolls_explorer_half_page_down() {
             let state = browse_state();
-            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::SelectHalfPageDown));
         }
@@ -1103,7 +1078,7 @@ mod tests {
         fn pagedown_scrolls_result_full_page_down() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
 
             assert!(matches!(result, Action::ResultScrollFullPageDown));
         }
@@ -1112,7 +1087,7 @@ mod tests {
         fn pageup_scrolls_result_full_page_up() {
             let state = result_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::PageUp), &state);
+            let result = handle_normal_mode(combo(Key::PageUp), &state);
 
             assert!(matches!(result, Action::ResultScrollFullPageUp));
         }
@@ -1121,7 +1096,7 @@ mod tests {
         fn pagedown_scrolls_inspector_full_page_down() {
             let state = inspector_focused_state();
 
-            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
 
             assert!(matches!(result, Action::InspectorScrollFullPageDown));
         }
@@ -1130,7 +1105,7 @@ mod tests {
         fn pagedown_scrolls_explorer_full_page_down() {
             let state = browse_state();
 
-            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
 
             assert!(matches!(result, Action::SelectFullPageDown));
         }
@@ -1145,9 +1120,8 @@ mod tests {
         #[test]
         fn ctrl_d_noop_in_connections_mode() {
             let state = connections_mode_state();
-            let k = key_with_mod(KeyCode::Char('d'), KeyModifiers::CONTROL);
 
-            let result = handle_normal_mode(k, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -1156,7 +1130,7 @@ mod tests {
         fn pagedown_noop_in_connections_mode() {
             let state = connections_mode_state();
 
-            let result = handle_normal_mode(key(KeyCode::PageDown), &state);
+            let result = handle_normal_mode(combo(Key::PageDown), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -1210,76 +1184,72 @@ mod tests {
 
         // Completion-aware keys: behavior changes based on completion visibility
         #[rstest]
-        #[case(KeyCode::Esc, false, Expected::CloseSqlModal)]
-        #[case(KeyCode::Esc, true, Expected::CompletionDismiss)]
-        #[case(KeyCode::Tab, false, Expected::SqlModalTab)]
-        #[case(KeyCode::Tab, true, Expected::CompletionAccept)]
-        #[case(KeyCode::Enter, false, Expected::SqlModalNewLine)]
-        #[case(KeyCode::Enter, true, Expected::CompletionAccept)]
-        #[case(KeyCode::Up, false, Expected::SqlModalMoveCursor(CursorMove::Up))]
-        #[case(KeyCode::Up, true, Expected::CompletionPrev)]
-        #[case(KeyCode::Down, false, Expected::SqlModalMoveCursor(CursorMove::Down))]
-        #[case(KeyCode::Down, true, Expected::CompletionNext)]
+        #[case(Key::Esc, false, Expected::CloseSqlModal)]
+        #[case(Key::Esc, true, Expected::CompletionDismiss)]
+        #[case(Key::Tab, false, Expected::SqlModalTab)]
+        #[case(Key::Tab, true, Expected::CompletionAccept)]
+        #[case(Key::Enter, false, Expected::SqlModalNewLine)]
+        #[case(Key::Enter, true, Expected::CompletionAccept)]
+        #[case(Key::Up, false, Expected::SqlModalMoveCursor(CursorMove::Up))]
+        #[case(Key::Up, true, Expected::CompletionPrev)]
+        #[case(Key::Down, false, Expected::SqlModalMoveCursor(CursorMove::Down))]
+        #[case(Key::Down, true, Expected::CompletionNext)]
         fn completion_aware_keys(
-            #[case] code: KeyCode,
+            #[case] code: Key,
             #[case] completion_visible: bool,
             #[case] expected: Expected,
         ) {
-            let result = handle_sql_modal_keys(key(code), completion_visible);
+            let result = handle_sql_modal_keys(combo(code), completion_visible);
 
             assert_action(result, expected);
         }
 
         // Keys unaffected by completion visibility
         #[rstest]
-        #[case(KeyCode::Backspace, Expected::SqlModalBackspace)]
-        #[case(KeyCode::Delete, Expected::SqlModalDelete)]
-        #[case(KeyCode::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
-        #[case(KeyCode::Right, Expected::SqlModalMoveCursor(CursorMove::Right))]
-        #[case(KeyCode::Home, Expected::SqlModalMoveCursor(CursorMove::Home))]
-        #[case(KeyCode::End, Expected::SqlModalMoveCursor(CursorMove::End))]
-        #[case(KeyCode::F(1), Expected::None)]
-        fn completion_independent_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_sql_modal_keys(key(code), false);
+        #[case(Key::Backspace, Expected::SqlModalBackspace)]
+        #[case(Key::Delete, Expected::SqlModalDelete)]
+        #[case(Key::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
+        #[case(Key::Right, Expected::SqlModalMoveCursor(CursorMove::Right))]
+        #[case(Key::Home, Expected::SqlModalMoveCursor(CursorMove::Home))]
+        #[case(Key::End, Expected::SqlModalMoveCursor(CursorMove::End))]
+        #[case(Key::F(1), Expected::None)]
+        fn completion_independent_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_sql_modal_keys(combo(code), false);
 
             assert_action(result, expected);
         }
 
         #[test]
         fn delete_key_returns_delete_action() {
-            let result = handle_sql_modal_keys(key(KeyCode::Delete), false);
+            let result = handle_sql_modal_keys(combo(Key::Delete), false);
 
             assert_action(result, Expected::SqlModalDelete);
         }
 
         #[test]
         fn enter_without_completion_returns_newline() {
-            let result = handle_sql_modal_keys(key(KeyCode::Enter), false);
+            let result = handle_sql_modal_keys(combo(Key::Enter), false);
 
             assert_action(result, Expected::SqlModalNewLine);
         }
 
         #[test]
         fn tab_without_completion_returns_tab() {
-            let result = handle_sql_modal_keys(key(KeyCode::Tab), false);
+            let result = handle_sql_modal_keys(combo(Key::Tab), false);
 
             assert_action(result, Expected::SqlModalTab);
         }
 
         #[test]
         fn alt_enter_submits_query() {
-            let key = key_with_mod(KeyCode::Enter, KeyModifiers::ALT);
-
-            let result = handle_sql_modal_keys(key, false);
+            let result = handle_sql_modal_keys(combo_alt(Key::Enter), false);
 
             assert_action(result, Expected::SqlModalSubmit);
         }
 
         #[test]
         fn ctrl_space_triggers_completion() {
-            let key = key_with_mod(KeyCode::Char(' '), KeyModifiers::CONTROL);
-
-            let result = handle_sql_modal_keys(key, false);
+            let result = handle_sql_modal_keys(combo_ctrl(Key::Char(' ')), false);
 
             assert_action(result, Expected::CompletionTrigger);
         }
@@ -1290,7 +1260,7 @@ mod tests {
         #[case('あ')]
         #[case('日')]
         fn char_input_inserts_character(#[case] c: char) {
-            let result = handle_sql_modal_keys(key(KeyCode::Char(c)), false);
+            let result = handle_sql_modal_keys(combo(Key::Char(c)), false);
 
             assert_action(result, Expected::SqlModalInput(c));
         }
@@ -1309,13 +1279,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Enter, Expected::Submit)]
-        #[case(KeyCode::Esc, Expected::Exit)]
-        #[case(KeyCode::Backspace, Expected::Backspace)]
-        #[case(KeyCode::Char('s'), Expected::Input('s'))]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn command_line_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_command_line_mode(key(code));
+        #[case(Key::Enter, Expected::Submit)]
+        #[case(Key::Esc, Expected::Exit)]
+        #[case(Key::Backspace, Expected::Backspace)]
+        #[case(Key::Char('s'), Expected::Input('s'))]
+        #[case(Key::Tab, Expected::None)]
+        fn command_line_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_command_line_mode(combo(code));
 
             match expected {
                 Expected::Submit => assert!(matches!(result, Action::CommandLineSubmit)),
@@ -1344,16 +1314,16 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Enter, Expected::Confirm)]
-        #[case(KeyCode::Up, Expected::SelectPrev)]
-        #[case(KeyCode::Down, Expected::SelectNext)]
-        #[case(KeyCode::Backspace, Expected::FilterBackspace)]
-        #[case(KeyCode::Char('u'), Expected::FilterInput('u'))]
-        #[case(KeyCode::Char('日'), Expected::FilterInput('日'))]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn table_picker_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_table_picker_keys(key(code));
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Enter, Expected::Confirm)]
+        #[case(Key::Up, Expected::SelectPrev)]
+        #[case(Key::Down, Expected::SelectNext)]
+        #[case(Key::Backspace, Expected::FilterBackspace)]
+        #[case(Key::Char('u'), Expected::FilterInput('u'))]
+        #[case(Key::Char('日'), Expected::FilterInput('日'))]
+        #[case(Key::Tab, Expected::None)]
+        fn table_picker_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_table_picker_keys(combo(code));
 
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
@@ -1382,13 +1352,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Enter, Expected::Confirm)]
-        #[case(KeyCode::Up, Expected::SelectPrev)]
-        #[case(KeyCode::Down, Expected::SelectNext)]
-        #[case(KeyCode::Char('a'), Expected::None)]
-        fn command_palette_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_command_palette_keys(key(code));
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Enter, Expected::Confirm)]
+        #[case(Key::Up, Expected::SelectPrev)]
+        #[case(Key::Down, Expected::SelectNext)]
+        #[case(Key::Char('a'), Expected::None)]
+        fn command_palette_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_command_palette_keys(combo(code));
 
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
@@ -1405,28 +1375,28 @@ mod tests {
 
         #[test]
         fn q_quits() {
-            let result = handle_help_keys(key(KeyCode::Char('q')));
+            let result = handle_help_keys(combo(Key::Char('q')));
 
             assert!(matches!(result, Action::Quit));
         }
 
         #[test]
         fn esc_closes_help() {
-            let result = handle_help_keys(key(KeyCode::Esc));
+            let result = handle_help_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::CloseHelp));
         }
 
         #[test]
         fn question_mark_closes_help() {
-            let result = handle_help_keys(key(KeyCode::Char('?')));
+            let result = handle_help_keys(combo(Key::Char('?')));
 
             assert!(matches!(result, Action::CloseHelp));
         }
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_help_keys(key(KeyCode::Char('a')));
+            let result = handle_help_keys(combo(Key::Char('a')));
 
             assert!(matches!(result, Action::None));
         }
@@ -1442,10 +1412,9 @@ mod tests {
         #[test]
         #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
         fn ctrl_h_should_open_result_history() {
-            let key = key_with_mod(KeyCode::Char('h'), KeyModifiers::CONTROL);
             let state = AppState::new("test".to_string());
 
-            let result = handle_normal_mode(key, &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
 
             // When implemented, this should match Action::OpenResultHistory or similar
             assert!(
@@ -1472,20 +1441,20 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('q'), Expected::Quit)]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Char('e'), Expected::Reenter)]
-        #[case(KeyCode::Char('s'), Expected::OpenSelector)]
-        #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
-        #[case(KeyCode::Char('c'), Expected::Copy)]
-        #[case(KeyCode::Up, Expected::ScrollUp)]
-        #[case(KeyCode::Char('k'), Expected::ScrollUp)]
-        #[case(KeyCode::Down, Expected::ScrollDown)]
-        #[case(KeyCode::Char('j'), Expected::ScrollDown)]
-        #[case(KeyCode::Char('r'), Expected::None)]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn connection_error_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_connection_error_keys(key(code));
+        #[case(Key::Char('q'), Expected::Quit)]
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Char('e'), Expected::Reenter)]
+        #[case(Key::Char('s'), Expected::OpenSelector)]
+        #[case(Key::Char('d'), Expected::ToggleDetails)]
+        #[case(Key::Char('c'), Expected::Copy)]
+        #[case(Key::Up, Expected::ScrollUp)]
+        #[case(Key::Char('k'), Expected::ScrollUp)]
+        #[case(Key::Down, Expected::ScrollDown)]
+        #[case(Key::Char('j'), Expected::ScrollDown)]
+        #[case(Key::Char('r'), Expected::None)]
+        #[case(Key::Tab, Expected::None)]
+        fn connection_error_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_connection_error_keys(combo(code));
 
             match expected {
                 Expected::Quit => assert!(matches!(result, Action::Quit)),
@@ -1512,21 +1481,21 @@ mod tests {
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {
-            let result = handle_cell_edit_keys(key(KeyCode::Esc));
+            let result = handle_cell_edit_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::ResultCancelCellEdit));
         }
 
         #[test]
         fn char_input_returns_cell_edit_input() {
-            let result = handle_cell_edit_keys(key(KeyCode::Char('x')));
+            let result = handle_cell_edit_keys(combo(Key::Char('x')));
 
             assert!(matches!(result, Action::ResultCellEditInput('x')));
         }
 
         #[test]
         fn backspace_returns_cell_edit_backspace() {
-            let result = handle_cell_edit_keys(key(KeyCode::Backspace));
+            let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ResultCellEditBackspace));
         }
@@ -1547,7 +1516,7 @@ mod tests {
             let state = make_state(InputMode::Normal);
 
             // 'q' in Normal mode should quit
-            let result = handle_key_event(key(KeyCode::Char('q')), &state);
+            let result = handle_key_event(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -1557,7 +1526,7 @@ mod tests {
             let state = make_state(InputMode::SqlModal);
 
             // Esc in SqlModal should close modal (not Escape action)
-            let result = handle_key_event(key(KeyCode::Esc), &state);
+            let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
         }
@@ -1578,7 +1547,7 @@ mod tests {
         fn tab_moves_to_next_field() {
             let state = setup_state();
 
-            let result = handle_connection_setup_keys(key(KeyCode::Tab), &state);
+            let result = handle_connection_setup_keys(combo(Key::Tab), &state);
 
             assert!(matches!(result, Action::ConnectionSetupNextField));
         }
@@ -1587,7 +1556,7 @@ mod tests {
         fn backtab_moves_to_prev_field() {
             let state = setup_state();
 
-            let result = handle_connection_setup_keys(key(KeyCode::BackTab), &state);
+            let result = handle_connection_setup_keys(combo(Key::BackTab), &state);
 
             assert!(matches!(result, Action::ConnectionSetupPrevField));
         }
@@ -1595,9 +1564,8 @@ mod tests {
         #[test]
         fn ctrl_s_saves() {
             let state = setup_state();
-            let key = key_with_mod(KeyCode::Char('s'), KeyModifiers::CONTROL);
 
-            let result = handle_connection_setup_keys(key, &state);
+            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('s')), &state);
 
             assert!(matches!(result, Action::ConnectionSetupSave));
         }
@@ -1606,7 +1574,7 @@ mod tests {
         fn esc_cancels() {
             let state = setup_state();
 
-            let result = handle_connection_setup_keys(key(KeyCode::Esc), &state);
+            let result = handle_connection_setup_keys(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::ConnectionSetupCancel));
         }
@@ -1615,7 +1583,7 @@ mod tests {
         fn char_input_sends_input_action() {
             let state = setup_state();
 
-            let result = handle_connection_setup_keys(key(KeyCode::Char('a')), &state);
+            let result = handle_connection_setup_keys(combo(Key::Char('a')), &state);
 
             assert!(matches!(result, Action::ConnectionSetupInput('a')));
         }
@@ -1624,7 +1592,7 @@ mod tests {
         fn backspace_sends_backspace_action() {
             let state = setup_state();
 
-            let result = handle_connection_setup_keys(key(KeyCode::Backspace), &state);
+            let result = handle_connection_setup_keys(combo(Key::Backspace), &state);
 
             assert!(matches!(result, Action::ConnectionSetupBackspace));
         }
@@ -1632,9 +1600,8 @@ mod tests {
         #[test]
         fn ctrl_c_is_ignored() {
             let state = setup_state();
-            let key = key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
-            let result = handle_connection_setup_keys(key, &state);
+            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('c')), &state);
 
             assert!(matches!(result, Action::None));
         }
@@ -1642,22 +1609,26 @@ mod tests {
         #[test]
         fn alt_char_is_allowed_for_international_keyboards() {
             let state = setup_state();
-            let key = key_with_mod(KeyCode::Char('q'), KeyModifiers::ALT);
 
-            let result = handle_connection_setup_keys(key, &state);
+            let result = handle_connection_setup_keys(combo_alt(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::ConnectionSetupInput('q')));
         }
 
         #[test]
         fn altgr_char_is_allowed() {
+            use crate::app::keybindings::Modifiers;
             let state = setup_state();
-            let key = key_with_mod(
-                KeyCode::Char('@'),
-                KeyModifiers::CONTROL | KeyModifiers::ALT,
-            );
+            let altgr = KeyCombo {
+                key: Key::Char('@'),
+                modifiers: Modifiers {
+                    ctrl: true,
+                    alt: true,
+                    shift: false,
+                },
+            };
 
-            let result = handle_connection_setup_keys(key, &state);
+            let result = handle_connection_setup_keys(altgr, &state);
 
             assert!(matches!(result, Action::ConnectionSetupInput('@')));
         }
@@ -1667,7 +1638,7 @@ mod tests {
             let mut state = setup_state();
             state.connection_setup.focused_field = ConnectionField::SslMode;
 
-            let result = handle_connection_setup_keys(key(KeyCode::Enter), &state);
+            let result = handle_connection_setup_keys(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ConnectionSetupToggleDropdown));
         }
@@ -1682,14 +1653,14 @@ mod tests {
             }
 
             #[rstest]
-            #[case(KeyCode::Up, Action::ConnectionSetupDropdownPrev)]
-            #[case(KeyCode::Down, Action::ConnectionSetupDropdownNext)]
-            #[case(KeyCode::Enter, Action::ConnectionSetupDropdownConfirm)]
-            #[case(KeyCode::Esc, Action::ConnectionSetupDropdownCancel)]
-            fn dropdown_navigation(#[case] code: KeyCode, #[case] expected: Action) {
+            #[case(Key::Up, Action::ConnectionSetupDropdownPrev)]
+            #[case(Key::Down, Action::ConnectionSetupDropdownNext)]
+            #[case(Key::Enter, Action::ConnectionSetupDropdownConfirm)]
+            #[case(Key::Esc, Action::ConnectionSetupDropdownCancel)]
+            fn dropdown_navigation(#[case] code: Key, #[case] expected: Action) {
                 let state = dropdown_state();
 
-                let result = handle_connection_setup_keys(key(code), &state);
+                let result = handle_connection_setup_keys(combo(code), &state);
 
                 assert_eq!(
                     std::mem::discriminant(&result),
@@ -1704,10 +1675,10 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
-        fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
-            let result = handle_confirm_dialog_keys(key(code));
+        #[case(Key::Enter, Action::ConfirmDialogConfirm)]
+        #[case(Key::Esc, Action::ConfirmDialogCancel)]
+        fn dialog_keys(#[case] code: Key, #[case] expected: Action) {
+            let result = handle_confirm_dialog_keys(combo(code));
 
             assert_eq!(
                 std::mem::discriminant(&result),
@@ -1716,13 +1687,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('y'))]
-        #[case(KeyCode::Char('Y'))]
-        #[case(KeyCode::Char('n'))]
-        #[case(KeyCode::Char('N'))]
-        #[case(KeyCode::Char('x'))]
-        fn non_bound_keys_return_none(#[case] code: KeyCode) {
-            let result = handle_confirm_dialog_keys(key(code));
+        #[case(Key::Char('y'))]
+        #[case(Key::Char('Y'))]
+        #[case(Key::Char('n'))]
+        #[case(Key::Char('N'))]
+        #[case(Key::Char('x'))]
+        fn non_bound_keys_return_none(#[case] code: Key) {
+            let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::None));
         }
@@ -1733,17 +1704,17 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case(KeyCode::Char('q'), Action::Quit)]
-        #[case(KeyCode::Char('j'), Action::ConnectionListSelectNext)]
-        #[case(KeyCode::Down, Action::ConnectionListSelectNext)]
-        #[case(KeyCode::Char('k'), Action::ConnectionListSelectPrevious)]
-        #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
-        #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
-        #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
-        #[case(KeyCode::Char('e'), Action::RequestEditSelectedConnection)]
-        #[case(KeyCode::Char('d'), Action::RequestDeleteSelectedConnection)]
-        fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
-            let result = handle_connection_selector_keys(key(code));
+        #[case(Key::Char('q'), Action::Quit)]
+        #[case(Key::Char('j'), Action::ConnectionListSelectNext)]
+        #[case(Key::Down, Action::ConnectionListSelectNext)]
+        #[case(Key::Char('k'), Action::ConnectionListSelectPrevious)]
+        #[case(Key::Up, Action::ConnectionListSelectPrevious)]
+        #[case(Key::Enter, Action::ConfirmConnectionSelection)]
+        #[case(Key::Char('n'), Action::OpenConnectionSetup)]
+        #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
+        #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
+        fn selector_keys(#[case] code: Key, #[case] expected: Action) {
+            let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(
                 std::mem::discriminant(&result),
@@ -1753,7 +1724,7 @@ mod tests {
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
+            let result = handle_connection_selector_keys(combo(Key::Char('x')));
 
             assert!(matches!(result, Action::None));
         }
@@ -1828,12 +1799,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('d'))]
-        #[case(KeyCode::Delete)]
-        fn delete_key_requests_delete(#[case] code: KeyCode) {
+        #[case(Key::Char('d'))]
+        #[case(Key::Delete)]
+        fn delete_key_requests_delete(#[case] code: Key) {
             let state = connections_mode_state();
 
-            let result = handle_normal_mode(key(code), &state);
+            let result = handle_normal_mode(combo(code), &state);
 
             assert!(matches!(result, Action::RequestDeleteSelectedConnection));
         }
@@ -1842,7 +1813,7 @@ mod tests {
         fn e_key_requests_edit() {
             let state = connections_mode_state();
 
-            let result = handle_normal_mode(key(KeyCode::Char('e')), &state);
+            let result = handle_normal_mode(combo(Key::Char('e')), &state);
 
             assert!(matches!(result, Action::RequestEditSelectedConnection));
         }
@@ -1853,42 +1824,42 @@ mod tests {
 
         #[test]
         fn esc_returns_close_er_table_picker() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Esc));
+            let result = handle_er_table_picker_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::CloseErTablePicker));
         }
 
         #[test]
         fn enter_returns_er_confirm_selection() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Enter));
+            let result = handle_er_table_picker_keys(combo(Key::Enter));
 
             assert!(matches!(result, Action::ErConfirmSelection));
         }
 
         #[test]
         fn up_returns_select_previous() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Up));
+            let result = handle_er_table_picker_keys(combo(Key::Up));
 
             assert!(matches!(result, Action::SelectPrevious));
         }
 
         #[test]
         fn down_returns_select_next() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Down));
+            let result = handle_er_table_picker_keys(combo(Key::Down));
 
             assert!(matches!(result, Action::SelectNext));
         }
 
         #[test]
         fn backspace_returns_er_filter_backspace() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Backspace));
+            let result = handle_er_table_picker_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ErFilterBackspace));
         }
 
         #[test]
         fn char_input_returns_er_filter_input() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Char('a')));
+            let result = handle_er_table_picker_keys(combo(Key::Char('a')));
 
             assert!(matches!(result, Action::ErFilterInput('a')));
         }
