@@ -135,6 +135,7 @@ pub struct UiState {
     pub result_pane_height: u16,
     pub result_selection: ResultSelection,
     pub staged_delete_rows: BTreeSet<usize>,
+    pub delete_op_pending: bool,
 
     pub help_scroll_offset: usize,
 

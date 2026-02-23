@@ -771,7 +771,12 @@ pub fn reduce_navigation(
                 Some(vec![])
             }
         }
+        Action::ResultDeleteOperatorPending => {
+            state.ui.delete_op_pending = true;
+            Some(vec![])
+        }
         Action::StageRowForDelete => {
+            state.ui.delete_op_pending = false;
             if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
                 && let Some(row_idx) = state.ui.result_selection.row()
             {
