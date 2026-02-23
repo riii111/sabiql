@@ -929,9 +929,12 @@ mod tests {
 
     mod write_flow {
         use super::*;
+        use crate::infra::adapters::PostgresAdapter;
 
         fn editable_state() -> AppState {
-            let mut state = create_test_state();
+            let pg = std::sync::Arc::new(PostgresAdapter::new());
+            let mut state = AppState::with_ports("test_project".to_string(), pg.clone(), pg);
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.query.current_result = Some(editable_preview_result());
             state.cache.table_detail = Some(users_table_detail());
             state.query.pagination.schema = "public".to_string();

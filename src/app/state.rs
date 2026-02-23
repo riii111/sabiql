@@ -59,89 +59,28 @@ impl DdlGenerator for StubDdlGenerator {
 struct StubSqlDialect;
 impl SqlDialect for StubSqlDialect {
     fn quote_ident(&self, name: &str) -> String {
-        format!("\"{}\"", name.replace('"', "\"\""))
+        format!("\"{}\"", name)
     }
     fn quote_literal(&self, value: &str) -> String {
-        format!("'{}'", value.replace('\'', "''"))
+        format!("'{}'", value)
     }
     fn build_update_sql(
         &self,
-        schema: &str,
-        table: &str,
-        column: &str,
-        new_value: &str,
-        pk_pairs: &[(String, String)],
+        _schema: &str,
+        _table: &str,
+        _column: &str,
+        _new_value: &str,
+        _pk_pairs: &[(String, String)],
     ) -> String {
-        let val = if new_value == "NULL" {
-            "NULL".to_string()
-        } else {
-            self.quote_literal(new_value)
-        };
-        let where_clause = pk_pairs
-            .iter()
-            .map(|(col, v)| format!("{} = {}", self.quote_ident(col), self.quote_literal(v)))
-            .collect::<Vec<_>>()
-            .join(" AND ");
-        format!(
-            "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
-            self.quote_ident(schema),
-            self.quote_ident(table),
-            self.quote_ident(column),
-            val,
-            where_clause
-        )
+        String::new()
     }
     fn build_bulk_delete_sql(
         &self,
-        schema: &str,
-        table: &str,
-        pk_pairs_per_row: &[Vec<(String, String)>],
+        _schema: &str,
+        _table: &str,
+        _pk_pairs_per_row: &[Vec<(String, String)>],
     ) -> String {
-        if pk_pairs_per_row.is_empty() {
-            return String::new();
-        }
-        let pk_count = pk_pairs_per_row[0].len();
-        let val_expr = |v: &str| -> String {
-            if v == "NULL" {
-                "NULL".to_string()
-            } else {
-                self.quote_literal(v)
-            }
-        };
-        let where_clause = if pk_count == 1 {
-            let col = self.quote_ident(&pk_pairs_per_row[0][0].0);
-            let values = pk_pairs_per_row
-                .iter()
-                .map(|pairs| val_expr(&pairs[0].1))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{} IN ({})", col, values)
-        } else {
-            let cols = pk_pairs_per_row[0]
-                .iter()
-                .map(|(col, _)| self.quote_ident(col))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let rows = pk_pairs_per_row
-                .iter()
-                .map(|pairs| {
-                    let vals = pairs
-                        .iter()
-                        .map(|(_, v)| val_expr(v))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("({})", vals)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({}) IN ({})", cols, rows)
-        };
-        format!(
-            "DELETE FROM {}.{}\nWHERE {};",
-            self.quote_ident(schema),
-            self.quote_ident(table),
-            where_clause
-        )
+        String::new()
     }
 }
 

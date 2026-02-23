@@ -1155,4 +1155,107 @@ mod tests {
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
         }
     }
+
+    mod switch_connection {
+        use super::*;
+        use crate::domain::connection::SslMode;
+
+        struct FakeDsnBuilder;
+        impl DsnBuilder for FakeDsnBuilder {
+            fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+                format!(
+                    "fake://{}:{}/{}",
+                    profile.host, profile.port, profile.database
+                )
+            }
+            fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
+                String::new()
+            }
+        }
+
+        fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
+            EffectRunner::new(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(FakeDsnBuilder),
+                Arc::new(NoopErExporter),
+                Arc::new(NoopConfigWriter),
+                Arc::new(NoopErLogWriter),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(60),
+                action_tx,
+            )
+        }
+
+        #[tokio::test]
+        async fn dispatches_action_with_built_dsn() {
+            let (tx, mut rx) = mpsc::channel::<Action>(16);
+            let runner = make_runner_with_dsn_builder(tx);
+
+            let profile = ConnectionProfile::new(
+                "My DB",
+                "db.example.com",
+                5432,
+                "mydb",
+                "user",
+                "pass",
+                SslMode::Prefer,
+            )
+            .unwrap();
+
+            let mut state = AppState::new("test".to_string());
+            state.connections = vec![profile];
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 0,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            let action = rx.recv().await.expect("action dispatched");
+            match action {
+                Action::SwitchConnection { id, dsn, name } => {
+                    assert_eq!(dsn, "fake://db.example.com:5432/mydb");
+                    assert_eq!(name, "My DB");
+                    assert_eq!(id, state.connections[0].id);
+                }
+                other => panic!("expected SwitchConnection, got {:?}", other),
+            }
+        }
+
+        #[tokio::test]
+        async fn out_of_bounds_index_is_noop() {
+            let (tx, mut rx) = mpsc::channel::<Action>(16);
+            let runner = make_runner_with_dsn_builder(tx);
+
+            let mut state = AppState::new("test".to_string());
+            // no connections
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 99,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            assert!(rx.try_recv().is_err());
+        }
+    }
 }
