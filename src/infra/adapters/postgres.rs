@@ -2332,7 +2332,7 @@ mod tests {
         }
 
         #[test]
-        fn line_count_matches_actual_lines() {
+        fn default_ddl_line_count_matches_generated_ddl() {
             let adapter = PostgresAdapter::new();
             let table = make_table(vec![make_column("col", "text", true)], None);
 
