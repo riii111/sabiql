@@ -13,6 +13,12 @@ pub struct KeyBinding {
     pub desc_short: &'static str,
     /// Full description for Help/Palette (e.g., "Quit application")
     pub description: &'static str,
+    /// The action triggered by this key.
+    ///
+    /// `Action::None` means **display-only**: the entry is shown in Footer/Help/Palette
+    /// as a hint but is not matched by `handler.rs`. This is used for multi-key
+    /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
+    /// actual matching is handled directly in handler match arms.
     pub action: Action,
 }
 
@@ -135,6 +141,7 @@ pub mod idx {
         pub const TOP_BOTTOM: usize = 5;
         pub const ESC_BACK: usize = 6;
         pub const EDIT: usize = 7;
+        pub const DRAFT_DISCARD: usize = 8;
     }
 
     pub mod cell_edit {
@@ -277,7 +284,11 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Help overlay (individual key display)
+/// Navigation keys for Help overlay (individual key display).
+///
+/// All entries use `Action::None` (display-only). The combined display strings
+/// like `"j / ↓"` represent multiple keys shown as one hint; actual key
+/// matching is handled directly in `handler.rs` match arms.
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "j",
@@ -344,7 +355,11 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Footer (combined key display)
+/// Navigation keys for Footer (combined key display).
+///
+/// All entries use `Action::None` (display-only). Entries like `"j/k / ↑↓"`
+/// combine multiple keys into a single Footer hint for brevity; the actual
+/// keys are matched individually in `handler.rs`.
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
     // idx 0: SCROLL
     KeyBinding {
@@ -683,8 +698,14 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
 // Confirm Dialog
 // =============================================================================
 
+// FIXME: The display strings "Enter/y" and "Esc/n" imply that y/n keys are
+// accepted, but handler.rs only matches Enter (confirm) and Esc (cancel).
+// The y/n keys are display-only hints that do not trigger actions.
+// To resolve: either implement y/n key handling in handler.rs or update the
+// display strings to reflect the actual accepted keys (Enter / Esc).
 pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     // idx 0: CONFIRM
+    // Note: "y" in the display is a hint only; handler matches Enter only.
     KeyBinding {
         key_short: "Enter/y",
         key: "Enter / y",
@@ -693,6 +714,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         action: Action::ConfirmDialogConfirm,
     },
     // idx 1: CANCEL
+    // Note: "n" in the display is a hint only; handler matches Esc only.
     KeyBinding {
         key_short: "Esc/n",
         key: "Esc / n",
@@ -1061,6 +1083,14 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Edit active cell",
         action: Action::ResultEnterCellEdit,
     },
+    // idx 8: DRAFT_DISCARD
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Discard",
+        description: "Discard pending draft and exit to Row Active",
+        action: Action::ResultDiscardCellEdit,
+    },
 ];
 
 pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
@@ -1092,8 +1122,8 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
-        desc_short: "Cancel",
-        description: "Discard edit and return to Cell Active",
+        desc_short: "Normal",
+        description: "Exit to Cell Active (draft preserved)",
         action: Action::ResultCancelCellEdit,
     },
 ];
@@ -1232,6 +1262,7 @@ mod tests {
         assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
 
         // CELL_EDIT_KEYS
         assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
