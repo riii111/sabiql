@@ -690,26 +690,19 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
 // Confirm Dialog
 // =============================================================================
 
-// FIXME: The display strings "Enter/y" and "Esc/n" imply that y/n keys are
-// accepted, but handler.rs only matches Enter (confirm) and Esc (cancel).
-// The y/n keys are display-only hints that do not trigger actions.
-// To resolve: either implement y/n key handling in handler.rs or update the
-// display strings to reflect the actual accepted keys (Enter / Esc).
 pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     // idx 0: CONFIRM
-    // Note: "y" in the display is a hint only; handler matches Enter only.
     KeyBinding {
-        key_short: "Enter/y",
-        key: "Enter / y",
+        key_short: "Enter",
+        key: "Enter",
         desc_short: "Confirm",
         description: "Confirm",
         action: Action::ConfirmDialogConfirm,
     },
     // idx 1: CANCEL
-    // Note: "n" in the display is a hint only; handler matches Esc only.
     KeyBinding {
-        key_short: "Esc/n",
-        key: "Esc / n",
+        key_short: "Esc",
+        key: "Esc",
         desc_short: "Cancel",
         description: "Cancel",
         action: Action::ConfirmDialogCancel,
