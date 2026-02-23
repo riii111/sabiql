@@ -17,6 +17,7 @@ use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_
 use crate::domain::{QueryResult, QuerySource};
 
 use super::helpers::editable_preview_base;
+use super::navigation::build_bulk_delete_preview;
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     if !state.cell_edit.is_active() {
@@ -300,6 +301,21 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
 
         Action::SubmitCellEditWrite => {
+            if !state.ui.staged_delete_rows.is_empty() {
+                match build_bulk_delete_preview(state) {
+                    Ok((preview, target_page, target_row)) => {
+                        state.query.pending_delete_refresh_target = Some((target_page, target_row));
+                        return Some(vec![Effect::DispatchActions(vec![
+                            Action::OpenWritePreviewConfirm(Box::new(preview)),
+                        ])]);
+                    }
+                    Err(msg) => {
+                        state.messages.set_error_at(msg, now);
+                        return Some(vec![]);
+                    }
+                }
+            }
+
             if !state.cell_edit.is_active() {
                 state
                     .messages
@@ -337,10 +353,16 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         caller_mode,
                     )
                 }
-                WriteOperation::Delete => (
-                    format!("Confirm DELETE: {}", preview.target_summary.table),
-                    InputMode::Normal,
-                ),
+                WriteOperation::Delete => {
+                    let n = state.ui.staged_delete_rows.len().max(1);
+                    (
+                        format!(
+                            "Confirm DELETE: {} row(s) from {}",
+                            n, preview.target_summary.table
+                        ),
+                        InputMode::Normal,
+                    )
+                }
             };
 
             state.confirm_dialog.title = title;
@@ -417,20 +439,22 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     }
                 }
                 WriteOperation::Delete => {
-                    if *affected_rows != 1 {
+                    let expected = state.ui.staged_delete_rows.len().max(1);
+                    if *affected_rows != expected {
                         state.messages.set_error_at(
-                            format!("DELETE expected 1 row, but affected {} rows", affected_rows),
+                            format!(
+                                "DELETE expected {} row(s), but affected {} rows",
+                                expected, affected_rows
+                            ),
                             now,
                         );
-                        state.query.pending_delete_refresh_target = None;
-                        state.ui.input_mode = InputMode::Normal;
-                        return Some(vec![]);
+                    } else {
+                        state
+                            .messages
+                            .set_success_at(format!("Deleted {} row(s)", expected), now);
                     }
-
-                    state
-                        .messages
-                        .set_success_at("Deleted 1 row".to_string(), now);
                     state.cell_edit.clear();
+                    state.ui.staged_delete_rows.clear();
                     state.ui.input_mode = InputMode::Normal;
 
                     let (target_page, target_row) = state
@@ -1088,7 +1112,10 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
             assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
-            assert_eq!(state.confirm_dialog.title, "Confirm DELETE: users");
+            assert_eq!(
+                state.confirm_dialog.title,
+                "Confirm DELETE: 1 row(s) from users"
+            );
         }
 
         #[test]
@@ -1113,7 +1140,7 @@ mod tests {
             );
             assert_eq!(
                 state.messages.last_success.as_deref(),
-                Some("Deleted 1 row")
+                Some("Deleted 1 row(s)")
             );
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1132,6 +1159,8 @@ mod tests {
         #[test]
         fn execute_write_non_one_rows_for_delete_sets_error() {
             let mut state = create_test_state();
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
             state.pending_write_preview = Some(delete_preview());
 
             let effects = reduce_query(
@@ -1141,12 +1170,12 @@ mod tests {
             )
             .unwrap();
 
-            assert!(effects.is_empty());
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("DELETE expected 1 row, but affected 0 rows")
+                Some("DELETE expected 1 row(s), but affected 0 rows")
             );
+            assert_eq!(effects.len(), 1);
         }
 
         #[test]

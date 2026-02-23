@@ -15,11 +15,11 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 use crate::app::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_delete_sql, build_pk_pairs};
+use crate::app::write_update::{build_bulk_delete_sql, build_pk_pairs};
 
 use super::helpers::{
-    ERR_DELETION_REQUIRES_PRIMARY_KEY, ERR_EDITING_REQUIRES_PRIMARY_KEY, deletion_refresh_target,
-    editable_preview_base,
+    ERR_DELETION_REQUIRES_PRIMARY_KEY, ERR_EDITING_REQUIRES_PRIMARY_KEY,
+    deletion_refresh_target_bulk, editable_preview_base,
 };
 
 fn result_row_count(state: &AppState) -> usize {
@@ -125,10 +125,12 @@ fn explorer_item_count(state: &AppState) -> usize {
     state.tables().len()
 }
 
-#[allow(dead_code)]
-fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option<usize>), String> {
-    if state.ui.result_selection.mode() != crate::app::ui_state::ResultNavMode::RowActive {
-        return Err("No active row".to_string());
+/// Builds a WritePreview for bulk-deleting all staged rows via a single DELETE statement.
+pub fn build_bulk_delete_preview(
+    state: &AppState,
+) -> Result<(WritePreview, usize, Option<usize>), String> {
+    if state.ui.staged_delete_rows.is_empty() {
+        return Err("No rows staged for deletion".to_string());
     }
     if state.runtime.dsn.is_none() {
         return Err("No active connection".to_string());
@@ -137,11 +139,6 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
         return Err("Write is unavailable while query is running".to_string());
     }
 
-    let row_idx = state
-        .ui
-        .result_selection
-        .row()
-        .ok_or_else(|| "No active row".to_string())?;
     let (result, pk_cols) = editable_preview_base(state).map_err(|msg| {
         if msg == ERR_EDITING_REQUIRES_PRIMARY_KEY {
             ERR_DELETION_REQUIRES_PRIMARY_KEY.to_string()
@@ -149,36 +146,38 @@ fn build_delete_preview(state: &AppState) -> Result<(WritePreview, usize, Option
             msg
         }
     })?;
-    let row = result
-        .rows
-        .get(row_idx)
-        .ok_or_else(|| "Row index out of bounds".to_string())?;
-
-    let key_values = build_pk_pairs(&result.columns, row, pk_cols)
-        .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
 
     let schema = state.query.pagination.schema.clone();
     let table = state.query.pagination.table.clone();
-    let sql = build_delete_sql(&schema, &table, &key_values);
 
-    let target = TargetSummary {
-        schema,
-        table,
-        key_values,
-    };
-    let has_where = !target.key_values.is_empty();
-    let has_stable_row_identity = true; // editable_preview_base already guarantees PK exists
-    let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
-    if guardrail.blocked {
-        return Err(guardrail
-            .reason
-            .unwrap_or_else(|| "DELETE blocked by guardrails".to_string()));
+    let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
+    for &row_idx in &state.ui.staged_delete_rows {
+        let row = result
+            .rows
+            .get(row_idx)
+            .ok_or_else(|| format!("Staged row index {} out of bounds", row_idx))?;
+        let pairs = build_pk_pairs(&result.columns, row, pk_cols)
+            .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
+        pk_pairs_per_row.push(pairs);
     }
-    let (target_page, target_row) = deletion_refresh_target(
+
+    let sql = build_bulk_delete_sql(&schema, &table, &pk_pairs_per_row);
+
+    let staged_count = state.ui.staged_delete_rows.len();
+    let first_deleted_idx = *state.ui.staged_delete_rows.iter().next().unwrap();
+    let (target_page, target_row) = deletion_refresh_target_bulk(
         result.rows.len(),
-        row_idx,
+        staged_count,
+        first_deleted_idx,
         state.query.pagination.current_page,
     );
+
+    let target = TargetSummary {
+        schema: schema.clone(),
+        table: table.clone(),
+        key_values: pk_pairs_per_row.first().cloned().unwrap_or_default(),
+    };
+    let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
 
     Ok((
         WritePreview {
@@ -243,6 +242,7 @@ pub fn reduce_navigation(
             if *pane != FocusedPane::Result {
                 state.ui.result_selection.reset();
                 state.cell_edit.clear();
+                state.ui.staged_delete_rows.clear();
                 state.pending_write_preview = None;
                 if state.ui.input_mode == InputMode::CellEdit {
                     state.ui.input_mode = InputMode::Normal;
@@ -257,6 +257,7 @@ pub fn reduce_navigation(
             if was_focus {
                 state.ui.result_selection.reset();
                 state.cell_edit.clear();
+                state.ui.staged_delete_rows.clear();
                 state.pending_write_preview = None;
             }
             Some(vec![])
@@ -718,6 +719,7 @@ pub fn reduce_navigation(
         Action::ResultExitToScroll => {
             state.ui.result_selection.reset();
             state.cell_edit.clear();
+            state.ui.staged_delete_rows.clear();
             state.pending_write_preview = None;
             Some(vec![])
         }
@@ -832,6 +834,7 @@ pub fn reduce_navigation(
         Action::ResultNextPage | Action::ResultPrevPage => {
             state.ui.result_selection.reset();
             state.cell_edit.clear();
+            state.ui.staged_delete_rows.clear();
             state.pending_write_preview = None;
             None // Let the query reducer handle the actual page change
         }
