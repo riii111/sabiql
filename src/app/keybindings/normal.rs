@@ -71,27 +71,23 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleFocus,
         combos: &[KeyCombo::plain(Key::Char('f'))],
     },
-    // idx 7: PANE_SWITCH
+    // idx 7: PANE_SWITCH (display-only; handler matches '1'..='3' directly)
     KeyBinding {
         key_short: "1/2/3",
         key: "1/2/3",
         desc_short: "Pane",
         description: "Switch pane focus",
         action: Action::None,
-        combos: &[
-            KeyCombo::plain(Key::Char('1')),
-            KeyCombo::plain(Key::Char('2')),
-            KeyCombo::plain(Key::Char('3')),
-        ],
+        combos: &[],
     },
-    // idx 8: INSPECTOR_TABS
+    // idx 8: INSPECTOR_TABS (display-only; handler matches Tab/BackTab with guard)
     KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
         desc_short: "InsTabs",
         description: "Inspector prev/next tab",
         action: Action::None,
-        combos: &[KeyCombo::plain(Key::Tab), KeyCombo::plain(Key::BackTab)],
+        combos: &[],
     },
     // idx 9: RELOAD
     KeyBinding {

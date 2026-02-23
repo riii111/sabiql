@@ -630,6 +630,9 @@ mod tests {
             check_no_duplicate_combos(&combined, name);
         }
 
+        /// GLOBAL_KEYS excluded: idx 5/6 (FOCUS/EXIT_FOCUS) intentionally share
+        /// the same combo for different footer labels. This is a display concern
+        /// that should be refactored into footer logic, not keybinding data.
         #[test]
         fn no_duplicate_combos_in_simple_modes() {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
@@ -745,6 +748,7 @@ mod tests {
 
         #[test]
         fn none_action_entries_have_no_combos() {
+            check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
             check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
             check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
             check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
