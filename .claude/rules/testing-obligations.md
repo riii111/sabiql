@@ -25,6 +25,12 @@ paths:
 - Bare `#[ignore]` without tracking comment is **FORBIDDEN**
 - When resolving the linked Issue, the `#[ignore]` MUST be removed or updated
 
+```rust
+#[ignore] // tracked: #42 — waiting for MySQL adapter
+#[test]
+fn mysql_query_parsing() { ... }
+```
+
 ## Snapshot Test Obligation
 
 - Each new `InputMode` variant MUST have at least one snapshot in `tests/render_snapshots.rs`

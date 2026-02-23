@@ -35,8 +35,9 @@ mise run test               # Run tests
 
 Rules are stored in `.claude/rules/` and are **automatically loaded** based on `paths` frontmatter patterns.
 Skills are stored in `.claude/skills/`:
-- **Manual** skills are invoked via `/skill-name` (`disable-model-invocation: true`)
-- **Auto** skills fire automatically based on conversation context (default behavior; `user-invocable: false` hides from `/` menu)
+- **Manual** skills: only user can invoke via `/skill-name` (`disable-model-invocation: true`)
+- **Auto** skills: Claude fires automatically based on conversation context
+  - `user-invocable: false` additionally hides the skill from the `/` menu
 
 ### Available Rules
 
@@ -56,7 +57,7 @@ Skills are stored in `.claude/skills/`:
 | Skill | Type | Description |
 |-------|------|-------------|
 | **release** | Manual | Version bump, tag creation, GitHub release workflow |
-| **rust-testing** | Auto | Write Rust tests following project conventions |
+| **rust-testing** | Auto + Manual | Write Rust tests following project conventions |
 | **interaction-check** | Auto | Verify keybinding consistency across SSOT/handler/footer/help |
 | **db-extension-readiness** | Auto | Review port traits and adapters for DB-agnostic design |
 | **spec-gap-tracking** | Auto | Audit `#[ignore]`, TODOs, and missing test coverage |
