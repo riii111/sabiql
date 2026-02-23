@@ -298,9 +298,6 @@ mod tests {
     }
 
     mod delete_refresh_target {
-        /// Single-row deletion cursor target (superseded by
-        /// `deletion_refresh_target_bulk` in production code; kept here
-        /// to verify the original single-row logic independently).
         fn deletion_refresh_target(
             row_count: usize,
             selected_row: usize,
