@@ -53,27 +53,6 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
     Ok((result, pk_cols))
 }
 
-/// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
-/// after refetch, because the previous page row count is not known yet.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn deletion_refresh_target(
-    row_count: usize,
-    selected_row: usize,
-    current_page: usize,
-) -> (usize, Option<usize>) {
-    if row_count <= 1 {
-        if current_page > 0 {
-            (current_page - 1, Some(usize::MAX))
-        } else {
-            (0, None)
-        }
-    } else if selected_row < row_count - 1 {
-        (current_page, Some(selected_row))
-    } else {
-        (current_page, Some(row_count - 2))
-    }
-}
-
 /// Computes the cursor target after bulk-deleting rows from a page.
 ///
 /// `deleted_indices` is a sorted set of page-relative row indices that were deleted.
@@ -319,7 +298,26 @@ mod tests {
     }
 
     mod delete_refresh_target {
-        use super::*;
+        /// Single-row deletion cursor target (superseded by
+        /// `deletion_refresh_target_bulk` in production code; kept here
+        /// to verify the original single-row logic independently).
+        fn deletion_refresh_target(
+            row_count: usize,
+            selected_row: usize,
+            current_page: usize,
+        ) -> (usize, Option<usize>) {
+            if row_count <= 1 {
+                if current_page > 0 {
+                    (current_page - 1, Some(usize::MAX))
+                } else {
+                    (0, None)
+                }
+            } else if selected_row < row_count - 1 {
+                (current_page, Some(selected_row))
+            } else {
+                (current_page, Some(row_count - 2))
+            }
+        }
 
         #[test]
         fn single_row_first_page_clears_selection() {
