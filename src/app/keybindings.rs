@@ -1861,12 +1861,18 @@ mod tests {
         fn all_non_none_bindings_have_combos() {
             check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
             check_non_none_have_combos(HELP_KEYS, "HELP_KEYS");
+            check_non_none_have_combos(HELP_HIDDEN, "HELP_HIDDEN");
             check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_non_none_have_combos(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
+            check_non_none_have_combos(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
             check_non_none_have_combos(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
+            check_non_none_have_combos(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
             check_non_none_have_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_non_none_have_combos(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
             check_non_none_have_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_non_none_have_combos(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
             check_non_none_have_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_non_none_have_combos(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
         }
@@ -1897,15 +1903,41 @@ mod tests {
             }
         }
 
+        /// Checks combined main + hidden arrays for duplicate combos within a mode.
+        fn check_no_duplicate_combos_combined(
+            main: &[KeyBinding],
+            hidden: &[KeyBinding],
+            name: &str,
+        ) {
+            let combined: Vec<_> = main.iter().chain(hidden.iter()).cloned().collect();
+            check_no_duplicate_combos(&combined, name);
+        }
+
         #[test]
         fn no_duplicate_combos_in_simple_modes() {
-            check_no_duplicate_combos(HELP_KEYS, "HELP_KEYS");
+            check_no_duplicate_combos_combined(HELP_KEYS, HELP_HIDDEN, "HELP");
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_no_duplicate_combos(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
-            check_no_duplicate_combos(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
-            check_no_duplicate_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
-            check_no_duplicate_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
-            check_no_duplicate_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_no_duplicate_combos_combined(
+                CONNECTION_ERROR_KEYS,
+                CONNECTION_ERROR_HIDDEN,
+                "CONNECTION_ERROR",
+            );
+            check_no_duplicate_combos_combined(
+                CONNECTION_SELECTOR_KEYS,
+                CONNECTION_SELECTOR_HIDDEN,
+                "CONNECTION_SELECTOR",
+            );
+            check_no_duplicate_combos_combined(
+                COMMAND_PALETTE_KEYS,
+                COMMAND_PALETTE_HIDDEN,
+                "COMMAND_PALETTE",
+            );
+            check_no_duplicate_combos_combined(
+                TABLE_PICKER_KEYS,
+                TABLE_PICKER_HIDDEN,
+                "TABLE_PICKER",
+            );
+            check_no_duplicate_combos_combined(ER_PICKER_KEYS, ER_PICKER_HIDDEN, "ER_PICKER");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
         }
 
@@ -1936,12 +1968,18 @@ mod tests {
         #[test]
         fn keymap_resolve_roundtrip_for_simple_modes() {
             check_keymap_roundtrip(HELP_KEYS, "HELP_KEYS");
+            check_keymap_roundtrip(HELP_HIDDEN, "HELP_HIDDEN");
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_keymap_roundtrip(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
+            check_keymap_roundtrip(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
             check_keymap_roundtrip(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
+            check_keymap_roundtrip(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
             check_keymap_roundtrip(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_keymap_roundtrip(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
             check_keymap_roundtrip(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_keymap_roundtrip(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
             check_keymap_roundtrip(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_keymap_roundtrip(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
         }
 
@@ -2012,12 +2050,8 @@ mod tests {
         }
 
         // ------------------------------------------------------------------ //
-        // 6. Display-only arrays: Action::None entries must have combos: &[]
+        // 6. Action::None entries must have combos: &[]
         // ------------------------------------------------------------------ //
-        //
-        // Executable arrays (HELP_KEYS, COMMAND_PALETTE_KEYS, etc.) are excluded
-        // because their Action::None entries intentionally carry combos as
-        // display metadata — see the `combos` field doc on KeyBinding.
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {
@@ -2031,7 +2065,7 @@ mod tests {
         }
 
         #[test]
-        fn display_only_array_entries_have_no_combos() {
+        fn none_action_entries_have_no_combos() {
             check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
             check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
             check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
@@ -2045,55 +2079,45 @@ mod tests {
                 CONNECTIONS_MODE_KEYS,
                 "CONNECTIONS_MODE_KEYS",
             );
+            check_none_action_entries_have_no_combos(HELP_KEYS, "HELP_KEYS");
+            check_none_action_entries_have_no_combos(
+                CONNECTION_ERROR_KEYS,
+                "CONNECTION_ERROR_KEYS",
+            );
+            check_none_action_entries_have_no_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_none_action_entries_have_no_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_none_action_entries_have_no_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_none_action_entries_have_no_combos(
+                CONNECTION_SELECTOR_KEYS,
+                "CONNECTION_SELECTOR_KEYS",
+            );
         }
 
         // ------------------------------------------------------------------ //
-        // 7. Mixed arrays: display ↔ executable combo consistency
+        // 7. Hidden arrays: every entry must have a real action and combos
         // ------------------------------------------------------------------ //
-        //
-        // In executable arrays, Action::None entries carry combos as display
-        // metadata. Every combo in those entries must be covered by at least
-        // one executable (non-None) entry in the same array, otherwise a
-        // display hint advertises a key that has no runtime effect.
 
-        fn check_display_combos_covered_by_executables(bindings: &[KeyBinding], name: &str) {
-            let executable_combos: std::collections::HashSet<_> = bindings
-                .iter()
-                .filter(|kb| !matches!(kb.action, Action::None))
-                .flat_map(|kb| kb.combos.iter())
-                .collect();
-
+        fn check_hidden_entries_valid(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {
-                if !matches!(kb.action, Action::None) || kb.combos.is_empty() {
-                    continue;
-                }
-                for combo in kb.combos {
-                    assert!(
-                        executable_combos.contains(combo),
-                        "{name}[{i}] display entry advertises {combo:?} \
-                         but no executable entry handles it"
-                    );
-                }
+                assert!(
+                    !matches!(kb.action, Action::None),
+                    "{name}[{i}] is in a HIDDEN array but has Action::None"
+                );
+                assert!(
+                    !kb.combos.is_empty(),
+                    "{name}[{i}] is in a HIDDEN array but has no combos"
+                );
             }
         }
 
         #[test]
-        fn mixed_array_display_combos_are_covered_by_executables() {
-            check_display_combos_covered_by_executables(HELP_KEYS, "HELP_KEYS");
-            check_display_combos_covered_by_executables(
-                CONNECTION_ERROR_KEYS,
-                "CONNECTION_ERROR_KEYS",
-            );
-            check_display_combos_covered_by_executables(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
-            check_display_combos_covered_by_executables(ER_PICKER_KEYS, "ER_PICKER_KEYS");
-            check_display_combos_covered_by_executables(
-                COMMAND_PALETTE_KEYS,
-                "COMMAND_PALETTE_KEYS",
-            );
-            check_display_combos_covered_by_executables(
-                CONNECTION_SELECTOR_KEYS,
-                "CONNECTION_SELECTOR_KEYS",
-            );
+        fn hidden_exec_entries_are_valid() {
+            check_hidden_entries_valid(HELP_HIDDEN, "HELP_HIDDEN");
+            check_hidden_entries_valid(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
+            check_hidden_entries_valid(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
+            check_hidden_entries_valid(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
+            check_hidden_entries_valid(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
+            check_hidden_entries_valid(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
         }
     }
 }
