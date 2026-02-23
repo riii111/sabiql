@@ -50,6 +50,61 @@ impl KeyBinding {
     }
 }
 
+/// A mode's keybinding set: display entries (for Footer/Help) paired with
+/// hidden exec-only entries (for `keymap::resolve()`).
+///
+/// By bundling both slices into one value we structurally guarantee that
+/// every mode with hidden bindings also declares its display counterpart,
+/// and vice-versa.
+pub struct ModeBindings {
+    pub display: &'static [KeyBinding],
+    pub hidden: &'static [KeyBinding],
+}
+
+impl ModeBindings {
+    /// Resolve a combo against display entries first, then hidden entries.
+    pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
+        crate::app::keymap::resolve(combo, self.display)
+            .or_else(|| crate::app::keymap::resolve(combo, self.hidden))
+    }
+}
+
+pub const HELP: ModeBindings = ModeBindings {
+    display: HELP_KEYS,
+    hidden: HELP_HIDDEN,
+};
+pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
+    display: CONNECTION_ERROR_KEYS,
+    hidden: CONNECTION_ERROR_HIDDEN,
+};
+pub const TABLE_PICKER: ModeBindings = ModeBindings {
+    display: TABLE_PICKER_KEYS,
+    hidden: TABLE_PICKER_HIDDEN,
+};
+pub const ER_PICKER: ModeBindings = ModeBindings {
+    display: ER_PICKER_KEYS,
+    hidden: ER_PICKER_HIDDEN,
+};
+pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
+    display: COMMAND_PALETTE_KEYS,
+    hidden: COMMAND_PALETTE_HIDDEN,
+};
+pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
+    display: CONNECTION_SELECTOR_KEYS,
+    hidden: CONNECTION_SELECTOR_HIDDEN,
+};
+
+/// All modes that use display + hidden split.
+/// Used by semantic tests to exhaustively validate structural invariants.
+pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
+    ("HELP", &HELP),
+    ("CONNECTION_ERROR", &CONNECTION_ERROR),
+    ("TABLE_PICKER", &TABLE_PICKER),
+    ("ER_PICKER", &ER_PICKER),
+    ("COMMAND_PALETTE", &COMMAND_PALETTE),
+    ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
+];
+
 // =============================================================================
 // Index Constants for Footer Lookup
 // =============================================================================
@@ -535,21 +590,13 @@ mod tests {
         #[test]
         fn all_non_none_bindings_have_combos() {
             check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
-            check_non_none_have_combos(HELP_KEYS, "HELP_KEYS");
-            check_non_none_have_combos(HELP_HIDDEN, "HELP_HIDDEN");
             check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_non_none_have_combos(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
-            check_non_none_have_combos(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
-            check_non_none_have_combos(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
-            check_non_none_have_combos(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
-            check_non_none_have_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
-            check_non_none_have_combos(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
-            check_non_none_have_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
-            check_non_none_have_combos(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
-            check_non_none_have_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
-            check_non_none_have_combos(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+            for (name, mb) in ALL_MODE_BINDINGS {
+                check_non_none_have_combos(mb.display, &format!("{name} display"));
+                check_non_none_have_combos(mb.hidden, &format!("{name} hidden"));
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -585,30 +632,11 @@ mod tests {
 
         #[test]
         fn no_duplicate_combos_in_simple_modes() {
-            check_no_duplicate_combos_combined(HELP_KEYS, HELP_HIDDEN, "HELP");
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_no_duplicate_combos_combined(
-                CONNECTION_ERROR_KEYS,
-                CONNECTION_ERROR_HIDDEN,
-                "CONNECTION_ERROR",
-            );
-            check_no_duplicate_combos_combined(
-                CONNECTION_SELECTOR_KEYS,
-                CONNECTION_SELECTOR_HIDDEN,
-                "CONNECTION_SELECTOR",
-            );
-            check_no_duplicate_combos_combined(
-                COMMAND_PALETTE_KEYS,
-                COMMAND_PALETTE_HIDDEN,
-                "COMMAND_PALETTE",
-            );
-            check_no_duplicate_combos_combined(
-                TABLE_PICKER_KEYS,
-                TABLE_PICKER_HIDDEN,
-                "TABLE_PICKER",
-            );
-            check_no_duplicate_combos_combined(ER_PICKER_KEYS, ER_PICKER_HIDDEN, "ER_PICKER");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+            for (name, mb) in ALL_MODE_BINDINGS {
+                check_no_duplicate_combos_combined(mb.display, mb.hidden, name);
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -637,20 +665,12 @@ mod tests {
 
         #[test]
         fn keymap_resolve_roundtrip_for_simple_modes() {
-            check_keymap_roundtrip(HELP_KEYS, "HELP_KEYS");
-            check_keymap_roundtrip(HELP_HIDDEN, "HELP_HIDDEN");
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
-            check_keymap_roundtrip(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
-            check_keymap_roundtrip(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
-            check_keymap_roundtrip(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
-            check_keymap_roundtrip(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
-            check_keymap_roundtrip(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
-            check_keymap_roundtrip(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
-            check_keymap_roundtrip(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
-            check_keymap_roundtrip(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
-            check_keymap_roundtrip(ER_PICKER_KEYS, "ER_PICKER_KEYS");
-            check_keymap_roundtrip(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+            for (name, mb) in ALL_MODE_BINDINGS {
+                check_keymap_roundtrip(mb.display, &format!("{name} display"));
+                check_keymap_roundtrip(mb.hidden, &format!("{name} hidden"));
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -689,11 +709,13 @@ mod tests {
         #[test]
         fn table_picker_has_no_plain_char_combos() {
             check_no_plain_char_in_filter_mode(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS", &[]);
+            check_no_plain_char_in_filter_mode(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN", &[]);
         }
 
         #[test]
         fn er_picker_has_no_plain_char_combos() {
             check_no_plain_char_in_filter_mode(ER_PICKER_KEYS, "ER_PICKER_KEYS", &[' ']);
+            check_no_plain_char_in_filter_mode(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN", &[' ']);
         }
 
         #[test]
@@ -769,12 +791,9 @@ mod tests {
 
         #[test]
         fn hidden_exec_entries_are_valid() {
-            check_hidden_entries_valid(HELP_HIDDEN, "HELP_HIDDEN");
-            check_hidden_entries_valid(CONNECTION_ERROR_HIDDEN, "CONNECTION_ERROR_HIDDEN");
-            check_hidden_entries_valid(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN");
-            check_hidden_entries_valid(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN");
-            check_hidden_entries_valid(COMMAND_PALETTE_HIDDEN, "COMMAND_PALETTE_HIDDEN");
-            check_hidden_entries_valid(CONNECTION_SELECTOR_HIDDEN, "CONNECTION_SELECTOR_HIDDEN");
+            for (name, mb) in ALL_MODE_BINDINGS {
+                check_hidden_entries_valid(mb.hidden, &format!("{name} hidden"));
+            }
         }
     }
 }
