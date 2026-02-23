@@ -1,4 +1,4 @@
-pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::keybindings::{Key, KeyCombo, Modifiers};
 

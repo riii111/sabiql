@@ -1,5 +1,3 @@
-use super::key_translator::KeyEvent;
-
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
@@ -14,7 +12,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
     match event {
         Event::Init => Action::Render,
         Event::Resize(w, h) => Action::Resize(w, h),
-        Event::Key(key) => handle_key_event(key, state),
+        Event::Key(combo) => handle_key_event(combo, state),
         Event::Paste(text) => handle_paste_event(text, state),
     }
 }
@@ -31,8 +29,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
     }
 }
 
-fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
-    let combo = super::key_translator::translate(key);
+fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     match state.ui.input_mode {
         InputMode::Normal => handle_normal_mode(combo, state),
         InputMode::CommandLine => handle_command_line_mode(combo),
@@ -481,13 +478,8 @@ fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 
 #[cfg(test)]
 mod tests {
-    use super::super::key_translator::{KeyCode, KeyModifiers};
     use super::*;
     use crate::app::keybindings::{Key, KeyCombo};
-
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
-    }
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -1524,7 +1516,7 @@ mod tests {
             let state = make_state(InputMode::Normal);
 
             // 'q' in Normal mode should quit
-            let result = handle_key_event(key(KeyCode::Char('q')), &state);
+            let result = handle_key_event(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::Quit));
         }
@@ -1534,7 +1526,7 @@ mod tests {
             let state = make_state(InputMode::SqlModal);
 
             // Esc in SqlModal should close modal (not Escape action)
-            let result = handle_key_event(key(KeyCode::Esc), &state);
+            let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
         }
