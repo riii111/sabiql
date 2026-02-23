@@ -1,5 +1,5 @@
-use super::KeyBinding;
 use super::types::{Key, KeyCombo};
+use super::{ExecBinding, KeyBinding, ModeRow};
 use crate::app::action::Action;
 
 // =============================================================================
@@ -76,52 +76,45 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 // Help
 // =============================================================================
 
-pub const HELP_KEYS: &[KeyBinding] = &[
-    // idx 0: HELP_SCROLL (display-only)
-    KeyBinding {
+pub const HELP_ROWS: &[ModeRow] = &[
+    // idx 0: SCROLL
+    ModeRow {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::HelpScrollDown,
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::HelpScrollUp,
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
-    // idx 1: HELP_CLOSE
-    KeyBinding {
+    // idx 1: CLOSE
+    ModeRow {
         key_short: "?/Esc",
         key: "? / Esc",
         desc_short: "Close",
         description: "Close help",
-        action: Action::CloseHelp,
-        combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
+        bindings: &[ExecBinding {
+            action: Action::CloseHelp,
+            combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
+        }],
     },
     // idx 2: QUIT
-    KeyBinding {
+    ModeRow {
         key_short: "q",
         key: "q",
         desc_short: "Quit",
         description: "Quit",
-        action: Action::Quit,
-        combos: &[KeyCombo::plain(Key::Char('q'))],
-    },
-];
-
-pub const HELP_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::HelpScrollDown,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::HelpScrollUp,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        bindings: &[ExecBinding {
+            action: Action::Quit,
+            combos: &[KeyCombo::plain(Key::Char('q'))],
+        }],
     },
 ];
 
@@ -129,69 +122,56 @@ pub const HELP_HIDDEN: &[KeyBinding] = &[
 // Table Picker
 // =============================================================================
 
-pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
+pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
     // idx 0: ENTER_SELECT
-    KeyBinding {
+    ModeRow {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Select",
         description: "Select table",
-        action: Action::ConfirmSelection,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        bindings: &[ExecBinding {
+            action: Action::ConfirmSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
     },
-    // idx 1: NAVIGATE (display-only)
-    KeyBinding {
+    // idx 1: NAVIGATE
+    ModeRow {
         key_short: "↑↓",
         key: "↑↓",
         desc_short: "Navigate",
         description: "Navigate",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::SelectNext,
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::SelectPrevious,
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
-    // idx 2: TYPE_FILTER (display-only)
-    KeyBinding {
+    // idx 2: TYPE_FILTER
+    ModeRow {
         key_short: "type",
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
-        action: Action::None,
-        combos: &[],
+        bindings: &[ExecBinding {
+            action: Action::FilterBackspace,
+            combos: &[KeyCombo::plain(Key::Backspace)],
+        }],
     },
     // idx 3: ESC_CLOSE
-    KeyBinding {
+    ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
         description: "Close",
-        action: Action::CloseTablePicker,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-];
-
-pub const TABLE_PICKER_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectNext,
-        combos: &[KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectPrevious,
-        combos: &[KeyCombo::plain(Key::Up)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::FilterBackspace,
-        combos: &[KeyCombo::plain(Key::Backspace)],
+        bindings: &[ExecBinding {
+            action: Action::CloseTablePicker,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
     },
 ];
 
@@ -199,87 +179,78 @@ pub const TABLE_PICKER_HIDDEN: &[KeyBinding] = &[
 // ER Table Picker
 // =============================================================================
 
-pub const ER_PICKER_KEYS: &[KeyBinding] = &[
+pub const ER_PICKER_ROWS: &[ModeRow] = &[
     // idx 0: ENTER_GENERATE
-    KeyBinding {
+    ModeRow {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Generate",
         description: "Generate ER diagram",
-        action: Action::ErConfirmSelection,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        bindings: &[ExecBinding {
+            action: Action::ErConfirmSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
     },
     // idx 1: SELECT
-    KeyBinding {
+    ModeRow {
         key_short: "Space",
         key: "Space",
         desc_short: "Select",
         description: "Toggle table selection",
-        action: Action::ErToggleSelection,
-        combos: &[KeyCombo::plain(Key::Char(' '))],
+        bindings: &[ExecBinding {
+            action: Action::ErToggleSelection,
+            combos: &[KeyCombo::plain(Key::Char(' '))],
+        }],
     },
     // idx 2: SELECT_ALL
-    KeyBinding {
+    ModeRow {
         key_short: "^A",
         key: "Ctrl+A",
         desc_short: "All",
         description: "Select/deselect all tables",
-        action: Action::ErSelectAll,
-        combos: &[KeyCombo::ctrl(Key::Char('a'))],
+        bindings: &[ExecBinding {
+            action: Action::ErSelectAll,
+            combos: &[KeyCombo::ctrl(Key::Char('a'))],
+        }],
     },
-    // idx 3: NAVIGATE (display-only)
-    KeyBinding {
+    // idx 3: NAVIGATE
+    ModeRow {
         key_short: "↑↓",
         key: "↑↓",
         desc_short: "Navigate",
         description: "Navigate",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::SelectNext,
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::SelectPrevious,
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
-    // idx 4: TYPE_FILTER (display-only)
-    KeyBinding {
+    // idx 4: TYPE_FILTER
+    ModeRow {
         key_short: "type",
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
-        action: Action::None,
-        combos: &[],
+        bindings: &[ExecBinding {
+            action: Action::ErFilterBackspace,
+            combos: &[KeyCombo::plain(Key::Backspace)],
+        }],
     },
     // idx 5: ESC_CLOSE
-    KeyBinding {
+    ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
         description: "Close",
-        action: Action::CloseErTablePicker,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-];
-
-pub const ER_PICKER_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectNext,
-        combos: &[KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectPrevious,
-        combos: &[KeyCombo::plain(Key::Up)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ErFilterBackspace,
-        combos: &[KeyCombo::plain(Key::Backspace)],
+        bindings: &[ExecBinding {
+            action: Action::CloseErTablePicker,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
     },
 ];
 
@@ -287,60 +258,45 @@ pub const ER_PICKER_HIDDEN: &[KeyBinding] = &[
 // Command Palette
 // =============================================================================
 
-pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
-    // idx 0: ENTER_EXECUTE (display-only)
-    KeyBinding {
+pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
+    // idx 0: ENTER_EXECUTE
+    ModeRow {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Execute",
         description: "Execute command",
-        action: Action::None,
-        combos: &[],
+        bindings: &[ExecBinding {
+            action: Action::ConfirmSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
     },
-    // idx 1: NAVIGATE_JK (display-only)
-    KeyBinding {
+    // idx 1: NAVIGATE_JK
+    ModeRow {
         key_short: "j/k / ↑↓",
         key: "j/k / ↑↓",
         desc_short: "Navigate",
         description: "Navigate",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::SelectNext,
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::SelectPrevious,
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
     // idx 2: ESC_CLOSE
-    KeyBinding {
+    ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
         description: "Close",
-        action: Action::CloseCommandPalette,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-];
-
-pub const COMMAND_PALETTE_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ConfirmSelection,
-        combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectNext,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::SelectPrevious,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        bindings: &[ExecBinding {
+            action: Action::CloseCommandPalette,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
     },
 ];
 

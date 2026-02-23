@@ -1,5 +1,5 @@
-use super::KeyBinding;
 use super::types::{Key, KeyCombo};
+use super::{ExecBinding, KeyBinding, ModeRow};
 use crate::app::action::Action;
 
 // =============================================================================
@@ -76,88 +76,89 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
 // Connection Error
 // =============================================================================
 
-pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
+pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
     // idx 0: EDIT
-    KeyBinding {
+    ModeRow {
         key_short: "e",
         key: "e",
         desc_short: "Edit",
         description: "Edit connection settings",
-        action: Action::ReenterConnectionSetup,
-        combos: &[KeyCombo::plain(Key::Char('e'))],
+        bindings: &[ExecBinding {
+            action: Action::ReenterConnectionSetup,
+            combos: &[KeyCombo::plain(Key::Char('e'))],
+        }],
     },
     // idx 1: SWITCH
-    KeyBinding {
+    ModeRow {
         key_short: "s",
         key: "s",
         desc_short: "Switch",
         description: "Switch to another connection",
-        action: Action::OpenConnectionSelector,
-        combos: &[KeyCombo::plain(Key::Char('s'))],
+        bindings: &[ExecBinding {
+            action: Action::OpenConnectionSelector,
+            combos: &[KeyCombo::plain(Key::Char('s'))],
+        }],
     },
     // idx 2: DETAILS
-    KeyBinding {
+    ModeRow {
         key_short: "d",
         key: "d",
         desc_short: "Details",
         description: "Toggle error details",
-        action: Action::ToggleConnectionErrorDetails,
-        combos: &[KeyCombo::plain(Key::Char('d'))],
+        bindings: &[ExecBinding {
+            action: Action::ToggleConnectionErrorDetails,
+            combos: &[KeyCombo::plain(Key::Char('d'))],
+        }],
     },
     // idx 3: COPY
-    KeyBinding {
+    ModeRow {
         key_short: "c",
         key: "c",
         desc_short: "Copy",
         description: "Copy error to clipboard",
-        action: Action::CopyConnectionError,
-        combos: &[KeyCombo::plain(Key::Char('c'))],
+        bindings: &[ExecBinding {
+            action: Action::CopyConnectionError,
+            combos: &[KeyCombo::plain(Key::Char('c'))],
+        }],
     },
-    // idx 4: SCROLL (display-only)
-    KeyBinding {
+    // idx 4: SCROLL
+    ModeRow {
         key_short: "j/k",
         key: "j/k",
         desc_short: "Scroll",
         description: "Scroll error",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::ScrollConnectionErrorDown,
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::ScrollConnectionErrorUp,
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
     // idx 5: ESC_CLOSE
-    KeyBinding {
+    ModeRow {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Close",
         description: "Close",
-        action: Action::CloseConnectionError,
-        combos: &[KeyCombo::plain(Key::Esc)],
+        bindings: &[ExecBinding {
+            action: Action::CloseConnectionError,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
     },
     // idx 6: QUIT
-    KeyBinding {
+    ModeRow {
         key_short: "q",
         key: "q",
         desc_short: "Quit",
         description: "Quit",
-        action: Action::Quit,
-        combos: &[KeyCombo::plain(Key::Char('q'))],
-    },
-];
-
-pub const CONNECTION_ERROR_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ScrollConnectionErrorDown,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ScrollConnectionErrorUp,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        bindings: &[ExecBinding {
+            action: Action::Quit,
+            combos: &[KeyCombo::plain(Key::Char('q'))],
+        }],
     },
 ];
 
@@ -205,7 +206,7 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
             KeyCombo::plain(Key::Delete),
         ],
     },
-    // idx 4: NAVIGATE (display-only)
+    // idx 4: NAVIGATE
     KeyBinding {
         key_short: "j/k",
         key: "j / k / ↑ / ↓",
@@ -256,78 +257,77 @@ pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
 // Connection Selector
 // =============================================================================
 
-pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
+pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
     // idx 0: CONFIRM
-    KeyBinding {
+    ModeRow {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Confirm",
         description: "Confirm selection",
-        action: Action::ConfirmConnectionSelection,
-        combos: &[KeyCombo::plain(Key::Enter)],
+        bindings: &[ExecBinding {
+            action: Action::ConfirmConnectionSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
     },
-    // idx 1: SELECT (display-only)
-    KeyBinding {
+    // idx 1: SELECT
+    ModeRow {
         key_short: "↑/↓",
         key: "↑ / ↓ / j / k",
         desc_short: "Select",
         description: "Select connection",
-        action: Action::None,
-        combos: &[],
+        bindings: &[
+            ExecBinding {
+                action: Action::ConnectionListSelectNext,
+                combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::ConnectionListSelectPrevious,
+                combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+            },
+        ],
     },
     // idx 2: NEW
-    KeyBinding {
+    ModeRow {
         key_short: "n",
         key: "n",
         desc_short: "New",
         description: "New connection",
-        action: Action::OpenConnectionSetup,
-        combos: &[KeyCombo::plain(Key::Char('n'))],
+        bindings: &[ExecBinding {
+            action: Action::OpenConnectionSetup,
+            combos: &[KeyCombo::plain(Key::Char('n'))],
+        }],
     },
     // idx 3: EDIT
-    KeyBinding {
+    ModeRow {
         key_short: "e",
         key: "e",
         desc_short: "Edit",
         description: "Edit connection",
-        action: Action::RequestEditSelectedConnection,
-        combos: &[KeyCombo::plain(Key::Char('e'))],
+        bindings: &[ExecBinding {
+            action: Action::RequestEditSelectedConnection,
+            combos: &[KeyCombo::plain(Key::Char('e'))],
+        }],
     },
     // idx 4: DELETE
-    KeyBinding {
+    ModeRow {
         key_short: "d",
         key: "d",
         desc_short: "Delete",
         description: "Delete connection",
-        action: Action::RequestDeleteSelectedConnection,
-        combos: &[KeyCombo::plain(Key::Char('d'))],
+        bindings: &[ExecBinding {
+            action: Action::RequestDeleteSelectedConnection,
+            combos: &[KeyCombo::plain(Key::Char('d'))],
+        }],
     },
     // idx 5: QUIT
-    KeyBinding {
+    ModeRow {
         key_short: "q",
         key: "q",
         desc_short: "Quit",
         description: "Quit application",
-        action: Action::Quit,
-        combos: &[KeyCombo::plain(Key::Char('q'))],
-    },
-];
-
-pub const CONNECTION_SELECTOR_HIDDEN: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ConnectionListSelectNext,
-        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
-    },
-    KeyBinding {
-        key_short: "",
-        key: "",
-        desc_short: "",
-        description: "",
-        action: Action::ConnectionListSelectPrevious,
-        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+        bindings: &[ExecBinding {
+            action: Action::Quit,
+            combos: &[KeyCombo::plain(Key::Char('q'))],
+        }],
     },
 ];

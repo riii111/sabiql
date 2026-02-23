@@ -1,5 +1,5 @@
 use super::action::Action;
-use super::keybindings::{KeyBinding, KeyCombo};
+use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
 
 /// Look up the action for a `KeyCombo` in a binding array.
 ///
@@ -11,6 +11,18 @@ pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
         .filter(|kb| !matches!(kb.action, Action::None))
         .find(|kb| kb.combos.contains(combo))
         .map(|kb| kb.action.clone())
+}
+
+/// Look up the action for a `KeyCombo` in a `ModeRow` slice.
+pub fn resolve_mode(combo: &KeyCombo, rows: &[ModeRow]) -> Option<Action> {
+    for row in rows {
+        for eb in row.bindings {
+            if !matches!(eb.action, Action::None) && eb.combos.contains(combo) {
+                return Some(eb.action.clone());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

@@ -36,42 +36,55 @@ impl KeyBinding {
     }
 }
 
-/// Pairs display entries with hidden exec-only entries so they can't drift apart.
+// =============================================================================
+// ModeRow — unified single-definition model for mixed modes
+// =============================================================================
+
+pub struct ExecBinding {
+    pub action: Action,
+    pub combos: &'static [KeyCombo],
+}
+
+pub struct ModeRow {
+    pub key_short: &'static str,
+    pub key: &'static str,
+    pub desc_short: &'static str,
+    pub description: &'static str,
+    pub bindings: &'static [ExecBinding],
+}
+
+impl ModeRow {
+    pub const fn as_hint(&self) -> (&'static str, &'static str) {
+        (self.key_short, self.desc_short)
+    }
+}
+
+/// Unified mode bindings backed by `ModeRow` slices.
 pub struct ModeBindings {
-    pub display: &'static [KeyBinding],
-    pub hidden: &'static [KeyBinding],
+    pub rows: &'static [ModeRow],
 }
 
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        crate::app::keymap::resolve(combo, self.display)
-            .or_else(|| crate::app::keymap::resolve(combo, self.hidden))
+        crate::app::keymap::resolve_mode(combo, self.rows)
     }
 }
 
-pub const HELP: ModeBindings = ModeBindings {
-    display: HELP_KEYS,
-    hidden: HELP_HIDDEN,
-};
+pub const HELP: ModeBindings = ModeBindings { rows: HELP_ROWS };
 pub const CONNECTION_ERROR: ModeBindings = ModeBindings {
-    display: CONNECTION_ERROR_KEYS,
-    hidden: CONNECTION_ERROR_HIDDEN,
+    rows: CONNECTION_ERROR_ROWS,
 };
 pub const TABLE_PICKER: ModeBindings = ModeBindings {
-    display: TABLE_PICKER_KEYS,
-    hidden: TABLE_PICKER_HIDDEN,
+    rows: TABLE_PICKER_ROWS,
 };
 pub const ER_PICKER: ModeBindings = ModeBindings {
-    display: ER_PICKER_KEYS,
-    hidden: ER_PICKER_HIDDEN,
+    rows: ER_PICKER_ROWS,
 };
 pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
-    display: COMMAND_PALETTE_KEYS,
-    hidden: COMMAND_PALETTE_HIDDEN,
+    rows: COMMAND_PALETTE_ROWS,
 };
 pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
-    display: CONNECTION_SELECTOR_KEYS,
-    hidden: CONNECTION_SELECTOR_HIDDEN,
+    rows: CONNECTION_SELECTOR_ROWS,
 };
 
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
@@ -244,13 +257,13 @@ pub const fn help_content_line_count() -> usize {
         + OVERLAY_KEYS.len()
         + COMMAND_LINE_KEYS.len()
         + CONNECTION_SETUP_KEYS.len()
-        + CONNECTION_ERROR_KEYS.len()
+        + CONNECTION_ERROR_ROWS.len()
         + CONNECTIONS_MODE_KEYS.len()
-        + CONNECTION_SELECTOR_KEYS.len()
-        + ER_PICKER_KEYS.len()
-        + TABLE_PICKER_KEYS.len()
-        + COMMAND_PALETTE_KEYS.len()
-        + HELP_KEYS.len()
+        + CONNECTION_SELECTOR_ROWS.len()
+        + ER_PICKER_ROWS.len()
+        + TABLE_PICKER_ROWS.len()
+        + COMMAND_PALETTE_ROWS.len()
+        + HELP_ROWS.len()
         + CONFIRM_DIALOG_KEYS.len()
 }
 
@@ -357,39 +370,42 @@ mod tests {
         assert!(idx::conn_setup::ENTER_DROPDOWN < CONNECTION_SETUP_KEYS.len());
         assert!(idx::conn_setup::DROPDOWN_NAV < CONNECTION_SETUP_KEYS.len());
 
-        // CONNECTION_ERROR_KEYS
-        assert!(idx::conn_error::EDIT < CONNECTION_ERROR_KEYS.len());
-        assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_KEYS.len());
-        assert!(idx::conn_error::COPY < CONNECTION_ERROR_KEYS.len());
-        assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_KEYS.len());
-        assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_KEYS.len());
-        assert!(idx::conn_error::QUIT < CONNECTION_ERROR_KEYS.len());
+        // CONNECTION_ERROR_ROWS
+        assert!(idx::conn_error::EDIT < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::SWITCH < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::DETAILS < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
+        assert!(idx::conn_error::QUIT < CONNECTION_ERROR_ROWS.len());
 
         // CONFIRM_DIALOG_KEYS
         assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
         assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
 
-        // TABLE_PICKER_KEYS
-        assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_KEYS.len());
-        assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_KEYS.len());
-        assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_KEYS.len());
-        assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_KEYS.len());
+        // TABLE_PICKER_ROWS
+        assert!(idx::table_picker::ENTER_SELECT < TABLE_PICKER_ROWS.len());
+        assert!(idx::table_picker::NAVIGATE < TABLE_PICKER_ROWS.len());
+        assert!(idx::table_picker::TYPE_FILTER < TABLE_PICKER_ROWS.len());
+        assert!(idx::table_picker::ESC_CLOSE < TABLE_PICKER_ROWS.len());
 
-        // ER_PICKER_KEYS
-        assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_KEYS.len());
-        assert!(idx::er_picker::NAVIGATE < ER_PICKER_KEYS.len());
-        assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_KEYS.len());
-        assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_KEYS.len());
+        // ER_PICKER_ROWS
+        assert!(idx::er_picker::ENTER_GENERATE < ER_PICKER_ROWS.len());
+        assert!(idx::er_picker::SELECT < ER_PICKER_ROWS.len());
+        assert!(idx::er_picker::SELECT_ALL < ER_PICKER_ROWS.len());
+        assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
+        assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
+        assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
 
-        // COMMAND_PALETTE_KEYS
-        assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_KEYS.len());
-        assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_KEYS.len());
-        assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_KEYS.len());
+        // COMMAND_PALETTE_ROWS
+        assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
+        assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
+        assert!(idx::cmd_palette::ESC_CLOSE < COMMAND_PALETTE_ROWS.len());
 
-        // HELP_KEYS
-        assert!(idx::help::SCROLL < HELP_KEYS.len());
-        assert!(idx::help::CLOSE < HELP_KEYS.len());
-        assert!(idx::help::QUIT < HELP_KEYS.len());
+        // HELP_ROWS
+        assert!(idx::help::SCROLL < HELP_ROWS.len());
+        assert!(idx::help::CLOSE < HELP_ROWS.len());
+        assert!(idx::help::QUIT < HELP_ROWS.len());
 
         // RESULT_ACTIVE_KEYS
         assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
@@ -420,13 +436,13 @@ mod tests {
         assert!(idx::connections_mode::BACK < CONNECTIONS_MODE_KEYS.len());
         assert!(idx::connections_mode::QUIT < CONNECTIONS_MODE_KEYS.len());
 
-        // CONNECTION_SELECTOR_KEYS
-        assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_KEYS.len());
-        assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_KEYS.len());
-        assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_KEYS.len());
-        assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_KEYS.len());
-        assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_KEYS.len());
-        assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_KEYS.len());
+        // CONNECTION_SELECTOR_ROWS
+        assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::NEW < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_ROWS.len());
     }
 
     #[test]
@@ -440,13 +456,13 @@ mod tests {
             OVERLAY_KEYS.len(),
             COMMAND_LINE_KEYS.len(),
             CONNECTION_SETUP_KEYS.len(),
-            CONNECTION_ERROR_KEYS.len(),
+            CONNECTION_ERROR_ROWS.len(),
             CONNECTIONS_MODE_KEYS.len(),
-            CONNECTION_SELECTOR_KEYS.len(),
-            ER_PICKER_KEYS.len(),
-            TABLE_PICKER_KEYS.len(),
-            COMMAND_PALETTE_KEYS.len(),
-            HELP_KEYS.len(),
+            CONNECTION_SELECTOR_ROWS.len(),
+            ER_PICKER_ROWS.len(),
+            TABLE_PICKER_ROWS.len(),
+            COMMAND_PALETTE_ROWS.len(),
+            HELP_ROWS.len(),
             CONFIRM_DIALOG_KEYS.len(),
         ];
         let section_count = sections.len();
@@ -483,17 +499,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(idx::help::CLOSE, Action::CloseHelp)]
-        #[case(idx::help::QUIT, Action::Quit)]
-        fn help_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&HELP_KEYS[i].action) == std::mem::discriminant(&expected),
-                "HELP_KEYS[{i}] has action {:?}, expected {expected:?}",
-                HELP_KEYS[i].action
-            );
-        }
-
-        #[rstest]
         #[case(idx::confirm::YES, Action::ConfirmDialogConfirm)]
         #[case(idx::confirm::NO, Action::ConfirmDialogCancel)]
         fn confirm_key_action_matches(#[case] i: usize, #[case] expected: Action) {
@@ -505,42 +510,8 @@ mod tests {
             );
         }
 
-        #[rstest]
-        #[case(idx::conn_error::QUIT, Action::Quit)]
-        #[case(idx::conn_error::ESC_CLOSE, Action::CloseConnectionError)]
-        #[case(idx::conn_error::EDIT, Action::ReenterConnectionSetup)]
-        #[case(idx::conn_error::SWITCH, Action::OpenConnectionSelector)]
-        #[case(idx::conn_error::DETAILS, Action::ToggleConnectionErrorDetails)]
-        #[case(idx::conn_error::COPY, Action::CopyConnectionError)]
-        fn conn_error_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&CONNECTION_ERROR_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "CONNECTION_ERROR_KEYS[{i}] has action {:?}, expected {expected:?}",
-                CONNECTION_ERROR_KEYS[i].action
-            );
-        }
-
-        #[rstest]
-        #[case(idx::connection_selector::CONFIRM, Action::ConfirmConnectionSelection)]
-        #[case(idx::connection_selector::NEW, Action::OpenConnectionSetup)]
-        #[case(idx::connection_selector::EDIT, Action::RequestEditSelectedConnection)]
-        #[case(
-            idx::connection_selector::DELETE,
-            Action::RequestDeleteSelectedConnection
-        )]
-        #[case(idx::connection_selector::QUIT, Action::Quit)]
-        fn connection_selector_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&CONNECTION_SELECTOR_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "CONNECTION_SELECTOR_KEYS[{i}] has action {:?}, expected {expected:?}",
-                CONNECTION_SELECTOR_KEYS[i].action
-            );
-        }
-
         // ------------------------------------------------------------------ //
-        // 2. Non-None bindings have at least one combo
+        // 2. Non-None bindings have at least one combo (KeyBinding arrays)
         // ------------------------------------------------------------------ //
 
         fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
@@ -566,9 +537,32 @@ mod tests {
             check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+        }
+
+        // ------------------------------------------------------------------ //
+        // 2b. ModeRow exec entries have non-empty combos
+        // ------------------------------------------------------------------ //
+
+        fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
+            for (i, row) in rows.iter().enumerate() {
+                for (j, eb) in row.bindings.iter().enumerate() {
+                    assert!(
+                        !eb.combos.is_empty(),
+                        "{name}[{i}].bindings[{j}] has action {:?} but no combos",
+                        eb.action
+                    );
+                    assert!(
+                        !matches!(eb.action, Action::None),
+                        "{name}[{i}].bindings[{j}] has Action::None in exec binding",
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn all_mode_row_exec_entries_are_valid() {
             for (name, mb) in ALL_MODE_BINDINGS {
-                check_non_none_have_combos(mb.display, &format!("{name} display"));
-                check_non_none_have_combos(mb.hidden, &format!("{name} hidden"));
+                check_mode_rows_exec_valid(mb.rows, name);
             }
         }
 
@@ -594,13 +588,21 @@ mod tests {
             }
         }
 
-        fn check_no_duplicate_combos_combined(
-            main: &[KeyBinding],
-            hidden: &[KeyBinding],
-            name: &str,
-        ) {
-            let combined: Vec<_> = main.iter().chain(hidden.iter()).cloned().collect();
-            check_no_duplicate_combos(&combined, name);
+        fn check_no_duplicate_combos_rows(rows: &[ModeRow], name: &str) {
+            let mut seen: Vec<KeyCombo> = Vec::new();
+            for row in rows {
+                for eb in row.bindings {
+                    for combo in eb.combos {
+                        if seen.contains(combo) {
+                            panic!(
+                                "{name}: duplicate combo {combo:?} in binding {:?}",
+                                eb.action
+                            );
+                        }
+                        seen.push(*combo);
+                    }
+                }
+            }
         }
 
         // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
@@ -609,7 +611,7 @@ mod tests {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
-                check_no_duplicate_combos_combined(mb.display, mb.hidden, name);
+                check_no_duplicate_combos_rows(mb.rows, name);
             }
         }
 
@@ -637,13 +639,31 @@ mod tests {
             }
         }
 
+        fn check_resolve_mode_roundtrip(rows: &[ModeRow], name: &str) {
+            for row in rows {
+                for eb in row.bindings {
+                    for combo in eb.combos {
+                        let resolved = keymap::resolve_mode(combo, rows);
+                        match resolved {
+                            Some(ref action)
+                                if std::mem::discriminant(action)
+                                    == std::mem::discriminant(&eb.action) => {}
+                            other => panic!(
+                                "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
+                                eb.action
+                            ),
+                        }
+                    }
+                }
+            }
+        }
+
         #[test]
         fn keymap_resolve_roundtrip_for_simple_modes() {
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
-                check_keymap_roundtrip(mb.display, &format!("{name} display"));
-                check_keymap_roundtrip(mb.hidden, &format!("{name} hidden"));
+                check_resolve_mode_roundtrip(mb.rows, name);
             }
         }
 
@@ -680,16 +700,42 @@ mod tests {
             }
         }
 
+        fn check_no_plain_char_in_filter_mode_rows(
+            rows: &[ModeRow],
+            name: &str,
+            allowed_chars: &[char],
+        ) {
+            let no_mods = Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            };
+            for row in rows {
+                for eb in row.bindings {
+                    for combo in eb.combos {
+                        if combo.modifiers == no_mods
+                            && let Key::Char(c) = combo.key
+                        {
+                            assert!(
+                                allowed_chars.contains(&c),
+                                "{name}: executable entry {:?} has plain Char({c:?}) combo \
+                                 which would shadow filter input",
+                                eb.action
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         #[test]
         fn table_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS", &[]);
-            check_no_plain_char_in_filter_mode(TABLE_PICKER_HIDDEN, "TABLE_PICKER_HIDDEN", &[]);
+            check_no_plain_char_in_filter_mode_rows(TABLE_PICKER_ROWS, "TABLE_PICKER_ROWS", &[]);
         }
 
         #[test]
         fn er_picker_has_no_plain_char_combos() {
-            check_no_plain_char_in_filter_mode(ER_PICKER_KEYS, "ER_PICKER_KEYS", &[' ']);
-            check_no_plain_char_in_filter_mode(ER_PICKER_HIDDEN, "ER_PICKER_HIDDEN", &[' ']);
+            check_no_plain_char_in_filter_mode_rows(ER_PICKER_ROWS, "ER_PICKER_ROWS", &[' ']);
         }
 
         #[test]
@@ -703,7 +749,7 @@ mod tests {
         }
 
         // ------------------------------------------------------------------ //
-        // 6. Action::None entries must have combos: &[]
+        // 6. Action::None entries must have combos: &[] (KeyBinding arrays only)
         // ------------------------------------------------------------------ //
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
@@ -733,42 +779,15 @@ mod tests {
                 CONNECTIONS_MODE_KEYS,
                 "CONNECTIONS_MODE_KEYS",
             );
-            check_none_action_entries_have_no_combos(HELP_KEYS, "HELP_KEYS");
-            check_none_action_entries_have_no_combos(
-                CONNECTION_ERROR_KEYS,
-                "CONNECTION_ERROR_KEYS",
-            );
-            check_none_action_entries_have_no_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
-            check_none_action_entries_have_no_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
-            check_none_action_entries_have_no_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
-            check_none_action_entries_have_no_combos(
-                CONNECTION_SELECTOR_KEYS,
-                "CONNECTION_SELECTOR_KEYS",
-            );
         }
 
         // ------------------------------------------------------------------ //
-        // 7. Hidden arrays: every entry must have a real action and combos
+        // 7. ALL_MODE_BINDINGS exhaustiveness
         // ------------------------------------------------------------------ //
-
-        fn check_hidden_entries_valid(bindings: &[KeyBinding], name: &str) {
-            for (i, kb) in bindings.iter().enumerate() {
-                assert!(
-                    !matches!(kb.action, Action::None),
-                    "{name}[{i}] is in a HIDDEN array but has Action::None"
-                );
-                assert!(
-                    !kb.combos.is_empty(),
-                    "{name}[{i}] is in a HIDDEN array but has no combos"
-                );
-            }
-        }
 
         #[test]
-        fn hidden_exec_entries_are_valid() {
-            for (name, mb) in ALL_MODE_BINDINGS {
-                check_hidden_entries_valid(mb.hidden, &format!("{name} hidden"));
-            }
+        fn all_mode_bindings_count() {
+            assert_eq!(ALL_MODE_BINDINGS.len(), 6);
         }
     }
 }
