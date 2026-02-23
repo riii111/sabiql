@@ -27,6 +27,7 @@ pub enum Key {
     PageUp,
     PageDown,
     F(u8),
+    /// Exhaustive-match catch-alls for key_translator; never matched in handlers.
     Null,
     Other,
 }
@@ -117,15 +118,16 @@ pub struct KeyBinding {
     /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
     /// actual matching is handled directly in handler match arms.
     pub action: Action,
-    /// The key combinations that trigger this binding (executable triggers only).
+    /// The key combinations that trigger this binding.
     ///
-    /// `keymap::resolve()` matches incoming events against these combos.
-    /// In **display-only arrays** (those never passed to `keymap::resolve()`:
-    /// `NAVIGATION_KEYS`, `FOOTER_NAV_KEYS`, `SQL_MODAL_KEYS`, `OVERLAY_KEYS`,
-    /// `CONNECTION_SETUP_KEYS`, `RESULT_ACTIVE_KEYS`, `CONNECTIONS_MODE_KEYS`),
-    /// all `Action::None` entries must have `combos: &[]`, because non-empty
-    /// combos on a display-only entry create a false impression of being an
-    /// executable trigger when they are never matched at runtime.
+    /// `keymap::resolve()` skips `Action::None` entries, so combos on them are
+    /// never matched at runtime. Two array categories exist:
+    ///
+    /// - **Display-only arrays** (never passed to `resolve()`): `Action::None`
+    ///   entries must have `combos: &[]`.
+    /// - **Executable arrays** (passed to `resolve()`): `Action::None` entries
+    ///   may keep non-empty combos as metadata describing which keys the
+    ///   display hint covers. The appended executable entries hold the real combos.
     pub combos: &'static [KeyCombo],
 }
 
@@ -331,7 +333,9 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::EnterCommandLine,
         combos: &[KeyCombo::plain(Key::Char(':'))],
     },
-    // idx 5: FOCUS
+    // idx 5: FOCUS / idx 6: EXIT_FOCUS — intentionally duplicate combo ('f')
+    // for the same Action::ToggleFocus. Two entries exist because the footer
+    // shows different labels depending on whether focus mode is active.
     KeyBinding {
         key_short: "f",
         key: "f",
@@ -340,7 +344,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleFocus,
         combos: &[KeyCombo::plain(Key::Char('f'))],
     },
-    // idx 6: EXIT_FOCUS (same key, different display)
     KeyBinding {
         key_short: "f",
         key: "f",
@@ -2021,13 +2024,12 @@ mod tests {
         }
 
         // ------------------------------------------------------------------ //
-        // 6. Display-only arrays: Action::None entries must have no combos
+        // 6. Display-only arrays: Action::None entries must have combos: &[]
         // ------------------------------------------------------------------ //
         //
-        // In display-only arrays (never passed to keymap::resolve()), combos
-        // serve no runtime purpose and their presence creates a false impression
-        // that they are executable triggers. All Action::None entries in these
-        // arrays must have combos: &[].
+        // Executable arrays (HELP_KEYS, COMMAND_PALETTE_KEYS, etc.) are excluded
+        // because their Action::None entries intentionally carry combos as
+        // display metadata — see the `combos` field doc on KeyBinding.
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {

@@ -34,14 +34,14 @@ mod tests {
         }
     }
 
-    fn none_j_binding() -> KeyBinding {
+    fn none_display_binding() -> KeyBinding {
         KeyBinding {
-            key_short: "j",
-            key: "j",
+            key_short: "j/k",
+            key: "j/k",
             desc_short: "Nav",
             description: "Navigate",
             action: Action::None,
-            combos: J_COMBOS,
+            combos: J_COMBOS, // mimics executable-array display entry (combos as metadata)
         }
     }
 
@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn skips_display_only_none_entries() {
-        let none_j = none_j_binding();
+        let none_j = none_display_binding();
         let quit = quit_binding();
         let bindings = [none_j, quit];
 
