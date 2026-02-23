@@ -101,4 +101,10 @@ pub enum Effect {
 
     /// Dispatch actions to be processed by the reducer
     DispatchActions(Vec<Action>),
+
+    /// Resolves the connection profile at the given index, builds DSN via DsnBuilder,
+    /// and dispatches SwitchConnection action.
+    SwitchConnection {
+        connection_index: usize,
+    },
 }

@@ -65,6 +65,7 @@ async fn main() -> Result<()> {
     let effect_runner = EffectRunner::new(
         Arc::clone(&adapter) as _,
         Arc::clone(&adapter) as _,
+        Arc::clone(&adapter) as _,
         Arc::new(DotExporter::new()),
         Arc::new(FileConfigWriter::new()),
         Arc::new(FsErLogWriter),

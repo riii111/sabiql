@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{DsnBuilder, MetadataError, MetadataProvider, QueryExecutor};
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, WriteExecutionResult};
 
 #[allow(dead_code)]
@@ -68,5 +69,15 @@ impl QueryExecutor for MySqlAdapter {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
+    }
+}
+
+impl DsnBuilder for MySqlAdapter {
+    fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
     }
 }

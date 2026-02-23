@@ -908,26 +908,21 @@ pub fn reduce_navigation(
         }
         Action::ConfirmConnectionSelection => {
             let from_selector = state.ui.input_mode == InputMode::ConnectionSelector;
+            let connection_index = state.ui.connection_list_selected;
 
-            if let Some(selected) = state.connections.get(state.ui.connection_list_selected) {
+            if let Some(selected) = state.connections.get(connection_index) {
                 let selected_id = selected.id.clone();
                 let active_id = state.runtime.active_connection_id.clone();
 
                 // Only switch if different from current connection
                 if active_id.as_ref() != Some(&selected_id) {
-                    let dsn = selected.to_dsn();
-                    let name = selected.display_name().to_string();
-                    let id = selected_id;
-
                     // Return to Tables mode and Normal input mode after switching
                     state.ui.explorer_mode = ExplorerMode::Tables;
                     if from_selector {
                         state.ui.input_mode = InputMode::Normal;
                     }
 
-                    return Some(vec![Effect::DispatchActions(vec![
-                        Action::SwitchConnection { id, dsn, name },
-                    ])]);
+                    return Some(vec![Effect::SwitchConnection { connection_index }]);
                 }
             }
             // Already on this connection, just go back to Tables mode / Normal
@@ -1277,7 +1272,7 @@ mod tests {
         }
 
         #[test]
-        fn different_connection_dispatches_switch_action() {
+        fn different_connection_dispatches_switch_effect() {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
             let other_id = ConnectionId::new();
@@ -1298,11 +1293,9 @@ mod tests {
 
             assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::DispatchActions(_)))
-            );
+            assert!(effects.iter().any(
+                |e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)
+            ));
         }
 
         #[test]
@@ -1365,11 +1358,9 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::DispatchActions(_)))
-            );
+            assert!(effects.iter().any(
+                |e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)
+            ));
         }
 
         #[test]

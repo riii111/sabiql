@@ -25,8 +25,8 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
-    ConfigWriter, ConnectionStore, ErDiagramExporter, ErLogWriter, MetadataProvider, QueryExecutor,
-    Renderer,
+    ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
+    QueryExecutor, Renderer,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
@@ -35,6 +35,7 @@ use crate::domain::{DatabaseMetadata, ErTableInfo};
 pub struct EffectRunner {
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
+    dsn_builder: Arc<dyn DsnBuilder>,
     er_exporter: Arc<dyn ErDiagramExporter>,
     config_writer: Arc<dyn ConfigWriter>,
     er_log_writer: Arc<dyn ErLogWriter>,
@@ -48,6 +49,7 @@ impl EffectRunner {
     pub fn new(
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
+        dsn_builder: Arc<dyn DsnBuilder>,
         er_exporter: Arc<dyn ErDiagramExporter>,
         config_writer: Arc<dyn ConfigWriter>,
         er_log_writer: Arc<dyn ErLogWriter>,
@@ -58,6 +60,7 @@ impl EffectRunner {
         Self {
             metadata_provider,
             query_executor,
+            dsn_builder,
             er_exporter,
             config_writer,
             er_log_writer,
@@ -169,7 +172,7 @@ impl EffectRunner {
                     }
                 };
                 let id = profile.id.clone();
-                let dsn = profile.to_dsn();
+                let dsn = self.dsn_builder.build_dsn(&profile);
                 let name = profile.name.as_str().to_string();
                 let store = Arc::clone(&self.connection_store);
                 let tx = self.action_tx.clone();
@@ -583,6 +586,19 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::SwitchConnection { connection_index } => {
+                if let Some(profile) = state.connections.get(connection_index) {
+                    let dsn = self.dsn_builder.build_dsn(profile);
+                    let name = profile.display_name().to_string();
+                    let id = profile.id.clone();
+                    let _ = self
+                        .action_tx
+                        .send(Action::SwitchConnection { id, dsn, name })
+                        .await;
+                }
+                Ok(())
+            }
+
             Effect::CopyToClipboard {
                 content,
                 on_success,
@@ -665,6 +681,16 @@ mod tests {
         }
     }
 
+    struct NoopDsnBuilder;
+    impl DsnBuilder for NoopDsnBuilder {
+        fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+            String::new()
+        }
+        fn build_masked_dsn(&self, _profile: &ConnectionProfile) -> String {
+            String::new()
+        }
+    }
+
     fn make_runner(
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
@@ -675,6 +701,7 @@ mod tests {
         EffectRunner::new(
             metadata_provider,
             query_executor,
+            Arc::new(NoopDsnBuilder),
             Arc::new(NoopErExporter),
             Arc::new(NoopConfigWriter),
             Arc::new(NoopErLogWriter),

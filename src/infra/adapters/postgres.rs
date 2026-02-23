@@ -6,7 +6,8 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{DsnBuilder, MetadataError, MetadataProvider, QueryExecutor};
+use crate::domain::connection::ConnectionProfile;
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary, Trigger, TriggerEvent,
@@ -1108,9 +1109,90 @@ impl QueryExecutor for PostgresAdapter {
     }
 }
 
+impl DsnBuilder for PostgresAdapter {
+    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+        format!(
+            "postgres://{}:{}@{}:{}/{}?sslmode={}",
+            urlencoding::encode(&profile.username),
+            urlencoding::encode(&profile.password),
+            &profile.host,
+            profile.port,
+            urlencoding::encode(&profile.database),
+            profile.ssl_mode
+        )
+    }
+
+    fn build_masked_dsn(&self, profile: &ConnectionProfile) -> String {
+        format!(
+            "postgres://{}:****@{}:{}/{}?sslmode={}",
+            profile.username, profile.host, profile.port, profile.database, profile.ssl_mode
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::connection::SslMode;
+
+    mod dsn_builder {
+        use super::*;
+
+        fn make_test_profile() -> ConnectionProfile {
+            ConnectionProfile::new(
+                "Test Connection",
+                "localhost",
+                5432,
+                "testdb",
+                "testuser",
+                "testpass",
+                SslMode::Prefer,
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn includes_all_connection_fields() {
+            let adapter = PostgresAdapter::new();
+            let profile = make_test_profile();
+            let dsn = adapter.build_dsn(&profile);
+            assert!(dsn.starts_with("postgres://"));
+            assert!(dsn.contains("testuser"));
+            assert!(dsn.contains("testpass"));
+            assert!(dsn.contains("localhost"));
+            assert!(dsn.contains("5432"));
+            assert!(dsn.contains("testdb"));
+            assert!(dsn.contains("sslmode=prefer"));
+        }
+
+        #[test]
+        fn encodes_special_chars_in_credentials() {
+            let adapter = PostgresAdapter::new();
+            let profile = ConnectionProfile::new(
+                "Test",
+                "localhost",
+                5432,
+                "my/db",
+                "user@org",
+                "p@ss:word",
+                SslMode::Prefer,
+            )
+            .unwrap();
+            let dsn = adapter.build_dsn(&profile);
+            assert!(dsn.contains("user%40org"));
+            assert!(dsn.contains("p%40ss%3Aword"));
+            assert!(dsn.contains("my%2Fdb"));
+        }
+
+        #[test]
+        fn masked_dsn_hides_password() {
+            let adapter = PostgresAdapter::new();
+            let profile = make_test_profile();
+            let masked = adapter.build_masked_dsn(&profile);
+            assert!(masked.contains("****"));
+            assert!(!masked.contains("testpass"));
+        }
+    }
 
     mod preview_query {
         use super::*;
