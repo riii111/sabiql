@@ -35,6 +35,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 }
 
 fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
+    // Reset the dd operator-pending flag on any action other than the first `d` press.
+    if !matches!(action, Action::ResultDeleteOperatorPending) {
+        state.ui.delete_op_pending = false;
+    }
+
     if let Some(effects) = reduce_connection(state, &action, now) {
         return effects;
     }

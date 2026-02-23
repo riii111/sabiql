@@ -1039,7 +1039,7 @@ mod style_assertions {
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-        let dark_red = Color::Rgb(0x4a, 0x1a, 0x1a);
+        let dark_red = Color::Rgb(0x3d, 0x22, 0x22);
         let staged_cell = (0..TEST_HEIGHT)
             .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
             .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.bg == dark_red));
