@@ -33,20 +33,30 @@ mise run test               # Run tests
 
 ## Rules and Skills
 
-Rules are stored in `.claude/rules/` and are **automatically loaded** based on file paths.
-Skills are stored in `.claude/skills/` and must be **manually invoked**.
+Rules are stored in `.claude/rules/` and are **automatically loaded** based on file path globs.
+Skills are stored in `.claude/skills/`:
+- **Manual** skills are invoked via `/skill-name`
+- **Auto** skills fire automatically based on conversation context (`user-invocable: false`)
 
 ### Available Rules
 
 | Rule | Applies to | Description |
 |------|-----------|-------------|
-| **architecture** | `**/src/**/*.rs` | Hexagonal architecture, layer structure, dependency rules, ports & adapters |
+| **architecture** | `**/src/**/*.rs` | Hexagonal architecture, layer deps, ports & adapters, side-effect boundaries |
 | **ui-design** | `**/src/ui/**/*.rs` | Atomic Design pattern, footer hint ordering, keybindings |
-| **rust-testing** | `**/src/**/*.rs`, `**/tests/**/*.rs` | Test structure, naming conventions, rstest usage |
-| **visual-regression** | `**/tests/render_snapshots.rs` | Snapshot testing with insta, coverage criteria |
+| **interaction-contract** | keybindings, event handler, footer, help, palette files | Keybinding SSOT consistency, full checklist |
+| **db-agnostic** | `**/src/app/ports/**`, `**/src/infra/adapters/**` | Port neutrality, adapter isolation, MySQL readiness |
+| **config-migration** | config_writer, connection_store files | Backward-compatible config schema changes |
+| **rust-testing-style** | `**/src/**/*.rs`, `**/tests/**/*.rs` | Test naming, structure, rstest usage |
+| **testing-obligations** | `**/src/**/*.rs`, `**/tests/**/*.rs` | MUST-test targets by layer, `#[ignore]` tracking |
+| **visual-regression** | `**/tests/render_snapshots.rs`, `**/tests/snapshots/**` | insta snapshots, mode coverage obligation |
 
 ### Available Skills
 
-| Skill | Description |
-|-------|-------------|
-| **release** | Version bump, tag creation, GitHub release workflow |
+| Skill | Type | Description |
+|-------|------|-------------|
+| **release** | Manual | Version bump, tag creation, GitHub release workflow |
+| **rust-testing** | Auto | Write Rust tests following project conventions |
+| **interaction-check** | Auto | Verify keybinding consistency across SSOT/handler/footer/help |
+| **db-extension-readiness** | Auto | Review port traits and adapters for DB-agnostic design |
+| **spec-gap-tracking** | Auto | Audit `#[ignore]`, TODOs, and missing test coverage |
