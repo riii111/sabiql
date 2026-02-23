@@ -2058,5 +2058,54 @@ mod tests {
                 "CONNECTIONS_MODE_KEYS",
             );
         }
+
+        // ------------------------------------------------------------------ //
+        // 7. Mixed arrays: display ↔ executable combo consistency
+        // ------------------------------------------------------------------ //
+        //
+        // In executable arrays, Action::None entries carry combos as display
+        // metadata. Every combo in those entries must be covered by at least
+        // one executable (non-None) entry in the same array, otherwise a
+        // display hint advertises a key that has no runtime effect.
+
+        fn check_display_combos_covered_by_executables(bindings: &[KeyBinding], name: &str) {
+            let executable_combos: std::collections::HashSet<_> = bindings
+                .iter()
+                .filter(|kb| !matches!(kb.action, Action::None))
+                .flat_map(|kb| kb.combos.iter())
+                .collect();
+
+            for (i, kb) in bindings.iter().enumerate() {
+                if !matches!(kb.action, Action::None) || kb.combos.is_empty() {
+                    continue;
+                }
+                for combo in kb.combos {
+                    assert!(
+                        executable_combos.contains(combo),
+                        "{name}[{i}] display entry advertises {combo:?} \
+                         but no executable entry handles it"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn mixed_array_display_combos_are_covered_by_executables() {
+            check_display_combos_covered_by_executables(HELP_KEYS, "HELP_KEYS");
+            check_display_combos_covered_by_executables(
+                CONNECTION_ERROR_KEYS,
+                "CONNECTION_ERROR_KEYS",
+            );
+            check_display_combos_covered_by_executables(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_display_combos_covered_by_executables(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_display_combos_covered_by_executables(
+                COMMAND_PALETTE_KEYS,
+                "COMMAND_PALETTE_KEYS",
+            );
+            check_display_combos_covered_by_executables(
+                CONNECTION_SELECTOR_KEYS,
+                "CONNECTION_SELECTOR_KEYS",
+            );
+        }
     }
 }
