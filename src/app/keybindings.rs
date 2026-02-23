@@ -13,6 +13,12 @@ pub struct KeyBinding {
     pub desc_short: &'static str,
     /// Full description for Help/Palette (e.g., "Quit application")
     pub description: &'static str,
+    /// The action triggered by this key.
+    ///
+    /// `Action::None` means **display-only**: the entry is shown in Footer/Help/Palette
+    /// as a hint but is not matched by `handler.rs`. This is used for multi-key
+    /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
+    /// actual matching is handled directly in handler match arms.
     pub action: Action,
 }
 
@@ -683,6 +689,11 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
 // Confirm Dialog
 // =============================================================================
 
+// FIXME: The display strings "Enter/y" and "Esc/n" imply that y/n keys are
+// accepted, but handler.rs only matches Enter (confirm) and Esc (cancel).
+// The y/n keys are display-only hints that do not trigger actions.
+// To resolve: either implement y/n key handling in handler.rs or update the
+// display strings to reflect the actual accepted keys (Enter / Esc).
 pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
     // idx 0: CONFIRM
     KeyBinding {
