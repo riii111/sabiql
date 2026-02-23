@@ -754,6 +754,24 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::OpenErTablePicker,
         combos: &[],
     },
+    // idx 4: SUBMIT (executable, not displayed)
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Submit",
+        description: "Submit command",
+        action: Action::CommandLineSubmit,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
+    // idx 5: EXIT (executable, not displayed)
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Exit",
+        description: "Exit command line",
+        action: Action::ExitCommandLine,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
 ];
 
 // =============================================================================
@@ -899,6 +917,23 @@ pub const CONNECTION_ERROR_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
+    // Executable entries for scroll (idx 4 SCROLL is display-only)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ScrollConnectionErrorDown,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ScrollConnectionErrorUp,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+    },
 ];
 
 // =============================================================================
@@ -967,6 +1002,31 @@ pub const TABLE_PICKER_KEYS: &[KeyBinding] = &[
         action: Action::CloseTablePicker,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
+    // Executable entries (idx 1 NAVIGATE is display-only; Up/Down only, j/k are filter input)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectNext,
+        combos: &[KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectPrevious,
+        combos: &[KeyCombo::plain(Key::Up)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::FilterBackspace,
+        combos: &[KeyCombo::plain(Key::Backspace)],
+    },
 ];
 
 // =============================================================================
@@ -1028,6 +1088,31 @@ pub const ER_PICKER_KEYS: &[KeyBinding] = &[
         action: Action::CloseErTablePicker,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
+    // Executable entries (idx 3 NAVIGATE is display-only; Up/Down only, j/k are filter input)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectNext,
+        combos: &[KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectPrevious,
+        combos: &[KeyCombo::plain(Key::Up)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ErFilterBackspace,
+        combos: &[KeyCombo::plain(Key::Backspace)],
+    },
 ];
 
 // =============================================================================
@@ -1067,6 +1152,31 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
         action: Action::CloseCommandPalette,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
+    // Executable entries (idx 0 and 1 are display-only)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ConfirmSelection,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectNext,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::SelectPrevious,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+    },
 ];
 
 // =============================================================================
@@ -1074,13 +1184,13 @@ pub const COMMAND_PALETTE_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const HELP_KEYS: &[KeyBinding] = &[
-    // idx 0: HELP_SCROLL (display-only, covers both scroll directions)
+    // idx 0: HELP_SCROLL (display-only; executable entries appended below)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
-        action: Action::HelpScrollDown,
+        action: Action::None,
         combos: &[
             KeyCombo::plain(Key::Char('j')),
             KeyCombo::plain(Key::Char('k')),
@@ -1105,6 +1215,23 @@ pub const HELP_KEYS: &[KeyBinding] = &[
         description: "Quit",
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
+    },
+    // Executable entries (not shown in Footer/Help display, used by keymap::resolve)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::HelpScrollDown,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::HelpScrollUp,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
     },
 ];
 
@@ -1267,6 +1394,23 @@ pub const CONNECTION_SELECTOR_KEYS: &[KeyBinding] = &[
         description: "Quit application",
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
+    },
+    // Executable entries (idx 1 SELECT is display-only)
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ConnectionListSelectNext,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "",
+        key: "",
+        desc_short: "",
+        description: "",
+        action: Action::ConnectionListSelectPrevious,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
     },
 ];
 

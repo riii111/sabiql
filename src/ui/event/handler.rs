@@ -3,8 +3,10 @@ use super::key_translator::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
+use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
+use crate::app::{keybindings, keymap};
 
 use super::Event;
 
@@ -30,45 +32,38 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(key: KeyEvent, state: &AppState) -> Action {
+    let combo = super::key_translator::translate(key);
     match state.ui.input_mode {
         InputMode::Normal => handle_normal_mode(key, state),
-        InputMode::CommandLine => handle_command_line_mode(key),
-        InputMode::CellEdit => handle_cell_edit_keys(key),
-        InputMode::TablePicker => handle_table_picker_keys(key),
-        InputMode::CommandPalette => handle_command_palette_keys(key),
-        InputMode::Help => handle_help_keys(key),
+        InputMode::CommandLine => handle_command_line_mode(combo),
+        InputMode::CellEdit => handle_cell_edit_keys(combo),
+        InputMode::TablePicker => handle_table_picker_keys(combo),
+        InputMode::CommandPalette => handle_command_palette_keys(combo),
+        InputMode::Help => handle_help_keys(combo),
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty();
             handle_sql_modal_keys(key, completion_visible)
         }
         InputMode::ConnectionSetup => handle_connection_setup_keys(key, state),
-        InputMode::ConnectionError => handle_connection_error_keys(key),
-        InputMode::ConfirmDialog => handle_confirm_dialog_keys(key),
-        InputMode::ConnectionSelector => handle_connection_selector_keys(key),
-        InputMode::ErTablePicker => handle_er_table_picker_keys(key),
+        InputMode::ConnectionError => handle_connection_error_keys(combo),
+        InputMode::ConfirmDialog => handle_confirm_dialog_keys(combo),
+        InputMode::ConnectionSelector => handle_connection_selector_keys(combo),
+        InputMode::ErTablePicker => handle_er_table_picker_keys(combo),
     }
 }
 
-fn handle_connection_selector_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Char('j') | KeyCode::Down => Action::ConnectionListSelectNext,
-        KeyCode::Char('k') | KeyCode::Up => Action::ConnectionListSelectPrevious,
-        KeyCode::Enter => Action::ConfirmConnectionSelection,
-        KeyCode::Char('n') => Action::OpenConnectionSetup,
-        KeyCode::Char('e') => Action::RequestEditSelectedConnection,
-        KeyCode::Char('d') => Action::RequestDeleteSelectedConnection,
-        _ => Action::None,
-    }
+fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONNECTION_SELECTOR_KEYS).unwrap_or(Action::None)
 }
 
-fn handle_cell_edit_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::ResultCancelCellEdit,
-        KeyCode::Backspace => Action::ResultCellEditBackspace,
-        KeyCode::Char(':') => Action::EnterCommandLine,
-        KeyCode::Char(c) => Action::ResultCellEditInput(c),
+fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Backspace => Action::ResultCellEditBackspace,
+        Key::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
 }
@@ -333,46 +328,33 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
     }
 }
 
-fn handle_command_line_mode(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Enter => Action::CommandLineSubmit,
-        KeyCode::Esc => Action::ExitCommandLine,
-        KeyCode::Backspace => Action::CommandLineBackspace,
-        KeyCode::Char(c) => Action::CommandLineInput(c),
+fn handle_command_line_mode(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::COMMAND_LINE_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Backspace => Action::CommandLineBackspace,
+        Key::Char(c) => Action::CommandLineInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_table_picker_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseTablePicker,
-        KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Up => Action::SelectPrevious,
-        KeyCode::Down => Action::SelectNext,
-        KeyCode::Backspace => Action::FilterBackspace,
-        KeyCode::Char(c) => Action::FilterInput(c),
+fn handle_table_picker_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::TABLE_PICKER_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Char(c) => Action::FilterInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_command_palette_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::CloseCommandPalette,
-        KeyCode::Enter => Action::ConfirmSelection,
-        KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-        KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-        _ => Action::None,
-    }
+fn handle_command_palette_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::COMMAND_PALETTE_KEYS).unwrap_or(Action::None)
 }
 
-fn handle_help_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Esc | KeyCode::Char('?') => Action::CloseHelp,
-        KeyCode::Char('j') | KeyCode::Down => Action::HelpScrollDown,
-        KeyCode::Char('k') | KeyCode::Up => Action::HelpScrollUp,
-        _ => Action::None,
-    }
+fn handle_help_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::HELP_KEYS).unwrap_or(Action::None)
 }
 
 fn handle_sql_modal_keys(key: KeyEvent, completion_visible: bool) -> Action {
@@ -462,45 +444,28 @@ fn handle_connection_setup_keys(key: KeyEvent, state: &AppState) -> Action {
     }
 }
 
-fn handle_connection_error_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Char('q') => Action::Quit,
-        KeyCode::Esc => Action::CloseConnectionError,
-        KeyCode::Char('e') => Action::ReenterConnectionSetup,
-        KeyCode::Char('s') => Action::OpenConnectionSelector,
-        KeyCode::Char('d') => Action::ToggleConnectionErrorDetails,
-        KeyCode::Char('c') => Action::CopyConnectionError,
-        KeyCode::Up | KeyCode::Char('k') => Action::ScrollConnectionErrorUp,
-        KeyCode::Down | KeyCode::Char('j') => Action::ScrollConnectionErrorDown,
+fn handle_connection_error_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONNECTION_ERROR_KEYS).unwrap_or(Action::None)
+}
+
+fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, keybindings::ER_PICKER_KEYS) {
+        return action;
+    }
+    match combo.key {
+        Key::Char(c) => Action::ErFilterInput(c),
         _ => Action::None,
     }
 }
 
-fn handle_er_table_picker_keys(key: KeyEvent) -> Action {
-    match (key.code, key.modifiers) {
-        (KeyCode::Esc, _) => Action::CloseErTablePicker,
-        (KeyCode::Enter, _) => Action::ErConfirmSelection,
-        (KeyCode::Up, _) => Action::SelectPrevious,
-        (KeyCode::Down, _) => Action::SelectNext,
-        (KeyCode::Char(' '), _) => Action::ErToggleSelection,
-        (KeyCode::Char('a'), m) if m.contains(KeyModifiers::CONTROL) => Action::ErSelectAll,
-        (KeyCode::Backspace, _) => Action::ErFilterBackspace,
-        (KeyCode::Char(c), _) => Action::ErFilterInput(c),
-        _ => Action::None,
-    }
-}
-
-fn handle_confirm_dialog_keys(key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Enter => Action::ConfirmDialogConfirm,
-        KeyCode::Esc => Action::ConfirmDialogCancel,
-        _ => Action::None,
-    }
+fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
+    keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::keybindings::{Key, KeyCombo};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -508,6 +473,10 @@ mod tests {
 
     fn key_with_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
+    }
+
+    fn combo(k: Key) -> KeyCombo {
+        KeyCombo::plain(k)
     }
 
     mod normal_mode {
@@ -1309,13 +1278,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Enter, Expected::Submit)]
-        #[case(KeyCode::Esc, Expected::Exit)]
-        #[case(KeyCode::Backspace, Expected::Backspace)]
-        #[case(KeyCode::Char('s'), Expected::Input('s'))]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn command_line_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_command_line_mode(key(code));
+        #[case(Key::Enter, Expected::Submit)]
+        #[case(Key::Esc, Expected::Exit)]
+        #[case(Key::Backspace, Expected::Backspace)]
+        #[case(Key::Char('s'), Expected::Input('s'))]
+        #[case(Key::Tab, Expected::None)]
+        fn command_line_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_command_line_mode(combo(code));
 
             match expected {
                 Expected::Submit => assert!(matches!(result, Action::CommandLineSubmit)),
@@ -1344,16 +1313,16 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Enter, Expected::Confirm)]
-        #[case(KeyCode::Up, Expected::SelectPrev)]
-        #[case(KeyCode::Down, Expected::SelectNext)]
-        #[case(KeyCode::Backspace, Expected::FilterBackspace)]
-        #[case(KeyCode::Char('u'), Expected::FilterInput('u'))]
-        #[case(KeyCode::Char('日'), Expected::FilterInput('日'))]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn table_picker_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_table_picker_keys(key(code));
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Enter, Expected::Confirm)]
+        #[case(Key::Up, Expected::SelectPrev)]
+        #[case(Key::Down, Expected::SelectNext)]
+        #[case(Key::Backspace, Expected::FilterBackspace)]
+        #[case(Key::Char('u'), Expected::FilterInput('u'))]
+        #[case(Key::Char('日'), Expected::FilterInput('日'))]
+        #[case(Key::Tab, Expected::None)]
+        fn table_picker_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_table_picker_keys(combo(code));
 
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
@@ -1382,13 +1351,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Enter, Expected::Confirm)]
-        #[case(KeyCode::Up, Expected::SelectPrev)]
-        #[case(KeyCode::Down, Expected::SelectNext)]
-        #[case(KeyCode::Char('a'), Expected::None)]
-        fn command_palette_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_command_palette_keys(key(code));
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Enter, Expected::Confirm)]
+        #[case(Key::Up, Expected::SelectPrev)]
+        #[case(Key::Down, Expected::SelectNext)]
+        #[case(Key::Char('a'), Expected::None)]
+        fn command_palette_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_command_palette_keys(combo(code));
 
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
@@ -1405,28 +1374,28 @@ mod tests {
 
         #[test]
         fn q_quits() {
-            let result = handle_help_keys(key(KeyCode::Char('q')));
+            let result = handle_help_keys(combo(Key::Char('q')));
 
             assert!(matches!(result, Action::Quit));
         }
 
         #[test]
         fn esc_closes_help() {
-            let result = handle_help_keys(key(KeyCode::Esc));
+            let result = handle_help_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::CloseHelp));
         }
 
         #[test]
         fn question_mark_closes_help() {
-            let result = handle_help_keys(key(KeyCode::Char('?')));
+            let result = handle_help_keys(combo(Key::Char('?')));
 
             assert!(matches!(result, Action::CloseHelp));
         }
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_help_keys(key(KeyCode::Char('a')));
+            let result = handle_help_keys(combo(Key::Char('a')));
 
             assert!(matches!(result, Action::None));
         }
@@ -1472,20 +1441,20 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('q'), Expected::Quit)]
-        #[case(KeyCode::Esc, Expected::Close)]
-        #[case(KeyCode::Char('e'), Expected::Reenter)]
-        #[case(KeyCode::Char('s'), Expected::OpenSelector)]
-        #[case(KeyCode::Char('d'), Expected::ToggleDetails)]
-        #[case(KeyCode::Char('c'), Expected::Copy)]
-        #[case(KeyCode::Up, Expected::ScrollUp)]
-        #[case(KeyCode::Char('k'), Expected::ScrollUp)]
-        #[case(KeyCode::Down, Expected::ScrollDown)]
-        #[case(KeyCode::Char('j'), Expected::ScrollDown)]
-        #[case(KeyCode::Char('r'), Expected::None)]
-        #[case(KeyCode::Tab, Expected::None)]
-        fn connection_error_keys(#[case] code: KeyCode, #[case] expected: Expected) {
-            let result = handle_connection_error_keys(key(code));
+        #[case(Key::Char('q'), Expected::Quit)]
+        #[case(Key::Esc, Expected::Close)]
+        #[case(Key::Char('e'), Expected::Reenter)]
+        #[case(Key::Char('s'), Expected::OpenSelector)]
+        #[case(Key::Char('d'), Expected::ToggleDetails)]
+        #[case(Key::Char('c'), Expected::Copy)]
+        #[case(Key::Up, Expected::ScrollUp)]
+        #[case(Key::Char('k'), Expected::ScrollUp)]
+        #[case(Key::Down, Expected::ScrollDown)]
+        #[case(Key::Char('j'), Expected::ScrollDown)]
+        #[case(Key::Char('r'), Expected::None)]
+        #[case(Key::Tab, Expected::None)]
+        fn connection_error_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_connection_error_keys(combo(code));
 
             match expected {
                 Expected::Quit => assert!(matches!(result, Action::Quit)),
@@ -1512,21 +1481,21 @@ mod tests {
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {
-            let result = handle_cell_edit_keys(key(KeyCode::Esc));
+            let result = handle_cell_edit_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::ResultCancelCellEdit));
         }
 
         #[test]
         fn char_input_returns_cell_edit_input() {
-            let result = handle_cell_edit_keys(key(KeyCode::Char('x')));
+            let result = handle_cell_edit_keys(combo(Key::Char('x')));
 
             assert!(matches!(result, Action::ResultCellEditInput('x')));
         }
 
         #[test]
         fn backspace_returns_cell_edit_backspace() {
-            let result = handle_cell_edit_keys(key(KeyCode::Backspace));
+            let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ResultCellEditBackspace));
         }
@@ -1704,10 +1673,10 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case(KeyCode::Enter, Action::ConfirmDialogConfirm)]
-        #[case(KeyCode::Esc, Action::ConfirmDialogCancel)]
-        fn dialog_keys(#[case] code: KeyCode, #[case] expected: Action) {
-            let result = handle_confirm_dialog_keys(key(code));
+        #[case(Key::Enter, Action::ConfirmDialogConfirm)]
+        #[case(Key::Esc, Action::ConfirmDialogCancel)]
+        fn dialog_keys(#[case] code: Key, #[case] expected: Action) {
+            let result = handle_confirm_dialog_keys(combo(code));
 
             assert_eq!(
                 std::mem::discriminant(&result),
@@ -1716,13 +1685,13 @@ mod tests {
         }
 
         #[rstest]
-        #[case(KeyCode::Char('y'))]
-        #[case(KeyCode::Char('Y'))]
-        #[case(KeyCode::Char('n'))]
-        #[case(KeyCode::Char('N'))]
-        #[case(KeyCode::Char('x'))]
-        fn non_bound_keys_return_none(#[case] code: KeyCode) {
-            let result = handle_confirm_dialog_keys(key(code));
+        #[case(Key::Char('y'))]
+        #[case(Key::Char('Y'))]
+        #[case(Key::Char('n'))]
+        #[case(Key::Char('N'))]
+        #[case(Key::Char('x'))]
+        fn non_bound_keys_return_none(#[case] code: Key) {
+            let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::None));
         }
@@ -1733,17 +1702,17 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case(KeyCode::Char('q'), Action::Quit)]
-        #[case(KeyCode::Char('j'), Action::ConnectionListSelectNext)]
-        #[case(KeyCode::Down, Action::ConnectionListSelectNext)]
-        #[case(KeyCode::Char('k'), Action::ConnectionListSelectPrevious)]
-        #[case(KeyCode::Up, Action::ConnectionListSelectPrevious)]
-        #[case(KeyCode::Enter, Action::ConfirmConnectionSelection)]
-        #[case(KeyCode::Char('n'), Action::OpenConnectionSetup)]
-        #[case(KeyCode::Char('e'), Action::RequestEditSelectedConnection)]
-        #[case(KeyCode::Char('d'), Action::RequestDeleteSelectedConnection)]
-        fn selector_keys(#[case] code: KeyCode, #[case] expected: Action) {
-            let result = handle_connection_selector_keys(key(code));
+        #[case(Key::Char('q'), Action::Quit)]
+        #[case(Key::Char('j'), Action::ConnectionListSelectNext)]
+        #[case(Key::Down, Action::ConnectionListSelectNext)]
+        #[case(Key::Char('k'), Action::ConnectionListSelectPrevious)]
+        #[case(Key::Up, Action::ConnectionListSelectPrevious)]
+        #[case(Key::Enter, Action::ConfirmConnectionSelection)]
+        #[case(Key::Char('n'), Action::OpenConnectionSetup)]
+        #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
+        #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
+        fn selector_keys(#[case] code: Key, #[case] expected: Action) {
+            let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(
                 std::mem::discriminant(&result),
@@ -1753,7 +1722,7 @@ mod tests {
 
         #[test]
         fn unknown_key_returns_none() {
-            let result = handle_connection_selector_keys(key(KeyCode::Char('x')));
+            let result = handle_connection_selector_keys(combo(Key::Char('x')));
 
             assert!(matches!(result, Action::None));
         }
@@ -1853,42 +1822,42 @@ mod tests {
 
         #[test]
         fn esc_returns_close_er_table_picker() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Esc));
+            let result = handle_er_table_picker_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::CloseErTablePicker));
         }
 
         #[test]
         fn enter_returns_er_confirm_selection() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Enter));
+            let result = handle_er_table_picker_keys(combo(Key::Enter));
 
             assert!(matches!(result, Action::ErConfirmSelection));
         }
 
         #[test]
         fn up_returns_select_previous() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Up));
+            let result = handle_er_table_picker_keys(combo(Key::Up));
 
             assert!(matches!(result, Action::SelectPrevious));
         }
 
         #[test]
         fn down_returns_select_next() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Down));
+            let result = handle_er_table_picker_keys(combo(Key::Down));
 
             assert!(matches!(result, Action::SelectNext));
         }
 
         #[test]
         fn backspace_returns_er_filter_backspace() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Backspace));
+            let result = handle_er_table_picker_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ErFilterBackspace));
         }
 
         #[test]
         fn char_input_returns_er_filter_input() {
-            let result = handle_er_table_picker_keys(key(KeyCode::Char('a')));
+            let result = handle_er_table_picker_keys(combo(Key::Char('a')));
 
             assert!(matches!(result, Action::ErFilterInput('a')));
         }

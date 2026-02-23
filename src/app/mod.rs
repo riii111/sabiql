@@ -19,6 +19,7 @@ pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;
 pub mod keybindings;
+pub mod keymap;
 pub mod message_state;
 pub mod metadata_cache;
 pub mod palette;
