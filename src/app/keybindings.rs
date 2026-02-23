@@ -284,11 +284,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Help overlay (individual key display).
-///
-/// All entries use `Action::None` (display-only). The combined display strings
-/// like `"j / ↓"` represent multiple keys shown as one hint; actual key
-/// matching is handled directly in `handler.rs` match arms.
+/// Navigation keys for Help overlay (individual key display)
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "j",
@@ -355,11 +351,7 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Footer (combined key display).
-///
-/// All entries use `Action::None` (display-only). Entries like `"j/k / ↑↓"`
-/// combine multiple keys into a single Footer hint for brevity; the actual
-/// keys are matched individually in `handler.rs`.
+/// Navigation keys for Footer (combined key display)
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
     // idx 0: SCROLL
     KeyBinding {
