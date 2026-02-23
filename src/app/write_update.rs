@@ -59,6 +59,61 @@ pub fn build_delete_sql(schema: &str, table: &str, pk_pairs: &[(String, String)]
     )
 }
 
+/// Generates a single bulk DELETE using PostgreSQL row constructor IN-clause syntax.
+///
+/// - Single PK:    `WHERE "id" IN ('1', '2', '3')`
+/// - Composite PK: `WHERE ("id", "tenant_id") IN (('1', 'a'), ('2', 'b'))`
+///
+/// `pk_pairs_per_row` must be non-empty; all rows must share the same PK column set.
+pub fn build_bulk_delete_sql(
+    schema: &str,
+    table: &str,
+    pk_pairs_per_row: &[Vec<(String, String)>],
+) -> String {
+    assert!(
+        !pk_pairs_per_row.is_empty(),
+        "pk_pairs_per_row must not be empty"
+    );
+
+    let pk_count = pk_pairs_per_row[0].len();
+
+    let where_clause = if pk_count == 1 {
+        let col = quote_ident(&pk_pairs_per_row[0][0].0);
+        let values = pk_pairs_per_row
+            .iter()
+            .map(|pairs| sql_value_expr(&pairs[0].1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{} IN ({})", col, values)
+    } else {
+        let cols = pk_pairs_per_row[0]
+            .iter()
+            .map(|(col, _)| quote_ident(col))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let rows = pk_pairs_per_row
+            .iter()
+            .map(|pairs| {
+                let vals = pairs
+                    .iter()
+                    .map(|(_, val)| sql_value_expr(val))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("({})", vals)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("({}) IN ({})", cols, rows)
+    };
+
+    format!(
+        "DELETE FROM {}.{}\nWHERE {};",
+        quote_ident(schema),
+        quote_ident(table),
+        where_clause
+    )
+}
+
 pub fn build_pk_pairs(
     columns: &[String],
     row: &[String],

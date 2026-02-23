@@ -5,7 +5,6 @@ use crate::app::state::AppState;
 use crate::domain::{QueryResult, QuerySource};
 
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
-#[allow(dead_code)]
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
 
@@ -56,7 +55,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
 
 /// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
 /// after refetch, because the previous page row count is not known yet.
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn deletion_refresh_target(
     row_count: usize,
     selected_row: usize,
@@ -72,6 +71,29 @@ pub fn deletion_refresh_target(
         (current_page, Some(selected_row))
     } else {
         (current_page, Some(row_count - 2))
+    }
+}
+
+/// Computes the cursor target after bulk-deleting rows from a page.
+///
+/// `deleted_indices` is a sorted set of page-relative row indices that were deleted.
+/// Returns `(target_page, target_row)` — same sentinel convention as `deletion_refresh_target`.
+pub fn deletion_refresh_target_bulk(
+    row_count: usize,
+    deleted_count: usize,
+    first_deleted_idx: usize,
+    current_page: usize,
+) -> (usize, Option<usize>) {
+    let remaining = row_count.saturating_sub(deleted_count);
+    if remaining == 0 {
+        if current_page > 0 {
+            (current_page - 1, Some(usize::MAX))
+        } else {
+            (0, None)
+        }
+    } else {
+        let target_row = first_deleted_idx.min(remaining - 1);
+        (current_page, Some(target_row))
     }
 }
 
