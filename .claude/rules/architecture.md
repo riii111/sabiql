@@ -47,6 +47,7 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | Add UI component | `ui/components/` |
 | Add business logic | `app/` (pure functions, no I/O) |
 | Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
+| Add database-specific SQL or connection string logic | Define port in `app/ports/`, impl in `infra/adapters/` |
 | Add domain model | `domain/` |
 | Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
 | Add key-to-action mapping (simple mode) | `app/keybindings/` (add entry with `combos` to appropriate submodule); `keymap::resolve()` handles it automatically |
