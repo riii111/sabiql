@@ -56,6 +56,7 @@ impl ResultPane {
                             state.cell_edit.row.unwrap_or_default(),
                             state.cell_edit.col.unwrap_or_default(),
                             state.cell_edit.draft_value.as_str(),
+                            state.ui.input_mode == crate::app::input_mode::InputMode::CellEdit,
                         ))
                     } else {
                         None
@@ -175,7 +176,7 @@ impl ResultPane {
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
         selection: &ResultSelection,
-        editing_cell: Option<(usize, usize, &str)>,
+        editing_cell: Option<(usize, usize, &str, bool)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -269,21 +270,35 @@ impl ResultPane {
                             .unwrap_or("")
                             .to_string();
                         let is_editing_cell = editing_cell
-                            .is_some_and(|(er, ec, _)| er == abs_row_idx && ec == orig_idx);
-                        if let Some((_, _, draft)) = editing_cell
+                            .is_some_and(|(er, ec, _, _)| er == abs_row_idx && ec == orig_idx);
+                        if let Some((_, _, draft, actively_editing)) = editing_cell
                             && is_editing_cell
                         {
-                            val = format!("{}█", draft);
+                            if actively_editing {
+                                val = format!("{}█", draft);
+                            } else {
+                                val = draft.to_string();
+                            }
                         }
 
                         let display = truncate_cell(&val, col_width as usize);
                         let mut cell = Cell::from(display);
-                        if is_editing_cell {
-                            cell = cell.style(
-                                Style::default()
-                                    .bg(Theme::RESULT_CELL_ACTIVE_BG)
-                                    .fg(Theme::CELL_EDIT_FG),
-                            );
+                        if let Some((_, _, _, actively_editing)) = editing_cell
+                            && is_editing_cell
+                        {
+                            if actively_editing {
+                                cell = cell.style(
+                                    Style::default()
+                                        .bg(Theme::RESULT_CELL_ACTIVE_BG)
+                                        .fg(Theme::CELL_EDIT_FG),
+                                );
+                            } else {
+                                cell = cell.style(
+                                    Style::default()
+                                        .bg(Theme::RESULT_CELL_ACTIVE_BG)
+                                        .fg(Theme::CELL_DRAFT_PENDING_FG),
+                                );
+                            }
                         } else if is_active_row && active_cell == Some(orig_idx) {
                             cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
                         }
