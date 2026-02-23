@@ -49,6 +49,25 @@ Ports are **traits defined in `app/ports/`** that abstract external dependencies
 | Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
 | Add domain model | `domain/` |
 | Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
+| Add key-to-action mapping (simple mode) | `app/keybindings.rs` (add entry with `combos`); `keymap::resolve()` handles it automatically |
+| Add key-to-action mapping (Normal mode) | `app/keybindings.rs` + add predicate fn + wire in `handler.rs` |
+
+## Key Translation Flow
+
+```
+crossterm::KeyEvent
+  → ui/event/key_translator::translate()
+  → app::keybindings::KeyCombo
+  → app::keymap::resolve(combo, bindings)   (simple modes)
+     OR keybindings::is_quit(&combo) etc.   (Normal mode predicates)
+  → Action
+```
+
+**Responsibilities:**
+- `app/keybindings.rs`: SSOT — `KeyBinding` structs with `combos: &'static [KeyCombo]`, `Action`, display strings
+- `app/keymap.rs`: `resolve(combo, bindings)` — linear scan, skips `Action::None` entries
+- `ui/event/key_translator.rs`: UI adapter — converts `crossterm::KeyEvent` → app-layer `KeyCombo`
+- `ui/event/handler.rs`: mode dispatch — calls `keymap::resolve()` or predicate fns, applies context logic
 
 ## Key Principles
 
