@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use super::key_translator::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
@@ -145,7 +145,13 @@ fn handle_normal_mode(key: KeyEvent, state: &AppState) -> Action {
         KeyCode::Esc => {
             if result_navigation {
                 match result_nav_mode {
-                    ResultNavMode::CellActive => Action::ResultExitToRowActive,
+                    ResultNavMode::CellActive => {
+                        if state.cell_edit.has_pending_draft() {
+                            Action::ResultDiscardCellEdit
+                        } else {
+                            Action::ResultExitToRowActive
+                        }
+                    }
                     ResultNavMode::RowActive => Action::ResultExitToScroll,
                     ResultNavMode::Scroll => Action::Escape,
                 }
@@ -884,6 +890,30 @@ mod tests {
         }
 
         #[test]
+        fn esc_in_cell_active_with_draft_returns_discard() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+            state.cell_edit.begin(0, 1, "original".to_string());
+            state.cell_edit.draft_value = "modified".to_string();
+
+            let result = handle_normal_mode(key(KeyCode::Esc), &state);
+
+            assert!(matches!(result, Action::ResultDiscardCellEdit));
+        }
+
+        #[test]
+        fn esc_in_cell_active_without_draft_returns_exit_to_row_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+
+            let result = handle_normal_mode(key(KeyCode::Esc), &state);
+
+            assert!(matches!(result, Action::ResultExitToRowActive));
+        }
+
+        #[test]
         fn i_key_enters_cell_edit_when_cell_active() {
             let mut state = result_focused_state();
             state.ui.result_selection.enter_row(0);
@@ -1471,6 +1501,31 @@ mod tests {
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+    }
+
+    mod cell_edit_mode {
+        use super::*;
+
+        #[test]
+        fn esc_in_cell_edit_returns_cancel_not_discard() {
+            let result = handle_cell_edit_keys(key(KeyCode::Esc));
+
+            assert!(matches!(result, Action::ResultCancelCellEdit));
+        }
+
+        #[test]
+        fn char_input_returns_cell_edit_input() {
+            let result = handle_cell_edit_keys(key(KeyCode::Char('x')));
+
+            assert!(matches!(result, Action::ResultCellEditInput('x')));
+        }
+
+        #[test]
+        fn backspace_returns_cell_edit_backspace() {
+            let result = handle_cell_edit_keys(key(KeyCode::Backspace));
+
+            assert!(matches!(result, Action::ResultCellEditBackspace));
         }
     }
 

@@ -68,17 +68,27 @@ impl Footer {
                 let nav_mode = state.ui.result_selection.mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
-                    // Actions → Navigation → Help → Close/Cancel → Quit
-                    vec![
-                        RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::CELL_NAV].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
-                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                        RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
-                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
-                    ]
+                    if state.cell_edit.has_pending_draft() {
+                        vec![
+                            RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
+                            CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
+                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::DRAFT_DISCARD].as_hint(),
+                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                        ]
+                    } else {
+                        // Actions → Navigation → Help → Close/Cancel → Quit
+                        vec![
+                            RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::YANK].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::CELL_NAV].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::ROW_NAV].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::TOP_BOTTOM].as_hint(),
+                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
+                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                        ]
+                    }
                 } else if result_navigation && nav_mode == ResultNavMode::RowActive {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     vec![

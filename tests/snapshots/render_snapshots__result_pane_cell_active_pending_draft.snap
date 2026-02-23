@@ -17,11 +17,11 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  │┌ [3] Result [PREVIEW p.1 (rows 1–2)] (2 rows, 15ms) ──────┐
 │                  ││id   name    email                                        │
 │                  ││1    Alice   alice@example.com                            │
-│                  ││2    Bob     new@example.com█                             │
+│                  ││2    Bob     new@example.com                              │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-:w:Write  type:Edit  ?:Help  Esc:Normal  q:Quit
+i:Edit  :w:Write  ?:Help  Esc:Discard  q:Quit

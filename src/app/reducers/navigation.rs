@@ -805,8 +805,10 @@ pub fn reduce_navigation(
         }
         Action::ResultEnterCellEdit => match editable_cell_context(state) {
             Ok((row_idx, col_idx, value)) => {
-                state.cell_edit.begin(row_idx, col_idx, value);
-                state.pending_write_preview = None;
+                if state.cell_edit.row != Some(row_idx) || state.cell_edit.col != Some(col_idx) {
+                    state.cell_edit.begin(row_idx, col_idx, value);
+                    state.pending_write_preview = None;
+                }
                 state.ui.input_mode = InputMode::CellEdit;
                 Some(vec![])
             }
@@ -816,6 +818,11 @@ pub fn reduce_navigation(
             }
         },
         Action::ResultCancelCellEdit => {
+            state.pending_write_preview = None;
+            state.ui.input_mode = InputMode::Normal;
+            Some(vec![])
+        }
+        Action::ResultDiscardCellEdit => {
             state.cell_edit.clear();
             state.pending_write_preview = None;
             state.ui.input_mode = InputMode::Normal;
@@ -1739,6 +1746,58 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
             state
+        }
+
+        #[test]
+        fn re_entering_same_cell_with_pending_draft_preserves_draft() {
+            let mut state = preview_state_with_selection();
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            });
+            state.cell_edit.begin(0, 1, "alice".to_string());
+            state.cell_edit.draft_value = "modified".to_string();
+            state.ui.input_mode = InputMode::Normal;
+
+            reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.cell_edit.draft_value, "modified");
+        }
+
+        #[test]
+        fn entering_different_cell_resets_draft() {
+            let mut state = preview_state_with_selection();
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            });
+            state.cell_edit.begin(0, 99, "stale".to_string());
+            state.cell_edit.draft_value = "stale-modified".to_string();
+
+            reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.cell_edit.col, Some(1));
+            assert_eq!(state.cell_edit.draft_value, "alice");
         }
 
         #[test]

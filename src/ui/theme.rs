@@ -85,6 +85,7 @@ impl Theme {
 
     // Cell edit mode
     pub const CELL_EDIT_FG: Color = Color::Yellow;
+    pub const CELL_DRAFT_PENDING_FG: Color = Color::Rgb(0xff, 0x99, 0x00);
 
     // SQL syntax highlighting
     pub const SQL_KEYWORD: Color = Color::Blue;

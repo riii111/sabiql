@@ -1,4 +1,5 @@
 pub mod handler;
+pub mod key_translator;
 
 use crossterm::event::KeyEvent;
 
