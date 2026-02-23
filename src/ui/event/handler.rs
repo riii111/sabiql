@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use super::key_translator::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
