@@ -736,10 +736,6 @@ impl Inspector {
             },
         );
     }
-
-    pub fn ddl_line_count(table: &TableDetail, state: &AppState) -> usize {
-        state.ddl_generator.ddl_line_count(table)
-    }
 }
 
 /// Returns (clamped_widths, true_total_width)

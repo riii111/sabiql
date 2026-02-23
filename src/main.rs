@@ -62,17 +62,17 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let effect_runner = EffectRunner::new(
-        Arc::clone(&adapter) as _,
-        Arc::clone(&adapter) as _,
-        Arc::clone(&adapter) as _,
-        Arc::new(DotExporter::new()),
-        Arc::new(FileConfigWriter::new()),
-        Arc::new(FsErLogWriter),
-        Arc::clone(&connection_store) as _,
-        metadata_cache.clone(),
-        action_tx.clone(),
-    );
+    let effect_runner = EffectRunner::builder()
+        .metadata_provider(Arc::clone(&adapter) as _)
+        .query_executor(Arc::clone(&adapter) as _)
+        .dsn_builder(Arc::clone(&adapter) as _)
+        .er_exporter(Arc::new(DotExporter::new()))
+        .config_writer(Arc::new(FileConfigWriter::new()))
+        .er_log_writer(Arc::new(FsErLogWriter))
+        .connection_store(Arc::clone(&connection_store) as _)
+        .metadata_cache(metadata_cache.clone())
+        .action_tx(action_tx.clone())
+        .build();
 
     let mut state = AppState::with_ports(
         project_name,

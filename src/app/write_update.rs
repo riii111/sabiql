@@ -5,15 +5,15 @@ pub fn escape_preview_value(value: &str) -> String {
         .replace('\n', "\\n")
 }
 
-fn quote_literal(value: &str) -> String {
+fn preview_quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-pub fn sql_value_expr(value: &str) -> String {
+pub fn preview_value_expr(value: &str) -> String {
     if value == "NULL" {
         "NULL".to_string()
     } else {
-        quote_literal(value)
+        preview_quote_literal(value)
     }
 }
 
@@ -44,7 +44,7 @@ mod tests {
         #[case("alice", "'alice'")]
         #[case("O'Reilly", "'O''Reilly'")]
         fn value_input_returns_expected_sql_expr(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(sql_value_expr(input), expected);
+            assert_eq!(preview_value_expr(input), expected);
         }
 
         #[test]

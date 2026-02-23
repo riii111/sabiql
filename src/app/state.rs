@@ -49,7 +49,7 @@ pub struct AppState {
 struct StubDdlGenerator;
 impl DdlGenerator for StubDdlGenerator {
     fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
-        String::new()
+        unimplemented!("inject a real DdlGenerator via AppState::with_ports()")
     }
     fn ddl_line_count(&self, _table: &crate::domain::Table) -> usize {
         0
@@ -72,7 +72,7 @@ impl SqlDialect for StubSqlDialect {
         _new_value: &str,
         _pk_pairs: &[(String, String)],
     ) -> String {
-        String::new()
+        unimplemented!("inject a real SqlDialect via AppState::with_ports()")
     }
     fn build_bulk_delete_sql(
         &self,
@@ -80,7 +80,7 @@ impl SqlDialect for StubSqlDialect {
         _table: &str,
         _pk_pairs_per_row: &[Vec<(String, String)>],
     ) -> String {
-        String::new()
+        unimplemented!("inject a real SqlDialect via AppState::with_ports()")
     }
 }
 

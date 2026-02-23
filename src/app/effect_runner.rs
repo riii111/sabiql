@@ -44,29 +44,85 @@ pub struct EffectRunner {
     action_tx: mpsc::Sender<Action>,
 }
 
+pub struct EffectRunnerBuilder {
+    metadata_provider: Option<Arc<dyn MetadataProvider>>,
+    query_executor: Option<Arc<dyn QueryExecutor>>,
+    dsn_builder: Option<Arc<dyn DsnBuilder>>,
+    er_exporter: Option<Arc<dyn ErDiagramExporter>>,
+    config_writer: Option<Arc<dyn ConfigWriter>>,
+    er_log_writer: Option<Arc<dyn ErLogWriter>>,
+    connection_store: Option<Arc<dyn ConnectionStore>>,
+    metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
+    action_tx: Option<mpsc::Sender<Action>>,
+}
+
+impl EffectRunnerBuilder {
+    pub fn metadata_provider(mut self, v: Arc<dyn MetadataProvider>) -> Self {
+        self.metadata_provider = Some(v);
+        self
+    }
+    pub fn query_executor(mut self, v: Arc<dyn QueryExecutor>) -> Self {
+        self.query_executor = Some(v);
+        self
+    }
+    pub fn dsn_builder(mut self, v: Arc<dyn DsnBuilder>) -> Self {
+        self.dsn_builder = Some(v);
+        self
+    }
+    pub fn er_exporter(mut self, v: Arc<dyn ErDiagramExporter>) -> Self {
+        self.er_exporter = Some(v);
+        self
+    }
+    pub fn config_writer(mut self, v: Arc<dyn ConfigWriter>) -> Self {
+        self.config_writer = Some(v);
+        self
+    }
+    pub fn er_log_writer(mut self, v: Arc<dyn ErLogWriter>) -> Self {
+        self.er_log_writer = Some(v);
+        self
+    }
+    pub fn connection_store(mut self, v: Arc<dyn ConnectionStore>) -> Self {
+        self.connection_store = Some(v);
+        self
+    }
+    pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
+        self.metadata_cache = Some(v);
+        self
+    }
+    pub fn action_tx(mut self, v: mpsc::Sender<Action>) -> Self {
+        self.action_tx = Some(v);
+        self
+    }
+
+    pub fn build(self) -> EffectRunner {
+        EffectRunner {
+            metadata_provider: self
+                .metadata_provider
+                .expect("metadata_provider is required"),
+            query_executor: self.query_executor.expect("query_executor is required"),
+            dsn_builder: self.dsn_builder.expect("dsn_builder is required"),
+            er_exporter: self.er_exporter.expect("er_exporter is required"),
+            config_writer: self.config_writer.expect("config_writer is required"),
+            er_log_writer: self.er_log_writer.expect("er_log_writer is required"),
+            connection_store: self.connection_store.expect("connection_store is required"),
+            metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
+            action_tx: self.action_tx.expect("action_tx is required"),
+        }
+    }
+}
+
 impl EffectRunner {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        metadata_provider: Arc<dyn MetadataProvider>,
-        query_executor: Arc<dyn QueryExecutor>,
-        dsn_builder: Arc<dyn DsnBuilder>,
-        er_exporter: Arc<dyn ErDiagramExporter>,
-        config_writer: Arc<dyn ConfigWriter>,
-        er_log_writer: Arc<dyn ErLogWriter>,
-        connection_store: Arc<dyn ConnectionStore>,
-        metadata_cache: TtlCache<String, DatabaseMetadata>,
-        action_tx: mpsc::Sender<Action>,
-    ) -> Self {
-        Self {
-            metadata_provider,
-            query_executor,
-            dsn_builder,
-            er_exporter,
-            config_writer,
-            er_log_writer,
-            connection_store,
-            metadata_cache,
-            action_tx,
+    pub fn builder() -> EffectRunnerBuilder {
+        EffectRunnerBuilder {
+            metadata_provider: None,
+            query_executor: None,
+            dsn_builder: None,
+            er_exporter: None,
+            config_writer: None,
+            er_log_writer: None,
+            connection_store: None,
+            metadata_cache: None,
+            action_tx: None,
         }
     }
 
@@ -698,17 +754,17 @@ mod tests {
         cache: TtlCache<String, DatabaseMetadata>,
         action_tx: mpsc::Sender<Action>,
     ) -> EffectRunner {
-        EffectRunner::new(
-            metadata_provider,
-            query_executor,
-            Arc::new(NoopDsnBuilder),
-            Arc::new(NoopErExporter),
-            Arc::new(NoopConfigWriter),
-            Arc::new(NoopErLogWriter),
-            connection_store,
-            cache,
-            action_tx,
-        )
+        EffectRunner::builder()
+            .metadata_provider(metadata_provider)
+            .query_executor(query_executor)
+            .dsn_builder(Arc::new(NoopDsnBuilder))
+            .er_exporter(Arc::new(NoopErExporter))
+            .config_writer(Arc::new(NoopConfigWriter))
+            .er_log_writer(Arc::new(NoopErLogWriter))
+            .connection_store(connection_store)
+            .metadata_cache(cache)
+            .action_tx(action_tx)
+            .build()
     }
 
     fn sample_metadata() -> DatabaseMetadata {
@@ -1174,17 +1230,17 @@ mod tests {
         }
 
         fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
-            EffectRunner::new(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(MockQueryExecutor::new()),
-                Arc::new(FakeDsnBuilder),
-                Arc::new(NoopErExporter),
-                Arc::new(NoopConfigWriter),
-                Arc::new(NoopErLogWriter),
-                Arc::new(MockConnectionStore::new()),
-                TtlCache::new(60),
-                action_tx,
-            )
+            EffectRunner::builder()
+                .metadata_provider(Arc::new(MockMetadataProvider::new()))
+                .query_executor(Arc::new(MockQueryExecutor::new()))
+                .dsn_builder(Arc::new(FakeDsnBuilder))
+                .er_exporter(Arc::new(NoopErExporter))
+                .config_writer(Arc::new(NoopConfigWriter))
+                .er_log_writer(Arc::new(NoopErLogWriter))
+                .connection_store(Arc::new(MockConnectionStore::new()))
+                .metadata_cache(TtlCache::new(60))
+                .action_tx(action_tx)
+                .build()
         }
 
         #[tokio::test]
