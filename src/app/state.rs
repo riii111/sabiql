@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio::sync::mpsc::Sender;
 
 use super::action::Action;
@@ -8,6 +10,7 @@ use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
+use super::ports::{DdlGenerator, SqlDialect};
 use super::query_execution::QueryExecution;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
@@ -39,10 +42,123 @@ pub struct AppState {
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
     pub connections: Vec<ConnectionProfile>,
+    pub ddl_generator: Arc<dyn DdlGenerator>,
+    pub sql_dialect: Arc<dyn SqlDialect>,
+}
+
+struct StubDdlGenerator;
+impl DdlGenerator for StubDdlGenerator {
+    fn generate_ddl(&self, _table: &crate::domain::Table) -> String {
+        String::new()
+    }
+    fn ddl_line_count(&self, _table: &crate::domain::Table) -> usize {
+        0
+    }
+}
+
+struct StubSqlDialect;
+impl SqlDialect for StubSqlDialect {
+    fn quote_ident(&self, name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+    fn quote_literal(&self, value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+    fn build_update_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+        new_value: &str,
+        pk_pairs: &[(String, String)],
+    ) -> String {
+        let val = if new_value == "NULL" {
+            "NULL".to_string()
+        } else {
+            self.quote_literal(new_value)
+        };
+        let where_clause = pk_pairs
+            .iter()
+            .map(|(col, v)| format!("{} = {}", self.quote_ident(col), self.quote_literal(v)))
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        format!(
+            "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
+            self.quote_ident(schema),
+            self.quote_ident(table),
+            self.quote_ident(column),
+            val,
+            where_clause
+        )
+    }
+    fn build_bulk_delete_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        pk_pairs_per_row: &[Vec<(String, String)>],
+    ) -> String {
+        if pk_pairs_per_row.is_empty() {
+            return String::new();
+        }
+        let pk_count = pk_pairs_per_row[0].len();
+        let val_expr = |v: &str| -> String {
+            if v == "NULL" {
+                "NULL".to_string()
+            } else {
+                self.quote_literal(v)
+            }
+        };
+        let where_clause = if pk_count == 1 {
+            let col = self.quote_ident(&pk_pairs_per_row[0][0].0);
+            let values = pk_pairs_per_row
+                .iter()
+                .map(|pairs| val_expr(&pairs[0].1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{} IN ({})", col, values)
+        } else {
+            let cols = pk_pairs_per_row[0]
+                .iter()
+                .map(|(col, _)| self.quote_ident(col))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let rows = pk_pairs_per_row
+                .iter()
+                .map(|pairs| {
+                    let vals = pairs
+                        .iter()
+                        .map(|(_, v)| val_expr(v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("({})", vals)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({}) IN ({})", cols, rows)
+        };
+        format!(
+            "DELETE FROM {}.{}\nWHERE {};",
+            self.quote_ident(schema),
+            self.quote_ident(table),
+            where_clause
+        )
+    }
 }
 
 impl AppState {
     pub fn new(project_name: String) -> Self {
+        Self::with_ports(
+            project_name,
+            Arc::new(StubDdlGenerator),
+            Arc::new(StubSqlDialect),
+        )
+    }
+
+    pub fn with_ports(
+        project_name: String,
+        ddl_generator: Arc<dyn DdlGenerator>,
+        sql_dialect: Arc<dyn SqlDialect>,
+    ) -> Self {
         Self {
             should_quit: false,
             command_line_input: String::new(),
@@ -62,6 +178,8 @@ impl AppState {
             pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
+            ddl_generator,
+            sql_dialect,
         }
     }
 

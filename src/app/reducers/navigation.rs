@@ -3,7 +3,6 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
-use crate::app::ddl::ddl_line_count_postgres;
 use crate::app::effect::Effect;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
@@ -15,7 +14,7 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 use crate::app::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_bulk_delete_sql, build_pk_pairs};
+use crate::app::write_update::build_pk_pairs;
 
 use super::helpers::{
     ERR_DELETION_REQUIRES_PRIMARY_KEY, ERR_EDITING_REQUIRES_PRIMARY_KEY,
@@ -108,7 +107,7 @@ fn inspector_total_items(state: &AppState) -> usize {
                 lines
             }),
             InspectorTab::Triggers => t.triggers.len(),
-            InspectorTab::Ddl => ddl_line_count_postgres(t),
+            InspectorTab::Ddl => state.ddl_generator.ddl_line_count(t),
         })
         .unwrap_or(0)
 }
@@ -158,7 +157,7 @@ pub fn build_bulk_delete_preview(
         pk_pairs_per_row.push(pairs);
     }
 
-    let sql = build_bulk_delete_sql(
+    let sql = state.sql_dialect.build_bulk_delete_sql(
         &state.query.pagination.schema,
         &state.query.pagination.table,
         &pk_pairs_per_row,

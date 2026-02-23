@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{DsnBuilder, MetadataError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{
+    DdlGenerator, DsnBuilder, MetadataError, MetadataProvider, QueryExecutor, SqlDialect,
+};
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, WriteExecutionResult};
 
@@ -69,6 +71,46 @@ impl QueryExecutor for MySqlAdapter {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
+    }
+}
+
+impl DdlGenerator for MySqlAdapter {
+    fn generate_ddl(&self, _table: &Table) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn ddl_line_count(&self, _table: &Table) -> usize {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+}
+
+impl SqlDialect for MySqlAdapter {
+    fn quote_ident(&self, _name: &str) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn quote_literal(&self, _value: &str) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn build_update_sql(
+        &self,
+        _schema: &str,
+        _table: &str,
+        _column: &str,
+        _new_value: &str,
+        _pk_pairs: &[(String, String)],
+    ) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn build_bulk_delete_sql(
+        &self,
+        _schema: &str,
+        _table: &str,
+        _pk_pairs_per_row: &[Vec<(String, String)>],
+    ) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
     }
 }
 

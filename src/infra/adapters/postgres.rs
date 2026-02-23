@@ -6,7 +6,9 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::{DsnBuilder, MetadataError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{
+    DdlGenerator, DsnBuilder, MetadataError, MetadataProvider, QueryExecutor, SqlDialect,
+};
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
@@ -1106,6 +1108,176 @@ impl QueryExecutor for PostgresAdapter {
         query: &str,
     ) -> Result<WriteExecutionResult, MetadataError> {
         self.execute_write_raw(dsn, query).await
+    }
+}
+
+fn pg_quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn pg_quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn pg_sql_value_expr(value: &str) -> String {
+    if value == "NULL" {
+        "NULL".to_string()
+    } else {
+        pg_quote_literal(value)
+    }
+}
+
+impl DdlGenerator for PostgresAdapter {
+    fn generate_ddl(&self, table: &Table) -> String {
+        let mut ddl = format!(
+            "CREATE TABLE {}.{} (\n",
+            pg_quote_ident(&table.schema),
+            pg_quote_ident(&table.name)
+        );
+
+        for (i, col) in table.columns.iter().enumerate() {
+            let nullable = if col.nullable { "" } else { " NOT NULL" };
+            let default = col
+                .default
+                .as_ref()
+                .map(|d| format!(" DEFAULT {}", d))
+                .unwrap_or_default();
+
+            ddl.push_str(&format!(
+                "  {} {}{}{}",
+                pg_quote_ident(&col.name),
+                col.data_type,
+                nullable,
+                default
+            ));
+
+            if i < table.columns.len() - 1 {
+                ddl.push(',');
+            }
+            ddl.push('\n');
+        }
+
+        if let Some(pk) = &table.primary_key {
+            let quoted_cols: Vec<String> = pk.iter().map(|c| pg_quote_ident(c)).collect();
+            ddl.push_str(&format!("  PRIMARY KEY ({})\n", quoted_cols.join(", ")));
+        }
+
+        ddl.push_str(");");
+
+        let qualified = format!(
+            "{}.{}",
+            pg_quote_ident(&table.schema),
+            pg_quote_ident(&table.name)
+        );
+
+        if let Some(comment) = &table.comment {
+            ddl.push_str(&format!(
+                "\n\nCOMMENT ON TABLE {} IS {};",
+                qualified,
+                pg_quote_literal(comment)
+            ));
+        }
+
+        for col in &table.columns {
+            if let Some(comment) = &col.comment {
+                ddl.push_str(&format!(
+                    "\n\nCOMMENT ON COLUMN {}.{} IS {};",
+                    qualified,
+                    pg_quote_ident(&col.name),
+                    pg_quote_literal(comment)
+                ));
+            }
+        }
+
+        ddl
+    }
+
+    fn ddl_line_count(&self, table: &Table) -> usize {
+        self.generate_ddl(table).lines().count()
+    }
+}
+
+impl SqlDialect for PostgresAdapter {
+    fn quote_ident(&self, name: &str) -> String {
+        pg_quote_ident(name)
+    }
+
+    fn quote_literal(&self, value: &str) -> String {
+        pg_quote_literal(value)
+    }
+
+    fn build_update_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+        new_value: &str,
+        pk_pairs: &[(String, String)],
+    ) -> String {
+        let where_clause = pk_pairs
+            .iter()
+            .map(|(col, val)| format!("{} = {}", pg_quote_ident(col), pg_quote_literal(val)))
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        format!(
+            "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
+            pg_quote_ident(schema),
+            pg_quote_ident(table),
+            pg_quote_ident(column),
+            pg_sql_value_expr(new_value),
+            where_clause
+        )
+    }
+
+    fn build_bulk_delete_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        pk_pairs_per_row: &[Vec<(String, String)>],
+    ) -> String {
+        assert!(
+            !pk_pairs_per_row.is_empty(),
+            "pk_pairs_per_row must not be empty"
+        );
+
+        let pk_count = pk_pairs_per_row[0].len();
+
+        let where_clause = if pk_count == 1 {
+            let col = pg_quote_ident(&pk_pairs_per_row[0][0].0);
+            let values = pk_pairs_per_row
+                .iter()
+                .map(|pairs| pg_sql_value_expr(&pairs[0].1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{} IN ({})", col, values)
+        } else {
+            let cols = pk_pairs_per_row[0]
+                .iter()
+                .map(|(col, _)| pg_quote_ident(col))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let rows = pk_pairs_per_row
+                .iter()
+                .map(|pairs| {
+                    let vals = pairs
+                        .iter()
+                        .map(|(_, val)| pg_sql_value_expr(val))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("({})", vals)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({}) IN ({})", cols, rows)
+        };
+
+        format!(
+            "DELETE FROM {}.{}\nWHERE {};",
+            pg_quote_ident(schema),
+            pg_quote_ident(table),
+            where_clause
+        )
     }
 }
 

@@ -7,7 +7,6 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table, Wrap};
 use super::atoms::panel_block;
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
-use crate::app::ddl::generate_ddl_postgres;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::state::AppState;
@@ -104,7 +103,7 @@ impl Inspector {
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset);
+                    Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset, state);
                     ViewportPlan::default()
                 }
             }
@@ -705,8 +704,14 @@ impl Inspector {
         );
     }
 
-    fn render_ddl(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
-        let ddl = generate_ddl_postgres(table);
+    fn render_ddl(
+        frame: &mut Frame,
+        area: Rect,
+        table: &TableDetail,
+        scroll_offset: usize,
+        state: &AppState,
+    ) {
+        let ddl = state.ddl_generator.generate_ddl(table);
 
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
@@ -732,8 +737,8 @@ impl Inspector {
         );
     }
 
-    pub fn ddl_line_count(table: &TableDetail) -> usize {
-        crate::app::ddl::ddl_line_count_postgres(table)
+    pub fn ddl_line_count(table: &TableDetail, state: &AppState) -> usize {
+        state.ddl_generator.ddl_line_count(table)
     }
 }
 

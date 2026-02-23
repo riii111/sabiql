@@ -13,7 +13,7 @@ use crate::app::state::AppState;
 use crate::app::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_pk_pairs, build_update_sql, escape_preview_value};
+use crate::app::write_update::{build_pk_pairs, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
 use super::helpers::editable_preview_base;
@@ -66,7 +66,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         return Err(reason);
     }
 
-    let sql = build_update_sql(
+    let sql = state.sql_dialect.build_update_sql(
         &target.schema,
         &target.table,
         &column_name,

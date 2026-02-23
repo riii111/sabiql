@@ -74,7 +74,11 @@ async fn main() -> Result<()> {
         action_tx.clone(),
     );
 
-    let mut state = AppState::new(project_name);
+    let mut state = AppState::with_ports(
+        project_name,
+        Arc::clone(&adapter) as _,
+        Arc::clone(&adapter) as _,
+    );
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
