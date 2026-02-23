@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 use ratatui::Frame;
@@ -61,6 +62,7 @@ impl ResultPane {
                     } else {
                         None
                     },
+                    &state.ui.staged_delete_rows,
                 )
             }
         } else {
@@ -177,6 +179,7 @@ impl ResultPane {
         stored_plan: &ViewportPlan,
         selection: &ResultSelection,
         editing_cell: Option<(usize, usize, &str, bool)>,
+        staged_delete_rows: &BTreeSet<usize>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -251,8 +254,11 @@ impl ResultPane {
             .skip(scroll_offset)
             .take(data_rows_visible)
             .map(|(abs_row_idx, row)| {
+                let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
-                let row_bg = if is_active_row {
+                let row_bg = if is_staged_for_delete {
+                    Some(Theme::STAGED_DELETE_BG)
+                } else if is_active_row {
                     Some(Theme::RESULT_ROW_ACTIVE_BG)
                 } else if (abs_row_idx - scroll_offset) % 2 == 1 {
                     Some(Theme::STRIPED_ROW_BG)
@@ -299,6 +305,8 @@ impl ResultPane {
                                         .fg(Theme::CELL_DRAFT_PENDING_FG),
                                 );
                             }
+                        } else if is_staged_for_delete {
+                            cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
                         } else if is_active_row && active_cell == Some(orig_idx) {
                             cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
                         }

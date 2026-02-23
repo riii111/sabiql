@@ -35,6 +35,11 @@ pub fn reduce(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect>
 }
 
 fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effect> {
+    // Reset the dd operator-pending flag on any action other than the first `d` press.
+    if !matches!(action, Action::ResultDeleteOperatorPending) {
+        state.ui.delete_op_pending = false;
+    }
+
     if let Some(effects) = reduce_connection(state, &action, now) {
         return effects;
     }
@@ -83,6 +88,7 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     state.cache.table_detail = None;
                     state.ui.input_mode = InputMode::Normal;
                     state.cell_edit.clear();
+                    state.ui.staged_delete_rows.clear();
                     state.pending_write_preview = None;
 
                     state.cache.selection_generation += 1;
@@ -120,6 +126,7 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                     state.cache.current_table = Some(table.qualified_name());
                     state.cache.table_detail = None;
                     state.cell_edit.clear();
+                    state.ui.staged_delete_rows.clear();
                     state.pending_write_preview = None;
 
                     state.cache.selection_generation += 1;

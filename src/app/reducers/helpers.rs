@@ -53,23 +53,26 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
     Ok((result, pk_cols))
 }
 
-/// `Some(usize::MAX)` is a sentinel that means "select last row on previous page"
-/// after refetch, because the previous page row count is not known yet.
-pub fn deletion_refresh_target(
+/// Computes the cursor target after bulk-deleting rows from a page.
+///
+/// `deleted_indices` is a sorted set of page-relative row indices that were deleted.
+/// Returns `(target_page, target_row)` — same sentinel convention as `deletion_refresh_target`.
+pub fn deletion_refresh_target_bulk(
     row_count: usize,
-    selected_row: usize,
+    deleted_count: usize,
+    first_deleted_idx: usize,
     current_page: usize,
 ) -> (usize, Option<usize>) {
-    if row_count <= 1 {
+    let remaining = row_count.saturating_sub(deleted_count);
+    if remaining == 0 {
         if current_page > 0 {
             (current_page - 1, Some(usize::MAX))
         } else {
             (0, None)
         }
-    } else if selected_row < row_count - 1 {
-        (current_page, Some(selected_row))
     } else {
-        (current_page, Some(row_count - 2))
+        let target_row = first_deleted_idx.min(remaining - 1);
+        (current_page, Some(target_row))
     }
 }
 
@@ -295,7 +298,23 @@ mod tests {
     }
 
     mod delete_refresh_target {
-        use super::*;
+        fn deletion_refresh_target(
+            row_count: usize,
+            selected_row: usize,
+            current_page: usize,
+        ) -> (usize, Option<usize>) {
+            if row_count <= 1 {
+                if current_page > 0 {
+                    (current_page - 1, Some(usize::MAX))
+                } else {
+                    (0, None)
+                }
+            } else if selected_row < row_count - 1 {
+                (current_page, Some(selected_row))
+            } else {
+                (current_page, Some(row_count - 2))
+            }
+        }
 
         #[test]
         fn single_row_first_page_clears_selection() {
@@ -323,6 +342,45 @@ mod tests {
             let (page, row) = deletion_refresh_target(3, 2, 4);
             assert_eq!(page, 4);
             assert_eq!(row, Some(1));
+        }
+    }
+
+    mod delete_refresh_target_bulk {
+        use super::*;
+
+        #[test]
+        fn all_rows_deleted_first_page_clears_selection() {
+            let (page, row) = deletion_refresh_target_bulk(2, 2, 0, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, None);
+        }
+
+        #[test]
+        fn all_rows_deleted_non_first_page_goes_to_previous_page() {
+            let (page, row) = deletion_refresh_target_bulk(2, 2, 0, 3);
+            assert_eq!(page, 2);
+            assert_eq!(row, Some(usize::MAX));
+        }
+
+        #[test]
+        fn middle_rows_deleted_selects_first_deleted_index() {
+            let (page, row) = deletion_refresh_target_bulk(5, 2, 1, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, Some(1));
+        }
+
+        #[test]
+        fn last_rows_deleted_selects_clamped_to_remaining_minus_one() {
+            let (page, row) = deletion_refresh_target_bulk(5, 3, 2, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, Some(1));
+        }
+
+        #[test]
+        fn single_row_deleted_from_middle_keeps_index() {
+            let (page, row) = deletion_refresh_target_bulk(4, 1, 2, 1);
+            assert_eq!(page, 1);
+            assert_eq!(row, Some(2));
         }
     }
 }
