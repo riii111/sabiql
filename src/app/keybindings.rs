@@ -1593,6 +1593,59 @@ pub const fn help_content_line_count() -> usize {
         + CONFIRM_DIALOG_KEYS.len()
 }
 
+// =============================================================================
+// Predicate functions for Normal mode routing
+// =============================================================================
+//
+// These are thin wrappers over GLOBAL_KEYS binding combos.
+// They are the single source of truth for what key triggers each global action.
+// Phase 4 semantic tests verify that GLOBAL_KEYS[idx] has the expected action,
+// catching bugs if the array is ever reordered.
+
+pub fn is_quit(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::QUIT].combos.contains(combo)
+}
+
+pub fn is_help(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::HELP].combos.contains(combo)
+}
+
+pub fn is_table_picker(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::TABLE_PICKER]
+        .combos
+        .contains(combo)
+}
+
+pub fn is_command_palette(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::PALETTE].combos.contains(combo)
+}
+
+pub fn is_command_line(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::COMMAND_LINE]
+        .combos
+        .contains(combo)
+}
+
+pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::FOCUS].combos.contains(combo)
+}
+
+pub fn is_reload(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::RELOAD].combos.contains(combo)
+}
+
+pub fn is_open_sql(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::SQL].combos.contains(combo)
+}
+
+pub fn is_open_er(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
+}
+
+pub fn is_toggle_connections(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::CONNECTIONS].combos.contains(combo)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
