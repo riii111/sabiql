@@ -1,12 +1,12 @@
 pub mod handler;
 pub mod key_translator;
 
-use crossterm::event::KeyEvent;
+use crate::app::keybindings::KeyCombo;
 
 #[derive(Clone, Debug)]
 pub enum Event {
     Init,
-    Key(KeyEvent),
+    Key(KeyCombo),
     Paste(String),
     Resize(u16, u16),
 }

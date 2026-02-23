@@ -85,7 +85,7 @@ impl TuiRunner {
                         match crossterm_event {
                             Some(Ok(evt)) => match evt {
                                 CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat => {
-                                    Event::Key(key)
+                                    Event::Key(super::event::key_translator::translate(key))
                                 }
                                 CrosstermEvent::Resize(x, y) => Event::Resize(x, y),
                                 CrosstermEvent::Paste(text) => Event::Paste(text),
