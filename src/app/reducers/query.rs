@@ -20,8 +20,9 @@ use super::helpers::editable_preview_base;
 
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     // Entry guard on `i` is handled in navigation; this path re-validates before write submit.
-    if state.ui.input_mode != InputMode::CellEdit || !state.cell_edit.is_active() {
-        return Err("Cell edit mode is not active".to_string());
+    // Allow :w from both CellEdit and Normal (CellActive with pending draft).
+    if !state.cell_edit.is_active() {
+        return Err("No active cell edit session".to_string());
     }
 
     let (result, pk_cols) = editable_preview_base(state)?;
@@ -301,10 +302,10 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
 
         Action::SubmitCellEditWrite => {
-            if state.ui.input_mode != InputMode::CellEdit {
+            if !state.cell_edit.is_active() {
                 state
                     .messages
-                    .set_error_at("`:w` is only available in Cell Edit mode".to_string(), now);
+                    .set_error_at("No active cell edit session".to_string(), now);
                 return Some(vec![]);
             }
             if state.query.status != QueryStatus::Idle {
@@ -329,12 +330,14 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::OpenWritePreviewConfirm(preview) => {
             state.pending_write_preview = Some((**preview).clone());
             let operation = preview.operation;
+            let caller_mode = state.ui.input_mode;
             let (title, return_mode) = match operation {
                 WriteOperation::Update => {
                     state.query.pending_delete_refresh_target = None;
+                    // Return to whatever mode the caller was in (CellEdit or Normal/CellActive).
                     (
                         format!("Confirm UPDATE: {}", preview.target_summary.table),
-                        InputMode::CellEdit,
+                        caller_mode,
                     )
                 }
                 WriteOperation::Delete => (
@@ -909,12 +912,13 @@ mod tests {
         fn write_requires_cell_edit_mode() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::Normal;
+            // No cell_edit active
 
             let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
             assert!(effects.unwrap().is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
-                Some("`:w` is only available in Cell Edit mode")
+                Some("No active cell edit session")
             );
         }
 

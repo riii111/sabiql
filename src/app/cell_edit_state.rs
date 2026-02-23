@@ -18,6 +18,10 @@ impl CellEditState {
         self.row.is_some() && self.col.is_some()
     }
 
+    pub fn has_pending_draft(&self) -> bool {
+        self.is_active() && self.draft_value != self.original_value
+    }
+
     pub fn clear(&mut self) {
         self.row = None;
         self.col = None;
@@ -65,6 +69,30 @@ mod tests {
         };
 
         assert!(!state.is_active());
+    }
+
+    #[test]
+    fn has_pending_draft_returns_false_when_draft_equals_original() {
+        let mut state = CellEditState::default();
+        state.begin(0, 0, "Alice".to_string());
+
+        assert!(!state.has_pending_draft());
+    }
+
+    #[test]
+    fn has_pending_draft_returns_true_when_draft_differs() {
+        let mut state = CellEditState::default();
+        state.begin(0, 0, "Alice".to_string());
+        state.draft_value = "Bob".to_string();
+
+        assert!(state.has_pending_draft());
+    }
+
+    #[test]
+    fn has_pending_draft_returns_false_when_not_active() {
+        let state = CellEditState::default();
+
+        assert!(!state.has_pending_draft());
     }
 
     #[test]
