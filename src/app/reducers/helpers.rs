@@ -349,4 +349,43 @@ mod tests {
             assert_eq!(row, Some(1));
         }
     }
+
+    mod delete_refresh_target_bulk {
+        use super::*;
+
+        #[test]
+        fn all_rows_deleted_first_page_clears_selection() {
+            let (page, row) = deletion_refresh_target_bulk(2, 2, 0, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, None);
+        }
+
+        #[test]
+        fn all_rows_deleted_non_first_page_goes_to_previous_page() {
+            let (page, row) = deletion_refresh_target_bulk(2, 2, 0, 3);
+            assert_eq!(page, 2);
+            assert_eq!(row, Some(usize::MAX));
+        }
+
+        #[test]
+        fn middle_rows_deleted_selects_first_deleted_index() {
+            let (page, row) = deletion_refresh_target_bulk(5, 2, 1, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, Some(1));
+        }
+
+        #[test]
+        fn last_rows_deleted_selects_clamped_to_remaining_minus_one() {
+            let (page, row) = deletion_refresh_target_bulk(5, 3, 2, 0);
+            assert_eq!(page, 0);
+            assert_eq!(row, Some(1));
+        }
+
+        #[test]
+        fn single_row_deleted_from_middle_keeps_index() {
+            let (page, row) = deletion_refresh_target_bulk(4, 1, 2, 1);
+            assert_eq!(page, 1);
+            assert_eq!(row, Some(2));
+        }
+    }
 }

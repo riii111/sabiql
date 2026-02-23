@@ -206,6 +206,80 @@ mod tests {
         }
     }
 
+    mod bulk_delete_sql {
+        use super::*;
+
+        #[test]
+        fn single_pk_single_row_returns_in_clause() {
+            let pk_pairs_per_row = vec![vec![("id".to_string(), "1".to_string())]];
+
+            let sql = build_bulk_delete_sql("public", "users", &pk_pairs_per_row);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1');"
+            );
+        }
+
+        #[test]
+        fn single_pk_multiple_rows_returns_in_clause_with_all_values() {
+            let pk_pairs_per_row = vec![
+                vec![("id".to_string(), "1".to_string())],
+                vec![("id".to_string(), "2".to_string())],
+                vec![("id".to_string(), "3".to_string())],
+            ];
+
+            let sql = build_bulk_delete_sql("public", "users", &pk_pairs_per_row);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"users\"\nWHERE \"id\" IN ('1', '2', '3');"
+            );
+        }
+
+        #[test]
+        fn composite_pk_multiple_rows_returns_row_constructor_in_clause() {
+            let pk_pairs_per_row = vec![
+                vec![
+                    ("id".to_string(), "1".to_string()),
+                    ("tenant_id".to_string(), "a".to_string()),
+                ],
+                vec![
+                    ("id".to_string(), "2".to_string()),
+                    ("tenant_id".to_string(), "b".to_string()),
+                ],
+            ];
+
+            let sql = build_bulk_delete_sql("s", "t", &pk_pairs_per_row);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"s\".\"t\"\nWHERE (\"id\", \"tenant_id\") IN (('1', 'a'), ('2', 'b'));"
+            );
+        }
+
+        #[test]
+        fn null_pk_value_uses_null_literal() {
+            let pk_pairs_per_row = vec![vec![("id".to_string(), "NULL".to_string())]];
+
+            let sql = build_bulk_delete_sql("public", "t", &pk_pairs_per_row);
+
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN (NULL);");
+        }
+
+        #[test]
+        fn pk_value_with_quotes_is_escaped() {
+            let pk_pairs_per_row = vec![vec![("id".to_string(), "O'Reilly".to_string())]];
+
+            let sql = build_bulk_delete_sql("public", "t", &pk_pairs_per_row);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('O''Reilly');"
+            );
+        }
+    }
+
     mod pk_extraction {
         use super::*;
 

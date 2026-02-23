@@ -929,6 +929,26 @@ fn result_pane_cell_active_pending_draft() {
     insta::assert_snapshot!(output);
 }
 
+#[test]
+fn result_pane_staged_delete_row() {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.cache.metadata = Some(fixtures::sample_metadata(now));
+    state.cache.state = sabiql::domain::MetadataState::Loaded;
+    state.ui.set_explorer_selection(Some(0));
+    state.cache.table_detail = Some(fixtures::sample_table_detail());
+    state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.result_selection.enter_row(0);
+    state.ui.staged_delete_rows.insert(1);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
 mod style_assertions {
 
     use super::*;
@@ -1000,6 +1020,32 @@ mod style_assertions {
         assert!(
             edit_cell.is_some(),
             "Expected at least one cell with CELL_EDIT_FG (yellow) in the buffer"
+        );
+    }
+
+    #[test]
+    fn staged_delete_row_uses_dark_red_bg() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = sabiql::domain::MetadataState::Loaded;
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.result_selection.enter_row(0);
+        state.ui.staged_delete_rows.insert(1);
+
+        let buffer = render_and_get_buffer(&mut terminal, &mut state);
+
+        let dark_red = Color::Rgb(0x4a, 0x1a, 0x1a);
+        let staged_cell = (0..TEST_HEIGHT)
+            .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+            .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.bg == dark_red));
+        assert!(
+            staged_cell.is_some(),
+            "Expected at least one cell with STAGED_DELETE_BG (dark red) in the buffer"
         );
     }
 
