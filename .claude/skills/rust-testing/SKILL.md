@@ -1,10 +1,6 @@
 ---
 name: rust-testing
-description: >
-  Write Rust tests following project conventions. Auto-fires when: user asks
-  to write tests, add test cases, improve coverage, or mentions unit/integration
-  testing. Covers test structure, naming, rstest usage, layer-specific test
-  targets, and testing obligations.
+description: Write Rust tests following project conventions. Relevant when writing tests, adding test cases, or improving coverage for unit/integration testing.
 ---
 
 # Rust Testing Skill

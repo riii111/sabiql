@@ -1,7 +1,5 @@
 ---
-description: Hexagonal architecture rules for sabiql - layer structure, dependency rules, ports & adapters
-alwaysApply: false
-globs:
+paths:
   - "**/src/**/*.rs"
 ---
 

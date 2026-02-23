@@ -1,7 +1,5 @@
 ---
-description: UI design rules for sabiql - Atomic Design pattern, footer hints, keybindings
-alwaysApply: false
-globs:
+paths:
   - "**/src/ui/**/*.rs"
 ---
 

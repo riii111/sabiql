@@ -1,7 +1,5 @@
 ---
-description: DB-agnostic design rules - port neutrality, adapter isolation, MySQL readiness
-alwaysApply: false
-globs:
+paths:
   - "**/src/app/ports/**/*.rs"
   - "**/src/infra/adapters/**/*.rs"
 ---

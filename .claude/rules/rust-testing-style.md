@@ -1,7 +1,5 @@
 ---
-description: Rust testing style guidelines - test structure, naming conventions, rstest usage
-alwaysApply: false
-globs:
+paths:
   - "**/src/**/*.rs"
   - "**/tests/**/*.rs"
 ---

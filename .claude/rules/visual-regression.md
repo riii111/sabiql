@@ -1,7 +1,5 @@
 ---
-description: Visual regression testing with insta snapshots - when to add/update snapshots
-alwaysApply: false
-globs:
+paths:
   - "**/tests/render_snapshots.rs"
   - "**/tests/snapshots/**"
 ---

@@ -1,11 +1,6 @@
 ---
 name: interaction-check
-description: >
-  Verify keybinding consistency across SSOT (app/keybindings), handler dispatch,
-  Footer hints, Help overlay, and Command Palette. Auto-fires when: adding or
-  modifying keybindings, changing InputMode handling, updating footer or help
-  overlay text, reviewing PRs that touch event handling or UI hints.
-  Does NOT fire for: pure styling changes, non-UI refactors.
+description: Verify keybinding consistency across SSOT, handler, footer, help overlay, and command palette. Relevant when adding/modifying keybindings or InputMode handling.
 user-invocable: false
 ---
 

@@ -1,7 +1,5 @@
 ---
-description: Keybinding consistency contract - SSOT, derived displays, anti-patterns
-alwaysApply: false
-globs:
+paths:
   - "**/src/app/keybindings/**/*.rs"
   - "**/src/ui/event/**/*.rs"
   - "**/src/ui/components/footer.rs"

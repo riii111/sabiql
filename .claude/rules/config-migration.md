@@ -1,7 +1,5 @@
 ---
-description: Config migration rules - backward compatibility for connections.toml schema changes
-alwaysApply: false
-globs:
+paths:
   - "**/src/infra/adapters/config_writer.rs"
   - "**/src/app/ports/config_writer.rs"
   - "**/src/infra/adapters/connection_store.rs"

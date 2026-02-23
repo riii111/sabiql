@@ -1,11 +1,6 @@
 ---
 name: db-extension-readiness
-description: >
-  Review port traits and adapter implementations for DB-agnostic design.
-  Auto-fires when: adding or modifying port traits in app/ports/, implementing
-  new adapter methods, adding SQL generation logic, discussing MySQL support
-  or multi-database concerns. Does NOT fire for: UI-only changes, test-only
-  changes, documentation updates.
+description: Review port traits and adapters for DB-agnostic design. Relevant when modifying app/ports/ traits, adding SQL generation, or discussing MySQL support.
 user-invocable: false
 ---
 

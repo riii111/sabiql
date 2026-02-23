@@ -1,11 +1,6 @@
 ---
 name: spec-gap-tracking
-description: >
-  Audit ignored tests, TODO comments, and known specification gaps.
-  Auto-fires when: reviewing test coverage, discussing technical debt,
-  planning sprint work, encountering #[ignore] tests, or when user asks
-  about test gaps, missing coverage, or deferred features. Does NOT fire
-  for: writing new tests, normal coding tasks.
+description: Audit #[ignore] tests, TODO/FIXME comments, and specification gaps. Relevant when reviewing test coverage, discussing technical debt, or tracking deferred features.
 user-invocable: false
 ---
 

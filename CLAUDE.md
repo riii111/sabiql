@@ -33,10 +33,10 @@ mise run test               # Run tests
 
 ## Rules and Skills
 
-Rules are stored in `.claude/rules/` and are **automatically loaded** based on file path globs.
+Rules are stored in `.claude/rules/` and are **automatically loaded** based on `paths` frontmatter patterns.
 Skills are stored in `.claude/skills/`:
-- **Manual** skills are invoked via `/skill-name`
-- **Auto** skills fire automatically based on conversation context (`user-invocable: false`)
+- **Manual** skills are invoked via `/skill-name` (`disable-model-invocation: true`)
+- **Auto** skills fire automatically based on conversation context (default behavior; `user-invocable: false` hides from `/` menu)
 
 ### Available Rules
 

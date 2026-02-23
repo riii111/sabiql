@@ -1,7 +1,5 @@
 ---
-description: Testing obligations - what MUST be tested per layer, ignore tracking, PR checklist
-alwaysApply: false
-globs:
+paths:
   - "**/src/**/*.rs"
   - "**/tests/**/*.rs"
 ---
