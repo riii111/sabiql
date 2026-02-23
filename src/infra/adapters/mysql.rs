@@ -6,10 +6,8 @@ use crate::app::ports::{
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, WriteExecutionResult};
 
-#[allow(dead_code)]
 pub struct MySqlAdapter;
 
-#[allow(dead_code)]
 impl MySqlAdapter {
     pub fn new() -> Self {
         Self
