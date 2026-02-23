@@ -106,7 +106,6 @@ pub const HELP_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Exec-only bindings resolved by `keymap::resolve()` but excluded from display.
 pub const HELP_HIDDEN: &[KeyBinding] = &[
     KeyBinding {
         key_short: "",
