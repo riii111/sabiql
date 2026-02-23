@@ -71,7 +71,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleFocus,
         combos: &[KeyCombo::plain(Key::Char('f'))],
     },
-    // idx 7: PANE_SWITCH (display-only; handler matches '1'..='3' directly)
+    // idx 7: PANE_SWITCH
     KeyBinding {
         key_short: "1/2/3",
         key: "1/2/3",
@@ -80,7 +80,7 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 8: INSPECTOR_TABS (display-only; handler matches Tab/BackTab with guard)
+    // idx 8: INSPECTOR_TABS
     KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
@@ -127,7 +127,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Help overlay (individual key display)
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "j",
@@ -203,7 +202,6 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
     },
 ];
 
-/// Navigation keys for Footer (combined key display)
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
     // idx 0: SCROLL
     KeyBinding {

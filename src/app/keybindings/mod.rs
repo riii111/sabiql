@@ -20,49 +20,29 @@ pub use types::{Key, KeyCombo, Modifiers};
 
 #[derive(Clone)]
 pub struct KeyBinding {
-    /// Short key for Footer (e.g., "^P", "j/k")
     pub key_short: &'static str,
-    /// Display key for Help/Palette (e.g., "Ctrl+P", "j / ↓")
     pub key: &'static str,
-    /// Short description for Footer (e.g., "Quit", "Scroll")
     pub desc_short: &'static str,
-    /// Full description for Help/Palette (e.g., "Quit application")
     pub description: &'static str,
-    /// The action triggered by this key.
-    ///
-    /// `Action::None` means **display-only**: the entry is shown in Footer/Help/Palette
-    /// as a hint but is not matched by `handler.rs`. This is used for multi-key
-    /// combined display (e.g., `"j/k / ↑↓"`) or navigation descriptions where the
-    /// actual matching is handled directly in handler match arms.
+    /// `Action::None` = display-only (footer/help hint, not resolved by keymap).
     pub action: Action,
-    /// The key combinations that trigger this binding.
-    ///
-    /// `Action::None` entries always have `combos: &[]` — display text comes
-    /// from `key_short`/`key` strings. Exec-only bindings that don't appear
-    /// in Footer/Help live in separate `*_HIDDEN` constants.
+    /// Empty for `Action::None` entries; display text comes from `key_short`/`key`.
     pub combos: &'static [KeyCombo],
 }
 
 impl KeyBinding {
-    /// Returns (key_short, desc_short) tuple for Footer display
     pub const fn as_hint(&self) -> (&'static str, &'static str) {
         (self.key_short, self.desc_short)
     }
 }
 
-/// A mode's keybinding set: display entries (for Footer/Help) paired with
-/// hidden exec-only entries (for `keymap::resolve()`).
-///
-/// By bundling both slices into one value we structurally guarantee that
-/// every mode with hidden bindings also declares its display counterpart,
-/// and vice-versa.
+/// Pairs display entries with hidden exec-only entries so they can't drift apart.
 pub struct ModeBindings {
     pub display: &'static [KeyBinding],
     pub hidden: &'static [KeyBinding],
 }
 
 impl ModeBindings {
-    /// Resolve a combo against display entries first, then hidden entries.
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
         crate::app::keymap::resolve(combo, self.display)
             .or_else(|| crate::app::keymap::resolve(combo, self.hidden))
@@ -94,8 +74,6 @@ pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
     hidden: CONNECTION_SELECTOR_HIDDEN,
 };
 
-/// All modes that use display + hidden split.
-/// Used by semantic tests to exhaustively validate structural invariants.
 pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("HELP", &HELP),
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
@@ -126,7 +104,6 @@ pub mod idx {
         pub const CONNECTIONS: usize = 12;
     }
 
-    /// Indexes for FOOTER_NAV_KEYS
     pub mod footer_nav {
         pub const SCROLL: usize = 0;
         pub const SCROLL_SHORT: usize = 1;
@@ -254,10 +231,7 @@ pub mod idx {
 // Help Overlay Layout
 // =============================================================================
 
-/// Returns total line count of help overlay content.
-///
-/// Derived from the same section order as `HelpOverlay::render()`:
-/// each section = 1 header + N key lines, separated by 1 blank line.
+/// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
     // 16 sections × 1 header each = 16
     // 15 blank-line separators between sections = 15
@@ -481,7 +455,6 @@ mod tests {
         assert_eq!(help_content_line_count(), expected);
     }
 
-    /// Semantic consistency tests (#126)
     mod semantic {
         use super::*;
         use crate::app::keymap;
@@ -630,9 +603,7 @@ mod tests {
             check_no_duplicate_combos(&combined, name);
         }
 
-        /// GLOBAL_KEYS excluded: idx 5/6 (FOCUS/EXIT_FOCUS) intentionally share
-        /// the same combo for different footer labels. This is a display concern
-        /// that should be refactored into footer logic, not keybinding data.
+        // GLOBAL_KEYS excluded: FOCUS/EXIT_FOCUS share a combo for footer label switching.
         #[test]
         fn no_duplicate_combos_in_simple_modes() {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
