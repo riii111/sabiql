@@ -1803,4 +1803,274 @@ mod tests {
 
         assert_eq!(help_content_line_count(), expected);
     }
+
+    /// Semantic consistency tests (#126)
+    ///
+    /// These tests prevent keybinding drift — they verify that:
+    /// - idx constants point to the correct Action
+    /// - Non-None bindings always have at least one combo
+    /// - No duplicate combos within simple (non-context-dependent) modes
+    /// - keymap::resolve() round-trips every non-None non-empty-combo entry
+    /// - Char-input modes have no executable plain Char(_) combos that would mask filter input
+    mod semantic {
+        use super::*;
+        use crate::app::keymap;
+        use rstest::rstest;
+
+        // ------------------------------------------------------------------ //
+        // 1. idx-to-Action correctness
+        // ------------------------------------------------------------------ //
+
+        #[rstest]
+        #[case(idx::global::QUIT, Action::Quit)]
+        #[case(idx::global::HELP, Action::OpenHelp)]
+        #[case(idx::global::TABLE_PICKER, Action::OpenTablePicker)]
+        #[case(idx::global::PALETTE, Action::OpenCommandPalette)]
+        #[case(idx::global::COMMAND_LINE, Action::EnterCommandLine)]
+        #[case(idx::global::RELOAD, Action::ReloadMetadata)]
+        #[case(idx::global::SQL, Action::OpenSqlModal)]
+        #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
+        #[case(idx::global::CONNECTIONS, Action::ToggleExplorerMode)]
+        fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
+                "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
+                GLOBAL_KEYS[i].action
+            );
+        }
+
+        #[rstest]
+        #[case(idx::help::CLOSE, Action::CloseHelp)]
+        #[case(idx::help::QUIT, Action::Quit)]
+        fn help_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&HELP_KEYS[i].action) == std::mem::discriminant(&expected),
+                "HELP_KEYS[{i}] has action {:?}, expected {expected:?}",
+                HELP_KEYS[i].action
+            );
+        }
+
+        #[rstest]
+        #[case(idx::confirm::YES, Action::ConfirmDialogConfirm)]
+        #[case(idx::confirm::NO, Action::ConfirmDialogCancel)]
+        fn confirm_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&CONFIRM_DIALOG_KEYS[i].action)
+                    == std::mem::discriminant(&expected),
+                "CONFIRM_DIALOG_KEYS[{i}] has action {:?}, expected {expected:?}",
+                CONFIRM_DIALOG_KEYS[i].action
+            );
+        }
+
+        #[rstest]
+        #[case(idx::conn_error::QUIT, Action::Quit)]
+        #[case(idx::conn_error::ESC_CLOSE, Action::CloseConnectionError)]
+        #[case(idx::conn_error::EDIT, Action::ReenterConnectionSetup)]
+        #[case(idx::conn_error::SWITCH, Action::OpenConnectionSelector)]
+        #[case(idx::conn_error::DETAILS, Action::ToggleConnectionErrorDetails)]
+        #[case(idx::conn_error::COPY, Action::CopyConnectionError)]
+        fn conn_error_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&CONNECTION_ERROR_KEYS[i].action)
+                    == std::mem::discriminant(&expected),
+                "CONNECTION_ERROR_KEYS[{i}] has action {:?}, expected {expected:?}",
+                CONNECTION_ERROR_KEYS[i].action
+            );
+        }
+
+        #[rstest]
+        #[case(idx::connection_selector::CONFIRM, Action::ConfirmConnectionSelection)]
+        #[case(idx::connection_selector::NEW, Action::OpenConnectionSetup)]
+        #[case(idx::connection_selector::EDIT, Action::RequestEditSelectedConnection)]
+        #[case(
+            idx::connection_selector::DELETE,
+            Action::RequestDeleteSelectedConnection
+        )]
+        #[case(idx::connection_selector::QUIT, Action::Quit)]
+        fn connection_selector_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&CONNECTION_SELECTOR_KEYS[i].action)
+                    == std::mem::discriminant(&expected),
+                "CONNECTION_SELECTOR_KEYS[{i}] has action {:?}, expected {expected:?}",
+                CONNECTION_SELECTOR_KEYS[i].action
+            );
+        }
+
+        // ------------------------------------------------------------------ //
+        // 2. Non-None bindings have at least one combo
+        // ------------------------------------------------------------------ //
+
+        fn check_non_none_have_combos(bindings: &[KeyBinding], name: &str) {
+            for (i, kb) in bindings.iter().enumerate() {
+                if !matches!(kb.action, Action::None) && kb.combos.is_empty() {
+                    // command-line text commands (:quit, :help, etc.) legitimately have no combos
+                    if kb.key.starts_with(':') {
+                        continue;
+                    }
+                    // :w command sequence also has no combo
+                    if kb.key_short == ":w" || kb.desc_short == "Write" {
+                        continue;
+                    }
+                    panic!(
+                        "{name}[{i}] has action {:?} but no combos (key={:?})",
+                        kb.action, kb.key
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn all_non_none_bindings_have_combos() {
+            check_non_none_have_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
+            check_non_none_have_combos(HELP_KEYS, "HELP_KEYS");
+            check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+            check_non_none_have_combos(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
+            check_non_none_have_combos(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
+            check_non_none_have_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_non_none_have_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_non_none_have_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+            check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+        }
+
+        // ------------------------------------------------------------------ //
+        // 3. No duplicate combos within simple (non-context-dependent) modes
+        // ------------------------------------------------------------------ //
+        //
+        // Normal mode is excluded: context-dependent keys intentionally share
+        // combos across different actions (e.g., 'j' means ScrollDown in result
+        // pane but SelectNext in explorer).
+
+        fn check_no_duplicate_combos(bindings: &[KeyBinding], name: &str) {
+            let mut seen: Vec<KeyCombo> = Vec::new();
+            for kb in bindings
+                .iter()
+                .filter(|kb| !matches!(kb.action, Action::None))
+            {
+                for combo in kb.combos {
+                    if seen.contains(combo) {
+                        panic!(
+                            "{name}: duplicate combo {combo:?} in binding {:?}",
+                            kb.action
+                        );
+                    }
+                    seen.push(*combo);
+                }
+            }
+        }
+
+        #[test]
+        fn no_duplicate_combos_in_simple_modes() {
+            check_no_duplicate_combos(HELP_KEYS, "HELP_KEYS");
+            check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+            check_no_duplicate_combos(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
+            check_no_duplicate_combos(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
+            check_no_duplicate_combos(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_no_duplicate_combos(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_no_duplicate_combos(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+        }
+
+        // ------------------------------------------------------------------ //
+        // 4. keymap::resolve() round-trip
+        // ------------------------------------------------------------------ //
+
+        fn check_keymap_roundtrip(bindings: &[KeyBinding], name: &str) {
+            for kb in bindings
+                .iter()
+                .filter(|kb| !matches!(kb.action, Action::None))
+            {
+                for combo in kb.combos {
+                    let resolved = keymap::resolve(combo, bindings);
+                    match resolved {
+                        Some(ref action)
+                            if std::mem::discriminant(action)
+                                == std::mem::discriminant(&kb.action) => {}
+                        other => panic!(
+                            "{name}: combo {combo:?} resolved to {other:?}, expected {:?}",
+                            kb.action
+                        ),
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn keymap_resolve_roundtrip_for_simple_modes() {
+            check_keymap_roundtrip(HELP_KEYS, "HELP_KEYS");
+            check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
+            check_keymap_roundtrip(CONNECTION_ERROR_KEYS, "CONNECTION_ERROR_KEYS");
+            check_keymap_roundtrip(CONNECTION_SELECTOR_KEYS, "CONNECTION_SELECTOR_KEYS");
+            check_keymap_roundtrip(COMMAND_PALETTE_KEYS, "COMMAND_PALETTE_KEYS");
+            check_keymap_roundtrip(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS");
+            check_keymap_roundtrip(ER_PICKER_KEYS, "ER_PICKER_KEYS");
+            check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+        }
+
+        // ------------------------------------------------------------------ //
+        // 5. Char fallback safety
+        // ------------------------------------------------------------------ //
+        //
+        // Modes with freeform character input (TablePicker, ErTablePicker,
+        // CommandLine, CellEdit) must not have executable plain Char(_) combos
+        // in their key arrays, because those would shadow the filter/edit input.
+        //
+        // Exception: CellEdit has Char(':') for EnterCommandLine — this is
+        // intentional (it opens command line, not inserts ':' as edit text).
+
+        fn check_no_plain_char_in_filter_mode(
+            bindings: &[KeyBinding],
+            name: &str,
+            allowed_chars: &[char],
+        ) {
+            let no_mods = Modifiers {
+                ctrl: false,
+                alt: false,
+                shift: false,
+            };
+            for kb in bindings
+                .iter()
+                .filter(|kb| !matches!(kb.action, Action::None))
+            {
+                for combo in kb.combos {
+                    if combo.modifiers == no_mods
+                        && let Key::Char(c) = combo.key
+                    {
+                        assert!(
+                            allowed_chars.contains(&c),
+                            "{name}: executable entry {:?} has plain Char({c:?}) combo \
+                             which would shadow filter input",
+                            kb.action
+                        );
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn table_picker_has_no_plain_char_combos() {
+            // TablePicker uses Up/Down for nav (not j/k), so no plain Char combos expected
+            check_no_plain_char_in_filter_mode(TABLE_PICKER_KEYS, "TABLE_PICKER_KEYS", &[]);
+        }
+
+        #[test]
+        fn er_picker_has_no_plain_char_combos() {
+            // ErPicker: Space toggles selection (intentional command, not text input),
+            // Ctrl+A selects all (has Ctrl modifier). Space is the only plain Char allowed.
+            check_no_plain_char_in_filter_mode(ER_PICKER_KEYS, "ER_PICKER_KEYS", &[' ']);
+        }
+
+        #[test]
+        fn command_line_has_no_problematic_plain_char_combos() {
+            // CommandLine: Enter and Esc are non-Char keys. No plain Char combos expected.
+            check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
+        }
+
+        #[test]
+        fn cell_edit_plain_char_combos_are_intentional() {
+            // CellEdit: Char(':') for EnterCommandLine is intentional.
+            // Verify only ':' appears as a plain Char combo.
+            check_no_plain_char_in_filter_mode(CELL_EDIT_KEYS, "CELL_EDIT_KEYS", &[':']);
+        }
+    }
 }
