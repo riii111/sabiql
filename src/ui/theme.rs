@@ -87,6 +87,10 @@ impl Theme {
     pub const CELL_EDIT_FG: Color = Color::Yellow;
     pub const CELL_DRAFT_PENDING_FG: Color = Color::Rgb(0xff, 0x99, 0x00);
 
+    // Staged-for-delete rows
+    pub const STAGED_DELETE_BG: Color = Color::Rgb(0x4a, 0x1a, 0x1a);
+    pub const STAGED_DELETE_FG: Color = Color::Rgb(0xff, 0x66, 0x66);
+
     // SQL syntax highlighting
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
