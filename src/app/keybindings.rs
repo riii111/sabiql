@@ -135,13 +135,14 @@ pub mod idx {
     pub mod result_active {
         pub const ENTER_DEEPEN: usize = 0;
         pub const YANK: usize = 1;
-        pub const DELETE_ROW: usize = 2;
-        pub const CELL_NAV: usize = 3;
-        pub const ROW_NAV: usize = 4;
-        pub const TOP_BOTTOM: usize = 5;
-        pub const ESC_BACK: usize = 6;
-        pub const EDIT: usize = 7;
-        pub const DRAFT_DISCARD: usize = 8;
+        pub const STAGE_DELETE: usize = 2;
+        pub const UNSTAGE_DELETE: usize = 3;
+        pub const CELL_NAV: usize = 4;
+        pub const ROW_NAV: usize = 5;
+        pub const TOP_BOTTOM: usize = 6;
+        pub const ESC_BACK: usize = 7;
+        pub const EDIT: usize = 8;
+        pub const DRAFT_DISCARD: usize = 9;
     }
 
     pub mod cell_edit {
@@ -1020,15 +1021,23 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Copy cell value to clipboard",
         action: Action::ResultCellYank,
     },
-    // idx 2: DELETE_ROW
+    // idx 2: STAGE_DELETE
     KeyBinding {
         key_short: "dd",
         key: "d, d",
-        desc_short: "Delete",
-        description: "Delete active row (with preview)",
-        action: Action::RequestDeleteActiveRow,
+        desc_short: "Stage Del",
+        description: "Stage row for deletion (red highlight; :w to commit)",
+        action: Action::StageRowForDelete,
     },
-    // idx 3: CELL_NAV
+    // idx 3: UNSTAGE_DELETE
+    KeyBinding {
+        key_short: "u",
+        key: "u",
+        desc_short: "Unstage",
+        description: "Unstage last staged row",
+        action: Action::UnstageLastStagedRow,
+    },
+    // idx 4: CELL_NAV
     KeyBinding {
         key_short: "h/l",
         key: "h / l",
@@ -1036,7 +1045,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Move cell left/right",
         action: Action::None,
     },
-    // idx 4: ROW_NAV
+    // idx 5: ROW_NAV
     KeyBinding {
         key_short: "j/k",
         key: "j / k",
@@ -1044,7 +1053,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Move row up/down",
         action: Action::None,
     },
-    // idx 5: TOP_BOTTOM
+    // idx 6: TOP_BOTTOM
     KeyBinding {
         key_short: "g/G",
         key: "g / G",
@@ -1052,7 +1061,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "First/Last row",
         action: Action::None,
     },
-    // idx 6: ESC_BACK
+    // idx 7: ESC_BACK
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -1060,7 +1069,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Exit to previous mode",
         action: Action::ResultExitToScroll,
     },
-    // idx 7: EDIT
+    // idx 8: EDIT
     KeyBinding {
         key_short: "i",
         key: "i",
@@ -1068,7 +1077,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         description: "Edit active cell",
         action: Action::ResultEnterCellEdit,
     },
-    // idx 8: DRAFT_DISCARD
+    // idx 9: DRAFT_DISCARD
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -1241,7 +1250,8 @@ mod tests {
         // RESULT_ACTIVE_KEYS
         assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::YANK < RESULT_ACTIVE_KEYS.len());
-        assert!(idx::result_active::DELETE_ROW < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::STAGE_DELETE < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::UNSTAGE_DELETE < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::CELL_NAV < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::ROW_NAV < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::TOP_BOTTOM < RESULT_ACTIVE_KEYS.len());

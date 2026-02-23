@@ -493,6 +493,7 @@ fn restore_cache(state: &mut AppState, cache: &ConnectionCache) {
     state.ui.result_scroll_offset = 0;
     state.ui.result_horizontal_offset = 0;
     state.cell_edit.clear();
+    state.ui.staged_delete_rows.clear();
     state.pending_write_preview = None;
 }
 
@@ -507,6 +508,7 @@ fn reset_connection_state(state: &mut AppState) {
     state.ui.result_scroll_offset = 0;
     state.ui.result_horizontal_offset = 0;
     state.cell_edit.clear();
+    state.ui.staged_delete_rows.clear();
     state.pending_write_preview = None;
 }
 
