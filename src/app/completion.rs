@@ -1209,11 +1209,23 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case("SELECT * FROM t WHERE name = 'あいう';", true)]
-        #[case("SELECT '🎉';", true)]
-        #[case("SELECT 'あいう' FROM ", false)]
-        #[case("SELECT 1; -- 日本語コメント\nSELECT ", false)]
-        #[case("-- 日本語コメント\nSELECT ", false)]
+        #[case("SELECT * FROM users;", true)] // immediately after semicolon
+        #[case("SELECT * FROM users;   ", true)] // semicolon followed by spaces
+        #[case("SELECT * FROM t WHERE name = 'a;b';", true)] // real semicolon after string containing semicolon
+        #[case("SELECT * FROM t WHERE name = 'a;b' ", false)] // semicolon inside string literal
+        fn suppression_by_trailing_semicolon(#[case] content: &str, #[case] expect_empty: bool) {
+            let e = engine();
+            let cursor_pos = content.chars().count();
+            let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
+            assert_eq!(candidates.is_empty(), expect_empty);
+        }
+
+        #[rstest]
+        #[case("SELECT * FROM t WHERE name = 'あいう';", true)] // multibyte string literal + semicolon
+        #[case("SELECT '🎉';", true)] // emoji + semicolon
+        #[case("SELECT 'あいう' FROM ", false)] // multibyte without semicolon
+        #[case("SELECT 1; -- 日本語コメント\nSELECT ", false)] // new statement after Japanese comment
+        #[case("-- 日本語コメント\nSELECT ", false)] // after Japanese comment line
         fn multibyte_content_does_not_panic(#[case] content: &str, #[case] expect_empty: bool) {
             let e = engine();
             let cursor_pos = content.chars().count();
@@ -1222,52 +1234,13 @@ mod tests {
         }
 
         #[test]
-        fn immediately_after_semicolon_returns_empty() {
-            let e = engine();
-
-            let candidates = e.get_candidates("SELECT * FROM users;", 20, None, None, &[]);
-
-            assert!(candidates.is_empty());
-        }
-
-        #[test]
-        fn semicolon_followed_by_spaces_returns_empty() {
-            let e = engine();
-
-            let candidates = e.get_candidates("SELECT * FROM users;   ", 23, None, None, &[]);
-
-            assert!(candidates.is_empty());
-        }
-
-        #[test]
-        fn typing_after_semicolon_returns_candidates() {
+        fn typing_after_semicolon_returns_select_candidate() {
             let e = engine();
 
             let candidates = e.get_candidates("SELECT * FROM users; S", 22, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
-        }
-
-        #[test]
-        fn semicolon_inside_string_literal_does_not_suppress() {
-            let e = engine();
-
-            // Cursor after closing quote — not inside string, and trim_end ends with `'` not `;`
-            let candidates =
-                e.get_candidates("SELECT * FROM t WHERE name = 'a;b' ", 35, None, None, &[]);
-
-            assert!(!candidates.is_empty());
-        }
-
-        #[test]
-        fn real_semicolon_after_string_containing_semicolon_suppresses() {
-            let e = engine();
-
-            let candidates =
-                e.get_candidates("SELECT * FROM t WHERE name = 'a;b';", 35, None, None, &[]);
-
-            assert!(candidates.is_empty());
         }
     }
 
