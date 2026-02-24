@@ -1237,7 +1237,8 @@ mod tests {
         fn typing_after_semicolon_returns_select_candidate() {
             let e = engine();
 
-            let candidates = e.get_candidates("SELECT * FROM users; S", 22, None, None, &[]);
+            let content = "SELECT * FROM users; S";
+            let candidates = e.get_candidates(content, content.chars().count(), None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
