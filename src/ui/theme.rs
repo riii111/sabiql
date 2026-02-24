@@ -31,9 +31,6 @@ impl Theme {
     // Completion popup
     pub const COMPLETION_SELECTED_BG: Color = Color::Rgb(0x45, 0x47, 0x5a);
 
-    // Table header/alternating row backgrounds
-    pub const TABLE_HEADER_BG: Color = Color::Rgb(0x2a, 0x2a, 0x2e);
-
     // Form input values (non-focused, readable against dark bg)
     pub const INPUT_VALUE: Color = Color::Rgb(0xaa, 0xaa, 0xaa);
 
@@ -91,8 +88,8 @@ impl Theme {
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
 
-    // Alternating row background (striped tables)
-    pub const STRIPED_ROW_BG: Color = Color::Rgb(0x2a, 0x2a, 0x2e);
+    // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
+    pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
 
     // Text selection / cursor background in editors
     pub const SELECTION_BG: Color = Color::Black;

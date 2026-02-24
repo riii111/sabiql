@@ -292,9 +292,7 @@ impl Inspector {
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
-                let is_striped = (row_idx - clamped_scroll_offset) % 2 == 1;
-
-                let base_style = if is_striped {
+                let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(Theme::STRIPED_ROW_BG)
                 } else {
                     Style::default()
