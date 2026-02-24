@@ -288,18 +288,9 @@ impl Inspector {
 
         let rows: Vec<Row> = data_rows
             .iter()
-            .enumerate()
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
-            .map(|(row_idx, row)| {
-                let is_striped = (row_idx - clamped_scroll_offset) % 2 == 1;
-
-                let base_style = if is_striped {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
-
+            .map(|row| {
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
                         let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
@@ -316,7 +307,6 @@ impl Inspector {
                         Cell::from(display).style(cell_style)
                     },
                 ))
-                .style(base_style)
             })
             .collect();
 
@@ -399,24 +389,17 @@ impl Inspector {
         let rows: Vec<Row> = table
             .indexes
             .iter()
-            .enumerate()
             .skip(clamped_scroll_offset)
             .take(visible_rows)
-            .map(|(row_idx, idx)| {
+            .map(|idx| {
                 let unique_marker = if idx.is_unique { "✓" } else { "" };
                 let type_str = format!("{:?}", idx.index_type).to_lowercase();
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
                 Row::new(vec![
                     Cell::from(idx.name.clone()),
                     Cell::from(idx.columns.join(", ")),
                     Cell::from(type_str),
                     Cell::from(unique_marker),
                 ])
-                .style(style)
             })
             .collect();
 
@@ -492,27 +475,20 @@ impl Inspector {
         let rows: Vec<Row> = table
             .foreign_keys
             .iter()
-            .enumerate()
             .skip(clamped_scroll_offset)
             .take(visible_rows)
-            .map(|(row_idx, fk)| {
+            .map(|fk| {
                 let refs = format!(
                     "{}.{}({})",
                     fk.to_schema,
                     fk.to_table,
                     fk.to_columns.join(", ")
                 );
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
                 Row::new(vec![
                     Cell::from(fk.name.clone()),
                     Cell::from(fk.from_columns.join(", ")),
                     Cell::from(refs),
                 ])
-                .style(style)
             })
             .collect();
 
@@ -649,10 +625,9 @@ impl Inspector {
         let rows: Vec<Row> = table
             .triggers
             .iter()
-            .enumerate()
             .skip(clamped_scroll_offset)
             .take(visible_rows)
-            .map(|(row_idx, trigger)| {
+            .map(|trigger| {
                 let events_str = trigger
                     .events
                     .iter()
@@ -664,11 +639,6 @@ impl Inspector {
                 } else {
                     ""
                 };
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
                 Row::new(vec![
                     Cell::from(trigger.name.clone()),
                     Cell::from(trigger.timing.to_string()),
@@ -676,7 +646,6 @@ impl Inspector {
                     Cell::from(trigger.function_name.clone()),
                     Cell::from(secdef),
                 ])
-                .style(style)
             })
             .collect();
 
