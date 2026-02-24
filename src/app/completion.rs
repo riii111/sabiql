@@ -187,6 +187,11 @@ impl CompletionEngine {
             return vec![];
         }
 
+        // Skip completion immediately after semicolon (end of statement)
+        if content[..cursor_pos].trim_end().ends_with(';') {
+            return vec![];
+        }
+
         // Build SQL context for alias resolution
         let tokens = self.lexer.tokenize(content, content.len());
         let sql_context = self.lexer.build_context(&tokens, cursor_pos);
@@ -1191,6 +1196,38 @@ mod tests {
             let e = engine();
 
             let candidates = e.get_candidates("/* comment */ SEL", 17, None, None, &[]);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+    }
+
+    mod semicolon_suppression {
+        use super::*;
+
+        #[test]
+        fn immediately_after_semicolon_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users;", 20, None, None, &[]);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn semicolon_followed_by_spaces_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users;   ", 23, None, None, &[]);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn typing_after_semicolon_returns_candidates() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users; S", 22, None, None, &[]);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
