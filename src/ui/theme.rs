@@ -89,7 +89,7 @@ impl Theme {
     pub const SQL_TEXT: Color = Color::White;
 
     // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
-    pub const STRIPED_ROW_BG: Color = Color::Indexed(236);
+    pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
 
     // Text selection / cursor background in editors
     pub const SELECTION_BG: Color = Color::Black;
