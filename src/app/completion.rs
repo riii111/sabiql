@@ -1206,6 +1206,20 @@ mod tests {
 
     mod semicolon_suppression {
         use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("SELECT * FROM t WHERE name = 'あいう';", true)]
+        #[case("SELECT '🎉';", true)]
+        #[case("SELECT 'あいう' FROM ", false)]
+        #[case("SELECT 1; -- 日本語コメント\nSELECT ", false)]
+        #[case("-- 日本語コメント\nSELECT ", false)]
+        fn multibyte_content_does_not_panic(#[case] content: &str, #[case] expect_empty: bool) {
+            let e = engine();
+            let cursor_pos = content.chars().count();
+            let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
+            assert_eq!(candidates.is_empty(), expect_empty);
+        }
 
         #[test]
         fn immediately_after_semicolon_returns_empty() {
