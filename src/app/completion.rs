@@ -1,4 +1,5 @@
 use crate::app::cache::BoundedLruCache;
+use crate::app::reducers::char_to_byte_index;
 use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
 use crate::domain::{DatabaseMetadata, Table};
@@ -188,7 +189,8 @@ impl CompletionEngine {
         }
 
         // Skip completion immediately after semicolon (end of statement)
-        if content[..cursor_pos].trim_end().ends_with(';') {
+        let byte_pos = char_to_byte_index(content, cursor_pos);
+        if content[..byte_pos].trim_end().ends_with(';') {
             return vec![];
         }
 
