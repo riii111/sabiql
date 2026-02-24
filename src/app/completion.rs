@@ -187,6 +187,11 @@ impl CompletionEngine {
             return vec![];
         }
 
+        // Skip completion immediately after semicolon (end of statement)
+        if content[..cursor_pos].trim_end().ends_with(';') {
+            return vec![];
+        }
+
         // Build SQL context for alias resolution
         let tokens = self.lexer.tokenize(content, content.len());
         let sql_context = self.lexer.build_context(&tokens, cursor_pos);
@@ -1194,6 +1199,59 @@ mod tests {
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+    }
+
+    mod semicolon_suppression {
+        use super::*;
+
+        #[test]
+        fn immediately_after_semicolon_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users;", 20, None, None, &[]);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn semicolon_followed_by_spaces_returns_empty() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users;   ", 23, None, None, &[]);
+
+            assert!(candidates.is_empty());
+        }
+
+        #[test]
+        fn typing_after_semicolon_returns_candidates() {
+            let e = engine();
+
+            let candidates = e.get_candidates("SELECT * FROM users; S", 22, None, None, &[]);
+
+            assert!(!candidates.is_empty());
+            assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+
+        #[test]
+        fn semicolon_inside_string_literal_does_not_suppress() {
+            let e = engine();
+
+            // Cursor after closing quote — not inside string, and trim_end ends with `'` not `;`
+            let candidates =
+                e.get_candidates("SELECT * FROM t WHERE name = 'a;b' ", 35, None, None, &[]);
+
+            assert!(!candidates.is_empty());
+        }
+
+        #[test]
+        fn real_semicolon_after_string_containing_semicolon_suppresses() {
+            let e = engine();
+
+            let candidates =
+                e.get_candidates("SELECT * FROM t WHERE name = 'a;b';", 35, None, None, &[]);
+
+            assert!(candidates.is_empty());
         }
     }
 
