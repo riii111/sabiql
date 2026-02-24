@@ -1232,6 +1232,27 @@ mod tests {
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
         }
+
+        #[test]
+        fn semicolon_inside_string_literal_does_not_suppress() {
+            let e = engine();
+
+            // Cursor after closing quote — not inside string, and trim_end ends with `'` not `;`
+            let candidates =
+                e.get_candidates("SELECT * FROM t WHERE name = 'a;b' ", 35, None, None, &[]);
+
+            assert!(!candidates.is_empty());
+        }
+
+        #[test]
+        fn real_semicolon_after_string_containing_semicolon_suppresses() {
+            let e = engine();
+
+            let candidates =
+                e.get_candidates("SELECT * FROM t WHERE name = 'a;b';", 35, None, None, &[]);
+
+            assert!(candidates.is_empty());
+        }
     }
 
     mod score_ranking {
