@@ -31,9 +31,6 @@ impl Theme {
     // Completion popup
     pub const COMPLETION_SELECTED_BG: Color = Color::Rgb(0x45, 0x47, 0x5a);
 
-    // Table header/alternating row backgrounds
-    pub const TABLE_HEADER_BG: Color = Color::Rgb(0x2a, 0x2a, 0x2e);
-
     // Form input values (non-focused, readable against dark bg)
     pub const INPUT_VALUE: Color = Color::Rgb(0xaa, 0xaa, 0xaa);
 
