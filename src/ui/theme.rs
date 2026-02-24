@@ -91,6 +91,11 @@ impl Theme {
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
 
+    // Alternating row background (striped tables)
+    // Use ANSI 256-color (Indexed) instead of RGB for terminal-agnostic rendering.
+    // 236 = #303030 — subtle dark gray that works on both light and dark terminals.
+    pub const STRIPED_ROW_BG: Color = Color::Indexed(236);
+
     // Text selection / cursor background in editors
     pub const SELECTION_BG: Color = Color::Black;
 

@@ -260,6 +260,8 @@ impl ResultPane {
                     Some(Theme::STAGED_DELETE_BG)
                 } else if is_active_row {
                     Some(Theme::RESULT_ROW_ACTIVE_BG)
+                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
+                    Some(Theme::STRIPED_ROW_BG)
                 } else {
                     None
                 };
