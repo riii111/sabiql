@@ -434,7 +434,11 @@ mod tests {
 
         state.sql_modal.failed_prefetch_tables.insert(
             "public.users".to_string(),
-            (now, "connection timeout".to_string()),
+            crate::app::sql_modal_context::FailedPrefetchEntry {
+                failed_at: now,
+                error: "connection timeout".to_string(),
+                retry_count: 0,
+            },
         );
 
         assert!(
@@ -443,13 +447,13 @@ mod tests {
                 .failed_prefetch_tables
                 .contains_key("public.users")
         );
-        let (instant, error) = state
+        let entry = state
             .sql_modal
             .failed_prefetch_tables
             .get("public.users")
             .unwrap();
-        assert!(instant.elapsed().as_secs() < 1);
-        assert_eq!(error, "connection timeout");
+        assert!(entry.failed_at.elapsed().as_secs() < 1);
+        assert_eq!(entry.error, "connection timeout");
     }
 
     mod er_preparation {
@@ -499,7 +503,11 @@ mod tests {
                 .insert("public.orders".to_string());
             state.sql_modal.failed_prefetch_tables.insert(
                 "public.failed".to_string(),
-                (Instant::now(), "timeout".to_string()),
+                crate::app::sql_modal_context::FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 0,
+                },
             );
 
             // Simulate ReloadMetadata reset using reset_prefetch()

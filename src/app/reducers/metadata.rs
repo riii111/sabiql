@@ -8,8 +8,13 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
+use crate::app::sql_modal_context::FailedPrefetchEntry;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
+
+const BASE_BACKOFF_SECS: u64 = 1;
+const MAX_BACKOFF_SECS: u64 = 4;
+const MAX_PREFETCH_RETRIES: u32 = 3;
 
 /// Handles metadata loading, table detail, and prefetch actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -179,16 +184,23 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 return Some(vec![]);
             }
 
-            const PREFETCH_BACKOFF_SECS: u64 = 30;
-            let recently_failed = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get(&qualified_name)
-                .map(|(t, _): &(Instant, String)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
-                .unwrap_or(false);
+            if let Some(entry) = state.sql_modal.failed_prefetch_tables.get(&qualified_name) {
+                if entry.retry_count >= MAX_PREFETCH_RETRIES {
+                    // Exceeded retry limit — give up, don't re-queue
+                    state.er_preparation.pending_tables.remove(&qualified_name);
+                    state
+                        .er_preparation
+                        .on_table_failed(&qualified_name, entry.error.clone());
+                    return Some(vec![]);
+                }
 
-            if recently_failed {
-                return Some(vec![]);
+                let backoff_secs =
+                    (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
+                if entry.failed_at.elapsed().as_secs() < backoff_secs {
+                    // Still in backoff window — re-queue at tail and continue processing
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
+                    return Some(vec![Effect::ProcessPrefetchQueue]);
+                }
             }
 
             state
@@ -269,10 +281,21 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state
+
+            let prev_count = state
                 .sql_modal
                 .failed_prefetch_tables
-                .insert(qualified_name.clone(), (now, error.clone()));
+                .get(&qualified_name)
+                .map(|e| e.retry_count)
+                .unwrap_or(0);
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified_name.clone(),
+                FailedPrefetchEntry {
+                    failed_at: now,
+                    error: error.clone(),
+                    retry_count: prev_count + 1,
+                },
+            );
             state
                 .er_preparation
                 .on_table_failed(&qualified_name, error.clone());
@@ -350,5 +373,209 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::sql_modal_context::FailedPrefetchEntry;
+    use crate::app::state::AppState;
+    use std::time::{Duration, Instant};
+
+    fn state_with_dsn(dsn: &str) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.runtime.dsn = Some(dsn.to_string());
+        state
+    }
+
+    mod prefetch_table_detail {
+        use super::*;
+
+        #[test]
+        fn backoff_table_requeued_at_tail_with_process_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            // Insert a recently failed entry (retry_count=1, just failed)
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // Should be re-queued at tail
+            assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
+            // Should return ProcessPrefetchQueue effect
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+        }
+
+        #[test]
+        fn retry_limit_exceeded_gives_up_and_calls_on_table_failed() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES, // at limit
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // Should NOT be in prefetch_queue
+            assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
+            // Should be in er_preparation.failed_tables
+            assert!(state.er_preparation.failed_tables.contains_key(&qualified));
+            // Should be removed from pending
+            assert!(!state.er_preparation.pending_tables.contains(&qualified));
+            // Should return empty effects (no ProcessPrefetchQueue)
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn expired_backoff_proceeds_normally() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            // Failed 10 seconds ago with retry_count=1 (backoff = 2s, already expired)
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now() - Duration::from_secs(10),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // Should proceed to fetching
+            assert!(state.sql_modal.prefetching_tables.contains(&qualified));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::PrefetchTableDetail { .. }))
+            );
+        }
+    }
+
+    mod table_detail_cache_failed {
+        use super::*;
+
+        #[test]
+        fn increments_retry_count() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now() - Duration::from_secs(60),
+                    error: "old error".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let now = Instant::now();
+            reduce_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: "new error".to_string(),
+                },
+                now,
+            );
+
+            let entry = state
+                .sql_modal
+                .failed_prefetch_tables
+                .get(&qualified)
+                .unwrap();
+            assert_eq!(entry.retry_count, 2);
+            assert_eq!(entry.error, "new error");
+        }
+
+        #[test]
+        fn first_failure_sets_retry_count_1() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+
+            let now = Instant::now();
+            reduce_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: "timeout".to_string(),
+                },
+                now,
+            );
+
+            let entry = state
+                .sql_modal
+                .failed_prefetch_tables
+                .get(&qualified)
+                .unwrap();
+            assert_eq!(entry.retry_count, 1);
+        }
+    }
+
+    mod backoff_calculation {
+        use super::*;
+
+        #[test]
+        fn backoff_values() {
+            // retry_count 0 → 1s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(0)).min(MAX_BACKOFF_SECS), 1);
+            // retry_count 1 → 2s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(1)).min(MAX_BACKOFF_SECS), 2);
+            // retry_count 2 → 4s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(2)).min(MAX_BACKOFF_SECS), 4);
+            // retry_count 3 → 4s (capped)
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(3)).min(MAX_BACKOFF_SECS), 4);
+        }
     }
 }
