@@ -18,7 +18,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         } => {
             state.er_preparation.status = ErStatus::Idle;
             state.set_success(format!(
-                "✓ Opened {} ({}/{} tables)",
+                "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
             ));
             Some(vec![])
