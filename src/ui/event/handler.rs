@@ -1,6 +1,7 @@
 use crate::app::action::Action;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
+use crate::app::inspector_tab::InspectorTab;
 use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -291,6 +292,9 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 
         Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
+        }
+        Key::Char('y') if inspector_navigation && state.ui.inspector_tab == InspectorTab::Ddl => {
+            Action::DdlYank
         }
         Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             if state.ui.delete_op_pending {

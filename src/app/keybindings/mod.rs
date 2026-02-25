@@ -238,6 +238,10 @@ pub mod idx {
         pub const DELETE: usize = 4;
         pub const QUIT: usize = 5;
     }
+
+    pub mod inspector_ddl {
+        pub const YANK: usize = 0;
+    }
 }
 
 // =============================================================================
@@ -246,12 +250,13 @@ pub mod idx {
 
 /// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
-    // 16 sections × 1 header each = 16
-    // 15 blank-line separators between sections = 15
-    16 + 15
+    // 17 sections × 1 header each = 17
+    // 16 blank-line separators between sections = 16
+    17 + 16
         + GLOBAL_KEYS.len()
         + NAVIGATION_KEYS.len()
         + RESULT_ACTIVE_KEYS.len()
+        + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
         + SQL_MODAL_KEYS.len()
         + OVERLAY_KEYS.len()
@@ -419,6 +424,9 @@ mod tests {
         assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
 
+        // INSPECTOR_DDL_KEYS
+        assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
+
         // CELL_EDIT_KEYS
         assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
         assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
@@ -451,6 +459,7 @@ mod tests {
             GLOBAL_KEYS.len(),
             NAVIGATION_KEYS.len(),
             RESULT_ACTIVE_KEYS.len(),
+            INSPECTOR_DDL_KEYS.len(),
             CELL_EDIT_KEYS.len(),
             SQL_MODAL_KEYS.len(),
             OVERLAY_KEYS.len(),

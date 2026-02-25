@@ -771,6 +771,19 @@ pub fn reduce_navigation(
                 Some(vec![])
             }
         }
+        Action::DdlYank => {
+            if state.ui.inspector_tab == InspectorTab::Ddl
+                && let Some(table) = state.cache.table_detail.as_ref()
+            {
+                let ddl = state.ddl_generator.generate_ddl(table);
+                return Some(vec![Effect::CopyToClipboard {
+                    content: ddl,
+                    on_success: Some(Action::CellCopied),
+                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                }]);
+            }
+            Some(vec![])
+        }
         Action::ResultDeleteOperatorPending => {
             state.ui.delete_op_pending = true;
             Some(vec![])
@@ -1929,6 +1942,85 @@ mod tests {
             reduce_navigation(&mut state, &Action::ClearStagedDeletes, Instant::now());
 
             assert!(state.ui.staged_delete_rows.is_empty());
+        }
+    }
+
+    mod ddl_yank {
+        use super::*;
+        use crate::app::ports::ddl_generator::DdlGenerator;
+        use crate::domain::{Column, Table};
+        use std::sync::Arc;
+
+        struct FakeDdlGenerator;
+        impl DdlGenerator for FakeDdlGenerator {
+            fn generate_ddl(&self, table: &Table) -> String {
+                format!("CREATE TABLE {}.{} ();", table.schema, table.name)
+            }
+        }
+
+        fn state_with_ddl_tab() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ddl_generator = Arc::new(FakeDdlGenerator);
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![Column {
+                    name: "id".to_string(),
+                    data_type: "integer".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: Some(vec!["id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: Some(0),
+                comment: None,
+            });
+            state
+        }
+
+        #[test]
+        fn ddl_yank_with_table_detail_returns_copy_effect() {
+            let mut state = state_with_ddl_tab();
+
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
+            );
+        }
+
+        #[test]
+        fn ddl_yank_without_table_detail_returns_empty() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            // table_detail is None
+
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn ddl_yank_on_non_ddl_tab_returns_empty() {
+            let mut state = state_with_ddl_tab();
+            state.ui.inspector_tab = InspectorTab::Info;
+
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert!(effects.is_empty());
         }
     }
 }
