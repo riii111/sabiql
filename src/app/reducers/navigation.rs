@@ -771,6 +771,21 @@ pub fn reduce_navigation(
                 Some(vec![])
             }
         }
+        Action::DdlYank => {
+            if state.ui.inspector_tab == InspectorTab::Ddl {
+                if let Some(table) = state.cache.table_detail.as_ref() {
+                    let ddl = state.ddl_generator.generate_ddl(table);
+                    return Some(vec![Effect::CopyToClipboard {
+                        content: ddl,
+                        on_success: Some(Action::CellCopied),
+                        on_failure: Some(Action::CopyFailed(
+                            "Clipboard unavailable".into(),
+                        )),
+                    }]);
+                }
+            }
+            Some(vec![])
+        }
         Action::ResultDeleteOperatorPending => {
             state.ui.delete_op_pending = true;
             Some(vec![])
