@@ -289,6 +289,7 @@ pub enum Action {
 
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
+    ErGenerateFromCache,
     ErDiagramOpened {
         path: String,
         table_count: usize,

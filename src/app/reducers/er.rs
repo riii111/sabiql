@@ -63,6 +63,29 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             ])])
         }
 
+        Action::ErGenerateFromCache => {
+            if !matches!(
+                state.er_preparation.status,
+                ErStatus::Idle | ErStatus::Waiting
+            ) {
+                return Some(vec![]);
+            }
+
+            state.er_preparation.status = ErStatus::Rendering;
+            let total_tables = state
+                .cache
+                .metadata
+                .as_ref()
+                .map(|m| m.tables.len())
+                .unwrap_or(0);
+
+            Some(vec![Effect::GenerateErDiagramFromCache {
+                total_tables,
+                project_name: state.runtime.project_name.clone(),
+                target_tables: state.er_preparation.target_tables.clone(),
+            }])
+        }
+
         _ => None,
     }
 }
@@ -146,6 +169,46 @@ mod tests {
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
+        }
+    }
+
+    mod er_generate_from_cache {
+        use super::*;
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn idle_status_returns_generate_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Idle;
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+            state.er_preparation.target_tables = vec!["public.users".to_string()];
+
+            let effects =
+                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::GenerateErDiagramFromCache { target_tables, .. }
+                    if target_tables == &vec!["public.users".to_string()]
+            ));
+            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+        }
+
+        #[test]
+        fn rendering_status_returns_empty_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Rendering;
+
+            let effects =
+                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
         }
     }
 }
