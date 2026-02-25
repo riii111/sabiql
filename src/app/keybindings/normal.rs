@@ -342,3 +342,15 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
+
+pub const INSPECTOR_DDL_KEYS: &[KeyBinding] = &[
+    // idx 0: YANK
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy DDL to clipboard",
+        action: Action::DdlYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
+    },
+];

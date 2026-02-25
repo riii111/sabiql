@@ -12,7 +12,8 @@ use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
-    HELP_ROWS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
+    HELP_ROWS, INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
+    TABLE_PICKER_ROWS, idx,
 };
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -178,6 +179,10 @@ impl Footer {
                         }
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
+                        use crate::app::inspector_tab::InspectorTab;
+                        if state.ui.inspector_tab == InspectorTab::Ddl {
+                            list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
+                        }
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
