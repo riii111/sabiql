@@ -9,7 +9,7 @@ pub struct MessageState {
 
 impl MessageState {
     const ERROR_TIMEOUT_SECS: u64 = 3;
-    const SUCCESS_TIMEOUT_SECS: u64 = 1;
+    const SUCCESS_TIMEOUT_SECS: u64 = 3;
 
     pub fn set_error_at(&mut self, msg: String, now: Instant) {
         self.last_error = Some(msg);
