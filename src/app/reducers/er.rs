@@ -36,30 +36,44 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            let Some(dsn) = state.runtime.dsn.clone() else {
-                state.set_error("No active connection".to_string());
+            if !state.sql_modal.prefetch_started
+                && let Some(metadata) = &state.cache.metadata
+            {
+                state.er_preparation.total_tables = metadata.tables.len();
+                state.er_preparation.status = ErStatus::Waiting;
+                state.set_success("Starting table prefetch for ER diagram...".to_string());
+                return Some(vec![Effect::DispatchActions(vec![
+                    Action::StartPrefetchAll,
+                ])]);
+            }
+
+            if state.cache.metadata.is_none() {
+                state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
-            };
+            }
 
-            // reset() clears target_tables too, so save and restore it
-            let target_tables = state.er_preparation.target_tables.clone();
-            state.er_preparation.reset();
-            state.er_preparation.target_tables = target_tables;
+            if state.er_preparation.has_failures() {
+                let failed_tables: Vec<String> =
+                    state.er_preparation.failed_tables.keys().cloned().collect();
+                state.er_preparation.retry_failed();
+                state.sql_modal.failed_prefetch_tables.clear();
 
-            state.sql_modal.prefetch_started = false;
-            state.sql_modal.prefetch_queue.clear();
-            state.sql_modal.prefetching_tables.clear();
-            state.sql_modal.failed_prefetch_tables.clear();
+                for qualified_name in failed_tables {
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
+                }
 
-            state.er_preparation.status = ErStatus::Waiting;
-            state.set_success("Starting table prefetch for ER diagram...".to_string());
+                state.er_preparation.status = ErStatus::Waiting;
+                return Some(vec![Effect::ProcessPrefetchQueue]);
+            }
 
-            // Always force a full refresh so schema changes are reflected.
-            // StartPrefetchAll fires from MetadataLoaded when er status is Waiting.
-            Some(vec![Effect::Sequence(vec![
-                Effect::CacheInvalidate { dsn: dsn.clone() },
-                Effect::ClearCompletionEngineCache,
-                Effect::FetchMetadata { dsn },
+            if !state.er_preparation.is_complete() {
+                state.er_preparation.status = ErStatus::Waiting;
+                return Some(vec![]);
+            }
+
+            // Prefetch already complete — delegate to ErGenerateFromCache
+            Some(vec![Effect::DispatchActions(vec![
+                Action::ErGenerateFromCache,
             ])])
         }
 
@@ -105,40 +119,44 @@ mod tests {
 
     mod er_open_diagram {
         use super::*;
+        use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn stale_cache_returns_sequence_effect() {
+        fn no_prefetch_starts_prefetch_all() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::DispatchActions(_)));
+        }
+
+        #[test]
+        fn prefetch_complete_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
-                Effect::Sequence(seq)
-                    if matches!(seq.as_slice(), [
-                        Effect::CacheInvalidate { .. },
-                        Effect::ClearCompletionEngineCache,
-                        Effect::FetchMetadata { .. },
-                    ])
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
             ));
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(!state.sql_modal.prefetch_started);
-        }
-
-        #[test]
-        fn target_tables_survive_reset() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.er_preparation.target_tables =
-                vec!["public.users".to_string(), "public.orders".to_string()];
-
-            reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now());
-
-            assert_eq!(
-                state.er_preparation.target_tables,
-                vec!["public.users".to_string(), "public.orders".to_string()]
-            );
         }
 
         #[test]
@@ -162,8 +180,9 @@ mod tests {
         }
 
         #[test]
-        fn no_dsn_returns_error() {
-            let mut state = AppState::new("test".to_string());
+        fn no_metadata_returns_error() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
