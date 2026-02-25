@@ -748,7 +748,6 @@ mod tests {
     mod er_diagram {
         use super::*;
         use crate::app::er_state::ErStatus;
-        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn er_open_while_rendering_returns_no_effects() {
