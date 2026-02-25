@@ -772,17 +772,17 @@ pub fn reduce_navigation(
             }
         }
         Action::DdlYank => {
-            if state.ui.inspector_tab == InspectorTab::Ddl {
-                if let Some(table) = state.cache.table_detail.as_ref() {
-                    let ddl = state.ddl_generator.generate_ddl(table);
-                    return Some(vec![Effect::CopyToClipboard {
-                        content: ddl,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(
-                            "Clipboard unavailable".into(),
-                        )),
-                    }]);
-                }
+            if state.ui.inspector_tab == InspectorTab::Ddl
+                && let Some(table) = state.cache.table_detail.as_ref()
+            {
+                let ddl = state.ddl_generator.generate_ddl(table);
+                return Some(vec![Effect::CopyToClipboard {
+                    content: ddl,
+                    on_success: Some(Action::CellCopied),
+                    on_failure: Some(Action::CopyFailed(
+                        "Clipboard unavailable".into(),
+                    )),
+                }]);
             }
             Some(vec![])
         }
@@ -1949,9 +1949,20 @@ mod tests {
 
     mod ddl_yank {
         use super::*;
+        use crate::app::ports::ddl_generator::DdlGenerator;
+        use crate::domain::{Column, Table};
+        use std::sync::Arc;
+
+        struct FakeDdlGenerator;
+        impl DdlGenerator for FakeDdlGenerator {
+            fn generate_ddl(&self, table: &Table) -> String {
+                format!("CREATE TABLE {}.{} ();", table.schema, table.name)
+            }
+        }
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
+            state.ddl_generator = Arc::new(FakeDdlGenerator);
             state.ui.inspector_tab = InspectorTab::Ddl;
             state.cache.table_detail = Some(Table {
                 schema: "public".to_string(),
