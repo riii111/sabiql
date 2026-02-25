@@ -321,6 +321,11 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::ResizeCompletionCache { capacity } => {
+                completion_engine.borrow_mut().resize_cache(capacity);
+                Ok(())
+            }
+
             Effect::FetchMetadata { dsn } => {
                 if let Some(cached) = self.metadata_cache.get(&dsn).await {
                     let _ = self

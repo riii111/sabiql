@@ -128,6 +128,10 @@ impl CompletionEngine {
         self.table_detail_cache.clear();
     }
 
+    pub fn resize_cache(&mut self, new_capacity: usize) {
+        self.table_detail_cache.resize(new_capacity);
+    }
+
     /// Returns an iterator over cached table details for graph building
     pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
         self.table_detail_cache.iter()

@@ -139,6 +139,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.er_preparation.failed_tables.clear();
                 state.er_preparation.total_tables = metadata.tables.len();
 
+                let table_count = metadata.tables.len();
+                let resize_capacity = table_count.max(500).min(10_000);
+
                 for table_summary in &metadata.tables {
                     let qualified_name = table_summary.qualified_name();
                     state
@@ -147,7 +150,12 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         .push_back(qualified_name.clone());
                     state.er_preparation.pending_tables.insert(qualified_name);
                 }
-                Some(vec![Effect::ProcessPrefetchQueue])
+                Some(vec![
+                    Effect::ResizeCompletionCache {
+                        capacity: resize_capacity,
+                    },
+                    Effect::ProcessPrefetchQueue,
+                ])
             } else {
                 Some(vec![])
             }
@@ -576,6 +584,53 @@ mod tests {
             assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(2)).min(MAX_BACKOFF_SECS), 4);
             // retry_count 3 → 4s (capped)
             assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(3)).min(MAX_BACKOFF_SECS), 4);
+        }
+    }
+
+    mod start_prefetch_all {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .collect();
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            }
+        }
+
+        #[test]
+        fn large_db_emits_resize_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(530));
+
+            let effects =
+                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 530 }))
+            );
+        }
+
+        #[test]
+        fn small_db_uses_floor_capacity() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(50));
+
+            let effects =
+                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 500 }))
+            );
         }
     }
 }
