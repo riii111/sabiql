@@ -761,7 +761,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_stale_prefetch_always_refetches() {
+        fn stale_prefetch_returns_sequence_effect() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
@@ -780,7 +780,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_always_returns_sequence_effect() {
+        fn prefetch_complete_returns_sequence_effect() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
@@ -802,7 +802,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_without_prefetch_still_refetches() {
+        fn no_prefetch_returns_sequence_effect() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             // prefetch_started is false by default
@@ -1551,7 +1551,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_target_tables_preserves_selection() {
+        fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.er_preparation.target_tables = vec!["public.users".to_string()];

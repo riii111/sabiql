@@ -448,7 +448,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_old_er_dot_and_svg_files_before_export() {
+        fn old_er_files_are_removed_on_export() {
             let temp_dir = tempfile::tempdir().unwrap();
             let old_dot = temp_dir.path().join("er_old_tables.dot");
             let old_svg = temp_dir.path().join("er_old_tables.svg");
@@ -465,7 +465,7 @@ mod tests {
         }
 
         #[test]
-        fn preserves_non_er_files_during_cleanup() {
+        fn non_er_files_survive_cleanup() {
             let temp_dir = tempfile::tempdir().unwrap();
             let log_file = temp_dir.path().join("er_failure.log");
             let other_file = temp_dir.path().join("other.txt");

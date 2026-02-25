@@ -84,7 +84,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn clears_stale_cache_and_refetches() {
+        fn stale_cache_returns_sequence_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
 
@@ -106,7 +106,7 @@ mod tests {
         }
 
         #[test]
-        fn preserves_target_tables_across_reset() {
+        fn target_tables_survive_reset() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.target_tables =
                 vec!["public.users".to_string(), "public.orders".to_string()];
@@ -120,7 +120,7 @@ mod tests {
         }
 
         #[test]
-        fn skips_when_already_rendering() {
+        fn rendering_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -131,7 +131,7 @@ mod tests {
         }
 
         #[test]
-        fn skips_when_already_waiting() {
+        fn waiting_status_returns_empty_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
@@ -142,7 +142,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_error_when_no_dsn() {
+        fn no_dsn_returns_error() {
             let mut state = AppState::new("test".to_string());
 
             let effects =
