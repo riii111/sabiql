@@ -762,8 +762,9 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_incomplete_prefetch_sets_waiting() {
+        fn incomplete_prefetch_sets_waiting() {
             let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
@@ -784,7 +785,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_when_complete_returns_generate_effect() {
+        fn prefetch_complete_dispatches_generate() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
@@ -800,14 +801,14 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
-                effects[0],
-                Effect::GenerateErDiagramFromCache { .. }
+                &effects[0],
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
             ));
-            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
         }
 
         #[test]
-        fn er_open_without_prefetch_starts_prefetch() {
+        fn no_prefetch_starts_prefetch() {
             let mut state = create_test_state();
             state.cache.metadata = Some(DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -822,19 +823,34 @@ mod tests {
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+            assert!(matches!(&effects[0], Effect::DispatchActions(_)));
         }
 
         #[test]
-        fn er_open_without_metadata_shows_error() {
+        fn no_metadata_returns_error() {
             let mut state = create_test_state();
-            // No metadata
+            state.sql_modal.prefetch_started = true;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn metadata_failed_resets_er_waiting_to_idle() {
+            let mut state = create_test_state();
+            state.er_preparation.status = ErStatus::Waiting;
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::MetadataFailed("connection refused".to_string()),
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
         }
     }
 
@@ -1561,7 +1577,7 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_target_tables_returns_generate_effect() {
+        fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
@@ -1571,16 +1587,19 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::GenerateErDiagramFromCache { target_tables, .. } => {
-                    assert_eq!(target_tables, &vec!["public.users".to_string()]);
-                }
-                other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
-            }
+            assert!(matches!(
+                &effects[0],
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            ));
+            assert_eq!(
+                state.er_preparation.target_tables,
+                vec!["public.users".to_string()]
+            );
         }
 
         #[test]
-        fn prefetch_complete_auto_dispatches_er_open() {
+        fn prefetch_complete_dispatches_er_generate() {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
@@ -1605,7 +1624,7 @@ mod tests {
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
             }));
         }
 

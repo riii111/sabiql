@@ -18,7 +18,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         } => {
             state.er_preparation.status = ErStatus::Idle;
             state.set_success(format!(
-                "✓ Opened {} ({}/{} tables)",
+                "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
             ));
             Some(vec![])
@@ -71,6 +71,20 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
+            // Prefetch already complete — delegate to ErGenerateFromCache
+            Some(vec![Effect::DispatchActions(vec![
+                Action::ErGenerateFromCache,
+            ])])
+        }
+
+        Action::ErGenerateFromCache => {
+            if !matches!(
+                state.er_preparation.status,
+                ErStatus::Idle | ErStatus::Waiting
+            ) {
+                return Some(vec![]);
+            }
+
             state.er_preparation.status = ErStatus::Rendering;
             let total_tables = state
                 .cache
@@ -87,5 +101,133 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         }
 
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use super::*;
+    use crate::app::state::AppState;
+
+    fn state_with_dsn(dsn: &str) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.runtime.dsn = Some(dsn.to_string());
+        state
+    }
+
+    mod er_open_diagram {
+        use super::*;
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn no_prefetch_starts_prefetch_all() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::DispatchActions(_)));
+        }
+
+        #[test]
+        fn prefetch_complete_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            ));
+        }
+
+        #[test]
+        fn rendering_status_returns_empty_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Rendering;
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn waiting_status_returns_empty_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn no_metadata_returns_error() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+    }
+
+    mod er_generate_from_cache {
+        use super::*;
+        use crate::domain::DatabaseMetadata;
+
+        #[test]
+        fn idle_status_returns_generate_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Idle;
+            state.cache.metadata = Some(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: vec![],
+                fetched_at: Instant::now(),
+            });
+            state.er_preparation.target_tables = vec!["public.users".to_string()];
+
+            let effects =
+                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::GenerateErDiagramFromCache { target_tables, .. }
+                    if target_tables == &vec!["public.users".to_string()]
+            ));
+            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+        }
+
+        #[test]
+        fn rendering_status_returns_empty_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Rendering;
+
+            let effects =
+                reduce_er(&mut state, &Action::ErGenerateFromCache, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
     }
 }

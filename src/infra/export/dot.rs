@@ -176,6 +176,8 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         filename: &str,
         cache_dir: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+        Self::cleanup_er_files(cache_dir);
+
         let dot_path = cache_dir.join(filename);
         std::fs::write(&dot_path, dot_content)?;
 
@@ -184,6 +186,21 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         self.viewer.open_file(&svg_path)?;
 
         Ok(svg_path)
+    }
+
+    fn cleanup_er_files(cache_dir: &Path) {
+        let Ok(entries) = std::fs::read_dir(cache_dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && name.starts_with("er_")
+                && (name.ends_with(".dot") || name.ends_with(".svg"))
+            {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
     }
 }
 
@@ -428,6 +445,40 @@ mod tests {
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("mock failure"));
             assert!(exporter.graphviz.called.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn old_er_files_are_removed_on_export() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let old_dot = temp_dir.path().join("er_old_tables.dot");
+            let old_svg = temp_dir.path().join("er_old_tables.svg");
+            std::fs::write(&old_dot, "old dot").unwrap();
+            std::fs::write(&old_svg, "old svg").unwrap();
+
+            let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
+            exporter
+                .export("digraph {}", "er_new.dot", temp_dir.path())
+                .unwrap();
+
+            assert!(!old_dot.exists());
+            assert!(!old_svg.exists());
+        }
+
+        #[test]
+        fn non_er_files_survive_cleanup() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let log_file = temp_dir.path().join("er_failure.log");
+            let other_file = temp_dir.path().join("other.txt");
+            std::fs::write(&log_file, "log").unwrap();
+            std::fs::write(&other_file, "data").unwrap();
+
+            let exporter = DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::new());
+            exporter
+                .export("digraph {}", "er_new.dot", temp_dir.path())
+                .unwrap();
+
+            assert!(log_file.exists());
+            assert!(other_file.exists());
         }
     }
 }
