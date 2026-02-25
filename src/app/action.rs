@@ -260,6 +260,7 @@ pub enum Action {
     ResultCellLeft,
     ResultCellRight,
     ResultCellYank,
+    DdlYank,
     ResultDeleteOperatorPending,
     StageRowForDelete,
     UnstageLastStagedRow,
