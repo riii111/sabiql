@@ -1979,7 +1979,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_emits_copy_to_clipboard_effect() {
+        fn ddl_yank_with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
             let effects =
