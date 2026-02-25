@@ -75,6 +75,9 @@ pub enum Effect {
         table: Box<Table>,
     },
     ClearCompletionEngineCache,
+    ResizeCompletionCache {
+        capacity: usize,
+    },
 
     CopyToClipboard {
         content: String,
