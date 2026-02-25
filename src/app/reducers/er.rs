@@ -88,8 +88,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
 
-            let effects =
-                reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -124,8 +123,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
-            let effects =
-                reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -135,8 +133,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
-            let effects =
-                reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -145,8 +142,7 @@ mod tests {
         fn no_dsn_returns_error() {
             let mut state = AppState::new("test".to_string());
 
-            let effects =
-                reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());

@@ -38,8 +38,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             }
 
             // ErOpenDiagram runs in Normal mode, so the SqlModal guard above doesn't fire.
-            if state.er_preparation.status == ErStatus::Waiting
-                && !state.sql_modal.prefetch_started
+            if state.er_preparation.status == ErStatus::Waiting && !state.sql_modal.prefetch_started
             {
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
