@@ -1946,4 +1946,75 @@ mod tests {
             assert!(state.ui.staged_delete_rows.is_empty());
         }
     }
+
+    mod ddl_yank {
+        use super::*;
+
+        fn state_with_ddl_tab() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.cache.table_detail = Some(Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![Column {
+                    name: "id".to_string(),
+                    data_type: "integer".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                }],
+                primary_key: Some(vec!["id".to_string()]),
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: Some(0),
+                comment: None,
+            });
+            state
+        }
+
+        #[test]
+        fn ddl_yank_emits_copy_to_clipboard_effect() {
+            let mut state = state_with_ddl_tab();
+
+            let effects =
+                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
+            );
+        }
+
+        #[test]
+        fn ddl_yank_without_table_detail_returns_empty() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.inspector_tab = InspectorTab::Ddl;
+            // table_detail is None
+
+            let effects =
+                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn ddl_yank_on_non_ddl_tab_returns_empty() {
+            let mut state = state_with_ddl_tab();
+            state.ui.inspector_tab = InspectorTab::Info;
+
+            let effects =
+                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+
+            let effects = effects.expect("should return Some");
+            assert!(effects.is_empty());
+        }
+    }
 }
