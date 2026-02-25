@@ -1,6 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
+#[derive(Debug, Clone)]
+pub struct FailedPrefetchEntry {
+    pub failed_at: Instant,
+    pub error: String,
+    pub retry_count: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
@@ -48,7 +55,7 @@ pub struct SqlModalContext {
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,
     pub prefetching_tables: HashSet<String>,
-    pub failed_prefetch_tables: HashMap<String, (Instant, String)>,
+    pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     pub prefetch_started: bool,
 }
 
@@ -94,7 +101,11 @@ mod tests {
         ctx.prefetching_tables.insert("public.posts".to_string());
         ctx.failed_prefetch_tables.insert(
             "public.failed".to_string(),
-            (Instant::now(), "error".to_string()),
+            FailedPrefetchEntry {
+                failed_at: Instant::now(),
+                error: "error".to_string(),
+                retry_count: 0,
+            },
         );
 
         ctx.reset_prefetch();
