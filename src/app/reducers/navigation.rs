@@ -779,9 +779,7 @@ pub fn reduce_navigation(
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
-                    on_failure: Some(Action::CopyFailed(
-                        "Clipboard unavailable".into(),
-                    )),
+                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
                 }]);
             }
             Some(vec![])
@@ -1993,8 +1991,7 @@ mod tests {
         fn ddl_yank_with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects =
-                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
 
             let effects = effects.expect("should return Some");
             assert_eq!(effects.len(), 1);
@@ -2009,8 +2006,7 @@ mod tests {
             state.ui.inspector_tab = InspectorTab::Ddl;
             // table_detail is None
 
-            let effects =
-                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
 
             let effects = effects.expect("should return Some");
             assert!(effects.is_empty());
@@ -2021,8 +2017,7 @@ mod tests {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 
-            let effects =
-                reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
 
             let effects = effects.expect("should return Some");
             assert!(effects.is_empty());

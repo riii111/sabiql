@@ -181,9 +181,7 @@ impl Footer {
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::inspector_tab::InspectorTab;
                         if state.ui.inspector_tab == InspectorTab::Ddl {
-                            list.push(
-                                INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint(),
-                            );
+                            list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }

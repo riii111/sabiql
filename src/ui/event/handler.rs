@@ -293,9 +293,7 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
-        Key::Char('y')
-            if inspector_navigation && state.ui.inspector_tab == InspectorTab::Ddl =>
-        {
+        Key::Char('y') if inspector_navigation && state.ui.inspector_tab == InspectorTab::Ddl => {
             Action::DdlYank
         }
         Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
