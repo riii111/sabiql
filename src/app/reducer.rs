@@ -826,6 +826,21 @@ mod tests {
             assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn metadata_failed_resets_er_waiting_to_idle() {
+            let mut state = create_test_state();
+            state.er_preparation.status = ErStatus::Waiting;
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::MetadataFailed("connection refused".to_string()),
+                now,
+            );
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+        }
     }
 
     mod table_detail_cached {
@@ -1568,7 +1583,7 @@ mod tests {
         }
 
         #[test]
-        fn prefetch_complete_auto_dispatches_er_open() {
+        fn prefetch_complete_dispatches_er_generate() {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
@@ -1593,7 +1608,7 @@ mod tests {
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
             assert!(effects.iter().any(|e| {
                 matches!(e, Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErOpenDiagram)))
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache)))
             }));
         }
 

@@ -61,6 +61,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.runtime.connection_state = ConnectionState::Failed;
                 state.ui.input_mode = InputMode::ConnectionError;
             }
+            if state.er_preparation.status == ErStatus::Waiting {
+                state.er_preparation.status = ErStatus::Idle;
+            }
             Some(vec![])
         }
         Action::TableDetailLoaded(detail, generation) => {
@@ -242,7 +245,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             {
                 if !state.er_preparation.has_failures() {
                     state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
+                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
                 } else {
                     state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
@@ -329,7 +332,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             {
                 if !state.er_preparation.has_failures() {
                     state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErOpenDiagram]));
+                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
                 } else {
                     state.er_preparation.status = ErStatus::Idle;
                     let failed_count = state.er_preparation.failed_tables.len();
