@@ -93,6 +93,9 @@ pub enum Effect {
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
     },
+    ExtractFkNeighbors {
+        seed_tables: Vec<String>,
+    },
 
     /// Triggers completion: fetches missing tables and updates candidates
     TriggerCompletion,

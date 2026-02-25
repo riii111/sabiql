@@ -16,6 +16,39 @@ const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
 const MAX_PREFETCH_RETRIES: u32 = 3;
 
+fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
+    if state.er_preparation.status != ErStatus::Waiting || !state.er_preparation.is_complete() {
+        return vec![];
+    }
+
+    if !state.er_preparation.fk_expanded {
+        return vec![Effect::DispatchActions(vec![
+            Action::ExpandPrefetchWithFkNeighbors,
+        ])];
+    }
+
+    if !state.er_preparation.has_failures() {
+        state.er_preparation.status = ErStatus::Idle;
+        return vec![Effect::DispatchActions(vec![Action::ErGenerateFromCache])];
+    }
+
+    state.er_preparation.status = ErStatus::Idle;
+    let failed_count = state.er_preparation.failed_tables.len();
+    let failed_data: Vec<(String, String)> = state
+        .er_preparation
+        .failed_tables
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    state.set_error(format!(
+        "ER failed: {} table(s) failed. 'e' to retry.",
+        failed_count
+    ));
+    vec![Effect::WriteErFailureLog {
+        failed_tables: failed_data,
+    }]
+}
+
 /// Handles metadata loading, table detail, and prefetch actions.
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -138,9 +171,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
                 state.er_preparation.total_tables = metadata.tables.len();
+                state.er_preparation.fk_expanded = true;
 
                 let table_count = metadata.tables.len();
-                let resize_capacity = table_count.max(500).min(10_000);
+                let resize_capacity = table_count.clamp(500, 10_000);
 
                 for table_summary in &metadata.tables {
                     let qualified_name = table_summary.qualified_name();
@@ -159,6 +193,55 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             } else {
                 Some(vec![])
             }
+        }
+
+        Action::StartPrefetchScoped { tables } => {
+            state.sql_modal.prefetch_started = true;
+            state.sql_modal.prefetch_queue.clear();
+            state.er_preparation.pending_tables.clear();
+            state.er_preparation.fetching_tables.clear();
+            state.er_preparation.failed_tables.clear();
+            state.er_preparation.fk_expanded = false;
+            state.er_preparation.seed_tables = tables.clone();
+            state.er_preparation.total_tables = tables.len();
+
+            for qualified_name in tables {
+                state
+                    .sql_modal
+                    .prefetch_queue
+                    .push_back(qualified_name.clone());
+                state
+                    .er_preparation
+                    .pending_tables
+                    .insert(qualified_name.clone());
+            }
+            Some(vec![Effect::ProcessPrefetchQueue])
+        }
+
+        Action::ExpandPrefetchWithFkNeighbors => {
+            let seed_tables = state.er_preparation.seed_tables.clone();
+            Some(vec![Effect::ExtractFkNeighbors { seed_tables }])
+        }
+
+        Action::FkNeighborsDiscovered { tables } => {
+            state.er_preparation.fk_expanded = true;
+
+            if tables.is_empty() {
+                // No new neighbors — proceed to generate with what we have
+                return Some(check_er_completion(state));
+            }
+
+            for qualified_name in tables {
+                state
+                    .er_preparation
+                    .pending_tables
+                    .insert(qualified_name.clone());
+                state
+                    .sql_modal
+                    .prefetch_queue
+                    .push_back(qualified_name.clone());
+            }
+            Some(vec![Effect::ProcessPrefetchQueue])
         }
 
         Action::ProcessPrefetchQueue => {
@@ -254,30 +337,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                if !state.er_preparation.has_failures() {
-                    state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
-                } else {
-                    state.er_preparation.status = ErStatus::Idle;
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
@@ -314,25 +374,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                state.er_preparation.status = ErStatus::Idle;
-                let failed_count = state.er_preparation.failed_tables.len();
-                let failed_data: Vec<(String, String)> = state
-                    .er_preparation
-                    .failed_tables
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                effects.push(Effect::WriteErFailureLog {
-                    failed_tables: failed_data,
-                });
-                state.set_error(format!(
-                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
-                    failed_count
-                ));
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
@@ -352,30 +394,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                if !state.er_preparation.has_failures() {
-                    state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
-                } else {
-                    state.er_preparation.status = ErStatus::Idle;
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
@@ -630,6 +649,137 @@ mod tests {
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 500 }))
+            );
+        }
+
+        #[test]
+        fn sets_fk_expanded_true() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(10));
+
+            reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+
+            assert!(state.er_preparation.fk_expanded);
+        }
+    }
+
+    mod start_prefetch_scoped {
+        use super::*;
+
+        #[test]
+        fn only_selected_tables_in_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped {
+                    tables: tables.clone(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert!(state.er_preparation.pending_tables.contains("public.users"));
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables
+                    .contains("public.orders")
+            );
+            assert!(!state.er_preparation.fk_expanded);
+            assert_eq!(state.er_preparation.seed_tables, tables);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+        }
+    }
+
+    mod completion_check {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn complete_not_fk_expanded_dispatches_expand() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = false;
+            // pending and fetching are empty → is_complete() = true
+
+            let effects = check_er_completion(&mut state);
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ExpandPrefetchWithFkNeighbors))
+            )));
+        }
+
+        #[test]
+        fn complete_fk_expanded_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+
+            let effects = check_er_completion(&mut state);
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+    }
+
+    mod fk_neighbors_discovered {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn empty_neighbors_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered { tables: vec![] },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.er_preparation.fk_expanded);
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+
+        #[test]
+        fn non_empty_neighbors_adds_to_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    tables: vec!["public.posts".to_string(), "public.tags".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.er_preparation.fk_expanded);
+            assert!(state.er_preparation.pending_tables.contains("public.posts"));
+            assert!(state.er_preparation.pending_tables.contains("public.tags"));
+            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
             );
         }
     }

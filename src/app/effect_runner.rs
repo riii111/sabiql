@@ -620,6 +620,43 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::ExtractFkNeighbors { seed_tables } => {
+                let all_tables: Vec<ErTableInfo> = {
+                    let engine = completion_engine.borrow();
+                    engine
+                        .table_details_iter()
+                        .map(|(k, v)| ErTableInfo::from_table(k, v))
+                        .collect()
+                };
+
+                use crate::domain::er::fk_reachable_tables_multi;
+                let reachable = fk_reachable_tables_multi(&all_tables, &seed_tables, 1);
+
+                let cached_names: std::collections::HashSet<String> = {
+                    let engine = completion_engine.borrow();
+                    engine
+                        .table_details_iter()
+                        .map(|(k, _)| k.clone())
+                        .collect()
+                };
+
+                let seed_set: std::collections::HashSet<&str> =
+                    seed_tables.iter().map(|s| s.as_str()).collect();
+                let neighbors: Vec<String> = reachable
+                    .iter()
+                    .map(|t| t.qualified_name.clone())
+                    .filter(|name| {
+                        !seed_set.contains(name.as_str()) && !cached_names.contains(name)
+                    })
+                    .collect();
+
+                let _ = self
+                    .action_tx
+                    .send(Action::FkNeighborsDiscovered { tables: neighbors })
+                    .await;
+                Ok(())
+            }
+
             Effect::WriteErFailureLog { failed_tables } => {
                 if let Ok(cache_dir) = self
                     .config_writer
