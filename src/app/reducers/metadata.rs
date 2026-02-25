@@ -37,6 +37,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
+            // ErOpenDiagram runs in Normal mode, so the SqlModal guard above doesn't fire.
+            if state.er_preparation.status == ErStatus::Waiting
+                && !state.sql_modal.prefetch_started
+            {
+                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
+            }
+
             if state.ui.pending_er_picker && state.ui.input_mode == InputMode::Normal {
                 state.ui.pending_er_picker = false;
                 effects.push(Effect::DispatchActions(vec![Action::OpenErTablePicker]));

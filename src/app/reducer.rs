@@ -762,14 +762,9 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_incomplete_prefetch_sets_waiting() {
+        fn er_open_with_stale_prefetch_always_refetches() {
             let mut state = create_test_state();
-            state.cache.metadata = Some(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: Instant::now(),
-            });
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.sql_modal.prefetch_started = true;
             state
                 .er_preparation
@@ -780,19 +775,15 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(effects.is_empty());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::Sequence(_)));
+            assert!(!state.sql_modal.prefetch_started);
         }
 
         #[test]
-        fn er_open_when_complete_returns_generate_effect() {
+        fn er_open_always_returns_sequence_effect() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.cache.metadata = Some(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: Instant::now(),
-            });
             state.sql_modal.prefetch_started = true;
             let now = Instant::now();
 
@@ -800,21 +791,21 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
-                effects[0],
-                Effect::GenerateErDiagramFromCache { .. }
+                &effects[0],
+                Effect::Sequence(seq)
+                    if matches!(seq.as_slice(), [
+                        Effect::CacheInvalidate { .. },
+                        Effect::ClearCompletionEngineCache,
+                        Effect::FetchMetadata { .. },
+                    ])
             ));
-            assert_eq!(state.er_preparation.status, ErStatus::Rendering);
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
         }
 
         #[test]
-        fn er_open_without_prefetch_starts_prefetch() {
+        fn er_open_without_prefetch_still_refetches() {
             let mut state = create_test_state();
-            state.cache.metadata = Some(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: Instant::now(),
-            });
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             // prefetch_started is false by default
             let now = Instant::now();
 
@@ -822,7 +813,7 @@ mod tests {
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+            assert!(matches!(&effects[0], Effect::Sequence(_)));
         }
 
         #[test]
@@ -1561,22 +1552,20 @@ mod tests {
         }
 
         #[test]
-        fn er_open_with_target_tables_returns_generate_effect() {
+        fn er_open_with_target_tables_preserves_selection() {
             let mut state = state_with_metadata();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.sql_modal.prefetch_started = true;
             state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::GenerateErDiagramFromCache { target_tables, .. } => {
-                    assert_eq!(target_tables, &vec!["public.users".to_string()]);
-                }
-                other => panic!("expected GenerateErDiagramFromCache, got {:?}", other),
-            }
+            assert!(matches!(&effects[0], Effect::Sequence(_)));
+            assert_eq!(
+                state.er_preparation.target_tables,
+                vec!["public.users".to_string()]
+            );
         }
 
         #[test]
