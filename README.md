@@ -14,7 +14,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU — no runtime
 
 ## Features
 
-https://github.com/user-attachments/assets/7d2c34ae-94b7-4746-86a5-6aadd0a4ab45
+https://github.com/user-attachments/assets/6b05f1e1-8c2f-4c5e-85fe-d7cc3a175660
 
 ### Core
 
