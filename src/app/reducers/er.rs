@@ -46,49 +46,27 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let is_scoped = !state.er_preparation.target_tables.is_empty()
                 && state.er_preparation.target_tables.len() < total_table_count;
 
-            if !state.sql_modal.prefetch_started {
-                state.er_preparation.total_tables = total_table_count;
-                state.er_preparation.status = ErStatus::Waiting;
+            // Always start fresh: evict stale Tier 2 cache and re-prefetch
+            state.sql_modal.prefetch_started = false;
+            state.er_preparation.total_tables = total_table_count;
+            state.er_preparation.status = ErStatus::Waiting;
 
-                if is_scoped {
-                    let scoped_tables = state.er_preparation.target_tables.clone();
-                    state.set_success("Starting scoped prefetch for ER diagram...".to_string());
-                    return Some(vec![Effect::DispatchActions(vec![
-                        Action::StartPrefetchScoped {
-                            tables: scoped_tables,
-                        },
-                    ])]);
-                } else {
-                    state.set_success("Starting table prefetch for ER diagram...".to_string());
-                    return Some(vec![Effect::DispatchActions(vec![
-                        Action::StartPrefetchAll,
-                    ])]);
-                }
+            if is_scoped {
+                let scoped_tables = state.er_preparation.target_tables.clone();
+                state.set_success("Starting scoped prefetch for ER diagram...".to_string());
+                Some(vec![
+                    Effect::ClearCompletionEngineCache,
+                    Effect::DispatchActions(vec![Action::StartPrefetchScoped {
+                        tables: scoped_tables,
+                    }]),
+                ])
+            } else {
+                state.set_success("Starting table prefetch for ER diagram...".to_string());
+                Some(vec![
+                    Effect::ClearCompletionEngineCache,
+                    Effect::DispatchActions(vec![Action::StartPrefetchAll]),
+                ])
             }
-
-            if state.er_preparation.has_failures() {
-                let failed_tables: Vec<String> =
-                    state.er_preparation.failed_tables.keys().cloned().collect();
-                state.er_preparation.retry_failed();
-                state.sql_modal.failed_prefetch_tables.clear();
-
-                for qualified_name in failed_tables {
-                    state.sql_modal.prefetch_queue.push_back(qualified_name);
-                }
-
-                state.er_preparation.status = ErStatus::Waiting;
-                return Some(vec![Effect::ProcessPrefetchQueue]);
-            }
-
-            if !state.er_preparation.is_complete() {
-                state.er_preparation.status = ErStatus::Waiting;
-                return Some(vec![]);
-            }
-
-            // Prefetch already complete — delegate to ErGenerateFromCache
-            Some(vec![Effect::DispatchActions(vec![
-                Action::ErGenerateFromCache,
-            ])])
         }
 
         Action::ErGenerateFromCache => {
@@ -155,8 +133,9 @@ mod tests {
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::DispatchActions(_)));
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
         }
 
         #[test]
@@ -169,11 +148,13 @@ mod tests {
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(effects.iter().any(|e| matches!(
-                e,
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert!(matches!(
+                &effects[1],
                 Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
-            )));
+            ));
         }
 
         #[test]
@@ -184,15 +165,17 @@ mod tests {
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert!(matches!(
+                &effects[1],
                 Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
-            )));
+            ));
         }
 
         #[test]
-        fn prefetch_complete_dispatches_generate() {
+        fn prefetch_started_true_still_clears_cache_and_restarts() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
             state.cache.metadata = Some(DatabaseMetadata {
@@ -204,11 +187,15 @@ mod tests {
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 1);
+            // prefetch_started must be reset so stale fast-path is never taken
+            assert!(!state.sql_modal.prefetch_started);
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
             assert!(matches!(
-                &effects[0],
+                &effects[1],
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
             ));
         }
 

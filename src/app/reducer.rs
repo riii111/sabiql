@@ -762,7 +762,7 @@ mod tests {
         }
 
         #[test]
-        fn incomplete_prefetch_sets_waiting() {
+        fn always_clears_cache_even_with_pending_tables() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
@@ -781,11 +781,14 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(effects.is_empty());
+            assert!(!state.sql_modal.prefetch_started);
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
         }
 
         #[test]
-        fn prefetch_complete_dispatches_generate() {
+        fn prefetch_started_true_clears_cache_and_restarts() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
@@ -799,11 +802,13 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
-            assert_eq!(effects.len(), 1);
+            assert!(!state.sql_modal.prefetch_started);
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
             assert!(matches!(
-                &effects[0],
+                &effects[1],
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
             ));
         }
 
@@ -822,8 +827,9 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(&effects[0], Effect::DispatchActions(_)));
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
         }
 
         #[test]
@@ -1586,11 +1592,13 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
-            assert_eq!(effects.len(), 1);
+            // Now always clears cache and re-prefetches (scoped since target_tables < total)
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
             assert!(matches!(
-                &effects[0],
+                &effects[1],
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
             ));
             assert_eq!(
                 state.er_preparation.target_tables,
