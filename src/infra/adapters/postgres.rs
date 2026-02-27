@@ -2633,4 +2633,50 @@ mod tests {
             );
         }
     }
+
+    mod metadata_query_injection {
+        use super::*;
+        use rstest::rstest;
+
+        const HOSTILE: &str = "'; DROP TABLE users; --";
+        const ESCAPED: &str = "'''; DROP TABLE users; --'";
+
+        #[rstest]
+        #[case("columns_query", PostgresAdapter::columns_query(HOSTILE, "t"))]
+        #[case("columns_query_table", PostgresAdapter::columns_query("public", HOSTILE))]
+        #[case("indexes_query", PostgresAdapter::indexes_query(HOSTILE, "t"))]
+        #[case("foreign_keys_query", PostgresAdapter::foreign_keys_query(HOSTILE, "t"))]
+        #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
+        #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
+        fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
+            assert!(
+                sql.contains(ESCAPED),
+                "Hostile input must be quote_literal-escaped in: {sql}"
+            );
+        }
+    }
+
+    mod write_command_tag_parsing {
+        use super::*;
+
+        #[test]
+        fn update_zero_rows_returns_zero() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 0"), Some(0));
+        }
+
+        #[test]
+        fn delete_large_number_returns_correct_value() {
+            assert_eq!(
+                PostgresAdapter::parse_affected_rows("DELETE 1000000"),
+                Some(1000000)
+            );
+        }
+
+        #[test]
+        fn invalid_format_returns_none() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
+        }
+    }
 }
