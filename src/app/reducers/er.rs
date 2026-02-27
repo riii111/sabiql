@@ -17,6 +17,8 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             total_tables,
         } => {
             state.er_preparation.status = ErStatus::Idle;
+            // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
+            state.sql_modal.prefetch_started = false;
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
