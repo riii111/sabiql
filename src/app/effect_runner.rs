@@ -401,8 +401,13 @@ impl EffectRunner {
                 let tx = self.action_tx.clone();
 
                 tokio::spawn(async move {
-                    match provider.fetch_table_detail(&dsn, &schema, &table).await {
-                        Ok(detail) => {
+                    let result = tokio::time::timeout(
+                        tokio::time::Duration::from_secs(10),
+                        provider.fetch_table_detail(&dsn, &schema, &table),
+                    )
+                    .await;
+                    match result {
+                        Ok(Ok(detail)) => {
                             tx.send(Action::TableDetailCached {
                                 schema,
                                 table,
@@ -411,11 +416,20 @@ impl EffectRunner {
                             .await
                             .ok();
                         }
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             tx.send(Action::TableDetailCacheFailed {
                                 schema,
                                 table,
                                 error: e.to_string(),
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(_) => {
+                            tx.send(Action::TableDetailCacheFailed {
+                                schema,
+                                table,
+                                error: "prefetch timeout".to_string(),
                             })
                             .await
                             .ok();
