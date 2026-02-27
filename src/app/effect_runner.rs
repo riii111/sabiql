@@ -205,9 +205,9 @@ impl EffectRunner {
                         ) {
                             Ok(p) => p,
                             Err(e) => {
-                                let _ = self
-                                    .action_tx
-                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                                self.action_tx
+                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
+                                    .ok();
                                 return Ok(());
                             }
                         }
@@ -219,9 +219,9 @@ impl EffectRunner {
                         ) {
                             Ok(p) => p,
                             Err(e) => {
-                                let _ = self
-                                    .action_tx
-                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()));
+                                self.action_tx
+                                    .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
+                                    .ok();
                                 return Ok(());
                             }
                         }
@@ -241,19 +241,20 @@ impl EffectRunner {
                             cache.set(dsn.clone(), metadata).await;
                             match store.save(&profile) {
                                 Ok(()) => {
-                                    let _ = tx
-                                        .send(Action::ConnectionSaveCompleted { id, dsn, name })
-                                        .await;
+                                    tx.send(Action::ConnectionSaveCompleted { id, dsn, name })
+                                        .await
+                                        .ok();
                                 }
                                 Err(e) => {
                                     cache.invalidate(&dsn).await;
-                                    let _ =
-                                        tx.send(Action::ConnectionSaveFailed(e.to_string())).await;
+                                    tx.send(Action::ConnectionSaveFailed(e.to_string()))
+                                        .await
+                                        .ok();
                                 }
                             }
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::MetadataFailed(e.to_string())).await;
+                            tx.send(Action::MetadataFailed(e.to_string())).await.ok();
                         }
                     }
                 });
@@ -266,15 +267,18 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
                     Ok(Some(profile)) => {
-                        let _ = tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)));
+                        tx.blocking_send(Action::ConnectionEditLoaded(Box::new(profile)))
+                            .ok();
                     }
                     Ok(None) => {
-                        let _ = tx.blocking_send(Action::ConnectionEditLoadFailed(
+                        tx.blocking_send(Action::ConnectionEditLoadFailed(
                             "Connection not found".to_string(),
-                        ));
+                        ))
+                        .ok();
                     }
                     Err(e) => {
-                        let _ = tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()));
+                        tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()))
+                            .ok();
                     }
                 });
                 Ok(())
@@ -286,11 +290,11 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || match store.load_all() {
                     Ok(profiles) => {
-                        let _ = tx.blocking_send(Action::ConnectionsLoaded(profiles));
+                        tx.blocking_send(Action::ConnectionsLoaded(profiles)).ok();
                     }
                     Err(_) => {
                         // On error, send empty list to avoid blocking UI
-                        let _ = tx.blocking_send(Action::ConnectionsLoaded(vec![]));
+                        tx.blocking_send(Action::ConnectionsLoaded(vec![])).ok();
                     }
                 });
                 Ok(())
@@ -302,10 +306,11 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || match store.delete(&id) {
                     Ok(()) => {
-                        let _ = tx.blocking_send(Action::ConnectionDeleted(id));
+                        tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                     }
                     Err(e) => {
-                        let _ = tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()));
+                        tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
+                            .ok();
                     }
                 });
                 Ok(())
@@ -328,10 +333,10 @@ impl EffectRunner {
 
             Effect::FetchMetadata { dsn } => {
                 if let Some(cached) = self.metadata_cache.get(&dsn).await {
-                    let _ = self
-                        .action_tx
+                    self.action_tx
                         .send(Action::MetadataLoaded(Box::new(cached)))
-                        .await;
+                        .await
+                        .ok();
                 } else {
                     let provider = Arc::clone(&self.metadata_provider);
                     let cache = self.metadata_cache.clone();
@@ -341,10 +346,12 @@ impl EffectRunner {
                         match provider.fetch_metadata(&dsn).await {
                             Ok(metadata) => {
                                 cache.set(dsn, metadata.clone()).await;
-                                let _ = tx.send(Action::MetadataLoaded(Box::new(metadata))).await;
+                                tx.send(Action::MetadataLoaded(Box::new(metadata)))
+                                    .await
+                                    .ok();
                             }
                             Err(e) => {
-                                let _ = tx.send(Action::MetadataFailed(e.to_string())).await;
+                                tx.send(Action::MetadataFailed(e.to_string())).await.ok();
                             }
                         }
                     });
@@ -364,14 +371,14 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     match provider.fetch_table_detail(&dsn, &schema, &table).await {
                         Ok(detail) => {
-                            let _ = tx
-                                .send(Action::TableDetailLoaded(Box::new(detail), generation))
-                                .await;
+                            tx.send(Action::TableDetailLoaded(Box::new(detail), generation))
+                                .await
+                                .ok();
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(Action::TableDetailFailed(e.to_string(), generation))
-                                .await;
+                            tx.send(Action::TableDetailFailed(e.to_string(), generation))
+                                .await
+                                .ok();
                         }
                     }
                 });
@@ -383,10 +390,10 @@ impl EffectRunner {
 
                 let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
                 if already_cached {
-                    let _ = self
-                        .action_tx
+                    self.action_tx
                         .send(Action::TableDetailAlreadyCached { schema, table })
-                        .await;
+                        .await
+                        .ok();
                     return Ok(());
                 }
 
@@ -396,22 +403,22 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     match provider.fetch_table_detail(&dsn, &schema, &table).await {
                         Ok(detail) => {
-                            let _ = tx
-                                .send(Action::TableDetailCached {
-                                    schema,
-                                    table,
-                                    detail: Box::new(detail),
-                                })
-                                .await;
+                            tx.send(Action::TableDetailCached {
+                                schema,
+                                table,
+                                detail: Box::new(detail),
+                            })
+                            .await
+                            .ok();
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(Action::TableDetailCacheFailed {
-                                    schema,
-                                    table,
-                                    error: e.to_string(),
-                                })
-                                .await;
+                            tx.send(Action::TableDetailCacheFailed {
+                                schema,
+                                table,
+                                error: e.to_string(),
+                            })
+                            .await
+                            .ok();
                         }
                     }
                 });
@@ -419,7 +426,7 @@ impl EffectRunner {
             }
 
             Effect::ProcessPrefetchQueue => {
-                let _ = self.action_tx.send(Action::ProcessPrefetchQueue).await;
+                self.action_tx.send(Action::ProcessPrefetchQueue).await.ok();
                 Ok(())
             }
 
@@ -427,7 +434,7 @@ impl EffectRunner {
                 let tx = self.action_tx.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
-                    let _ = tx.send(Action::ProcessPrefetchQueue).await;
+                    tx.send(Action::ProcessPrefetchQueue).await.ok();
                 });
                 Ok(())
             }
@@ -450,18 +457,18 @@ impl EffectRunner {
                         .await
                     {
                         Ok(result) => {
-                            let _ = tx
-                                .send(Action::QueryCompleted {
-                                    result: Arc::new(result),
-                                    generation,
-                                    target_page: Some(target_page),
-                                })
-                                .await;
+                            tx.send(Action::QueryCompleted {
+                                result: Arc::new(result),
+                                generation,
+                                target_page: Some(target_page),
+                            })
+                            .await
+                            .ok();
                         }
                         Err(e) => {
-                            let _ = tx
-                                .send(Action::QueryFailed(e.to_string(), generation))
-                                .await;
+                            tx.send(Action::QueryFailed(e.to_string(), generation))
+                                .await
+                                .ok();
                         }
                     }
                 });
@@ -475,16 +482,16 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     match executor.execute_adhoc(&dsn, &query).await {
                         Ok(result) => {
-                            let _ = tx
-                                .send(Action::QueryCompleted {
-                                    result: Arc::new(result),
-                                    generation: 0,
-                                    target_page: None,
-                                })
-                                .await;
+                            tx.send(Action::QueryCompleted {
+                                result: Arc::new(result),
+                                generation: 0,
+                                target_page: None,
+                            })
+                            .await
+                            .ok();
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::QueryFailed(e.to_string(), 0)).await;
+                            tx.send(Action::QueryFailed(e.to_string(), 0)).await.ok();
                         }
                     }
                 });
@@ -498,14 +505,16 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     match executor.execute_write(&dsn, &query).await {
                         Ok(result) => {
-                            let _ = tx
-                                .send(Action::ExecuteWriteSucceeded {
-                                    affected_rows: result.affected_rows,
-                                })
-                                .await;
+                            tx.send(Action::ExecuteWriteSucceeded {
+                                affected_rows: result.affected_rows,
+                            })
+                            .await
+                            .ok();
                         }
                         Err(e) => {
-                            let _ = tx.send(Action::ExecuteWriteFailed(e.to_string())).await;
+                            tx.send(Action::ExecuteWriteFailed(e.to_string()))
+                                .await
+                                .ok();
                         }
                     }
                 });
@@ -543,7 +552,7 @@ impl EffectRunner {
                     .collect();
 
                 for action in prefetch_actions {
-                    let _ = self.action_tx.try_send(action);
+                    self.action_tx.try_send(action).ok();
                 }
 
                 let (candidates, token_len, visible) = {
@@ -562,14 +571,14 @@ impl EffectRunner {
                     (candidates, token_len, visible)
                 };
 
-                let _ = self
-                    .action_tx
+                self.action_tx
                     .send(Action::CompletionUpdated {
                         candidates,
                         trigger_position: cursor.saturating_sub(token_len),
                         visible,
                     })
-                    .await;
+                    .await
+                    .ok();
                 Ok(())
             }
 
@@ -589,12 +598,12 @@ impl EffectRunner {
                 };
 
                 if all_tables.is_empty() {
-                    let _ = self
-                        .action_tx
+                    self.action_tx
                         .send(Action::ErDiagramFailed(
                             "No table data loaded yet".to_string(),
                         ))
-                        .await;
+                        .await
+                        .ok();
                     return Ok(());
                 }
 
@@ -607,12 +616,12 @@ impl EffectRunner {
                 };
 
                 if tables.is_empty() {
-                    let _ = self
-                        .action_tx
+                    self.action_tx
                         .send(Action::ErDiagramFailed(
                             "Selected tables not found in cached data".to_string(),
                         ))
-                        .await;
+                        .await
+                        .ok();
                     return Ok(());
                 }
 
@@ -651,10 +660,10 @@ impl EffectRunner {
 
                 let neighbors = fk_neighbors_of_seeds(&cached_seeds, &seed_set, &cached_names);
 
-                let _ = self
-                    .action_tx
+                self.action_tx
                     .send(Action::FkNeighborsDiscovered { tables: neighbors })
-                    .await;
+                    .await
+                    .ok();
                 Ok(())
             }
 
@@ -667,7 +676,7 @@ impl EffectRunner {
                     tokio::task::spawn_blocking(move || {
                         // Log write failure is intentionally ignored: the app has no
                         // output channel (TUI is active) and tracing is not available.
-                        let _ = writer.write_er_failure_log(failed_tables, cache_dir);
+                        writer.write_er_failure_log(failed_tables, cache_dir).ok();
                     });
                 }
                 Ok(())
@@ -680,7 +689,7 @@ impl EffectRunner {
 
             Effect::DispatchActions(actions) => {
                 for action in actions {
-                    let _ = self.action_tx.send(action).await;
+                    self.action_tx.send(action).await.ok();
                 }
                 Ok(())
             }
@@ -690,10 +699,10 @@ impl EffectRunner {
                     let dsn = self.dsn_builder.build_dsn(profile);
                     let name = profile.display_name().to_string();
                     let id = profile.id.clone();
-                    let _ = self
-                        .action_tx
+                    self.action_tx
                         .send(Action::SwitchConnection { id, dsn, name })
-                        .await;
+                        .await
+                        .ok();
                 }
                 Ok(())
             }
@@ -708,14 +717,14 @@ impl EffectRunner {
                     match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&content)) {
                         Ok(()) => {
                             if let Some(action) = on_success {
-                                let _ = tx.blocking_send(action);
+                                tx.blocking_send(action).ok();
                             }
                         }
                         Err(e) => {
                             if let Some(action) = on_failure {
-                                let _ = tx.blocking_send(action);
+                                tx.blocking_send(action).ok();
                             } else {
-                                let _ = tx.blocking_send(Action::CopyFailed(e.to_string()));
+                                tx.blocking_send(Action::CopyFailed(e.to_string())).ok();
                             }
                         }
                     }
