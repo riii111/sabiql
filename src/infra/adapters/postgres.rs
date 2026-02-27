@@ -143,6 +143,10 @@ impl PostgresAdapter {
         Self { timeout_secs: 30 }
     }
 
+    pub fn with_timeout(timeout_secs: u64) -> Self {
+        Self { timeout_secs }
+    }
+
     async fn execute_query(&self, dsn: &str, query: &str) -> Result<String, MetadataError> {
         let mut child = Command::new("psql")
             .arg(dsn)
@@ -2677,6 +2681,41 @@ mod tests {
             assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
             assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
             assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
+        }
+    }
+
+    mod execute_adhoc_guard {
+        use super::*;
+        use crate::app::ports::QueryExecutor;
+
+        #[tokio::test]
+        async fn delete_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "DELETE FROM users WHERE id = 1")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn update_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "UPDATE users SET name = 'x'")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
+            );
         }
     }
 }
