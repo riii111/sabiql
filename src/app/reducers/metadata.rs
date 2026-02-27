@@ -282,7 +282,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     state
                         .er_preparation
                         .on_table_failed(&qualified_name, entry.error.clone());
-                    return Some(vec![]);
+                    return Some(check_er_completion(state));
                 }
 
                 let backoff_secs =
@@ -477,6 +477,46 @@ mod tests {
                 },
             );
 
+            reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            );
+
+            // Should NOT be in prefetch_queue
+            assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
+            // Should be in er_preparation.failed_tables
+            assert!(state.er_preparation.failed_tables.contains_key(&qualified));
+            // Should be removed from pending
+            assert!(!state.er_preparation.pending_tables.contains(&qualified));
+        }
+
+        #[test]
+        fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let qualified = "public.users".to_string();
+            // Only this table remains; exceeds retry limit
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
             let effects = reduce_metadata(
                 &mut state,
                 &Action::PrefetchTableDetail {
@@ -487,14 +527,14 @@ mod tests {
             )
             .unwrap();
 
-            // Should NOT be in prefetch_queue
-            assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
-            // Should be in er_preparation.failed_tables
-            assert!(state.er_preparation.failed_tables.contains_key(&qualified));
-            // Should be removed from pending
-            assert!(!state.er_preparation.pending_tables.contains(&qualified));
-            // Should return empty effects (no ProcessPrefetchQueue)
-            assert!(effects.is_empty());
+            // check_er_completion must have run: status transitions out of Waiting
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            // ER failed path: WriteErFailureLog expected
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::WriteErFailureLog { .. }))
+            );
         }
 
         #[test]
