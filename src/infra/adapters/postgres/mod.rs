@@ -6,10 +6,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::{
-    DdlGenerator, DsnBuilder, MetadataError, MetadataProvider, QueryExecutor, SqlDialect,
-};
-use crate::domain::connection::ConnectionProfile;
+use crate::app::ports::{DdlGenerator, MetadataError, MetadataProvider, QueryExecutor, SqlDialect};
 use crate::domain::{
     Column, DatabaseMetadata, FkAction, ForeignKey, Index, IndexType, QueryResult, QuerySource,
     RlsCommand, RlsInfo, RlsPolicy, Schema, Table, TableSummary, Trigger, TriggerEvent,
@@ -17,6 +14,7 @@ use crate::domain::{
 };
 use crate::infra::utils::{quote_ident, quote_literal};
 
+mod dsn;
 mod select_guard;
 
 pub struct PostgresAdapter {
@@ -856,24 +854,6 @@ impl PostgresAdapter {
             }
         })
     }
-
-    /// Extract database name from DSN string.
-    /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
-    pub fn extract_database_name(dsn: &str) -> String {
-        if let Some(db) = dsn
-            .rsplit('/')
-            .next()
-            .filter(|s| !s.is_empty() && !s.contains('='))
-        {
-            return db.to_string();
-        }
-        if let Some(start) = dsn.find("dbname=") {
-            let rest = &dsn[start + 7..];
-            let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
-            return rest[..end].to_string();
-        }
-        "unknown".to_string()
-    }
 }
 
 impl Default for PostgresAdapter {
@@ -1155,74 +1135,9 @@ impl SqlDialect for PostgresAdapter {
     }
 }
 
-impl DsnBuilder for PostgresAdapter {
-    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}?sslmode={}",
-            urlencoding::encode(&profile.username),
-            urlencoding::encode(&profile.password),
-            &profile.host,
-            profile.port,
-            urlencoding::encode(&profile.database),
-            profile.ssl_mode
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::SslMode;
-
-    mod dsn_builder {
-        use super::*;
-
-        fn make_test_profile() -> ConnectionProfile {
-            ConnectionProfile::new(
-                "Test Connection",
-                "localhost",
-                5432,
-                "testdb",
-                "testuser",
-                "testpass",
-                SslMode::Prefer,
-            )
-            .unwrap()
-        }
-
-        #[test]
-        fn includes_all_connection_fields() {
-            let adapter = PostgresAdapter::new();
-            let profile = make_test_profile();
-            let dsn = adapter.build_dsn(&profile);
-            assert!(dsn.starts_with("postgres://"));
-            assert!(dsn.contains("testuser"));
-            assert!(dsn.contains("testpass"));
-            assert!(dsn.contains("localhost"));
-            assert!(dsn.contains("5432"));
-            assert!(dsn.contains("testdb"));
-            assert!(dsn.contains("sslmode=prefer"));
-        }
-
-        #[test]
-        fn encodes_special_chars_in_credentials() {
-            let adapter = PostgresAdapter::new();
-            let profile = ConnectionProfile::new(
-                "Test",
-                "localhost",
-                5432,
-                "my/db",
-                "user@org",
-                "p@ss:word",
-                SslMode::Prefer,
-            )
-            .unwrap();
-            let dsn = adapter.build_dsn(&profile);
-            assert!(dsn.contains("user%40org"));
-            assert!(dsn.contains("p%40ss%3Aword"));
-            assert!(dsn.contains("my%2Fdb"));
-        }
-    }
 
     mod preview_query {
         use super::*;
@@ -1260,56 +1175,6 @@ mod tests {
             assert!(sql.contains("n.nspname = 'public'"));
             assert!(sql.contains("c.relname = 'users'"));
         }
-    }
-
-    #[test]
-    fn test_extract_database_name_uri_format() {
-        assert_eq!(
-            PostgresAdapter::extract_database_name("postgres://user:pass@host:5432/mydb"),
-            "mydb"
-        );
-    }
-
-    #[test]
-    fn test_extract_database_name_simple_uri() {
-        assert_eq!(
-            PostgresAdapter::extract_database_name("postgres://localhost/testdb"),
-            "testdb"
-        );
-    }
-
-    #[test]
-    fn test_extract_database_name_key_value_format() {
-        assert_eq!(
-            PostgresAdapter::extract_database_name("host=localhost dbname=mydb user=postgres"),
-            "mydb"
-        );
-    }
-
-    #[test]
-    fn test_extract_database_name_key_value_at_end() {
-        assert_eq!(
-            PostgresAdapter::extract_database_name("host=localhost user=postgres dbname=testdb"),
-            "testdb"
-        );
-    }
-
-    #[test]
-    fn test_extract_database_name_empty_path() {
-        // URI with trailing slash but no db name
-        assert_eq!(
-            PostgresAdapter::extract_database_name("postgres://localhost/"),
-            "unknown"
-        );
-    }
-
-    #[test]
-    fn test_extract_database_name_key_value_only() {
-        // Key-value format without dbname
-        assert_eq!(
-            PostgresAdapter::extract_database_name("host=localhost user=postgres"),
-            "unknown"
-        );
     }
 
     mod csv_parsing {
