@@ -55,6 +55,15 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
     pub fn clear(&mut self) {
         self.inner.clear();
     }
+
+    pub fn resize(&mut self, new_capacity: usize) {
+        let cap = NonZeroUsize::new(new_capacity).expect("capacity must be > 0");
+        self.inner.resize(cap);
+    }
+
+    pub fn cap(&self) -> usize {
+        self.inner.cap().get()
+    }
 }
 
 #[cfg(test)]
@@ -128,5 +137,36 @@ mod tests {
 
         let items: Vec<_> = cache.iter().collect();
         assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn resize_expand_preserves_entries() {
+        let mut cache = BoundedLruCache::new(2);
+        cache.insert("a", 1);
+        cache.insert("b", 2);
+
+        cache.resize(5);
+
+        assert_eq!(cache.cap(), 5);
+        assert!(cache.contains(&"a"));
+        assert!(cache.contains(&"b"));
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn resize_shrink_evicts_lru() {
+        let mut cache = BoundedLruCache::new(3);
+        cache.insert("a", 1);
+        cache.insert("b", 2);
+        cache.insert("c", 3);
+
+        cache.resize(2);
+
+        assert_eq!(cache.cap(), 2);
+        assert_eq!(cache.len(), 2);
+        // "a" is LRU and should be evicted
+        assert!(!cache.contains(&"a"));
+        assert!(cache.contains(&"b"));
+        assert!(cache.contains(&"c"));
     }
 }

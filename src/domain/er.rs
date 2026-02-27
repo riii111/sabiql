@@ -45,6 +45,29 @@ pub fn er_output_filename(selected: &[String], total: usize) -> String {
     }
 }
 
+/// Outgoing FK targets of seed tables that are not already cached.
+/// Operates on a partial cache (only seed tables must be present).
+pub fn fk_neighbors_of_seeds(
+    cached_seeds: &[ErTableInfo],
+    seed_names: &HashSet<&str>,
+    already_cached: &HashSet<String>,
+) -> Vec<String> {
+    let mut result: HashSet<String> = HashSet::new();
+    for table in cached_seeds {
+        if !seed_names.contains(table.qualified_name.as_str()) {
+            continue;
+        }
+        for fk in &table.foreign_keys {
+            if !seed_names.contains(fk.to_qualified.as_str())
+                && !already_cached.contains(&fk.to_qualified)
+            {
+                result.insert(fk.to_qualified.clone());
+            }
+        }
+    }
+    result.into_iter().collect()
+}
+
 /// Union of per-seed BFS results. Empty seeds → empty vec.
 pub fn fk_reachable_tables_multi(
     tables: &[ErTableInfo],
@@ -368,6 +391,91 @@ mod tests {
 
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].qualified_name, "public.users");
+        }
+    }
+
+    mod fk_neighbors_of_seeds {
+        use super::*;
+
+        fn seed_set<'a>(names: &[&'a str]) -> HashSet<&'a str> {
+            names.iter().copied().collect()
+        }
+
+        fn cached_set(names: &[&str]) -> HashSet<String> {
+            names.iter().map(|s| s.to_string()).collect()
+        }
+
+        #[test]
+        fn uncached_fk_target_returned() {
+            // orders → users, users not in cache
+            let tables = vec![make_table(
+                "orders",
+                "public",
+                vec![("public.orders", "public.users")],
+            )];
+            let seeds = seed_set(&["public.orders"]);
+            let cached = cached_set(&["public.orders"]);
+
+            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
+
+            assert_eq!(result, vec!["public.users".to_string()]);
+        }
+
+        #[test]
+        fn already_cached_target_excluded() {
+            let tables = vec![make_table(
+                "orders",
+                "public",
+                vec![("public.orders", "public.users")],
+            )];
+            let seeds = seed_set(&["public.orders"]);
+            let cached = cached_set(&["public.orders", "public.users"]);
+
+            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn seed_table_itself_not_returned() {
+            // orders → orders (self-ref)
+            let tables = vec![make_table(
+                "orders",
+                "public",
+                vec![("public.orders", "public.orders")],
+            )];
+            let seeds = seed_set(&["public.orders"]);
+            let cached = cached_set(&["public.orders"]);
+
+            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn non_seed_cached_table_ignored() {
+            // logs has a FK but is not a seed
+            let tables = vec![
+                make_table("orders", "public", vec![("public.orders", "public.users")]),
+                make_table("logs", "public", vec![("public.logs", "public.events")]),
+            ];
+            let seeds = seed_set(&["public.orders"]);
+            let cached = cached_set(&["public.orders", "public.logs"]);
+
+            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
+
+            assert_eq!(result, vec!["public.users".to_string()]);
+        }
+
+        #[test]
+        fn no_fk_returns_empty() {
+            let tables = vec![make_table("orders", "public", vec![])];
+            let seeds = seed_set(&["public.orders"]);
+            let cached = cached_set(&["public.orders"]);
+
+            let result = fk_neighbors_of_seeds(&tables, &seeds, &cached);
+
+            assert!(result.is_empty());
         }
     }
 }

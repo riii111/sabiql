@@ -51,6 +51,9 @@ pub enum Effect {
         table: String,
     },
     ProcessPrefetchQueue,
+    DelayedProcessPrefetchQueue {
+        delay_secs: u64,
+    },
 
     ExecutePreview {
         dsn: String,
@@ -75,6 +78,9 @@ pub enum Effect {
         table: Box<Table>,
     },
     ClearCompletionEngineCache,
+    ResizeCompletionCache {
+        capacity: usize,
+    },
 
     CopyToClipboard {
         content: String,
@@ -89,6 +95,9 @@ pub enum Effect {
     },
     WriteErFailureLog {
         failed_tables: Vec<(String, String)>,
+    },
+    ExtractFkNeighbors {
+        seed_tables: Vec<String>,
     },
 
     /// Triggers completion: fetches missing tables and updates candidates

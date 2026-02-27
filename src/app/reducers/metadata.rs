@@ -8,8 +8,45 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
+use crate::app::sql_modal_context::FailedPrefetchEntry;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
+
+const BASE_BACKOFF_SECS: u64 = 1;
+const MAX_BACKOFF_SECS: u64 = 4;
+const MAX_PREFETCH_RETRIES: u32 = 3;
+
+fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
+    if state.er_preparation.status != ErStatus::Waiting || !state.er_preparation.is_complete() {
+        return vec![];
+    }
+
+    if !state.er_preparation.fk_expanded {
+        return vec![Effect::DispatchActions(vec![
+            Action::ExpandPrefetchWithFkNeighbors,
+        ])];
+    }
+
+    if !state.er_preparation.has_failures() {
+        state.er_preparation.status = ErStatus::Idle;
+        return vec![Effect::DispatchActions(vec![Action::ErGenerateFromCache])];
+    }
+
+    state.er_preparation.status = ErStatus::Idle;
+    let failed_data: Vec<(String, String)> = state
+        .er_preparation
+        .failed_tables
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    state.set_error(format!(
+        "ER failed: {} table(s) failed. 'e' to retry.",
+        failed_data.len()
+    ));
+    vec![Effect::WriteErFailureLog {
+        failed_tables: failed_data,
+    }]
+}
 
 /// Handles metadata loading, table detail, and prefetch actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -129,10 +166,15 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             {
                 state.sql_modal.prefetch_started = true;
                 state.sql_modal.prefetch_queue.clear();
+                state.sql_modal.failed_prefetch_tables.clear();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
                 state.er_preparation.total_tables = metadata.tables.len();
+                state.er_preparation.fk_expanded = true;
+
+                let table_count = metadata.tables.len();
+                let resize_capacity = table_count.clamp(500, 10_000);
 
                 for table_summary in &metadata.tables {
                     let qualified_name = table_summary.qualified_name();
@@ -142,10 +184,69 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         .push_back(qualified_name.clone());
                     state.er_preparation.pending_tables.insert(qualified_name);
                 }
+                Some(vec![
+                    Effect::ResizeCompletionCache {
+                        capacity: resize_capacity,
+                    },
+                    Effect::ProcessPrefetchQueue,
+                ])
+            } else {
+                Some(vec![])
+            }
+        }
+
+        Action::StartPrefetchScoped { tables } => {
+            if !state.sql_modal.prefetch_started {
+                state.sql_modal.prefetch_started = true;
+                state.sql_modal.prefetch_queue.clear();
+                state.sql_modal.failed_prefetch_tables.clear();
+                state.er_preparation.pending_tables.clear();
+                state.er_preparation.fetching_tables.clear();
+                state.er_preparation.failed_tables.clear();
+                state.er_preparation.fk_expanded = false;
+                state.er_preparation.seed_tables = tables.clone();
+                state.er_preparation.total_tables = tables.len();
+
+                for qualified_name in tables {
+                    state
+                        .sql_modal
+                        .prefetch_queue
+                        .push_back(qualified_name.clone());
+                    state
+                        .er_preparation
+                        .pending_tables
+                        .insert(qualified_name.clone());
+                }
                 Some(vec![Effect::ProcessPrefetchQueue])
             } else {
                 Some(vec![])
             }
+        }
+
+        Action::ExpandPrefetchWithFkNeighbors => {
+            let seed_tables = state.er_preparation.seed_tables.clone();
+            Some(vec![Effect::ExtractFkNeighbors { seed_tables }])
+        }
+
+        Action::FkNeighborsDiscovered { tables } => {
+            state.er_preparation.fk_expanded = true;
+
+            if tables.is_empty() {
+                // No new neighbors — proceed to generate with what we have
+                return Some(check_er_completion(state));
+            }
+
+            for qualified_name in tables {
+                state
+                    .er_preparation
+                    .pending_tables
+                    .insert(qualified_name.clone());
+                state
+                    .sql_modal
+                    .prefetch_queue
+                    .push_back(qualified_name.clone());
+            }
+            Some(vec![Effect::ProcessPrefetchQueue])
         }
 
         Action::ProcessPrefetchQueue => {
@@ -179,16 +280,33 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 return Some(vec![]);
             }
 
-            const PREFETCH_BACKOFF_SECS: u64 = 30;
-            let recently_failed = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get(&qualified_name)
-                .map(|(t, _): &(Instant, String)| t.elapsed().as_secs() < PREFETCH_BACKOFF_SECS)
-                .unwrap_or(false);
+            if let Some(entry) = state.sql_modal.failed_prefetch_tables.get(&qualified_name) {
+                if entry.retry_count >= MAX_PREFETCH_RETRIES {
+                    // Exceeded retry limit — give up, don't re-queue
+                    state.er_preparation.pending_tables.remove(&qualified_name);
+                    state
+                        .er_preparation
+                        .on_table_failed(&qualified_name, entry.error.clone());
+                    let mut effects = check_er_completion(state);
+                    // No fetch started → no completion event to re-drive the queue.
+                    if effects.is_empty() && state.er_preparation.status == ErStatus::Waiting {
+                        effects.push(Effect::ProcessPrefetchQueue);
+                    }
+                    return Some(effects);
+                }
 
-            if recently_failed {
-                return Some(vec![]);
+                let backoff_secs =
+                    (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
+                let elapsed = entry.failed_at.elapsed().as_secs();
+                if elapsed < backoff_secs {
+                    // Still in backoff — re-queue at tail and schedule a delayed retry
+                    // to avoid busy-looping while waiting for the backoff to expire.
+                    let remaining = backoff_secs - elapsed;
+                    state.sql_modal.prefetch_queue.push_back(qualified_name);
+                    return Some(vec![Effect::DelayedProcessPrefetchQueue {
+                        delay_secs: remaining,
+                    }]);
+                }
             }
 
             state
@@ -234,30 +352,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                if !state.er_preparation.has_failures() {
-                    state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
-                } else {
-                    state.er_preparation.status = ErStatus::Idle;
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
@@ -269,10 +364,21 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         } => {
             let qualified_name = format!("{}.{}", schema, table);
             state.sql_modal.prefetching_tables.remove(&qualified_name);
-            state
+
+            let prev_count = state
                 .sql_modal
                 .failed_prefetch_tables
-                .insert(qualified_name.clone(), (now, error.clone()));
+                .get(&qualified_name)
+                .map(|e| e.retry_count)
+                .unwrap_or(0);
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified_name.clone(),
+                FailedPrefetchEntry {
+                    failed_at: now,
+                    error: error.clone(),
+                    retry_count: prev_count + 1,
+                },
+            );
             state
                 .er_preparation
                 .on_table_failed(&qualified_name, error.clone());
@@ -283,25 +389,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                state.er_preparation.status = ErStatus::Idle;
-                let failed_count = state.er_preparation.failed_tables.len();
-                let failed_data: Vec<(String, String)> = state
-                    .er_preparation
-                    .failed_tables
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                effects.push(Effect::WriteErFailureLog {
-                    failed_tables: failed_data,
-                });
-                state.set_error(format!(
-                    "ER failed: {} table(s) failed. See log for details. 'e' to retry.",
-                    failed_count
-                ));
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
@@ -321,34 +409,528 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 effects.push(Effect::ProcessPrefetchQueue);
             }
 
-            if state.er_preparation.status == ErStatus::Waiting
-                && state.er_preparation.is_complete()
-            {
-                if !state.er_preparation.has_failures() {
-                    state.er_preparation.status = ErStatus::Idle;
-                    effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
-                } else {
-                    state.er_preparation.status = ErStatus::Idle;
-                    let failed_count = state.er_preparation.failed_tables.len();
-                    let failed_data: Vec<(String, String)> = state
-                        .er_preparation
-                        .failed_tables
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    effects.push(Effect::WriteErFailureLog {
-                        failed_tables: failed_data,
-                    });
-                    state.set_error(format!(
-                        "ER failed: {} table(s) failed. 'e' to retry.",
-                        failed_count
-                    ));
-                }
-            }
+            effects.extend(check_er_completion(state));
 
             Some(effects)
         }
 
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::sql_modal_context::FailedPrefetchEntry;
+    use crate::app::state::AppState;
+    use std::time::{Duration, Instant};
+
+    fn state_with_dsn(dsn: &str) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.runtime.dsn = Some(dsn.to_string());
+        state
+    }
+
+    mod prefetch_table_detail {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn backoff_table_requeued_at_tail_with_process_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            // Insert a recently failed entry (retry_count=1, just failed)
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // Should be re-queued at tail
+            assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
+            // Should return DelayedProcessPrefetchQueue (not an immediate busy-loop)
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::DelayedProcessPrefetchQueue { .. }))
+            );
+        }
+
+        #[test]
+        fn retry_limit_exceeded_gives_up_and_calls_on_table_failed() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
+            reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            );
+
+            assert!(!state.sql_modal.prefetch_queue.contains(&qualified));
+            assert!(state.er_preparation.failed_tables.contains_key(&qualified));
+            assert!(!state.er_preparation.pending_tables.contains(&qualified));
+        }
+
+        #[test]
+        fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let qualified = "public.users".to_string();
+            // Only table remaining; retry limit exceeded
+            state
+                .er_preparation
+                .pending_tables
+                .insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::WriteErFailureLog { .. }))
+            );
+        }
+
+        #[test]
+        fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let failed = "public.users".to_string();
+            let remaining = "public.posts".to_string();
+            // users exhausted retries; posts still awaiting in queue
+            state.er_preparation.pending_tables.insert(failed.clone());
+            state
+                .er_preparation
+                .pending_tables
+                .insert(remaining.clone());
+            state.sql_modal.prefetch_queue.push_back(remaining.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                failed.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+        }
+
+        #[test]
+        fn expired_backoff_proceeds_normally() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            let qualified = "public.users".to_string();
+            // Failed 10 seconds ago with retry_count=1 (backoff = 2s, already expired)
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now() - Duration::from_secs(10),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // Should proceed to fetching
+            assert!(state.sql_modal.prefetching_tables.contains(&qualified));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::PrefetchTableDetail { .. }))
+            );
+        }
+    }
+
+    mod table_detail_cache_failed {
+        use super::*;
+
+        #[test]
+        fn increments_retry_count() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now() - Duration::from_secs(60),
+                    error: "old error".to_string(),
+                    retry_count: 1,
+                },
+            );
+
+            let now = Instant::now();
+            reduce_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: "new error".to_string(),
+                },
+                now,
+            );
+
+            let entry = state
+                .sql_modal
+                .failed_prefetch_tables
+                .get(&qualified)
+                .unwrap();
+            assert_eq!(entry.retry_count, 2);
+            assert_eq!(entry.error, "new error");
+        }
+
+        #[test]
+        fn first_failure_sets_retry_count_1() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let qualified = "public.users".to_string();
+            state.sql_modal.prefetching_tables.insert(qualified.clone());
+
+            let now = Instant::now();
+            reduce_metadata(
+                &mut state,
+                &Action::TableDetailCacheFailed {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    error: "timeout".to_string(),
+                },
+                now,
+            );
+
+            let entry = state
+                .sql_modal
+                .failed_prefetch_tables
+                .get(&qualified)
+                .unwrap();
+            assert_eq!(entry.retry_count, 1);
+        }
+    }
+
+    mod backoff_calculation {
+        use super::*;
+
+        #[test]
+        fn backoff_values() {
+            // retry_count 0 → 1s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(0)).min(MAX_BACKOFF_SECS), 1);
+            // retry_count 1 → 2s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(1)).min(MAX_BACKOFF_SECS), 2);
+            // retry_count 2 → 4s
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(2)).min(MAX_BACKOFF_SECS), 4);
+            // retry_count 3 → 4s (capped)
+            assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(3)).min(MAX_BACKOFF_SECS), 4);
+        }
+    }
+
+    mod start_prefetch_all {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .collect();
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            }
+        }
+
+        #[test]
+        fn large_db_emits_resize_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(530));
+
+            let effects =
+                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 530 }))
+            );
+        }
+
+        #[test]
+        fn small_db_uses_floor_capacity() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(50));
+
+            let effects =
+                reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 500 }))
+            );
+        }
+
+        #[test]
+        fn sets_fk_expanded_true() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(10));
+
+            reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+
+            assert!(state.er_preparation.fk_expanded);
+        }
+    }
+
+    mod start_prefetch_scoped {
+        use super::*;
+
+        #[test]
+        fn second_call_while_running_is_ignored() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state
+                .er_preparation
+                .pending_tables
+                .insert("public.users".to_string());
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped {
+                    tables: vec!["public.posts".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // In-progress prefetch must not be silently reset
+            assert!(state.er_preparation.pending_tables.contains("public.users"));
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn only_selected_tables_in_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped {
+                    tables: tables.clone(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert!(state.er_preparation.pending_tables.contains("public.users"));
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables
+                    .contains("public.orders")
+            );
+            assert!(!state.er_preparation.fk_expanded);
+            assert_eq!(state.er_preparation.seed_tables, tables);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+        }
+    }
+
+    mod completion_check {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn complete_not_fk_expanded_dispatches_expand() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = false;
+            // pending and fetching are empty → is_complete() = true
+
+            let effects = check_er_completion(&mut state);
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ExpandPrefetchWithFkNeighbors))
+            )));
+        }
+
+        #[test]
+        fn complete_fk_expanded_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+
+            let effects = check_er_completion(&mut state);
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+    }
+
+    mod fk_neighbors_discovered {
+        use super::*;
+        use crate::app::er_state::ErStatus;
+
+        #[test]
+        fn empty_neighbors_dispatches_generate() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered { tables: vec![] },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.er_preparation.fk_expanded);
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+
+        #[test]
+        fn non_empty_neighbors_adds_to_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    tables: vec!["public.posts".to_string(), "public.tags".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.er_preparation.fk_expanded);
+            assert!(state.er_preparation.pending_tables.contains("public.posts"));
+            assert!(state.er_preparation.pending_tables.contains("public.tags"));
+            assert_eq!(state.sql_modal.prefetch_queue.len(), 2);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+        }
+
+        #[test]
+        fn phase2_table_retry_limit_triggers_completion() {
+            // All Phase 2 tables fail → completion must still fire
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let neighbor = "public.posts".to_string();
+            state.er_preparation.pending_tables.insert(neighbor.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                neighbor.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "posts".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::WriteErFailureLog { .. }))
+            );
+        }
     }
 }

@@ -17,6 +17,8 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             total_tables,
         } => {
             state.er_preparation.status = ErStatus::Idle;
+            // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
+            state.sql_modal.prefetch_started = false;
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
@@ -36,20 +38,32 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            if !state.sql_modal.prefetch_started
-                && let Some(metadata) = &state.cache.metadata
-            {
-                state.er_preparation.total_tables = metadata.tables.len();
-                state.er_preparation.status = ErStatus::Waiting;
-                state.set_success("Starting table prefetch for ER diagram...".to_string());
-                return Some(vec![Effect::DispatchActions(vec![
-                    Action::StartPrefetchAll,
-                ])]);
-            }
-
-            if state.cache.metadata.is_none() {
+            let Some(metadata) = &state.cache.metadata else {
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
+            };
+            let total_table_count = metadata.tables.len();
+            let is_scoped = !state.er_preparation.target_tables.is_empty()
+                && state.er_preparation.target_tables.len() < total_table_count;
+
+            if !state.sql_modal.prefetch_started {
+                state.er_preparation.total_tables = total_table_count;
+                state.er_preparation.status = ErStatus::Waiting;
+
+                if is_scoped {
+                    let scoped_tables = state.er_preparation.target_tables.clone();
+                    state.set_success("Starting scoped prefetch for ER diagram...".to_string());
+                    return Some(vec![Effect::DispatchActions(vec![
+                        Action::StartPrefetchScoped {
+                            tables: scoped_tables,
+                        },
+                    ])]);
+                } else {
+                    state.set_success("Starting table prefetch for ER diagram...".to_string());
+                    return Some(vec![Effect::DispatchActions(vec![
+                        Action::StartPrefetchAll,
+                    ])]);
+                }
             }
 
             if state.er_preparation.has_failures() {
@@ -119,23 +133,62 @@ mod tests {
 
     mod er_open_diagram {
         use super::*;
-        use crate::domain::DatabaseMetadata;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .collect();
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            }
+        }
 
         #[test]
         fn no_prefetch_starts_prefetch_all() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: Instant::now(),
-            });
+            state.cache.metadata = Some(make_metadata(0));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::DispatchActions(_)));
+        }
+
+        #[test]
+        fn target_tables_non_empty_dispatches_scoped() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(100));
+            state.er_preparation.target_tables =
+                vec!["public.t0".to_string(), "public.t1".to_string()];
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+            )));
+        }
+
+        #[test]
+        fn target_tables_empty_dispatches_prefetch_all() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.cache.metadata = Some(make_metadata(10));
+            // target_tables is empty → StartPrefetchAll
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+            )));
         }
 
         #[test]

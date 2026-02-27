@@ -174,6 +174,13 @@ pub enum Action {
 
     // Prefetch all tables for completion
     StartPrefetchAll,
+    StartPrefetchScoped {
+        tables: Vec<String>,
+    },
+    ExpandPrefetchWithFkNeighbors,
+    FkNeighborsDiscovered {
+        tables: Vec<String>,
+    },
     ProcessPrefetchQueue,
 
     // Inspector sub-tabs

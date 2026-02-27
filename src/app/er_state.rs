@@ -16,6 +16,8 @@ pub struct ErPreparationState {
     pub status: ErStatus,
     pub total_tables: usize,
     pub target_tables: Vec<String>,
+    pub seed_tables: Vec<String>,
+    pub fk_expanded: bool,
 }
 
 impl ErPreparationState {
@@ -147,6 +149,8 @@ mod tests {
                 status: ErStatus::Waiting,
                 total_tables: 3,
                 target_tables: vec![],
+                seed_tables: vec!["a".to_string()],
+                fk_expanded: true,
             };
 
             state.reset();
@@ -156,6 +160,8 @@ mod tests {
             assert!(state.failed_tables.is_empty());
             assert_eq!(state.status, ErStatus::Idle);
             assert_eq!(state.total_tables, 0);
+            assert!(state.seed_tables.is_empty());
+            assert!(!state.fk_expanded);
         }
     }
 
@@ -171,6 +177,7 @@ mod tests {
                 status: ErStatus::Waiting,
                 total_tables: 1,
                 target_tables: vec![],
+                ..Default::default()
             };
 
             // Simulate skip: remove from pending (e.g., already cached)
@@ -189,6 +196,7 @@ mod tests {
                 status: ErStatus::Waiting,
                 total_tables: 2,
                 target_tables: vec![],
+                ..Default::default()
             };
 
             // Simulate skip: remove last pending (e.g., already cached)

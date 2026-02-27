@@ -1606,6 +1606,7 @@ mod tests {
             state.sql_modal.prefetch_started = true;
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 1;
+            state.er_preparation.fk_expanded = true;
             state
                 .er_preparation
                 .pending_tables
@@ -1636,6 +1637,7 @@ mod tests {
             state.sql_modal.prefetch_started = true;
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 2;
+            state.er_preparation.fk_expanded = true;
             state
                 .er_preparation
                 .failed_tables
