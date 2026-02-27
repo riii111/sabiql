@@ -423,6 +423,15 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::DelayedProcessPrefetchQueue { delay_secs } => {
+                let tx = self.action_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+                    let _ = tx.send(Action::ProcessPrefetchQueue).await;
+                });
+                Ok(())
+            }
+
             Effect::ExecutePreview {
                 dsn,
                 schema,
@@ -621,34 +630,26 @@ impl EffectRunner {
             }
 
             Effect::ExtractFkNeighbors { seed_tables } => {
-                let all_tables: Vec<ErTableInfo> = {
+                use crate::domain::er::fk_neighbors_of_seeds;
+                use std::collections::HashSet;
+
+                let seed_set: HashSet<&str> = seed_tables.iter().map(|s| s.as_str()).collect();
+
+                let (cached_seeds, cached_names): (Vec<ErTableInfo>, HashSet<String>) = {
                     let engine = completion_engine.borrow();
-                    engine
+                    let seeds: Vec<ErTableInfo> = engine
                         .table_details_iter()
+                        .filter(|(k, _)| seed_set.contains(k.as_str()))
                         .map(|(k, v)| ErTableInfo::from_table(k, v))
-                        .collect()
-                };
-
-                use crate::domain::er::fk_reachable_tables_multi;
-                let reachable = fk_reachable_tables_multi(&all_tables, &seed_tables, 1);
-
-                let cached_names: std::collections::HashSet<String> = {
-                    let engine = completion_engine.borrow();
-                    engine
+                        .collect();
+                    let all_cached: HashSet<String> = engine
                         .table_details_iter()
                         .map(|(k, _)| k.clone())
-                        .collect()
+                        .collect();
+                    (seeds, all_cached)
                 };
 
-                let seed_set: std::collections::HashSet<&str> =
-                    seed_tables.iter().map(|s| s.as_str()).collect();
-                let neighbors: Vec<String> = reachable
-                    .iter()
-                    .map(|t| t.qualified_name.clone())
-                    .filter(|name| {
-                        !seed_set.contains(name.as_str()) && !cached_names.contains(name)
-                    })
-                    .collect();
+                let neighbors = fk_neighbors_of_seeds(&cached_seeds, &seed_set, &cached_names);
 
                 let _ = self
                     .action_tx

@@ -287,10 +287,15 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
                 let backoff_secs =
                     (BASE_BACKOFF_SECS * 2u64.pow(entry.retry_count)).min(MAX_BACKOFF_SECS);
-                if entry.failed_at.elapsed().as_secs() < backoff_secs {
-                    // Still in backoff window — re-queue at tail and continue processing
+                let elapsed = entry.failed_at.elapsed().as_secs();
+                if elapsed < backoff_secs {
+                    // Still in backoff — re-queue at tail and schedule a delayed retry
+                    // to avoid busy-looping while waiting for the backoff to expire.
+                    let remaining = backoff_secs - elapsed;
                     state.sql_modal.prefetch_queue.push_back(qualified_name);
-                    return Some(vec![Effect::ProcessPrefetchQueue]);
+                    return Some(vec![Effect::DelayedProcessPrefetchQueue {
+                        delay_secs: remaining,
+                    }]);
                 }
             }
 
@@ -446,11 +451,11 @@ mod tests {
 
             // Should be re-queued at tail
             assert_eq!(state.sql_modal.prefetch_queue.back(), Some(&qualified));
-            // Should return ProcessPrefetchQueue effect
+            // Should return DelayedProcessPrefetchQueue (not an immediate busy-loop)
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+                    .any(|e| matches!(e, Effect::DelayedProcessPrefetchQueue { .. }))
             );
         }
 

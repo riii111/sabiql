@@ -51,6 +51,9 @@ pub enum Effect {
         table: String,
     },
     ProcessPrefetchQueue,
+    DelayedProcessPrefetchQueue {
+        delay_secs: u64,
+    },
 
     ExecutePreview {
         dsn: String,
