@@ -282,7 +282,12 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                     state
                         .er_preparation
                         .on_table_failed(&qualified_name, entry.error.clone());
-                    return Some(check_er_completion(state));
+                    let mut effects = check_er_completion(state);
+                    // No fetch started → no completion event to re-drive the queue.
+                    if effects.is_empty() && state.er_preparation.status == ErStatus::Waiting {
+                        effects.push(Effect::ProcessPrefetchQueue);
+                    }
+                    return Some(effects);
                 }
 
                 let backoff_secs =
@@ -535,6 +540,50 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::WriteErFailureLog { .. }))
             );
+        }
+
+        #[test]
+        fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
+            use crate::app::er_state::ErStatus;
+
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.sql_modal.prefetch_started = true;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.er_preparation.fk_expanded = true;
+            let failed = "public.users".to_string();
+            let remaining = "public.posts".to_string();
+            // users hit retry limit, posts still pending in queue
+            state.er_preparation.pending_tables.insert(failed.clone());
+            state
+                .er_preparation
+                .pending_tables
+                .insert(remaining.clone());
+            state.sql_modal.prefetch_queue.push_back(remaining.clone());
+            state.sql_modal.failed_prefetch_tables.insert(
+                failed.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: MAX_PREFETCH_RETRIES,
+                },
+            );
+
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue))
+            );
+            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
         }
 
         #[test]
