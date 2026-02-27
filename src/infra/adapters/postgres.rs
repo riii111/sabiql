@@ -89,16 +89,17 @@ fn is_select_query(query: &str) -> bool {
             break;
         }
 
-        // At top level and word boundary, check for SQL keywords
-        if depth == 0 && is_word_start(&chars, i) {
+        // At word boundary, check for SQL keywords
+        if is_word_start(&chars, i) {
             let rest = &lower[byte_pos..];
-            if is_keyword(rest, "select") {
+            if depth == 0 && is_keyword(rest, "select") {
                 found_select = true;
             }
             // SELECT INTO creates a table, reject it
-            if is_keyword(rest, "into") && found_select {
+            if depth == 0 && is_keyword(rest, "into") && found_select {
                 return false;
             }
+            // Reject DML/DDL at any depth (including inside CTEs)
             if is_keyword(rest, "insert")
                 || is_keyword(rest, "update")
                 || is_keyword(rest, "delete")
@@ -1744,6 +1745,9 @@ mod tests {
         // CREATE TABLE AS SELECT (rejected)
         #[case("CREATE TABLE t AS SELECT * FROM users", false)]
         #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
+        // Writable CTE: DML inside CTE body (rejected)
+        #[case("WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x", false)]
+        #[case("WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
@@ -2382,6 +2386,78 @@ mod tests {
                 "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
             );
         }
+
+        #[test]
+        fn null_value_generates_unquoted_null() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "NULL",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = NULL\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn empty_string_value_generates_empty_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = ''\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "my\"col",
+                "val",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"my\"\"col\" = 'val'\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn backslash_in_value_is_preserved_as_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "path",
+                "C:\\Users\\test",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"path\" = 'C:\\Users\\test'\nWHERE \"id\" = '1';"
+            );
+        }
     }
 
     mod sql_dialect_bulk_delete {
@@ -2460,6 +2536,100 @@ mod tests {
             assert_eq!(
                 sql,
                 "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('O''Reilly');"
+            );
+        }
+
+        #[test]
+        fn empty_string_pk_value_returns_empty_literal() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("id".to_string(), String::new())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');"
+            );
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"t\"\nWHERE \"my\"\"pk\" IN ('1');"
+            );
+        }
+    }
+
+    mod pg_sql_value_expr_tests {
+        use super::pg_sql_value_expr;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("NULL", "NULL")]
+        #[case("null", "'null'")]
+        #[case("", "''")]
+        #[case("hello", "'hello'")]
+        #[case("it's", "'it''s'")]
+        #[case("NULL ", "'NULL '")]
+        fn value_expr_returns_expected(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(pg_sql_value_expr(input), expected);
+        }
+    }
+
+    mod preview_query_edge_cases {
+        use super::*;
+
+        #[test]
+        fn schema_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query(
+                "my\"schema",
+                "users",
+                &[],
+                100,
+                0,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"my\"\"schema\".\"users\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn table_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "my\"table",
+                &[],
+                100,
+                0,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"my\"\"table\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn order_by_column_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "users",
+                &["my\"col".to_string()],
+                100,
+                0,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"users\" ORDER BY \"my\"\"col\" LIMIT 100 OFFSET 0"
             );
         }
     }
