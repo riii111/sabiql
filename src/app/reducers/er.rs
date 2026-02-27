@@ -36,24 +36,16 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            if state.cache.metadata.is_none() {
+            let Some(metadata) = &state.cache.metadata else {
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
-            }
-
-            let total_table_count = state
-                .cache
-                .metadata
-                .as_ref()
-                .map(|m| m.tables.len())
-                .unwrap_or(0);
+            };
+            let total_table_count = metadata.tables.len();
             let is_scoped = !state.er_preparation.target_tables.is_empty()
                 && state.er_preparation.target_tables.len() < total_table_count;
 
-            if !state.sql_modal.prefetch_started
-                && let Some(metadata) = &state.cache.metadata
-            {
-                state.er_preparation.total_tables = metadata.tables.len();
+            if !state.sql_modal.prefetch_started {
+                state.er_preparation.total_tables = total_table_count;
                 state.er_preparation.status = ErStatus::Waiting;
 
                 if is_scoped {

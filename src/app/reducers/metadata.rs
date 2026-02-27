@@ -33,7 +33,6 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }
 
     state.er_preparation.status = ErStatus::Idle;
-    let failed_count = state.er_preparation.failed_tables.len();
     let failed_data: Vec<(String, String)> = state
         .er_preparation
         .failed_tables
@@ -42,7 +41,7 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
         .collect();
     state.set_error(format!(
         "ER failed: {} table(s) failed. 'e' to retry.",
-        failed_count
+        failed_data.len()
     ));
     vec![Effect::WriteErFailureLog {
         failed_tables: failed_data,
