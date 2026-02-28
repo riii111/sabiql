@@ -86,6 +86,31 @@ crossterm::KeyEvent
 3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
 4. **Domain is pure data**: No business logic in domain models, just structure.
 
+## Postgres Adapter Internal Structure
+
+```
+src/infra/adapters/postgres/
+├── mod.rs              # struct PostgresAdapter + MetadataProvider + QueryExecutor
+│                       # (orchestration: sql/ generates SQL → psql/ executes & parses)
+├── psql/               # psql process interaction
+│   ├── mod.rs          #   re-exports
+│   ├── executor.rs     #   process spawning (I/O, side effects)
+│   └── parser.rs       #   stdout → domain types (pure functions)
+├── sql/                # SQL string generation (all pure functions)
+│   ├── mod.rs          #   re-exports
+│   ├── query.rs        #   metadata queries + preview
+│   ├── ddl.rs          #   DDL generation (CREATE TABLE)
+│   └── dialect.rs      #   DML generation (UPDATE/DELETE)
+├── select_guard.rs     # SELECT safety check (pure function)
+└── dsn.rs              # DSN construction
+```
+
+**Data flow:** `mod.rs` orchestrates → `sql/` generates SQL → `psql/executor.rs` runs psql → `psql/parser.rs` parses output.
+
+**Visibility:** Functions default to private. Use `pub(in crate::infra::adapters::postgres)` for cross-submodule access. Tests use `#[cfg(test)]` within each submodule.
+
+**Quote functions:** Use `crate::infra::utils::{quote_ident, quote_literal}`. Do NOT duplicate as `pg_quote_*`.
+
 ## Rendering Strategy
 
 Ratatui requires explicit render control. This app uses **event-driven rendering** (not fixed FPS):
