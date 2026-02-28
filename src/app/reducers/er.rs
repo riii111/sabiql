@@ -113,7 +113,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(effects)
         }
 
-        Action::SmartErRefreshFailed { run_id, .. } => {
+        Action::SmartErRefreshFailed { run_id, error } => {
             if *run_id != state.er_preparation.run_id {
                 return Some(vec![]);
             }
@@ -128,12 +128,14 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 && state.er_preparation.target_tables.len() < total_table_count;
 
             state.er_preparation.total_tables = total_table_count;
+            state.er_preparation.last_signatures.clear();
+            state.set_error(format!(
+                "Smart refresh failed ({}), falling back to full refresh",
+                error
+            ));
 
             if is_scoped {
                 let scoped_tables = state.er_preparation.target_tables.clone();
-                state.set_success(
-                    "Fallback: starting scoped prefetch for ER diagram...".to_string(),
-                );
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
@@ -141,7 +143,6 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                     }]),
                 ])
             } else {
-                state.set_success("Fallback: starting full prefetch for ER diagram...".to_string());
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),
@@ -558,6 +559,10 @@ mod tests {
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(5));
+            state
+                .er_preparation
+                .last_signatures
+                .insert("public.old".to_string(), "sig".to_string());
 
             let effects = reduce_er(
                 &mut state,
@@ -569,6 +574,8 @@ mod tests {
             )
             .unwrap();
 
+            assert!(state.er_preparation.last_signatures.is_empty());
+            assert!(state.messages.last_error.is_some());
             assert!(
                 effects
                     .iter()
