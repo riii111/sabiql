@@ -506,7 +506,9 @@ mod connection_management {
         let mut terminal = create_test_terminal();
 
         let (active_id, connections) = three_connections();
+        let count = connections.len();
         state.connections = connections;
+        state.connection_list_items = sabiql::app::connection_list::build_connection_list(count, 0);
         state.runtime.active_connection_id = Some(active_id);
         state.ui.explorer_mode = ExplorerMode::Connections;
         state.ui.focused_pane = FocusedPane::Explorer;
@@ -523,7 +525,9 @@ mod connection_management {
         let mut terminal = create_test_terminal();
 
         let (active_id, connections) = three_connections();
+        let count = connections.len();
         state.connections = connections;
+        state.connection_list_items = sabiql::app::connection_list::build_connection_list(count, 0);
         state.runtime.active_connection_id = Some(active_id);
         state.ui.input_mode = InputMode::ConnectionSelector;
         state.ui.set_connection_list_selection(Some(0));

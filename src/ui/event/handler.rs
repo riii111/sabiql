@@ -1495,13 +1495,18 @@ mod tests {
             }
         }
 
-        #[rstest]
-        #[case(Key::Char('r'))]
-        #[case(Key::Tab)]
-        fn connection_error_unbound_keys(#[case] code: Key) {
-            let result = handle_connection_error_keys(combo(code));
+        #[test]
+        fn connection_error_unbound_keys() {
+            let result = handle_connection_error_keys(combo(Key::Tab));
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn r_key_retries_service_connection() {
+            let result = handle_connection_error_keys(combo(Key::Char('r')));
+
+            assert!(matches!(result, Action::RetryServiceConnection));
         }
     }
 

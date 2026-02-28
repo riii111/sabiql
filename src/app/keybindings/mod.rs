@@ -163,6 +163,7 @@ pub mod idx {
         pub const SCROLL: usize = 4;
         pub const ESC_CLOSE: usize = 5;
         pub const QUIT: usize = 6;
+        pub const RETRY: usize = 7;
     }
 
     pub mod confirm {

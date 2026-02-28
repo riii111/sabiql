@@ -140,64 +140,7 @@ impl Explorer {
     }
 
     fn render_connections_section(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        state.ui.connection_list_pane_height = area.height;
-        let active_id = state.runtime.active_connection_id.as_ref();
-
-        let items: Vec<ListItem> = if state.connections.is_empty() {
-            vec![ListItem::new(" No connections")]
-        } else {
-            state
-                .connections
-                .iter()
-                .map(|conn| {
-                    let is_active = active_id == Some(&conn.id);
-                    let prefix = if is_active { "● " } else { "  " };
-                    let text = format!("{}{}", prefix, conn.display_name());
-                    let style = if is_active {
-                        Style::default().fg(Theme::ACTIVE_INDICATOR)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(text).style(style)
-                })
-                .collect()
-        };
-
-        let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .fg(Theme::TEXT_ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
-
-        let mut conn_list_state = ListState::default()
-            .with_selected(Some(state.ui.connection_list_selected))
-            .with_offset(state.ui.connection_list_scroll_offset);
-        frame.render_stateful_widget(list, area, &mut conn_list_state);
-
-        // Render vertical scrollbar if needed
-        if !state.connections.is_empty() {
-            let total_items = state.connections.len();
-            let viewport_size = area.height as usize;
-
-            if total_items > viewport_size {
-                let scroll_offset = state.ui.connection_list_scroll_offset;
-
-                use super::scroll_indicator::{
-                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
-                };
-                render_vertical_scroll_indicator_bar(
-                    frame,
-                    area,
-                    VerticalScrollParams {
-                        position: scroll_offset,
-                        viewport_size,
-                        total_items,
-                    },
-                );
-            }
-        }
+        super::connection_selector::render_connection_list(frame, area, state);
     }
 }
 

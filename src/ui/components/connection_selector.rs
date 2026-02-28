@@ -1,10 +1,11 @@
 use ratatui::Frame;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 
 use super::molecules::render_modal;
 use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+use crate::app::connection_list::ConnectionListItem;
 use crate::app::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
@@ -13,7 +14,13 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let hint = Self::build_hint_string();
+        let is_service_selected = matches!(
+            state
+                .connection_list_items
+                .get(state.ui.connection_list_selected),
+            Some(ConnectionListItem::Service(_))
+        );
+        let hint = Self::build_hint_string(is_service_selected);
         let (_outer, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
@@ -22,24 +29,43 @@ impl ConnectionSelector {
             &hint,
         );
 
-        Self::render_connection_list(frame, inner, state);
+        render_connection_list(frame, inner, state);
     }
 
-    fn render_connection_list(
-        frame: &mut Frame,
-        area: ratatui::layout::Rect,
-        state: &mut AppState,
-    ) {
-        state.ui.connection_list_pane_height = area.height;
-        let active_id = state.runtime.active_connection_id.as_ref();
+    fn build_hint_string(is_service_selected: bool) -> String {
+        let mut hints = vec![
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
+        ];
+        if !is_service_selected {
+            hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
+            hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
+        }
+        hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
 
-        let items: Vec<ListItem> = if state.connections.is_empty() {
-            vec![ListItem::new(" No connections")]
-        } else {
-            state
-                .connections
-                .iter()
-                .map(|conn| {
+        let hint_parts: Vec<String> = hints
+            .iter()
+            .map(|(key, desc)| format!("{} {}", key, desc))
+            .collect();
+        format!(" {} ", hint_parts.join("  "))
+    }
+}
+
+/// Shared rendering logic for connection list (used by ConnectionSelector and Explorer).
+pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    state.ui.connection_list_pane_height = area.height;
+    let active_id = state.runtime.active_connection_id.as_ref();
+
+    let items: Vec<ListItem> = if state.connection_list_items.is_empty() {
+        vec![ListItem::new(" No connections")]
+    } else {
+        state
+            .connection_list_items
+            .iter()
+            .map(|item| match item {
+                ConnectionListItem::Profile(i) => {
+                    let conn = &state.connections[*i];
                     let is_active = active_id == Some(&conn.id);
                     let prefix = if is_active { "● " } else { "  " };
                     let text = format!("{}{}", prefix, conn.display_name());
@@ -49,57 +75,47 @@ impl ConnectionSelector {
                         Style::default()
                     };
                     ListItem::new(text).style(style)
-                })
-                .collect()
-        };
+                }
+                ConnectionListItem::Separator => ListItem::new("── pg_service.conf ──")
+                    .style(Style::default().fg(Theme::TEXT_MUTED)),
+                ConnectionListItem::Service(i) => {
+                    let entry = &state.service_entries[*i];
+                    ListItem::new(format!("  {}", entry.service_name))
+                        .style(Style::default().fg(Theme::TEXT_SECONDARY))
+                }
+            })
+            .collect()
+    };
 
-        let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .fg(Theme::TEXT_ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
+    let list = List::new(items)
+        .highlight_style(
+            Style::default()
+                .fg(Theme::TEXT_ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("> ");
 
-        let mut list_state = ListState::default()
-            .with_selected(Some(state.ui.connection_list_selected))
-            .with_offset(state.ui.connection_list_scroll_offset);
-        frame.render_stateful_widget(list, area, &mut list_state);
+    let mut list_state = ListState::default()
+        .with_selected(Some(state.ui.connection_list_selected))
+        .with_offset(state.ui.connection_list_scroll_offset);
+    frame.render_stateful_widget(list, area, &mut list_state);
 
-        // Render vertical scrollbar if needed
-        if !state.connections.is_empty() {
-            let total_items = state.connections.len();
-            let viewport_size = area.height as usize;
+    if !state.connection_list_items.is_empty() {
+        let total_items = state.connection_list_items.len();
+        let viewport_size = area.height as usize;
 
-            if total_items > viewport_size {
-                let scroll_offset = state.ui.connection_list_scroll_offset;
+        if total_items > viewport_size {
+            let scroll_offset = state.ui.connection_list_scroll_offset;
 
-                render_vertical_scroll_indicator_bar(
-                    frame,
-                    area,
-                    VerticalScrollParams {
-                        position: scroll_offset,
-                        viewport_size,
-                        total_items,
-                    },
-                );
-            }
+            render_vertical_scroll_indicator_bar(
+                frame,
+                area,
+                VerticalScrollParams {
+                    position: scroll_offset,
+                    viewport_size,
+                    total_items,
+                },
+            );
         }
-    }
-
-    fn build_hint_string() -> String {
-        let hints = [
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint(),
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint(),
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint(),
-        ];
-        let hint_parts: Vec<String> = hints
-            .iter()
-            .map(|(key, desc)| format!("{} {}", key, desc))
-            .collect();
-        format!(" {} ", hint_parts.join("  "))
     }
 }
