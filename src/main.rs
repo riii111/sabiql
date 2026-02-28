@@ -40,6 +40,7 @@ enum Command {
     /// Update sabiql to the latest compatible version
     Update,
     #[cfg(not(feature = "self-update"))]
+    #[command(hide = true)]
     /// Self-update is disabled in this build
     Update,
 }
