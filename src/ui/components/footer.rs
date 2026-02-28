@@ -240,7 +240,7 @@ impl Footer {
                 CONNECTION_SETUP_KEYS[idx::conn_setup::ESC_CANCEL].as_hint(),
             ],
             InputMode::ConnectionError => {
-                let first = if state.runtime.is_service_connection {
+                let first = if state.runtime.is_service_connection() {
                     CONNECTION_ERROR_ROWS[idx::conn_error::RETRY].as_hint()
                 } else {
                     CONNECTION_ERROR_ROWS[idx::conn_error::EDIT].as_hint()

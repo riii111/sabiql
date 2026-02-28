@@ -62,7 +62,7 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(PathBuf::from)
+    dirs::home_dir()
 }
 
 fn parse(content: &str) -> Vec<ServiceEntry> {

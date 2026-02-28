@@ -12,7 +12,6 @@ pub struct RuntimeState {
     pub active_connection_name: Option<String>,
     pub connection_state: ConnectionState,
     pub is_reloading: bool,
-    pub is_service_connection: bool,
     pub service_file_path: Option<PathBuf>,
 }
 
@@ -26,9 +25,12 @@ impl RuntimeState {
             active_connection_name: None,
             connection_state: ConnectionState::default(),
             is_reloading: false,
-            is_service_connection: false,
             service_file_path: None,
         }
+    }
+
+    pub fn is_service_connection(&self) -> bool {
+        self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 }
 

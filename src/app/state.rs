@@ -201,6 +201,13 @@ impl AppState {
             .unwrap_or_default()
     }
 
+    pub fn rebuild_connection_list(&mut self) {
+        self.connection_list_items = super::connection_list::build_connection_list(
+            self.connections.len(),
+            self.service_entries.len(),
+        );
+    }
+
     pub fn toggle_focus(&mut self) -> bool {
         self.ui.toggle_focus()
     }

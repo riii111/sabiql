@@ -226,10 +226,7 @@ fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
             state.messages.set_error(e.to_string());
         }
     }
-    state.connection_list_items = sabiql::app::connection_list::build_connection_list(
-        state.connections.len(),
-        state.service_entries.len(),
-    );
+    state.rebuild_connection_list();
 }
 
 #[cfg(feature = "self-update")]
