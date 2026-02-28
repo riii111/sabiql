@@ -616,6 +616,7 @@ mod tests {
                 Effect::DispatchActions(actions)
                     if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
             )));
+            assert!(state.er_preparation.last_signatures.is_empty());
         }
 
         #[test]
