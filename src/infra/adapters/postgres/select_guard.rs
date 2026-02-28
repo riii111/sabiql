@@ -83,8 +83,6 @@ fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usiz
     while cursor < chars.len() && chars[cursor].1 != '\n' {
         cursor += 1;
     }
-    // Treat an unclosed dollar-quote as "consume until end". This keeps keyword
-    // scanning out of unterminated string-like input.
     Some(cursor)
 }
 
@@ -179,6 +177,8 @@ fn skip_dollar_quoted_string(
         cursor += 1;
     }
 
+    // Treat an unclosed dollar-quote as "consume until end". This keeps keyword
+    // scanning out of unterminated string-like input.
     Some(cursor)
 }
 
@@ -333,8 +333,10 @@ mod tests {
         #[case("SELECT 1;   ", true)]
         // Semicolon followed by a comment is treated as additional content
         #[case("SELECT 1; -- done", false)]
-        // Nested block comments are accepted by preserving outer SELECT detection
+        // Non-nested block comment parsing: leaked tokens after the first */
+        // can appear, and rejected keywords there are conservatively blocked.
         #[case("SELECT /* outer /* inner */ still comment */ 1", true)]
+        #[case("SELECT /* /* */ delete */ 1", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
