@@ -22,8 +22,9 @@ impl ServiceFileReader for PgServiceFileReader {
     }
 }
 
+/// Resolves pg_service.conf path following PostgreSQL's lookup order:
+/// $PGSERVICEFILE → ~/.pg_service.conf → $(pg_config --sysconfdir)/pg_service.conf
 fn find_service_file() -> Result<PathBuf, ServiceFileError> {
-    // 1. $PGSERVICEFILE
     if let Ok(val) = std::env::var("PGSERVICEFILE") {
         let path = PathBuf::from(&val);
         if path.is_file() {
@@ -35,7 +36,6 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         )));
     }
 
-    // 2. ~/.pg_service.conf
     if let Some(home) = home_dir() {
         let path = home.join(".pg_service.conf");
         if path.is_file() {
@@ -43,7 +43,6 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         }
     }
 
-    // 3. $(pg_config --sysconfdir)/pg_service.conf
     if let Some(output) = std::process::Command::new("pg_config")
         .arg("--sysconfdir")
         .output()
@@ -73,12 +72,10 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
     for line in content.lines() {
         let line = line.trim();
 
-        // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
             continue;
         }
 
-        // Section header
         if line.starts_with('[') && line.ends_with(']') {
             if let Some(entry) = current.take() {
                 entries.push(entry);
@@ -94,7 +91,6 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
             continue;
         }
 
-        // key=value
         if let Some(ref mut entry) = current
             && let Some((key, value)) = line.split_once('=')
         {
@@ -105,17 +101,16 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
                 "dbname" => entry.dbname = Some(value.to_string()),
                 "port" => entry.port = value.parse().ok(),
                 "user" => entry.user = Some(value.to_string()),
-                _ => {} // Ignore unknown keys
+                _ => {}
             }
         }
     }
 
-    // Don't forget the last section
     if let Some(entry) = current {
         entries.push(entry);
     }
 
-    // Deduplicate: last section wins
+    // Duplicate sections: last one wins (PostgreSQL convention)
     let mut seen = std::collections::HashMap::new();
     for (i, entry) in entries.iter().enumerate() {
         seen.insert(entry.service_name.clone(), i);
@@ -308,7 +303,6 @@ application_name=myapp
         let path = tmpdir.join("test_pg_service.conf");
         std::fs::write(&path, "[test]\nhost=localhost\n").unwrap();
 
-        // Save and set env
         let original = std::env::var("PGSERVICEFILE").ok();
         // SAFETY: test-only, single-threaded access
         unsafe { std::env::set_var("PGSERVICEFILE", &path) };
@@ -317,7 +311,6 @@ application_name=myapp
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), path);
 
-        // Restore env
         unsafe {
             match original {
                 Some(val) => std::env::set_var("PGSERVICEFILE", val),

@@ -7,6 +7,9 @@ impl PostgresAdapter {
     /// Extract database name from DSN string.
     /// Supports both URI format (postgres://host/dbname) and key=value format (dbname=mydb).
     pub fn extract_database_name(dsn: &str) -> String {
+        if let Some(name) = dsn.strip_prefix("service=") {
+            return name.to_string();
+        }
         if let Some(db) = dsn
             .rsplit('/')
             .next()
@@ -143,6 +146,14 @@ mod tests {
             assert_eq!(
                 PostgresAdapter::extract_database_name("host=localhost user=postgres"),
                 "unknown"
+            );
+        }
+
+        #[test]
+        fn service_dsn_returns_service_name() {
+            assert_eq!(
+                PostgresAdapter::extract_database_name("service=mydb"),
+                "mydb"
             );
         }
     }

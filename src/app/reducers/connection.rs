@@ -42,16 +42,15 @@ pub fn reduce_connection(
         }
 
         Action::SwitchConnection { id, dsn, name } => {
-            // Save current connection's state
             if let Some(current_id) = state.runtime.active_connection_id.clone() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
 
-            // Update active connection
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
+            state.runtime.is_service_connection = dsn.starts_with("service=");
 
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
@@ -146,6 +145,17 @@ pub fn reduce_connection(
             state.cache.state = MetadataState::NotLoaded;
             state.ui.input_mode = InputMode::ConnectionSetup;
             Some(vec![])
+        }
+        Action::RetryServiceConnection => {
+            if let Some(dsn) = state.runtime.dsn.clone() {
+                state.connection_error.clear();
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                state.ui.input_mode = InputMode::Normal;
+                Some(vec![Effect::FetchMetadata { dsn }])
+            } else {
+                Some(vec![])
+            }
         }
 
         // ===== Clipboard Paste =====
@@ -386,8 +396,13 @@ pub fn reduce_connection(
 
         // ===== Connection Deletion =====
         Action::RequestDeleteSelectedConnection => {
+            use crate::app::connection_list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
-            if let Some(connection) = state.connections.get(selected_idx) {
+            let profile_idx = match state.connection_list_items.get(selected_idx) {
+                Some(ConnectionListItem::Profile(i)) => *i,
+                _ => return Some(vec![]),
+            };
+            if let Some(connection) = state.connections.get(profile_idx) {
                 let id = connection.id.clone();
                 let name = connection.name.as_str().to_string();
                 let is_active = state.runtime.active_connection_id.as_ref() == Some(&id);
@@ -453,8 +468,13 @@ pub fn reduce_connection(
 
         // ===== Connection Edit =====
         Action::RequestEditSelectedConnection => {
+            use crate::app::connection_list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
-            if let Some(connection) = state.connections.get(selected_idx) {
+            let profile_idx = match state.connection_list_items.get(selected_idx) {
+                Some(ConnectionListItem::Profile(i)) => *i,
+                _ => return Some(vec![]),
+            };
+            if let Some(connection) = state.connections.get(profile_idx) {
                 let id = connection.id.clone();
                 Some(vec![Effect::LoadConnectionForEdit { id }])
             } else {
@@ -697,12 +717,19 @@ mod tests {
 
     mod request_delete_selected_connection {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
+
+        fn set_profiles(state: &mut AppState, profiles: Vec<ConnectionProfile>) {
+            let count = profiles.len();
+            state.connections = profiles;
+            state.connection_list_items = build_connection_list(count, 0);
+        }
 
         #[test]
         fn opens_confirm_dialog_with_correct_message() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
 
             reduce_connection(
@@ -727,7 +754,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
             state.runtime.active_connection_id = Some(profile_id);
 
@@ -755,9 +782,8 @@ mod tests {
         fn inactive_connection_shows_standard_message() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
-            // No active connection set
 
             reduce_connection(
                 &mut state,
@@ -792,7 +818,7 @@ mod tests {
         fn preserves_return_mode_from_connection_selector() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
             state.ui.input_mode = InputMode::ConnectionSelector;
 

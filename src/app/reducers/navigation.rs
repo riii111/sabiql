@@ -883,23 +883,39 @@ pub fn reduce_navigation(
             }
         }
         Action::ConnectionListSelectNext => {
-            let len = state.connections.len();
-            if len > 0 && state.ui.connection_list_selected < len - 1 {
-                state
-                    .ui
-                    .set_connection_list_selection(Some(state.ui.connection_list_selected + 1));
+            use crate::app::connection_list::ConnectionListItem;
+            let items = &state.connection_list_items;
+            let len = items.len();
+            if len > 0 {
+                let mut next = state.ui.connection_list_selected + 1;
+                while next < len && matches!(items[next], ConnectionListItem::Separator) {
+                    next += 1;
+                }
+                if next < len {
+                    state.ui.set_connection_list_selection(Some(next));
+                }
             }
             Some(vec![])
         }
         Action::ConnectionListSelectPrevious => {
-            if !state.connections.is_empty() {
-                let new_idx = state.ui.connection_list_selected.saturating_sub(1);
-                state.ui.set_connection_list_selection(Some(new_idx));
+            use crate::app::connection_list::ConnectionListItem;
+            let items = &state.connection_list_items;
+            if !items.is_empty() && state.ui.connection_list_selected > 0 {
+                let mut prev = state.ui.connection_list_selected - 1;
+                while prev > 0 && matches!(items[prev], ConnectionListItem::Separator) {
+                    prev -= 1;
+                }
+                if !matches!(items[prev], ConnectionListItem::Separator) {
+                    state.ui.set_connection_list_selection(Some(prev));
+                }
             }
             Some(vec![])
         }
-        Action::ConnectionsLoaded(profiles) => {
-            // Sort by name (case-insensitive)
+        Action::ConnectionsLoaded {
+            profiles,
+            services,
+            service_file_path,
+        } => {
             let mut sorted = profiles.clone();
             sorted.sort_by(|a, b| {
                 a.display_name()
@@ -907,11 +923,21 @@ pub fn reduce_navigation(
                     .cmp(&b.display_name().to_lowercase())
             });
             state.connections = sorted;
-            // Reset selection if out of bounds
-            if state.ui.connection_list_selected >= state.connections.len() {
-                let new_idx = state.connections.len().saturating_sub(1);
-                state.ui.set_connection_list_selection(Some(new_idx));
-            } else if !state.connections.is_empty() {
+            state.service_entries = services.clone();
+            state.runtime.service_file_path = service_file_path.clone();
+            state.connection_list_items = crate::app::connection_list::build_connection_list(
+                state.connections.len(),
+                state.service_entries.len(),
+            );
+
+            let list_len = state.connection_list_items.len();
+            if list_len == 0 {
+                state.ui.set_connection_list_selection(Some(0));
+            } else if state.ui.connection_list_selected >= list_len {
+                state
+                    .ui
+                    .set_connection_list_selection(Some(list_len.saturating_sub(1)));
+            } else {
                 state
                     .ui
                     .set_connection_list_selection(Some(state.ui.connection_list_selected));
@@ -919,30 +945,40 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ConfirmConnectionSelection => {
+            use crate::app::connection_list::ConnectionListItem;
             let from_selector = state.ui.input_mode == InputMode::ConnectionSelector;
-            let connection_index = state.ui.connection_list_selected;
+            let selected_idx = state.ui.connection_list_selected;
 
-            if let Some(selected) = state.connections.get(connection_index) {
-                let selected_id = selected.id.clone();
-                let active_id = state.runtime.active_connection_id.clone();
-
-                // Only switch if different from current connection
-                if active_id.as_ref() != Some(&selected_id) {
-                    // Return to Tables mode and Normal input mode after switching
-                    state.ui.explorer_mode = ExplorerMode::Tables;
-                    if from_selector {
-                        state.ui.input_mode = InputMode::Normal;
+            let effect = match state.connection_list_items.get(selected_idx) {
+                Some(ConnectionListItem::Profile(i)) => {
+                    let connection_index = *i;
+                    if let Some(selected) = state.connections.get(connection_index) {
+                        let selected_id = selected.id.clone();
+                        let active_id = state.runtime.active_connection_id.clone();
+                        if active_id.as_ref() != Some(&selected_id) {
+                            Some(Effect::SwitchConnection { connection_index })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
                     }
-
-                    return Some(vec![Effect::SwitchConnection { connection_index }]);
                 }
-            }
-            // Already on this connection, just go back to Tables mode / Normal
+                Some(ConnectionListItem::Service(i)) => {
+                    Some(Effect::SwitchToService { service_index: *i })
+                }
+                _ => None,
+            };
+
             state.ui.explorer_mode = ExplorerMode::Tables;
             if from_selector {
                 state.ui.input_mode = InputMode::Normal;
             }
-            Some(vec![])
+
+            match effect {
+                Some(e) => Some(vec![e]),
+                None => Some(vec![]),
+            }
         }
 
         _ => None,
@@ -1148,15 +1184,18 @@ mod tests {
 
     mod connection_list_navigation {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
+
+        fn setup_profiles(state: &mut AppState, count: usize) {
+            let names: Vec<String> = (1..=count).map(|i| format!("conn{}", i)).collect();
+            state.connections = names.iter().map(|n| create_test_profile(n)).collect();
+            state.connection_list_items = build_connection_list(count, 0);
+        }
 
         #[test]
         fn select_next_increments_selection() {
             let mut state = AppState::new("test".to_string());
-            state.connections = vec![
-                create_test_profile("conn1"),
-                create_test_profile("conn2"),
-                create_test_profile("conn3"),
-            ];
+            setup_profiles(&mut state, 3);
             state.ui.set_connection_list_selection(Some(0));
 
             reduce_navigation(
@@ -1171,7 +1210,7 @@ mod tests {
         #[test]
         fn select_next_stops_at_last() {
             let mut state = AppState::new("test".to_string());
-            state.connections = vec![create_test_profile("conn1"), create_test_profile("conn2")];
+            setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
             reduce_navigation(
@@ -1186,7 +1225,7 @@ mod tests {
         #[test]
         fn select_previous_decrements_selection() {
             let mut state = AppState::new("test".to_string());
-            state.connections = vec![create_test_profile("conn1"), create_test_profile("conn2")];
+            setup_profiles(&mut state, 2);
             state.ui.set_connection_list_selection(Some(1));
 
             reduce_navigation(
@@ -1201,7 +1240,7 @@ mod tests {
         #[test]
         fn select_previous_stops_at_first() {
             let mut state = AppState::new("test".to_string());
-            state.connections = vec![create_test_profile("conn1")];
+            setup_profiles(&mut state, 1);
             state.ui.set_connection_list_selection(Some(0));
 
             reduce_navigation(
@@ -1228,7 +1267,11 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionsLoaded(profiles),
+                &Action::ConnectionsLoaded {
+                    profiles,
+                    services: vec![],
+                    service_file_path: None,
+                },
                 Instant::now(),
             );
 
@@ -1244,7 +1287,11 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionsLoaded(profiles),
+                &Action::ConnectionsLoaded {
+                    profiles,
+                    services: vec![],
+                    service_file_path: None,
+                },
                 Instant::now(),
             );
 
@@ -1254,6 +1301,7 @@ mod tests {
 
     mod confirm_connection_selection {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
         use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
@@ -1269,19 +1317,28 @@ mod tests {
             }
         }
 
+        fn set_profiles(state: &mut AppState, profiles: Vec<ConnectionProfile>) {
+            let count = profiles.len();
+            state.connections = profiles;
+            state.connection_list_items = build_connection_list(count, 0);
+        }
+
         #[test]
         fn different_connection_dispatches_switch_effect() {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
             let other_id = ConnectionId::new();
 
-            state.connections = vec![
-                create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id.clone()),
-            ];
+            set_profiles(
+                &mut state,
+                vec![
+                    create_test_profile_with_id("active", active_id.clone()),
+                    create_test_profile_with_id("other", other_id.clone()),
+                ],
+            );
             state.runtime.active_connection_id = Some(active_id);
             state.ui.explorer_mode = ExplorerMode::Connections;
-            state.ui.set_connection_list_selection(Some(1)); // Select "other"
+            state.ui.set_connection_list_selection(Some(1));
 
             let effects = reduce_navigation(
                 &mut state,
@@ -1301,10 +1358,13 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 
-            state.connections = vec![create_test_profile_with_id("active", active_id.clone())];
+            set_profiles(
+                &mut state,
+                vec![create_test_profile_with_id("active", active_id.clone())],
+            );
             state.runtime.active_connection_id = Some(active_id);
             state.ui.explorer_mode = ExplorerMode::Connections;
-            state.ui.set_connection_list_selection(Some(0)); // Select same connection
+            state.ui.set_connection_list_selection(Some(0));
 
             let effects = reduce_navigation(
                 &mut state,
@@ -1314,7 +1374,7 @@ mod tests {
 
             assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
-            assert!(effects.is_empty()); // No SwitchConnection dispatched
+            assert!(effects.is_empty());
         }
 
         #[test]
@@ -1339,10 +1399,13 @@ mod tests {
             let active_id = ConnectionId::new();
             let other_id = ConnectionId::new();
 
-            state.connections = vec![
-                create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id.clone()),
-            ];
+            set_profiles(
+                &mut state,
+                vec![
+                    create_test_profile_with_id("active", active_id.clone()),
+                    create_test_profile_with_id("other", other_id.clone()),
+                ],
+            );
             state.runtime.active_connection_id = Some(active_id);
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(1));
@@ -1366,7 +1429,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 
-            state.connections = vec![create_test_profile_with_id("active", active_id.clone())];
+            set_profiles(
+                &mut state,
+                vec![create_test_profile_with_id("active", active_id.clone())],
+            );
             state.runtime.active_connection_id = Some(active_id);
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(0));
