@@ -19,7 +19,7 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ConnectionTarget};
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
@@ -251,9 +251,13 @@ impl EffectRunner {
                             cache.set(dsn.clone(), metadata).await;
                             match store.save(&profile) {
                                 Ok(()) => {
-                                    tx.send(Action::ConnectionSaveCompleted { id, dsn, name })
-                                        .await
-                                        .ok();
+                                    tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
+                                        id,
+                                        dsn,
+                                        name,
+                                    }))
+                                    .await
+                                    .ok();
                                 }
                                 Err(e) => {
                                     cache.invalidate(&dsn).await;
@@ -831,7 +835,7 @@ impl EffectRunner {
                     let name = profile.display_name().to_string();
                     let id = profile.id.clone();
                     self.action_tx
-                        .send(Action::SwitchConnection { id, dsn, name })
+                        .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                         .await
                         .ok();
                 }
@@ -844,7 +848,7 @@ impl EffectRunner {
                     let dsn = entry.to_dsn();
                     let name = entry.display_name().to_owned();
                     self.action_tx
-                        .send(Action::SwitchConnection { id, dsn, name })
+                        .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                         .await
                         .ok();
                 }
@@ -1486,7 +1490,7 @@ mod tests {
 
             let action = rx.recv().await.expect("action dispatched");
             match action {
-                Action::SwitchConnection { id, dsn, name } => {
+                Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
                     assert_eq!(id, state.connections[0].id);

@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::{Action, CursorMove};
+use crate::app::action::{Action, ConnectionTarget, CursorMove};
 use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
@@ -41,7 +41,7 @@ pub fn reduce_connection(
             }
         }
 
-        Action::SwitchConnection { id, dsn, name } => {
+        Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
             if let Some(current_id) = state.runtime.active_connection_id.clone() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
@@ -378,7 +378,7 @@ pub fn reduce_connection(
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
-        Action::ConnectionSaveCompleted { id, dsn, name } => {
+        Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
             state.connection_setup.is_first_run = false;
             state.ui.input_mode = InputMode::Normal;
             state.ui.explorer_mode = ExplorerMode::Tables;
@@ -975,11 +975,11 @@ mod tests {
         use crate::domain::ConnectionId;
 
         fn create_switch_action(id: &ConnectionId, name: &str) -> Action {
-            Action::SwitchConnection {
+            Action::SwitchConnection(ConnectionTarget {
                 id: id.clone(),
                 dsn: format!("postgres://localhost/{}", name),
                 name: name.to_string(),
-            }
+            })
         }
 
         #[test]

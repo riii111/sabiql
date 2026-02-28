@@ -21,6 +21,13 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConnectionTarget {
+    pub id: ConnectionId,
+    pub dsn: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum Action {
     None,
     Quit,
@@ -40,11 +47,7 @@ pub enum Action {
 
     // Connection lifecycle
     TryConnect,
-    SwitchConnection {
-        id: ConnectionId,
-        dsn: String,
-        name: String,
-    },
+    SwitchConnection(ConnectionTarget),
 
     // Connection Setup
     OpenConnectionSetup,
@@ -62,11 +65,7 @@ pub enum Action {
     ConnectionSetupDropdownCancel,
     ConnectionSetupSave,
     ConnectionSetupCancel,
-    ConnectionSaveCompleted {
-        id: ConnectionId,
-        dsn: String,
-        name: String,
-    },
+    ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(String),
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(String),
