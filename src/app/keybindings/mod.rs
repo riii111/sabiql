@@ -162,8 +162,7 @@ pub mod idx {
         pub const COPY: usize = 3;
         pub const SCROLL: usize = 4;
         pub const ESC_CLOSE: usize = 5;
-        pub const QUIT: usize = 6;
-        pub const RETRY: usize = 7;
+        pub const RETRY: usize = 6;
     }
 
     pub mod confirm {
@@ -226,7 +225,6 @@ pub mod idx {
         pub const EDIT: usize = 3;
         pub const DELETE: usize = 4;
         pub const CLOSE: usize = 5;
-        pub const QUIT: usize = 6;
     }
 
     pub mod inspector_ddl {
@@ -367,7 +365,6 @@ mod tests {
         assert!(idx::conn_error::COPY < CONNECTION_ERROR_ROWS.len());
         assert!(idx::conn_error::SCROLL < CONNECTION_ERROR_ROWS.len());
         assert!(idx::conn_error::ESC_CLOSE < CONNECTION_ERROR_ROWS.len());
-        assert!(idx::conn_error::QUIT < CONNECTION_ERROR_ROWS.len());
 
         // CONFIRM_DIALOG_KEYS
         assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
@@ -425,7 +422,6 @@ mod tests {
         assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
-        assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_ROWS.len());
     }
 
     #[test]

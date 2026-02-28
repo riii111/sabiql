@@ -54,7 +54,6 @@ impl ConnectionSelector {
             hints.push(r[cs::DELETE].as_hint());
         }
         hints.push(r[cs::CLOSE].as_hint());
-        hints.push(r[cs::QUIT].as_hint());
 
         let hint_parts: Vec<String> = hints
             .iter()
