@@ -1281,6 +1281,43 @@ mod tests {
 
             assert_eq!(state.ui.connection_list_selected, 0);
         }
+
+        #[test]
+        fn stores_service_file_path_in_runtime() {
+            let mut state = AppState::new("test".to_string());
+            let path = std::path::PathBuf::from("/etc/pg_service.conf");
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                    profiles: vec![],
+                    services: vec![],
+                    service_file_path: Some(path.clone()),
+                    service_load_warning: None,
+                }),
+                Instant::now(),
+            );
+
+            assert_eq!(state.runtime.service_file_path, Some(path));
+        }
+
+        #[test]
+        fn service_load_warning_sets_error_message() {
+            let mut state = AppState::new("test".to_string());
+
+            reduce_navigation(
+                &mut state,
+                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
+                    profiles: vec![],
+                    services: vec![],
+                    service_file_path: None,
+                    service_load_warning: Some("parse error at line 5".to_string()),
+                }),
+                Instant::now(),
+            );
+
+            assert!(state.messages.last_error.is_some());
+        }
     }
 
     mod confirm_connection_selection {
