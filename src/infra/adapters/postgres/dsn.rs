@@ -14,8 +14,9 @@ impl PostgresAdapter {
         {
             return db.to_string();
         }
-        if let Some(start) = dsn.find("dbname=") {
-            let rest = &dsn[start + 7..];
+        const DBNAME_KEY: &str = "dbname=";
+        if let Some(start) = dsn.find(DBNAME_KEY) {
+            let rest = &dsn[start + DBNAME_KEY.len()..];
             let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
             return rest[..end].to_string();
         }
