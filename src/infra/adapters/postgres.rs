@@ -1750,7 +1750,10 @@ mod tests {
         #[case("CREATE TABLE t AS SELECT * FROM users", false)]
         #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
         // Writable CTE: DML inside CTE body (rejected)
-        #[case("WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x", false)]
+        #[case(
+            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            false
+        )]
         #[case("WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x", false)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
@@ -2550,10 +2553,7 @@ mod tests {
 
             let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
 
-            assert_eq!(
-                sql,
-                "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');"
-            );
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');");
         }
 
         #[test]
@@ -2591,13 +2591,7 @@ mod tests {
 
         #[test]
         fn schema_name_with_double_quote_is_escaped() {
-            let sql = PostgresAdapter::build_preview_query(
-                "my\"schema",
-                "users",
-                &[],
-                100,
-                0,
-            );
+            let sql = PostgresAdapter::build_preview_query("my\"schema", "users", &[], 100, 0);
 
             assert_eq!(
                 sql,
@@ -2607,13 +2601,7 @@ mod tests {
 
         #[test]
         fn table_name_with_double_quote_is_escaped() {
-            let sql = PostgresAdapter::build_preview_query(
-                "public",
-                "my\"table",
-                &[],
-                100,
-                0,
-            );
+            let sql = PostgresAdapter::build_preview_query("public", "my\"table", &[], 100, 0);
 
             assert_eq!(
                 sql,
@@ -2647,9 +2635,15 @@ mod tests {
 
         #[rstest]
         #[case("columns_query", PostgresAdapter::columns_query(HOSTILE, "t"))]
-        #[case("columns_query_table", PostgresAdapter::columns_query("public", HOSTILE))]
+        #[case(
+            "columns_query_table",
+            PostgresAdapter::columns_query("public", HOSTILE)
+        )]
         #[case("indexes_query", PostgresAdapter::indexes_query(HOSTILE, "t"))]
-        #[case("foreign_keys_query", PostgresAdapter::foreign_keys_query(HOSTILE, "t"))]
+        #[case(
+            "foreign_keys_query",
+            PostgresAdapter::foreign_keys_query(HOSTILE, "t")
+        )]
         #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
         #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
         fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
