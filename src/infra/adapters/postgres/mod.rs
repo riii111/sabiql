@@ -70,7 +70,7 @@ impl MetadataProvider for PostgresAdapter {
         let foreign_keys = Self::parse_foreign_keys(&fks_json)?;
         let rls = Self::parse_rls(&rls_json)?;
         let triggers = Self::parse_triggers(&triggers_json)?;
-        let (owner, comment, row_count_estimate) = Self::parse_table_info(&table_info_json)?;
+        let table_info = Self::parse_table_info(&table_info_json)?;
 
         let pk_cols: Vec<String> = columns
             .iter()
@@ -86,15 +86,15 @@ impl MetadataProvider for PostgresAdapter {
         Ok(Table {
             schema: schema.to_string(),
             name: table.to_string(),
-            owner,
+            owner: table_info.owner,
             columns,
             primary_key,
             foreign_keys,
             indexes,
             rls,
             triggers,
-            row_count_estimate,
-            comment,
+            row_count_estimate: table_info.row_count_estimate,
+            comment: table_info.comment,
         })
     }
 }

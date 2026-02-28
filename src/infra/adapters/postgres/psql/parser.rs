@@ -6,15 +6,32 @@ use crate::domain::{
 
 use super::super::PostgresAdapter;
 
+fn non_empty_json(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+pub(in crate::infra::adapters::postgres) struct TableInfo {
+    pub owner: Option<String>,
+    pub comment: Option<String>,
+    pub row_count_estimate: Option<i64>,
+}
+
 impl PostgresAdapter {
-    #[allow(clippy::type_complexity)]
     pub(in crate::infra::adapters::postgres) fn parse_table_info(
         json: &str,
-    ) -> Result<(Option<String>, Option<String>, Option<i64>), MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
-            return Ok((None, None, None));
-        }
+    ) -> Result<TableInfo, MetadataError> {
+        let Some(trimmed) = non_empty_json(json) else {
+            return Ok(TableInfo {
+                owner: None,
+                comment: None,
+                row_count_estimate: None,
+            });
+        };
 
         #[derive(serde::Deserialize)]
         struct RawTableInfo {
@@ -29,16 +46,19 @@ impl PostgresAdapter {
         // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run
         let row_count = raw.row_count_estimate.filter(|&n| n >= 0);
 
-        Ok((raw.owner, raw.comment, row_count))
+        Ok(TableInfo {
+            owner: raw.owner,
+            comment: raw.comment,
+            row_count_estimate: row_count,
+        })
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_tables(
         json: &str,
     ) -> Result<Vec<TableSummary>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawTable {
@@ -60,10 +80,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_schemas(
         json: &str,
     ) -> Result<Vec<Schema>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawSchema {
@@ -79,10 +98,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_columns(
         json: &str,
     ) -> Result<Vec<Column>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawColumn {
@@ -117,10 +135,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_indexes(
         json: &str,
     ) -> Result<Vec<Index>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawIndex {
@@ -158,10 +175,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_foreign_keys(
         json: &str,
     ) -> Result<Vec<ForeignKey>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawForeignKey {
@@ -209,10 +225,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_rls(
         json: &str,
     ) -> Result<Option<RlsInfo>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(None);
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawRls {
@@ -264,10 +279,9 @@ impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_triggers(
         json: &str,
     ) -> Result<Vec<Trigger>, MetadataError> {
-        let trimmed = json.trim();
-        if trimmed.is_empty() || trimmed == "null" {
+        let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
-        }
+        };
 
         #[derive(serde::Deserialize)]
         struct RawTrigger {
@@ -482,50 +496,50 @@ mod tests {
         #[case("null")]
         #[case("   ")]
         fn empty_or_null_input_returns_none(#[case] input: &str) {
-            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(input).unwrap();
-            assert!(owner.is_none());
-            assert!(comment.is_none());
-            assert!(row_count.is_none());
+            let info = PostgresAdapter::parse_table_info(input).unwrap();
+            assert!(info.owner.is_none());
+            assert!(info.comment.is_none());
+            assert!(info.row_count_estimate.is_none());
         }
 
         #[test]
         fn all_fields_present_returns_values() {
             let json = r#"{"owner": "postgres", "comment": "User accounts table", "row_count_estimate": 100}"#;
 
-            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+            let info = PostgresAdapter::parse_table_info(json).unwrap();
 
-            assert_eq!(owner.as_deref(), Some("postgres"));
-            assert_eq!(comment.as_deref(), Some("User accounts table"));
-            assert_eq!(row_count, Some(100));
+            assert_eq!(info.owner.as_deref(), Some("postgres"));
+            assert_eq!(info.comment.as_deref(), Some("User accounts table"));
+            assert_eq!(info.row_count_estimate, Some(100));
         }
 
         #[test]
         fn null_fields_returns_none() {
             let json = r#"{"owner": null, "comment": null, "row_count_estimate": null}"#;
 
-            let (owner, comment, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+            let info = PostgresAdapter::parse_table_info(json).unwrap();
 
-            assert!(owner.is_none());
-            assert!(comment.is_none());
-            assert!(row_count.is_none());
+            assert!(info.owner.is_none());
+            assert!(info.comment.is_none());
+            assert!(info.row_count_estimate.is_none());
         }
 
         #[test]
         fn negative_row_count_returns_none() {
             let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": -1}"#;
 
-            let (_, _, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+            let info = PostgresAdapter::parse_table_info(json).unwrap();
 
-            assert!(row_count.is_none());
+            assert!(info.row_count_estimate.is_none());
         }
 
         #[test]
         fn zero_row_count_returns_zero() {
             let json = r#"{"owner": "postgres", "comment": null, "row_count_estimate": 0}"#;
 
-            let (_, _, row_count) = PostgresAdapter::parse_table_info(json).unwrap();
+            let info = PostgresAdapter::parse_table_info(json).unwrap();
 
-            assert_eq!(row_count, Some(0));
+            assert_eq!(info.row_count_estimate, Some(0));
         }
 
         #[test]
