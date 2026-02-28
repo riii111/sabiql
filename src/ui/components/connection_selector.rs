@@ -81,7 +81,8 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                 }
                 ConnectionListItem::Service(i) => {
                     let entry = &state.service_entries[*i];
-                    let prefix = "  ";
+                    let is_active = active_id == Some(&entry.connection_id());
+                    let prefix = if is_active { "● " } else { "  " };
                     let label_col = content_width * 40 / 100;
                     let min_gap = 2;
                     let max_name_len =
@@ -93,8 +94,13 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                     };
                     let name_part = format!("{}{}", prefix, name);
                     let gap = label_col.saturating_sub(name_part.len()).max(min_gap);
+                    let name_style = if is_active {
+                        Style::default().fg(Theme::ACTIVE_INDICATOR)
+                    } else {
+                        Style::default().fg(Theme::TEXT_SECONDARY)
+                    };
                     let line = Line::from(vec![
-                        Span::styled(name_part, Style::default().fg(Theme::TEXT_SECONDARY)),
+                        Span::styled(name_part, name_style),
                         Span::raw(" ".repeat(gap)),
                         Span::styled(source_label, Style::default().fg(Theme::TEXT_MUTED)),
                     ]);
