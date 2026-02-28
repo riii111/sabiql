@@ -1124,4 +1124,30 @@ mod tests {
             );
         }
     }
+
+    mod reenter_connection_setup {
+        use super::*;
+
+        #[test]
+        fn blocked_for_service_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("service=mydb".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+
+            reduce_connection(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+        }
+
+        #[test]
+        fn allowed_for_profile_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+
+            reduce_connection(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+        }
+    }
 }

@@ -81,9 +81,17 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                 }
                 ConnectionListItem::Service(i) => {
                     let entry = &state.service_entries[*i];
-                    let name_part = format!("  {}", entry.service_name);
+                    let prefix = "  ";
                     let label_col = content_width * 40 / 100;
                     let min_gap = 2;
+                    let max_name_len =
+                        content_width.saturating_sub(prefix.len() + min_gap + source_label.len());
+                    let name = if entry.service_name.len() > max_name_len {
+                        format!("{}…", &entry.service_name[..max_name_len.saturating_sub(1)])
+                    } else {
+                        entry.service_name.clone()
+                    };
+                    let name_part = format!("{}{}", prefix, name);
                     let gap = label_col.saturating_sub(name_part.len()).max(min_gap);
                     let line = Line::from(vec![
                         Span::styled(name_part, Style::default().fg(Theme::TEXT_SECONDARY)),
