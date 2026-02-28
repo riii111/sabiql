@@ -124,6 +124,12 @@ impl CompletionEngine {
         self.table_detail_cache.contains(qualified_name)
     }
 
+    pub fn evict_tables(&mut self, tables: &[String]) {
+        for table in tables {
+            self.table_detail_cache.pop(table);
+        }
+    }
+
     pub fn clear_table_cache(&mut self) {
         self.table_detail_cache.clear();
     }
@@ -2180,6 +2186,46 @@ mod tests {
 
             assert!(e.has_cached_table("public.users"));
             assert!(!e.has_cached_table("public.orders"));
+        }
+
+        fn make_table(schema: &str, name: &str) -> Table {
+            Table {
+                schema: schema.to_string(),
+                name: name.to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[test]
+        fn evict_tables_removes_specified_entries() {
+            let mut e = engine();
+            e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
+            e.cache_table_detail("public.orders".to_string(), make_table("public", "orders"));
+            e.cache_table_detail("public.items".to_string(), make_table("public", "items"));
+
+            e.evict_tables(&["public.users".to_string(), "public.orders".to_string()]);
+
+            assert!(!e.has_cached_table("public.users"));
+            assert!(!e.has_cached_table("public.orders"));
+            assert!(e.has_cached_table("public.items"));
+        }
+
+        #[test]
+        fn evict_tables_ignores_missing_keys() {
+            let mut e = engine();
+            e.cache_table_detail("public.users".to_string(), make_table("public", "users"));
+
+            e.evict_tables(&["public.nonexistent".to_string()]);
+
+            assert!(e.has_cached_table("public.users"));
         }
     }
 

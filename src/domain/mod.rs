@@ -23,7 +23,7 @@ pub use metadata::{DatabaseMetadata, MetadataState};
 pub use query_result::{QueryResult, QuerySource};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
-pub use table::{Table, TableSummary};
+pub use table::{Table, TableSignature, TableSummary};
 pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
 pub use write_result::WriteExecutionResult;
 

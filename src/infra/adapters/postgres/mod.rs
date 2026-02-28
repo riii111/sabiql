@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 
 use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
-use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, Table, WriteExecutionResult};
+use crate::domain::{
+    DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
+};
 
 mod dsn;
 mod psql;
@@ -43,6 +45,16 @@ impl MetadataProvider for PostgresAdapter {
         metadata.tables = tables;
 
         Ok(metadata)
+    }
+
+    async fn fetch_table_signatures(
+        &self,
+        dsn: &str,
+    ) -> Result<Vec<TableSignature>, MetadataError> {
+        let json = self
+            .execute_query(dsn, Self::table_signatures_query())
+            .await?;
+        Self::parse_table_signatures(&json)
     }
 
     async fn fetch_table_detail(

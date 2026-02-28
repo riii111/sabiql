@@ -4,7 +4,7 @@ use crate::app::ports::{
     DdlGenerator, DsnBuilder, MetadataError, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::ConnectionProfile;
-use crate::domain::{DatabaseMetadata, QueryResult, Table, WriteExecutionResult};
+use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
 
 pub struct MySqlAdapter;
 
@@ -34,6 +34,15 @@ impl MetadataProvider for MySqlAdapter {
         _schema: &str,
         _table: &str,
     ) -> Result<Table, MetadataError> {
+        Err(MetadataError::ConnectionFailed(
+            "MySQL adapter not yet implemented".to_string(),
+        ))
+    }
+
+    async fn fetch_table_signatures(
+        &self,
+        _dsn: &str,
+    ) -> Result<Vec<TableSignature>, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))

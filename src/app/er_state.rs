@@ -18,6 +18,8 @@ pub struct ErPreparationState {
     pub target_tables: Vec<String>,
     pub seed_tables: Vec<String>,
     pub fk_expanded: bool,
+    pub last_signatures: HashMap<String, String>,
+    pub run_id: u64,
 }
 
 impl ErPreparationState {
@@ -151,6 +153,8 @@ mod tests {
                 target_tables: vec![],
                 seed_tables: vec!["a".to_string()],
                 fk_expanded: true,
+                last_signatures: HashMap::from([("a".to_string(), "sig".to_string())]),
+                run_id: 5,
             };
 
             state.reset();
@@ -162,6 +166,8 @@ mod tests {
             assert_eq!(state.total_tables, 0);
             assert!(state.seed_tables.is_empty());
             assert!(!state.fk_expanded);
+            assert!(state.last_signatures.is_empty());
+            assert_eq!(state.run_id, 0);
         }
     }
 

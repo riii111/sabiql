@@ -40,6 +40,10 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.peek(key)
     }
 
+    pub fn pop(&mut self, key: &K) -> Option<V> {
+        self.inner.pop(key)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.inner.iter()
     }
@@ -151,6 +155,26 @@ mod tests {
         assert!(cache.contains(&"a"));
         assert!(cache.contains(&"b"));
         assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn pop_removes_and_returns_value() {
+        let mut cache = BoundedLruCache::new(3);
+        cache.insert("a", 1);
+        cache.insert("b", 2);
+
+        assert_eq!(cache.pop(&"a"), Some(1));
+        assert!(!cache.contains(&"a"));
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn pop_missing_key_returns_none() {
+        let mut cache = BoundedLruCache::new(2);
+        cache.insert("a", 1);
+
+        assert_eq!(cache.pop(&"z"), None);
+        assert_eq!(cache.len(), 1);
     }
 
     #[test]

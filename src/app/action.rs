@@ -6,6 +6,8 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
 use crate::domain::connection::ConnectionProfile;
+use std::collections::HashMap;
+
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +300,20 @@ pub enum Action {
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
     ErGenerateFromCache,
+    SmartErRefreshCompleted {
+        run_id: u64,
+        new_metadata: Box<DatabaseMetadata>,
+        stale_tables: Vec<String>,
+        added_tables: Vec<String>,
+        removed_tables: Vec<String>,
+        missing_in_cache: Vec<String>,
+        new_signatures: HashMap<String, String>,
+    },
+    SmartErRefreshFailed {
+        run_id: u64,
+        error: String,
+        new_metadata: Option<Box<DatabaseMetadata>>,
+    },
     ErDiagramOpened {
         path: String,
         table_count: usize,

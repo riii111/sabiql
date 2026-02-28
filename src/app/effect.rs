@@ -77,6 +77,13 @@ pub enum Effect {
         qualified_name: String,
         table: Box<Table>,
     },
+    SmartErRefresh {
+        dsn: String,
+        run_id: u64,
+    },
+    EvictTablesFromCompletionCache {
+        tables: Vec<String>,
+    },
     ClearCompletionEngineCache,
     ResizeCompletionCache {
         capacity: usize,

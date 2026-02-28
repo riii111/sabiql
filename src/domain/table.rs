@@ -43,6 +43,19 @@ pub struct TableSummary {
     qualified_name_lower: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableSignature {
+    pub schema: String,
+    pub name: String,
+    pub signature: String,
+}
+
+impl TableSignature {
+    pub fn qualified_name(&self) -> String {
+        format!("{}.{}", self.schema, self.name)
+    }
+}
+
 impl TableSummary {
     pub fn new(
         schema: String,

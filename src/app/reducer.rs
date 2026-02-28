@@ -762,7 +762,7 @@ mod tests {
         }
 
         #[test]
-        fn always_clears_cache_even_with_pending_tables() {
+        fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
@@ -782,13 +782,12 @@ mod tests {
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert!(!state.sql_modal.prefetch_started);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
 
         #[test]
-        fn prefetch_started_true_clears_cache_and_restarts() {
+        fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
@@ -803,33 +802,27 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert!(!state.sql_modal.prefetch_started);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
-            ));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
 
         #[test]
-        fn no_prefetch_starts_prefetch() {
+        fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.cache.metadata = Some(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
             });
-            // prefetch_started is false by default
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
 
         #[test]
@@ -1609,14 +1602,8 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now);
 
-            // Now always clears cache and re-prefetches (scoped since target_tables < total)
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
-            ));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
             assert_eq!(
                 state.er_preparation.target_tables,
                 vec!["public.users".to_string()]

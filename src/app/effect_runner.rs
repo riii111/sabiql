@@ -696,6 +696,104 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::SmartErRefresh { dsn, run_id } => {
+                let provider = Arc::clone(&self.metadata_provider);
+                let tx = self.action_tx.clone();
+
+                let old_signatures = state.er_preparation.last_signatures.clone();
+                let cached_tables: std::collections::HashSet<String> = {
+                    let engine = completion_engine.borrow();
+                    engine
+                        .table_details_iter()
+                        .map(|(k, _)| k.clone())
+                        .collect()
+                };
+
+                tokio::spawn(async move {
+                    // TTL bypass: call provider directly instead of metadata_cache
+                    let new_metadata = match provider.fetch_metadata(&dsn).await {
+                        Ok(m) => m,
+                        Err(e) => {
+                            tx.send(Action::SmartErRefreshFailed {
+                                run_id,
+                                error: e.to_string(),
+                                new_metadata: None,
+                            })
+                            .await
+                            .ok();
+                            return;
+                        }
+                    };
+
+                    let new_sigs_vec = match provider.fetch_table_signatures(&dsn).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tx.send(Action::SmartErRefreshFailed {
+                                run_id,
+                                error: e.to_string(),
+                                new_metadata: Some(Box::new(new_metadata)),
+                            })
+                            .await
+                            .ok();
+                            return;
+                        }
+                    };
+
+                    let new_signatures: std::collections::HashMap<String, String> = new_sigs_vec
+                        .iter()
+                        .map(|s| (s.qualified_name(), s.signature.clone()))
+                        .collect();
+
+                    let old_names: std::collections::HashSet<&str> =
+                        old_signatures.keys().map(|s| s.as_str()).collect();
+                    let new_names: std::collections::HashSet<&str> =
+                        new_signatures.keys().map(|s| s.as_str()).collect();
+
+                    let added_tables: Vec<String> = new_names
+                        .difference(&old_names)
+                        .map(|s| s.to_string())
+                        .collect();
+                    let removed_tables: Vec<String> = old_names
+                        .difference(&new_names)
+                        .map(|s| s.to_string())
+                        .collect();
+
+                    let stale_tables: Vec<String> = new_signatures
+                        .iter()
+                        .filter(|(name, sig)| {
+                            old_signatures
+                                .get(name.as_str())
+                                .is_some_and(|old_sig| old_sig != *sig)
+                        })
+                        .map(|(name, _)| name.clone())
+                        .collect();
+
+                    let missing_in_cache: Vec<String> = new_names
+                        .iter()
+                        .filter(|name| !cached_tables.contains(**name))
+                        .map(|s| s.to_string())
+                        .collect();
+
+                    tx.send(Action::SmartErRefreshCompleted {
+                        run_id,
+                        new_metadata: Box::new(new_metadata),
+                        stale_tables,
+                        added_tables,
+                        removed_tables,
+                        missing_in_cache,
+                        new_signatures,
+                    })
+                    .await
+                    .ok();
+                });
+                Ok(())
+            }
+
+            Effect::EvictTablesFromCompletionCache { tables } => {
+                completion_engine.borrow_mut().evict_tables(&tables);
+                Ok(())
+            }
+
             Effect::Sequence(_) => {
                 // Handled in run()
                 Ok(())

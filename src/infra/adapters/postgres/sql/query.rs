@@ -30,6 +30,56 @@ impl PostgresAdapter {
         "#
     }
 
+    pub(in crate::infra::adapters::postgres) fn table_signatures_query() -> &'static str {
+        r#"
+        SELECT json_agg(row_to_json(t))
+        FROM (
+            SELECT
+                n.nspname AS schema,
+                c.relname AS name,
+                md5(
+                    COALESCE((
+                        SELECT string_agg(
+                            a.attname || ':' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+                                || ':' || a.attnotnull::text
+                                || ':' || COALESCE(pg_get_expr(d.adbin, d.adrelid), ''),
+                            '|' ORDER BY a.attnum
+                        )
+                        FROM pg_attribute a
+                        LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+                        WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                    ), '')
+                    || '##FK##'
+                    || COALESCE((
+                        SELECT string_agg(
+                            con.conname || ':'
+                                || n2.nspname || '.' || c2.relname,
+                            '|' ORDER BY con.conname
+                        )
+                        FROM pg_constraint con
+                        JOIN pg_class c2 ON c2.oid = con.confrelid
+                        JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
+                        WHERE con.conrelid = c.oid AND con.contype = 'f'
+                    ), '')
+                ) AS signature
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r'
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND (
+                  has_table_privilege(c.oid, 'SELECT')
+                  OR has_table_privilege(c.oid, 'INSERT')
+                  OR has_table_privilege(c.oid, 'UPDATE')
+                  OR has_table_privilege(c.oid, 'DELETE')
+                  OR has_table_privilege(c.oid, 'TRUNCATE')
+                  OR has_table_privilege(c.oid, 'REFERENCES')
+                  OR has_table_privilege(c.oid, 'TRIGGER')
+              )
+            ORDER BY n.nspname, c.relname
+        ) t
+        "#
+    }
+
     pub(in crate::infra::adapters::postgres) fn schemas_query() -> &'static str {
         r#"
         SELECT json_agg(row_to_json(s))
@@ -331,6 +381,55 @@ mod tests {
             );
             assert!(sql.contains("n.nspname = 'public'"));
             assert!(sql.contains("c.relname = 'users'"));
+        }
+    }
+
+    mod table_signatures_query {
+        use super::*;
+
+        #[test]
+        fn contains_md5_hash() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("md5("));
+        }
+
+        #[test]
+        fn uses_same_filter_as_tables_query() {
+            let sig_sql = PostgresAdapter::table_signatures_query();
+            let tab_sql = PostgresAdapter::tables_query();
+
+            assert!(sig_sql.contains("c.relkind = 'r'"));
+            assert!(
+                sig_sql
+                    .contains("n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')")
+            );
+            assert!(sig_sql.contains("has_table_privilege(c.oid, 'SELECT')"));
+
+            // Verify the WHERE clauses share the same filters
+            for fragment in [
+                "c.relkind = 'r'",
+                "n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')",
+                "has_table_privilege(c.oid, 'SELECT')",
+                "has_table_privilege(c.oid, 'INSERT')",
+                "has_table_privilege(c.oid, 'TRIGGER')",
+            ] {
+                assert!(
+                    tab_sql.contains(fragment) && sig_sql.contains(fragment),
+                    "Filter mismatch: {fragment}"
+                );
+            }
+        }
+
+        #[test]
+        fn includes_fk_separator() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("'##FK##'"));
+        }
+
+        #[test]
+        fn returns_json_aggregate() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("json_agg(row_to_json(t))"));
         }
     }
 
