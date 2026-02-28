@@ -33,8 +33,8 @@ impl ConnectionSelector {
 
     fn build_hint_string(is_service_selected: bool) -> String {
         let mut hints = vec![
-            CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
             CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
+            CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
             CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
         ];
         if !is_service_selected {
@@ -57,7 +57,7 @@ impl ConnectionSelector {
 /// byte-length vs display-width mismatches for the multibyte "●".
 const PREFIX_DISPLAY_WIDTH: usize = 2;
 
-/// Shared rendering logic for connection list (used by ConnectionSelector and Explorer).
+/// Shared rendering logic for connection list (used by ConnectionSelector).
 pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.connection_list_pane_height = area.height;
     let active_id = state.runtime.active_connection_id.as_ref();

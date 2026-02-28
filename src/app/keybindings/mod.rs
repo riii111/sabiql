@@ -305,10 +305,6 @@ pub fn is_open_er(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
 }
 
-pub fn is_open_connection_selector(combo: &KeyCombo) -> bool {
-    GLOBAL_KEYS[idx::global::CONNECTIONS].combos.contains(combo)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
