@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ConnectionsLoadedPayload};
 use crate::app::effect::Effect;
 use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
@@ -898,12 +898,12 @@ pub fn reduce_navigation(
             }
             Some(vec![])
         }
-        Action::ConnectionsLoaded {
+        Action::ConnectionsLoaded(ConnectionsLoadedPayload {
             profiles,
             services,
             service_file_path,
             service_load_warning,
-        } => {
+        }) => {
             let mut sorted = profiles.clone();
             sorted.sort_by(|a, b| {
                 a.display_name()
@@ -1249,12 +1249,12 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionsLoaded {
+                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
                     service_file_path: None,
                     service_load_warning: None,
-                },
+                }),
                 Instant::now(),
             );
 
@@ -1270,12 +1270,12 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionsLoaded {
+                &Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                     profiles,
                     services: vec![],
                     service_file_path: None,
                     service_load_warning: None,
-                },
+                }),
                 Instant::now(),
             );
 

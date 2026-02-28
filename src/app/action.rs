@@ -21,6 +21,14 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConnectionsLoadedPayload {
+    pub profiles: Vec<ConnectionProfile>,
+    pub services: Vec<ServiceEntry>,
+    pub service_file_path: Option<std::path::PathBuf>,
+    pub service_load_warning: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TableTarget {
     pub schema: String,
     pub table: String,
@@ -136,12 +144,7 @@ pub enum Action {
     SetExplorerMode(ExplorerMode),
     ConnectionListSelectNext,
     ConnectionListSelectPrevious,
-    ConnectionsLoaded {
-        profiles: Vec<ConnectionProfile>,
-        services: Vec<ServiceEntry>,
-        service_file_path: Option<std::path::PathBuf>,
-        service_load_warning: Option<String>,
-    },
+    ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
 
     // Selection

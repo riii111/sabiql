@@ -19,7 +19,7 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::{Action, ConnectionTarget};
+use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
@@ -312,12 +312,12 @@ impl EffectRunner {
                             Err(e) => (vec![], None, Some(e.to_string())),
                         };
 
-                    tx.blocking_send(Action::ConnectionsLoaded {
+                    tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                         profiles,
                         services,
                         service_file_path,
                         service_load_warning,
-                    })
+                    }))
                     .ok();
                 });
                 Ok(())
@@ -1377,7 +1377,7 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::ConnectionsLoaded { ref profiles, .. } if profiles.is_empty()),
+                matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {:?}",
                 action
             );
