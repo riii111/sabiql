@@ -28,7 +28,7 @@ impl DdlGenerator for PostgresAdapter {
                 default
             ));
 
-            if i < table.columns.len() - 1 {
+            if i + 1 < table.columns.len() {
                 ddl.push(',');
             }
             ddl.push('\n');
