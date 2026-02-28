@@ -72,6 +72,60 @@ fn is_select_query(query: &str) -> bool {
             continue;
         }
 
+        // Skip double-quoted identifiers ("column", "update", etc.)
+        if c == '"' {
+            i += 1;
+            while i < len {
+                if chars[i].1 == '"' {
+                    if i + 1 < len && chars[i + 1].1 == '"' {
+                        i += 2; // escaped "" inside identifier
+                    } else {
+                        i += 1; // closing quote
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        // Skip dollar-quoted strings ($$...$$, $tag$...$tag$)
+        if c == '$' {
+            // Extract the tag (may be empty for $$)
+            let tag_start = byte_pos;
+            let mut j = i + 1;
+            while j < len && (chars[j].1.is_alphanumeric() || chars[j].1 == '_') {
+                j += 1;
+            }
+            if j < len && chars[j].1 == '$' {
+                let tag = &lower[tag_start..=chars[j].0];
+                j += 1; // skip closing $ of opening tag
+                // Search for matching closing tag
+                while j + tag.len() <= len {
+                    let candidate_start = chars[j].0;
+                    if chars[j].1 == '$' {
+                        let candidate_end = candidate_start + tag.len();
+                        if candidate_end <= lower.len()
+                            && &lower[candidate_start..candidate_end] == tag
+                        {
+                            // Find the char index past the closing tag
+                            let mut k = j;
+                            while k < len && chars[k].0 < candidate_end {
+                                k += 1;
+                            }
+                            j = k;
+                            break;
+                        }
+                    }
+                    j += 1;
+                }
+                i = j;
+                continue;
+            }
+            // Not a dollar-quote, fall through to normal processing
+        }
+
         if c == '(' {
             depth += 1;
         } else if c == ')' {
@@ -89,16 +143,17 @@ fn is_select_query(query: &str) -> bool {
             break;
         }
 
-        // At top level and word boundary, check for SQL keywords
-        if depth == 0 && is_word_start(&chars, i) {
+        // At word boundary, check for SQL keywords
+        if is_word_start(&chars, i) {
             let rest = &lower[byte_pos..];
-            if is_keyword(rest, "select") {
+            if depth == 0 && is_keyword(rest, "select") {
                 found_select = true;
             }
             // SELECT INTO creates a table, reject it
-            if is_keyword(rest, "into") && found_select {
+            if depth == 0 && is_keyword(rest, "into") && found_select {
                 return false;
             }
+            // Reject DML/DDL at any depth (including inside CTEs)
             if is_keyword(rest, "insert")
                 || is_keyword(rest, "update")
                 || is_keyword(rest, "delete")
@@ -140,6 +195,10 @@ pub struct PostgresAdapter {
 impl PostgresAdapter {
     pub fn new() -> Self {
         Self { timeout_secs: 30 }
+    }
+
+    pub fn with_timeout(timeout_secs: u64) -> Self {
+        Self { timeout_secs }
     }
 
     async fn execute_query(&self, dsn: &str, query: &str) -> Result<String, MetadataError> {
@@ -1744,6 +1803,18 @@ mod tests {
         // CREATE TABLE AS SELECT (rejected)
         #[case("CREATE TABLE t AS SELECT * FROM users", false)]
         #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
+        // Writable CTE: DML inside CTE body (rejected)
+        #[case(
+            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            false
+        )]
+        #[case("WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x", false)]
+        // DML keyword inside double-quoted identifier (allowed — not real DML)
+        #[case("SELECT \"update\" FROM t", true)]
+        #[case("WITH x AS (SELECT 1 AS \"delete\") SELECT * FROM x", true)]
+        // DML keyword inside dollar-quoted string (allowed — not real DML)
+        #[case("SELECT $$update$$ AS label", true)]
+        #[case("SELECT $tag$delete from here$tag$ AS s", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
@@ -2382,6 +2453,78 @@ mod tests {
                 "UPDATE \"s\".\"t\"\nSET \"name\" = 'new'\nWHERE \"id\" = '1' AND \"tenant_id\" = '7';"
             );
         }
+
+        #[test]
+        fn null_value_generates_unquoted_null() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "NULL",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = NULL\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn empty_string_value_generates_empty_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = ''\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "my\"col",
+                "val",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"my\"\"col\" = 'val'\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn backslash_in_value_is_preserved_as_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "path",
+                "C:\\Users\\test",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"path\" = 'C:\\Users\\test'\nWHERE \"id\" = '1';"
+            );
+        }
     }
 
     mod sql_dialect_bulk_delete {
@@ -2460,6 +2603,172 @@ mod tests {
             assert_eq!(
                 sql,
                 "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('O''Reilly');"
+            );
+        }
+
+        #[test]
+        fn empty_string_pk_value_returns_empty_literal() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("id".to_string(), String::new())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');");
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"t\"\nWHERE \"my\"\"pk\" IN ('1');"
+            );
+        }
+    }
+
+    mod pg_sql_value_expr_tests {
+        use super::pg_sql_value_expr;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("NULL", "NULL")]
+        #[case("null", "'null'")]
+        #[case("", "''")]
+        #[case("hello", "'hello'")]
+        #[case("it's", "'it''s'")]
+        #[case("NULL ", "'NULL '")]
+        fn value_expr_returns_expected(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(pg_sql_value_expr(input), expected);
+        }
+    }
+
+    mod preview_query_edge_cases {
+        use super::*;
+
+        #[test]
+        fn schema_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query("my\"schema", "users", &[], 100, 0);
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"my\"\"schema\".\"users\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn table_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query("public", "my\"table", &[], 100, 0);
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"my\"\"table\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn order_by_column_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "users",
+                &["my\"col".to_string()],
+                100,
+                0,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"users\" ORDER BY \"my\"\"col\" LIMIT 100 OFFSET 0"
+            );
+        }
+    }
+
+    mod metadata_query_injection {
+        use super::*;
+        use rstest::rstest;
+
+        const HOSTILE: &str = "'; DROP TABLE users; --";
+        const ESCAPED: &str = "'''; DROP TABLE users; --'";
+
+        #[rstest]
+        #[case("columns_query", PostgresAdapter::columns_query(HOSTILE, "t"))]
+        #[case(
+            "columns_query_table",
+            PostgresAdapter::columns_query("public", HOSTILE)
+        )]
+        #[case("indexes_query", PostgresAdapter::indexes_query(HOSTILE, "t"))]
+        #[case(
+            "foreign_keys_query",
+            PostgresAdapter::foreign_keys_query(HOSTILE, "t")
+        )]
+        #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
+        #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
+        fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
+            assert!(
+                sql.contains(ESCAPED),
+                "Hostile input must be quote_literal-escaped in: {sql}"
+            );
+        }
+    }
+
+    mod write_command_tag_parsing {
+        use super::*;
+
+        #[test]
+        fn update_zero_rows_returns_zero() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 0"), Some(0));
+        }
+
+        #[test]
+        fn delete_large_number_returns_correct_value() {
+            assert_eq!(
+                PostgresAdapter::parse_affected_rows("DELETE 1000000"),
+                Some(1000000)
+            );
+        }
+
+        #[test]
+        fn invalid_format_returns_none() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
+        }
+    }
+
+    mod execute_adhoc_guard {
+        use super::*;
+        use crate::app::ports::QueryExecutor;
+
+        #[tokio::test]
+        async fn delete_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "DELETE FROM users WHERE id = 1")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn update_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "UPDATE users SET name = 'x'")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
             );
         }
     }
