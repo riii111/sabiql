@@ -677,10 +677,8 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            // stale metadata with 3 tables
             state.cache.metadata = Some(make_metadata(3));
 
-            // fetch_metadata succeeded (20 tables), but signatures fetch failed
             let effects = reduce_er(
                 &mut state,
                 &Action::SmartErRefreshFailed {
@@ -692,7 +690,6 @@ mod tests {
             )
             .unwrap();
 
-            // new_metadata must be applied so fallback prefetches the full 20-table set
             assert_eq!(state.cache.metadata.as_ref().unwrap().tables.len(), 20);
             assert!(
                 effects
