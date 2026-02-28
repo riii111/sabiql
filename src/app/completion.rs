@@ -414,14 +414,14 @@ impl CompletionEngine {
     }
 
     fn extract_current_token(&self, before_cursor: &str) -> String {
-        before_cursor
-            .chars()
+        let start = before_cursor
+            .char_indices()
             .rev()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect()
+            .take_while(|(_, c)| c.is_alphanumeric() || *c == '_')
+            .last()
+            .map(|(i, _)| i)
+            .unwrap_or(before_cursor.len());
+        before_cursor[start..].to_string()
     }
 
     /// Check if cursor is after "schema." pattern
