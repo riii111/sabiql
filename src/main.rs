@@ -36,7 +36,11 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
+    #[cfg(feature = "self-update")]
     /// Update sabiql to the latest compatible version
+    Update,
+    #[cfg(not(feature = "self-update"))]
+    /// Self-update is disabled in this build. Run: brew upgrade sabiql
     Update,
 }
 
@@ -47,7 +51,18 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     if let Some(Command::Update) = args.command {
-        return run_update();
+        #[cfg(feature = "self-update")]
+        {
+            return run_update();
+        }
+        #[cfg(not(feature = "self-update"))]
+        {
+            println!(
+                "Self-update is not available in this build.\n\
+                 To upgrade, run: brew upgrade sabiql"
+            );
+            return Ok(());
+        }
     }
 
     let project_root = find_project_root()?;
@@ -188,6 +203,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "self-update")]
 fn run_update() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     println!("Current version: v{}", current);
@@ -224,7 +240,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "self-update")]
     fn update_subcommand_is_recognized() {
+        let args = Args::parse_from(["sabiql", "update"]);
+        assert!(matches!(args.command, Some(Command::Update)));
+    }
+
+    #[test]
+    #[cfg(not(feature = "self-update"))]
+    fn update_subcommand_available_but_self_update_disabled() {
         let args = Args::parse_from(["sabiql", "update"]);
         assert!(matches!(args.command, Some(Command::Update)));
     }
