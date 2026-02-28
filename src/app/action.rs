@@ -21,6 +21,13 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+pub struct TableTarget {
+    pub schema: String,
+    pub table: String,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
@@ -150,11 +157,7 @@ pub enum Action {
     MetadataFailed(String),
 
     // Table detail loading
-    LoadTableDetail {
-        schema: String,
-        table: String,
-        generation: u64,
-    },
+    LoadTableDetail(TableTarget),
     TableDetailLoaded(Box<Table>, u64),
     TableDetailFailed(String, u64),
 
@@ -234,11 +237,7 @@ pub enum Action {
     CompletionPrev,
 
     // Query execution
-    ExecutePreview {
-        schema: String,
-        table: String,
-        generation: u64,
-    },
+    ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
     ExecuteWrite(String),
     QueryCompleted {

@@ -11,7 +11,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, TableTarget};
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
@@ -102,11 +102,13 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             generation: current_gen,
                         });
                     }
-                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview {
-                        schema,
-                        table: table_name,
-                        generation: current_gen,
-                    }]));
+                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
+                        TableTarget {
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                        },
+                    )]));
                 }
             } else if state.ui.input_mode == InputMode::Normal {
                 // Open error modal if connection error exists (from any pane)
@@ -140,11 +142,13 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
                             generation: current_gen,
                         });
                     }
-                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview {
-                        schema,
-                        table: table_name,
-                        generation: current_gen,
-                    }]));
+                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
+                        TableTarget {
+                            schema,
+                            table: table_name,
+                            generation: current_gen,
+                        },
+                    )]));
                 }
             } else if state.ui.input_mode == InputMode::CommandPalette {
                 use crate::app::palette::palette_action_for_index;
