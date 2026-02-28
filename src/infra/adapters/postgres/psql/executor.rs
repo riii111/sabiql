@@ -362,5 +362,60 @@ mod tests {
             let out = "SELECT 1\n";
             assert_eq!(PostgresAdapter::parse_affected_rows(out), None);
         }
+
+        #[test]
+        fn update_zero_rows_returns_zero() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 0"), Some(0));
+        }
+
+        #[test]
+        fn delete_large_number_returns_correct_value() {
+            assert_eq!(
+                PostgresAdapter::parse_affected_rows("DELETE 1000000"),
+                Some(1000000)
+            );
+        }
+
+        #[test]
+        fn invalid_format_returns_none() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
+        }
+    }
+
+    mod execute_adhoc_guard {
+        use crate::app::ports::{MetadataError, QueryExecutor};
+        use crate::infra::adapters::postgres::PostgresAdapter;
+
+        #[tokio::test]
+        async fn delete_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "DELETE FROM users WHERE id = 1")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn update_statement_is_rejected_before_psql_spawn() {
+            let adapter = PostgresAdapter::new();
+            let result = adapter
+                .execute_adhoc("postgres://unused", "UPDATE users SET name = 'x'")
+                .await;
+
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert!(
+                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
+                "Expected SELECT-only error, got: {err:?}"
+            );
+        }
     }
 }

@@ -50,6 +50,56 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
             continue;
         }
 
+        // Skip double-quoted identifiers ("column", "update", etc.)
+        if c == '"' {
+            i += 1;
+            while i < len {
+                if chars[i].1 == '"' {
+                    if i + 1 < len && chars[i + 1].1 == '"' {
+                        i += 2; // escaped "" inside identifier
+                    } else {
+                        i += 1; // closing quote
+                        break;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        // Skip dollar-quoted strings ($$...$$, $tag$...$tag$)
+        if c == '$' {
+            let tag_start = byte_pos;
+            let mut j = i + 1;
+            while j < len && (chars[j].1.is_alphanumeric() || chars[j].1 == '_') {
+                j += 1;
+            }
+            if j < len && chars[j].1 == '$' {
+                let tag = &lower[tag_start..=chars[j].0];
+                j += 1;
+                while j + tag.len() <= len {
+                    let candidate_start = chars[j].0;
+                    if chars[j].1 == '$' {
+                        let candidate_end = candidate_start + tag.len();
+                        if candidate_end <= lower.len()
+                            && &lower[candidate_start..candidate_end] == tag
+                        {
+                            let mut k = j;
+                            while k < len && chars[k].0 < candidate_end {
+                                k += 1;
+                            }
+                            j = k;
+                            break;
+                        }
+                    }
+                    j += 1;
+                }
+                i = j;
+                continue;
+            }
+        }
+
         if c == '(' {
             depth += 1;
         } else if c == ')' {
@@ -65,15 +115,16 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
             break;
         }
 
-        if depth == 0 && is_word_start(&chars, i) {
+        if is_word_start(&chars, i) {
             let rest = &lower[byte_pos..];
-            if is_keyword(rest, "select") {
+            if depth == 0 && is_keyword(rest, "select") {
                 found_select = true;
             }
             // SELECT INTO creates a table, reject it
-            if is_keyword(rest, "into") && found_select {
+            if depth == 0 && is_keyword(rest, "into") && found_select {
                 return false;
             }
+            // Reject DML/DDL at any depth (including inside CTEs)
             if is_keyword(rest, "insert")
                 || is_keyword(rest, "update")
                 || is_keyword(rest, "delete")
@@ -192,6 +243,18 @@ mod tests {
         // CREATE TABLE AS SELECT (rejected)
         #[case("CREATE TABLE t AS SELECT * FROM users", false)]
         #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
+        // Writable CTE: DML inside CTE body (rejected)
+        #[case(
+            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            false
+        )]
+        #[case("WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x", false)]
+        // DML keyword inside double-quoted identifier (allowed — not real DML)
+        #[case("SELECT \"update\" FROM t", true)]
+        #[case("WITH x AS (SELECT 1 AS \"delete\") SELECT * FROM x", true)]
+        // DML keyword inside dollar-quoted string (allowed — not real DML)
+        #[case("SELECT $$update$$ AS label", true)]
+        #[case("SELECT $tag$delete from here$tag$ AS s", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }

@@ -333,4 +333,72 @@ mod tests {
             assert!(sql.contains("c.relname = 'users'"));
         }
     }
+
+    mod preview_query_edge_cases {
+        use super::*;
+
+        #[test]
+        fn schema_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query("my\"schema", "users", &[], 100, 0);
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"my\"\"schema\".\"users\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn table_name_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query("public", "my\"table", &[], 100, 0);
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"my\"\"table\" LIMIT 100 OFFSET 0"
+            );
+        }
+
+        #[test]
+        fn order_by_column_with_double_quote_is_escaped() {
+            let sql = PostgresAdapter::build_preview_query(
+                "public",
+                "users",
+                &["my\"col".to_string()],
+                100,
+                0,
+            );
+
+            assert_eq!(
+                sql,
+                "SELECT * FROM \"public\".\"users\" ORDER BY \"my\"\"col\" LIMIT 100 OFFSET 0"
+            );
+        }
+    }
+
+    mod metadata_query_injection {
+        use super::*;
+        use rstest::rstest;
+
+        const HOSTILE: &str = "'; DROP TABLE users; --";
+        const ESCAPED: &str = "'''; DROP TABLE users; --'";
+
+        #[rstest]
+        #[case("columns_query", PostgresAdapter::columns_query(HOSTILE, "t"))]
+        #[case(
+            "columns_query_table",
+            PostgresAdapter::columns_query("public", HOSTILE)
+        )]
+        #[case("indexes_query", PostgresAdapter::indexes_query(HOSTILE, "t"))]
+        #[case(
+            "foreign_keys_query",
+            PostgresAdapter::foreign_keys_query(HOSTILE, "t")
+        )]
+        #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
+        #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
+        fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
+            assert!(
+                sql.contains(ESCAPED),
+                "Hostile input must be quote_literal-escaped in: {sql}"
+            );
+        }
+    }
 }

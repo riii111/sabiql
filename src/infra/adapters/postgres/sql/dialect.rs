@@ -132,6 +132,82 @@ mod tests {
         }
     }
 
+    mod sql_dialect_update_edge_cases {
+        use super::*;
+
+        #[test]
+        fn null_value_generates_unquoted_null() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "NULL",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = NULL\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn empty_string_value_generates_empty_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "name",
+                "",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"name\" = ''\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "my\"col",
+                "val",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"my\"\"col\" = 'val'\nWHERE \"id\" = '1';"
+            );
+        }
+
+        #[test]
+        fn backslash_in_value_is_preserved_as_literal() {
+            let adapter = PostgresAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                "public",
+                "users",
+                "path",
+                "C:\\Users\\test",
+                &[("id".into(), "1".into())],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"public\".\"users\"\nSET \"path\" = 'C:\\Users\\test'\nWHERE \"id\" = '1';"
+            );
+        }
+    }
+
     mod sql_dialect_bulk_delete {
         use super::*;
 
@@ -208,6 +284,45 @@ mod tests {
                 sql,
                 "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('O''Reilly');"
             );
+        }
+
+        #[test]
+        fn empty_string_pk_value_returns_empty_literal() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("id".to_string(), String::new())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(sql, "DELETE FROM \"public\".\"t\"\nWHERE \"id\" IN ('');");
+        }
+
+        #[test]
+        fn column_name_with_double_quote_is_escaped() {
+            let adapter = PostgresAdapter::new();
+            let rows = vec![vec![("my\"pk".to_string(), "1".to_string())]];
+
+            let sql = adapter.build_bulk_delete_sql("public", "t", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"public\".\"t\"\nWHERE \"my\"\"pk\" IN ('1');"
+            );
+        }
+    }
+
+    mod sql_literal_or_null_tests {
+        use super::super::sql_literal_or_null;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("NULL", "NULL")]
+        #[case("null", "'null'")]
+        #[case("", "''")]
+        #[case("hello", "'hello'")]
+        #[case("it's", "'it''s'")]
+        #[case("NULL ", "'NULL '")]
+        fn value_expr_returns_expected(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(sql_literal_or_null(input), expected);
         }
     }
 }

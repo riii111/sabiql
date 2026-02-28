@@ -32,6 +32,10 @@ run = "cargo test -q"
 description = "Run specific test with output (e.g., mise run test:debug test_name)"
 run = "cargo test $1 -- --nocapture"
 
+[tasks."test:ignored"]
+description = "Run #[ignore] integration tests (requires PostgreSQL)"
+run = "cargo test -- --ignored"
+
 [tasks.run]
 description = "Run application"
 run = "cargo run"
