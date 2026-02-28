@@ -226,6 +226,7 @@ pub mod idx {
         pub const EDIT: usize = 3;
         pub const DELETE: usize = 4;
         pub const CLOSE: usize = 5;
+        pub const QUIT: usize = 6;
     }
 
     pub mod inspector_ddl {
@@ -428,6 +429,7 @@ mod tests {
         assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
+        assert!(idx::connection_selector::QUIT < CONNECTION_SELECTOR_ROWS.len());
     }
 
     #[test]
