@@ -842,7 +842,7 @@ impl EffectRunner {
                 if let Some(entry) = state.service_entries.get(service_index) {
                     let id = entry.connection_id();
                     let dsn = entry.to_dsn();
-                    let name = entry.service_name.clone();
+                    let name = entry.display_name().to_owned();
                     self.action_tx
                         .send(Action::SwitchConnection { id, dsn, name })
                         .await
