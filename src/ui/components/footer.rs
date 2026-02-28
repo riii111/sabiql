@@ -201,7 +201,6 @@ impl Footer {
             InputMode::Help => vec![
                 HELP_ROWS[idx::help::SCROLL].as_hint(),
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
-                HELP_ROWS[idx::help::QUIT].as_hint(),
             ],
             InputMode::SqlModal => vec![
                 SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),

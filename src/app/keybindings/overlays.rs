@@ -105,17 +105,6 @@ pub const HELP_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('?')), KeyCombo::plain(Key::Esc)],
         }],
     },
-    // idx 2: QUIT
-    ModeRow {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit",
-        bindings: &[ExecBinding {
-            action: Action::Quit,
-            combos: &[KeyCombo::plain(Key::Char('q'))],
-        }],
-    },
 ];
 
 // =============================================================================

@@ -19,7 +19,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │
-│           ╰ Esc to close  q to quit ─────────────────────────────╯           │
+│           ╰ Esc to close ────────────────────────────────────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

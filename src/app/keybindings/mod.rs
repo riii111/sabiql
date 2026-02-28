@@ -195,7 +195,6 @@ pub mod idx {
     pub mod help {
         pub const SCROLL: usize = 0;
         pub const CLOSE: usize = 1;
-        pub const QUIT: usize = 2;
     }
 
     pub mod result_active {
@@ -392,7 +391,6 @@ mod tests {
         // HELP_ROWS
         assert!(idx::help::SCROLL < HELP_ROWS.len());
         assert!(idx::help::CLOSE < HELP_ROWS.len());
-        assert!(idx::help::QUIT < HELP_ROWS.len());
 
         // RESULT_ACTIVE_KEYS
         assert!(idx::result_active::ENTER_DEEPEN < RESULT_ACTIVE_KEYS.len());

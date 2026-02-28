@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │  j / ↓               Move down / scroll             ▼│           │
 │           │  k / ↑               Move up / scroll        row   0%│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
-j/k / ↑↓:Scroll  ?/Esc:Close  q:Quit
+j/k / ↑↓:Scroll  ?/Esc:Close
