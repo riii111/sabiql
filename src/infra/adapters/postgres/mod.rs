@@ -111,10 +111,17 @@ impl QueryExecutor for PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
-        let order_columns = self
-            .fetch_preview_order_columns(dsn, schema, table)
-            .await
-            .unwrap_or_default();
+        // On failure, falls back to unordered preview (rows may shift after edits).
+        let order_columns = match self.fetch_preview_order_columns(dsn, schema, table).await {
+            Ok(cols) => cols,
+            Err(e) => {
+                eprintln!(
+                    "warn: failed to fetch PK columns for {}.{}: {}",
+                    schema, table, e
+                );
+                Vec::new()
+            }
+        };
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
         self.execute_query_raw(dsn, &query, QuerySource::Preview)
             .await
