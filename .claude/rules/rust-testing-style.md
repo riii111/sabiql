@@ -104,6 +104,63 @@ fn register_with_valid_input_returns_registered_user() {
 }
 ```
 
+## rstest Cohesion Rules
+
+Before adding cases to an existing `#[rstest]` function, verify all cases belong to the same **behavior category**.
+
+- If multiple categories are mixed, split by category:
+  - Examples: by `ErrorKind` / valid-invalid / key role
+- vim/arrow alias pairs belong in the **same** function (do not split them)
+- **Guideline**: if a function exceeds 8 cases, re-evaluate whether it needs splitting
+
+```rust
+// ✅ Each function tests a single behavior category
+#[rstest]
+#[case("psql: command not found")]
+#[case("not found: mysql")]
+fn classify_stderr_as_cli_not_found(#[case] stderr: &str) { ... }
+
+#[rstest]
+#[case("Connection refused")]
+#[case("Some random error")]
+#[case("")]
+fn classify_stderr_as_unknown_fallback(#[case] stderr: &str) { ... }
+
+// ✅ vim/arrow aliases stay together
+#[rstest]
+#[case(Key::Up, Action::ScrollUp)]
+#[case(Key::Char('k'), Action::ScrollUp)]
+#[case(Key::Down, Action::ScrollDown)]
+#[case(Key::Char('j'), Action::ScrollDown)]
+fn scroll_keys(#[case] code: Key, #[case] expected: Action) { ... }
+```
+
+## Test mod Structure Rules
+
+- When `#[test]` functions in a single file exceed **20**, group them into `mod` blocks
+- `mod` names should be nouns describing the behavior domain (e.g., `connection_error`, `result_pane`)
+- Flat test lists make it unclear "where to look for what"
+
+```rust
+// ✅ grouped by behavior domain
+mod connection_flow { ... }
+mod overlays { ... }
+mod result_pane { ... }
+```
+
+## Fixture Extraction Rules
+
+- If the same struct literal appears in **2 or more** tests, extract it as a helper function
+- If an inline struct exceeds **15 lines**, consider extracting it as a fixture
+- If the same helper function is defined in **2 sub-mods**, move it to the parent `mod tests` scope
+
+```rust
+// ✅ extracted to parent mod tests scope
+fn create_test_profile(name: &str) -> ConnectionProfile { ... }
+fn minimal_users_table() -> Table { ... }
+fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table { ... }
+```
+
 ## Summary
 
 | Test Type | Style |
@@ -112,3 +169,5 @@ fn register_with_valid_input_returns_registered_user() {
 | Boundary values / Patterns | `rstest` + `#[case]` |
 | Feature groups | Nested with `mod` |
 | Integration / E2E | `tests/` directory |
+| rstest with mixed categories | Split by behavior category |
+| Repeated struct literals | Extract as helper function |
