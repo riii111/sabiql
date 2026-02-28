@@ -445,12 +445,17 @@ pub fn reduce_connection(
             state.connections.retain(|c| &c.id != id);
             state.connection_caches.remove(id);
 
-            let len = state.connections.len();
-            if state.ui.connection_list_selected >= len && len > 0 {
-                state.ui.set_connection_list_selection(Some(len - 1));
+            state.connection_list_items = crate::app::connection_list::build_connection_list(
+                state.connections.len(),
+                state.service_entries.len(),
+            );
+
+            let list_len = state.connection_list_items.len();
+            if state.ui.connection_list_selected >= list_len && list_len > 0 {
+                state.ui.set_connection_list_selection(Some(list_len - 1));
             }
 
-            if state.connections.is_empty() {
+            if state.connections.is_empty() && state.service_entries.is_empty() {
                 state.connection_setup.reset();
                 state.connection_setup.is_first_run = false;
                 state.ui.input_mode = InputMode::ConnectionSetup;
@@ -837,6 +842,7 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
 
         #[test]
         fn removes_connection_from_list() {
@@ -884,7 +890,8 @@ mod tests {
             let profile2 = create_profile("Second");
             let id_to_delete = profile2.id.clone();
             state.connections = vec![profile1, profile2];
-            state.ui.connection_list_selected = 1; // Select last item
+            state.connection_list_items = build_connection_list(2, 0);
+            state.ui.connection_list_selected = 1;
 
             reduce_connection(
                 &mut state,
@@ -901,6 +908,7 @@ mod tests {
             let profile = create_profile("Only");
             let profile_id = profile.id.clone();
             state.connections = vec![profile];
+            state.connection_list_items = build_connection_list(1, 0);
             state.ui.input_mode = InputMode::Normal;
 
             reduce_connection(
@@ -911,6 +919,53 @@ mod tests {
 
             assert!(state.connections.is_empty());
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn rebuilds_connection_list_items_after_delete() {
+            let mut state = AppState::new("test".to_string());
+            let profile1 = create_profile("First");
+            let profile2 = create_profile("Second");
+            let id_to_delete = profile1.id.clone();
+            state.connections = vec![profile1, profile2];
+            state.connection_list_items = build_connection_list(2, 0);
+
+            reduce_connection(
+                &mut state,
+                &Action::ConnectionDeleted(id_to_delete),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_list_items, build_connection_list(1, 0));
+        }
+
+        #[test]
+        fn stays_in_selector_when_services_remain_after_last_profile_deleted() {
+            use crate::domain::connection::ServiceEntry;
+
+            let mut state = AppState::new("test".to_string());
+            let profile = create_profile("Only");
+            let profile_id = profile.id.clone();
+            state.connections = vec![profile];
+            state.service_entries = vec![ServiceEntry {
+                service_name: "mydb".to_string(),
+                host: None,
+                dbname: None,
+                port: None,
+                user: None,
+            }];
+            state.connection_list_items = build_connection_list(1, 1);
+            state.ui.input_mode = InputMode::Normal;
+
+            reduce_connection(
+                &mut state,
+                &Action::ConnectionDeleted(profile_id),
+                Instant::now(),
+            );
+
+            assert!(state.connections.is_empty());
+            assert_ne!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.connection_list_items, build_connection_list(0, 1));
         }
     }
 
