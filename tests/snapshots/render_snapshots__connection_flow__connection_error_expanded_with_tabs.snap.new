@@ -1,5 +1,6 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 445
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -8,15 +9,15 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
-│           │✗ Connection timed out                                │           │
+│           │✗ Connection failed                                   │           │
 │           │                                                      │           │
-│           │Hint: Check network connectivity                      │           │
+│           │Hint: See details for more information                │           │
 │           │                                                      │           │
 │           │▼ Details                                             │           │
-│           │psql: error: connection to server at "192.168.1.100", │───────────┘
-│           │port 5432 failed: timeout expired                     │───────────┐
-│           │                                                      │           │
-│           │                                                      │           │
+│           │psql: error: connection to server at "localhost"      │───────────┘
+│           │(127.0.0.1), port 5433 failed: Connection refused     │───────────┐
+│           │    Is the server running on that host and accepting  │           │
+│           │TCP/IP connections?                                   │           │
 │           │                                                      │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │

@@ -77,7 +77,7 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
-    // idx 0: EDIT / RETRY (context-dependent)
+    // idx 0: EDIT
     ModeRow {
         key_short: "e",
         key: "e",
@@ -86,17 +86,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         bindings: &[ExecBinding {
             action: Action::ReenterConnectionSetup,
             combos: &[KeyCombo::plain(Key::Char('e'))],
-        }],
-    },
-    // idx 7: RETRY (for service connections)
-    ModeRow {
-        key_short: "r",
-        key: "r",
-        desc_short: "Retry",
-        description: "Retry service connection",
-        bindings: &[ExecBinding {
-            action: Action::RetryServiceConnection,
-            combos: &[KeyCombo::plain(Key::Char('r'))],
         }],
     },
     // idx 1: SWITCH
@@ -169,6 +158,17 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         bindings: &[ExecBinding {
             action: Action::Quit,
             combos: &[KeyCombo::plain(Key::Char('q'))],
+        }],
+    },
+    // idx 7: RETRY (for service connections)
+    ModeRow {
+        key_short: "r",
+        key: "r",
+        desc_short: "Retry",
+        description: "Retry service connection",
+        bindings: &[ExecBinding {
+            action: Action::RetryServiceConnection,
+            combos: &[KeyCombo::plain(Key::Char('r'))],
         }],
     },
 ];

@@ -1,5 +1,6 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 428
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
