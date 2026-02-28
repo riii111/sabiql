@@ -1,4 +1,4 @@
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use tokio::io::AsyncReadExt;
@@ -10,21 +10,35 @@ use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
+/// Raw output from a psql invocation.
+struct PsqlOutput {
+    status: ExitStatus,
+    stdout: String,
+    stderr: String,
+}
+
 impl PostgresAdapter {
-    pub(in crate::infra::adapters::postgres) async fn execute_query(
+    /// Spawn psql with the given DSN, extra flags, and query, returning the
+    /// raw stdout/stderr. All three `execute_*` methods delegate here.
+    async fn run_psql(
         &self,
         dsn: &str,
+        extra_args: &[&str],
         query: &str,
-    ) -> Result<String, MetadataError> {
-        let mut child = Command::new("psql")
-            .arg(dsn)
+    ) -> Result<PsqlOutput, MetadataError> {
+        let mut cmd = Command::new("psql");
+        cmd.arg(dsn)
             .arg("-X") // Ignore .psqlrc to avoid unexpected output
             .arg("-v")
-            .arg("ON_ERROR_STOP=1") // Exit with non-zero on SQL errors
-            .arg("-t") // Tuples only
-            .arg("-A") // Unaligned output
-            .arg("-c")
-            .arg(query)
+            .arg("ON_ERROR_STOP=1"); // Exit with non-zero on SQL errors
+
+        for arg in extra_args {
+            cmd.arg(arg);
+        }
+
+        cmd.arg("-c").arg(query);
+
+        let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true) // Ensure child process is killed on timeout/drop
@@ -64,12 +78,27 @@ impl PostgresAdapter {
         .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
+        Ok(PsqlOutput {
+            status,
+            stdout,
+            stderr,
+        })
+    }
 
-        if !status.success() {
-            return Err(MetadataError::QueryFailed(stderr));
+    pub(in crate::infra::adapters::postgres) async fn execute_query(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<String, MetadataError> {
+        let output = self
+            .run_psql(dsn, &["-t", "-A"], query) // Tuples only, unaligned output
+            .await?;
+
+        if !output.status.success() {
+            return Err(MetadataError::QueryFailed(output.stderr));
         }
 
-        Ok(stdout)
+        Ok(output.stdout)
     }
 
     /// Execute a raw SQL query and return structured results.
@@ -82,66 +111,23 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        // Execute with CSV output for robust parsing
-        let mut child = Command::new("psql")
-            .arg(dsn)
-            .arg("-X") // Ignore .psqlrc
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1")
-            .arg("--csv") // CSV output format (handles quoting/escaping)
-            .arg("-c")
-            .arg(query)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
-
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
-
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut out) = stdout_handle {
-                        out.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                },
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut err) = stderr_handle {
-                        err.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                }
-            );
-
-            let stdout = stdout_result?;
-            let stderr = stderr_result?;
-            let status = child.wait().await?;
-
-            Ok::<_, std::io::Error>((status, stdout, stderr))
-        })
-        .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+        let output = self
+            .run_psql(dsn, &["--csv"], query) // CSV output format
+            .await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
-        let (status, stdout, stderr) = result;
 
-        if !status.success() {
+        if !output.status.success() {
             return Ok(QueryResult::error(
                 query.to_string(),
-                stderr.trim().to_string(),
+                output.stderr.trim().to_string(),
                 elapsed,
                 source,
             ));
         }
 
         // Parse CSV output using csv crate for robust handling
-        if stdout.trim().is_empty() {
+        if output.stdout.trim().is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
                 Vec::new(),
@@ -153,7 +139,7 @@ impl PostgresAdapter {
 
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(true)
-            .from_reader(stdout.as_bytes());
+            .from_reader(output.stdout.as_bytes());
 
         // Get column headers
         let columns: Vec<String> = reader
@@ -188,58 +174,15 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, MetadataError> {
         let start = Instant::now();
 
-        let mut child = Command::new("psql")
-            .arg(dsn)
-            .arg("-X")
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1")
-            .arg("-c")
-            .arg(query)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
-
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
-
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut out) = stdout_handle {
-                        out.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                },
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut err) = stderr_handle {
-                        err.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                }
-            );
-
-            let stdout = stdout_result?;
-            let stderr = stderr_result?;
-            let status = child.wait().await?;
-
-            Ok::<_, std::io::Error>((status, stdout, stderr))
-        })
-        .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+        let output = self.run_psql(dsn, &[], query).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
-        let (status, stdout, stderr) = result;
 
-        if !status.success() {
-            return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
+        if !output.status.success() {
+            return Err(MetadataError::QueryFailed(output.stderr.trim().to_string()));
         }
 
-        let affected_rows = Self::parse_affected_rows(&stdout).ok_or_else(|| {
+        let affected_rows = Self::parse_affected_rows(&output.stdout).ok_or_else(|| {
             MetadataError::QueryFailed("Failed to parse affected row count".to_string())
         })?;
 
