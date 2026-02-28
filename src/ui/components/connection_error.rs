@@ -32,9 +32,9 @@ impl ConnectionError {
         };
 
         let hint_text = if details_expanded {
-            " Scroll: ↑/↓/j/k  Esc to close  q to quit "
+            " Scroll: ↑/↓/j/k  Esc to close "
         } else {
-            " Esc to close  q to quit "
+            " Esc to close "
         };
         let (_, inner) = render_modal(
             frame,
@@ -160,9 +160,7 @@ impl ConnectionError {
             key_chip("d"),
             Span::raw(" Details  "),
             key_chip("c"),
-            Span::raw(" Copy  "),
-            key_chip("q"),
-            Span::raw(" Quit"),
+            Span::raw(" Copy"),
         ]);
 
         if error_state.is_copied_visible_at(now) {

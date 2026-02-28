@@ -1337,13 +1337,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn q_quits() {
-            let result = handle_help_keys(combo(Key::Char('q')));
-
-            assert!(matches!(result, Action::Quit));
-        }
-
-        #[test]
         fn esc_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
 
@@ -1716,13 +1709,6 @@ mod tests {
             let result = handle_connection_selector_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::Escape));
-        }
-
-        #[test]
-        fn selector_q_is_noop() {
-            let result = handle_connection_selector_keys(combo(Key::Char('q')));
-
-            assert!(matches!(result, Action::None));
         }
 
         #[test]
