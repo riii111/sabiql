@@ -166,6 +166,7 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::action::ConnectionTarget;
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -1059,11 +1060,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted {
+                Action::ConnectionSaveCompleted(ConnectionTarget {
                     id: ConnectionId::new(),
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
-                },
+                }),
                 now,
             );
 
@@ -1340,11 +1341,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted {
+                Action::ConnectionSaveCompleted(ConnectionTarget {
                     id: ConnectionId::new(),
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
-                },
+                }),
                 now,
             );
 
@@ -1367,11 +1368,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::SwitchConnection {
+                Action::SwitchConnection(ConnectionTarget {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
-                },
+                }),
                 now,
             );
 
@@ -1417,11 +1418,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::SwitchConnection {
+                Action::SwitchConnection(ConnectionTarget {
                     id: conn_b.clone(),
                     dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
-                },
+                }),
                 now,
             );
 
