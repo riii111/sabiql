@@ -26,7 +26,7 @@ use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
     ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
-    QueryExecutor, Renderer,
+    QueryExecutor, Renderer, ServiceFileError, ServiceFileReader,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
@@ -40,6 +40,7 @@ pub struct EffectRunner {
     config_writer: Arc<dyn ConfigWriter>,
     er_log_writer: Arc<dyn ErLogWriter>,
     connection_store: Arc<dyn ConnectionStore>,
+    service_file_reader: Arc<dyn ServiceFileReader>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -52,6 +53,7 @@ pub struct EffectRunnerBuilder {
     config_writer: Option<Arc<dyn ConfigWriter>>,
     er_log_writer: Option<Arc<dyn ErLogWriter>>,
     connection_store: Option<Arc<dyn ConnectionStore>>,
+    service_file_reader: Option<Arc<dyn ServiceFileReader>>,
     metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
@@ -85,6 +87,10 @@ impl EffectRunnerBuilder {
         self.connection_store = Some(v);
         self
     }
+    pub fn service_file_reader(mut self, v: Arc<dyn ServiceFileReader>) -> Self {
+        self.service_file_reader = Some(v);
+        self
+    }
     pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
         self.metadata_cache = Some(v);
         self
@@ -105,6 +111,9 @@ impl EffectRunnerBuilder {
             config_writer: self.config_writer.expect("config_writer is required"),
             er_log_writer: self.er_log_writer.expect("er_log_writer is required"),
             connection_store: self.connection_store.expect("connection_store is required"),
+            service_file_reader: self
+                .service_file_reader
+                .expect("service_file_reader is required"),
             metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
             action_tx: self.action_tx.expect("action_tx is required"),
         }
@@ -121,6 +130,7 @@ impl EffectRunner {
             config_writer: None,
             er_log_writer: None,
             connection_store: None,
+            service_file_reader: None,
             metadata_cache: None,
             action_tx: None,
         }
@@ -286,16 +296,25 @@ impl EffectRunner {
 
             Effect::LoadConnections => {
                 let store = Arc::clone(&self.connection_store);
+                let reader = Arc::clone(&self.service_file_reader);
                 let tx = self.action_tx.clone();
 
-                tokio::task::spawn_blocking(move || match store.load_all() {
-                    Ok(profiles) => {
-                        tx.blocking_send(Action::ConnectionsLoaded(profiles)).ok();
-                    }
-                    Err(_) => {
-                        // On error, send empty list to avoid blocking UI
-                        tx.blocking_send(Action::ConnectionsLoaded(vec![])).ok();
-                    }
+                tokio::task::spawn_blocking(move || {
+                    let profiles = store.load_all().unwrap_or_default();
+                    let (services, service_file_path, service_load_warning) =
+                        match reader.read_services() {
+                            Ok((s, p)) => (s, Some(p), None),
+                            Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+                            Err(e) => (vec![], None, Some(e.to_string())),
+                        };
+
+                    tx.blocking_send(Action::ConnectionsLoaded {
+                        profiles,
+                        services,
+                        service_file_path,
+                        service_load_warning,
+                    })
+                    .ok();
                 });
                 Ok(())
             }
@@ -819,6 +838,19 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::SwitchToService { service_index } => {
+                if let Some(entry) = state.service_entries.get(service_index) {
+                    let id = entry.connection_id();
+                    let dsn = entry.to_dsn();
+                    let name = entry.service_name.clone();
+                    self.action_tx
+                        .send(Action::SwitchConnection { id, dsn, name })
+                        .await
+                        .ok();
+                }
+                Ok(())
+            }
+
             Effect::CopyToClipboard {
                 content,
                 on_success,
@@ -908,6 +940,21 @@ mod tests {
         }
     }
 
+    struct NoopServiceFileReader;
+    impl ServiceFileReader for NoopServiceFileReader {
+        fn read_services(
+            &self,
+        ) -> Result<
+            (
+                Vec<crate::domain::connection::ServiceEntry>,
+                std::path::PathBuf,
+            ),
+            crate::app::ports::ServiceFileError,
+        > {
+            Ok((vec![], std::path::PathBuf::new()))
+        }
+    }
+
     fn make_runner(
         metadata_provider: Arc<dyn MetadataProvider>,
         query_executor: Arc<dyn QueryExecutor>,
@@ -923,6 +970,7 @@ mod tests {
             .config_writer(Arc::new(NoopConfigWriter))
             .er_log_writer(Arc::new(NoopErLogWriter))
             .connection_store(connection_store)
+            .service_file_reader(Arc::new(NoopServiceFileReader))
             .metadata_cache(cache)
             .action_tx(action_tx)
             .build()
@@ -1325,8 +1373,8 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::ConnectionsLoaded(ref v) if v.is_empty()),
-                "expected ConnectionsLoaded([]), got {:?}",
+                matches!(action, Action::ConnectionsLoaded { ref profiles, .. } if profiles.is_empty()),
+                "expected ConnectionsLoaded with empty profiles, got {:?}",
                 action
             );
         }
@@ -1396,6 +1444,7 @@ mod tests {
                 .config_writer(Arc::new(NoopConfigWriter))
                 .er_log_writer(Arc::new(NoopErLogWriter))
                 .connection_store(Arc::new(MockConnectionStore::new()))
+                .service_file_reader(Arc::new(NoopServiceFileReader))
                 .metadata_cache(TtlCache::new(60))
                 .action_tx(action_tx)
                 .build()

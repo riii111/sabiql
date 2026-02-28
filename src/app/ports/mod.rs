@@ -8,6 +8,7 @@ pub mod graphviz;
 pub mod metadata;
 pub mod query_executor;
 pub mod renderer;
+pub mod service_file;
 pub mod sql_dialect;
 
 pub use config_writer::ConfigWriter;
@@ -20,4 +21,5 @@ pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::{MetadataError, MetadataProvider};
 pub use query_executor::QueryExecutor;
 pub use renderer::{RenderOutput, Renderer};
+pub use service_file::{ServiceFileError, ServiceFileReader};
 pub use sql_dialect::SqlDialect;

@@ -17,7 +17,9 @@ use super::sql_modal_context::SqlModalContext;
 use super::ui_state::UiState;
 use super::write_guardrails::WritePreview;
 use crate::domain::TableSummary;
-use crate::domain::connection::ConnectionProfile;
+use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+
+use super::connection_list::ConnectionListItem;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -42,6 +44,8 @@ pub struct AppState {
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
     pub connections: Vec<ConnectionProfile>,
+    pub service_entries: Vec<ServiceEntry>,
+    pub connection_list_items: Vec<ConnectionListItem>,
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
 }
@@ -111,6 +115,8 @@ impl AppState {
             pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
+            service_entries: Vec::new(),
+            connection_list_items: Vec::new(),
             ddl_generator,
             sql_dialect,
         }
@@ -193,6 +199,13 @@ impl AppState {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    pub fn rebuild_connection_list(&mut self) {
+        self.connection_list_items = super::connection_list::build_connection_list(
+            self.connections.len(),
+            self.service_entries.len(),
+        );
     }
 
     pub fn toggle_focus(&mut self) -> bool {

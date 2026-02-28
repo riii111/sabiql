@@ -160,6 +160,17 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('q'))],
         }],
     },
+    // idx 7: RETRY (for service connections)
+    ModeRow {
+        key_short: "r",
+        key: "r",
+        desc_short: "Retry",
+        description: "Retry service connection",
+        bindings: &[ExecBinding {
+            action: Action::RetryServiceConnection,
+            combos: &[KeyCombo::plain(Key::Char('r'))],
+        }],
+    },
 ];
 
 // =============================================================================

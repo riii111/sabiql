@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::connection_state::ConnectionState;
 use crate::domain::ConnectionId;
 
@@ -10,6 +12,7 @@ pub struct RuntimeState {
     pub active_connection_name: Option<String>,
     pub connection_state: ConnectionState,
     pub is_reloading: bool,
+    pub service_file_path: Option<PathBuf>,
 }
 
 impl RuntimeState {
@@ -22,7 +25,12 @@ impl RuntimeState {
             active_connection_name: None,
             connection_state: ConnectionState::default(),
             is_reloading: false,
+            service_file_path: None,
         }
+    }
+
+    pub fn is_service_connection(&self) -> bool {
+        self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 }
 

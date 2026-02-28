@@ -42,13 +42,11 @@ pub fn reduce_connection(
         }
 
         Action::SwitchConnection { id, dsn, name } => {
-            // Save current connection's state
             if let Some(current_id) = state.runtime.active_connection_id.clone() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
 
-            // Update active connection
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
@@ -141,11 +139,25 @@ pub fn reduce_connection(
             Some(vec![])
         }
         Action::ReenterConnectionSetup => {
+            if state.runtime.is_service_connection() {
+                return Some(vec![]);
+            }
             state.connection_error.clear();
             state.runtime.connection_state = ConnectionState::NotConnected;
             state.cache.state = MetadataState::NotLoaded;
             state.ui.input_mode = InputMode::ConnectionSetup;
             Some(vec![])
+        }
+        Action::RetryServiceConnection => {
+            if let Some(dsn) = state.runtime.dsn.clone() {
+                state.connection_error.clear();
+                state.runtime.connection_state = ConnectionState::Connecting;
+                state.cache.state = MetadataState::Loading;
+                state.ui.input_mode = InputMode::Normal;
+                Some(vec![Effect::FetchMetadata { dsn }])
+            } else {
+                Some(vec![])
+            }
         }
 
         // ===== Clipboard Paste =====
@@ -386,8 +398,13 @@ pub fn reduce_connection(
 
         // ===== Connection Deletion =====
         Action::RequestDeleteSelectedConnection => {
+            use crate::app::connection_list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
-            if let Some(connection) = state.connections.get(selected_idx) {
+            let profile_idx = match state.connection_list_items.get(selected_idx) {
+                Some(ConnectionListItem::Profile(i)) => *i,
+                _ => return Some(vec![]),
+            };
+            if let Some(connection) = state.connections.get(profile_idx) {
                 let id = connection.id.clone();
                 let name = connection.name.as_str().to_string();
                 let is_active = state.runtime.active_connection_id.as_ref() == Some(&id);
@@ -430,12 +447,14 @@ pub fn reduce_connection(
             state.connections.retain(|c| &c.id != id);
             state.connection_caches.remove(id);
 
-            let len = state.connections.len();
-            if state.ui.connection_list_selected >= len && len > 0 {
-                state.ui.set_connection_list_selection(Some(len - 1));
+            state.rebuild_connection_list();
+
+            let list_len = state.connection_list_items.len();
+            if state.ui.connection_list_selected >= list_len && list_len > 0 {
+                state.ui.set_connection_list_selection(Some(list_len - 1));
             }
 
-            if state.connections.is_empty() {
+            if state.connections.is_empty() && state.service_entries.is_empty() {
                 state.connection_setup.reset();
                 state.connection_setup.is_first_run = false;
                 state.ui.input_mode = InputMode::ConnectionSetup;
@@ -453,8 +472,13 @@ pub fn reduce_connection(
 
         // ===== Connection Edit =====
         Action::RequestEditSelectedConnection => {
+            use crate::app::connection_list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
-            if let Some(connection) = state.connections.get(selected_idx) {
+            let profile_idx = match state.connection_list_items.get(selected_idx) {
+                Some(ConnectionListItem::Profile(i)) => *i,
+                _ => return Some(vec![]),
+            };
+            if let Some(connection) = state.connections.get(profile_idx) {
                 let id = connection.id.clone();
                 Some(vec![Effect::LoadConnectionForEdit { id }])
             } else {
@@ -697,12 +721,19 @@ mod tests {
 
     mod request_delete_selected_connection {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
+
+        fn set_profiles(state: &mut AppState, profiles: Vec<ConnectionProfile>) {
+            let count = profiles.len();
+            state.connections = profiles;
+            state.connection_list_items = build_connection_list(count, 0);
+        }
 
         #[test]
         fn opens_confirm_dialog_with_correct_message() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
 
             reduce_connection(
@@ -727,7 +758,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
             state.runtime.active_connection_id = Some(profile_id);
 
@@ -755,9 +786,8 @@ mod tests {
         fn inactive_connection_shows_standard_message() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
-            // No active connection set
 
             reduce_connection(
                 &mut state,
@@ -792,7 +822,7 @@ mod tests {
         fn preserves_return_mode_from_connection_selector() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
-            state.connections = vec![profile];
+            set_profiles(&mut state, vec![profile]);
             state.ui.connection_list_selected = 0;
             state.ui.input_mode = InputMode::ConnectionSelector;
 
@@ -811,6 +841,7 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
+        use crate::app::connection_list::build_connection_list;
 
         #[test]
         fn removes_connection_from_list() {
@@ -858,7 +889,8 @@ mod tests {
             let profile2 = create_profile("Second");
             let id_to_delete = profile2.id.clone();
             state.connections = vec![profile1, profile2];
-            state.ui.connection_list_selected = 1; // Select last item
+            state.connection_list_items = build_connection_list(2, 0);
+            state.ui.connection_list_selected = 1;
 
             reduce_connection(
                 &mut state,
@@ -875,6 +907,7 @@ mod tests {
             let profile = create_profile("Only");
             let profile_id = profile.id.clone();
             state.connections = vec![profile];
+            state.connection_list_items = build_connection_list(1, 0);
             state.ui.input_mode = InputMode::Normal;
 
             reduce_connection(
@@ -885,6 +918,53 @@ mod tests {
 
             assert!(state.connections.is_empty());
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn rebuilds_connection_list_items_after_delete() {
+            let mut state = AppState::new("test".to_string());
+            let profile1 = create_profile("First");
+            let profile2 = create_profile("Second");
+            let id_to_delete = profile1.id.clone();
+            state.connections = vec![profile1, profile2];
+            state.connection_list_items = build_connection_list(2, 0);
+
+            reduce_connection(
+                &mut state,
+                &Action::ConnectionDeleted(id_to_delete),
+                Instant::now(),
+            );
+
+            assert_eq!(state.connection_list_items, build_connection_list(1, 0));
+        }
+
+        #[test]
+        fn stays_in_selector_when_services_remain_after_last_profile_deleted() {
+            use crate::domain::connection::ServiceEntry;
+
+            let mut state = AppState::new("test".to_string());
+            let profile = create_profile("Only");
+            let profile_id = profile.id.clone();
+            state.connections = vec![profile];
+            state.service_entries = vec![ServiceEntry {
+                service_name: "mydb".to_string(),
+                host: None,
+                dbname: None,
+                port: None,
+                user: None,
+            }];
+            state.connection_list_items = build_connection_list(1, 1);
+            state.ui.input_mode = InputMode::Normal;
+
+            reduce_connection(
+                &mut state,
+                &Action::ConnectionDeleted(profile_id),
+                Instant::now(),
+            );
+
+            assert!(state.connections.is_empty());
+            assert_ne!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.connection_list_items, build_connection_list(0, 1));
         }
     }
 
@@ -1042,6 +1122,32 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
             );
+        }
+    }
+
+    mod reenter_connection_setup {
+        use super::*;
+
+        #[test]
+        fn blocked_for_service_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("service=mydb".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+
+            reduce_connection(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+        }
+
+        #[test]
+        fn allowed_for_profile_connection() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+            state.ui.input_mode = InputMode::ConnectionError;
+
+            reduce_connection(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
         }
     }
 }

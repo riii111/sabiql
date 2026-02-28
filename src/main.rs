@@ -13,13 +13,15 @@ use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
-use sabiql::app::ports::{ConnectionStore, ConnectionStoreError};
+use sabiql::app::ports::{
+    ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
+};
 use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{
-    FileConfigWriter, FsErLogWriter, PostgresAdapter, TomlConnectionStore,
+    FileConfigWriter, FsErLogWriter, PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
 };
 use sabiql::infra::config::project_root::{find_project_root, get_project_name};
 use sabiql::infra::export::DotExporter;
@@ -75,6 +77,8 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
+    let service_file_reader: Arc<dyn ServiceFileReader> = Arc::new(PgServiceFileReader::new());
+
     let effect_runner = EffectRunner::builder()
         .metadata_provider(Arc::clone(&adapter) as _)
         .query_executor(Arc::clone(&adapter) as _)
@@ -83,6 +87,7 @@ async fn main() -> Result<()> {
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
         .connection_store(Arc::clone(&connection_store) as _)
+        .service_file_reader(Arc::clone(&service_file_reader))
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();
@@ -95,8 +100,14 @@ async fn main() -> Result<()> {
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
-            state.connection_setup.is_first_run = true;
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            load_service_entries(&mut state, &*service_file_reader);
+            if state.service_entries.is_empty() {
+                state.connection_setup.is_first_run = true;
+                state.ui.input_mode = InputMode::ConnectionSetup;
+            } else {
+                state.ui.input_mode = InputMode::ConnectionSelector;
+                state.ui.set_connection_list_selection(Some(0));
+            }
         }
         Ok(mut profiles) => {
             profiles.sort_by(|a, b| {
@@ -105,6 +116,8 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.connections = profiles;
+            load_service_entries(&mut state, &*service_file_reader);
+
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(0));
         }
@@ -199,6 +212,21 @@ async fn main() -> Result<()> {
 
     tui.exit()?;
     Ok(())
+}
+
+fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
+    match reader.read_services() {
+        Ok((services, path)) if !services.is_empty() => {
+            state.service_entries = services;
+            state.runtime.service_file_path = Some(path);
+        }
+        Ok(_) => {}
+        Err(ServiceFileError::NotFound(_)) => {}
+        Err(e) => {
+            state.messages.set_error(e.to_string());
+        }
+    }
+    state.rebuild_connection_list();
 }
 
 #[cfg(feature = "self-update")]

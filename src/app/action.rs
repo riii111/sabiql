@@ -5,7 +5,7 @@ use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
-use crate::domain::connection::ConnectionProfile;
+use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use std::collections::HashMap;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
@@ -83,6 +83,7 @@ pub enum Action {
     CopyConnectionError,
     ConnectionErrorCopied,
     ReenterConnectionSetup,
+    RetryServiceConnection,
 
     // Confirm Dialog
     OpenConfirmDialog,
@@ -129,7 +130,12 @@ pub enum Action {
     SetExplorerMode(ExplorerMode),
     ConnectionListSelectNext,
     ConnectionListSelectPrevious,
-    ConnectionsLoaded(Vec<ConnectionProfile>),
+    ConnectionsLoaded {
+        profiles: Vec<ConnectionProfile>,
+        services: Vec<ServiceEntry>,
+        service_file_path: Option<std::path::PathBuf>,
+        service_load_warning: Option<String>,
+    },
     ConfirmConnectionSelection,
 
     // Selection

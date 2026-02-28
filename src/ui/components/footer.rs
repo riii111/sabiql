@@ -138,17 +138,26 @@ impl Footer {
                 } else if state.ui.explorer_mode == ExplorerMode::Connections
                     && state.ui.focused_pane == FocusedPane::Explorer
                 {
-                    vec![
+                    let is_service_selected = crate::app::connection_list::is_service_selected(
+                        &state.connection_list_items,
+                        state.ui.connection_list_selected,
+                    );
+                    let mut list = vec![
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::CONNECT].as_hint(),
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::NEW].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::EDIT].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::DELETE].as_hint(),
+                    ];
+                    if !is_service_selected {
+                        list.push(CONNECTIONS_MODE_KEYS[idx::connections_mode::EDIT].as_hint());
+                        list.push(CONNECTIONS_MODE_KEYS[idx::connections_mode::DELETE].as_hint());
+                    }
+                    list.extend([
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::NAVIGATE].as_hint(),
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::HELP].as_hint(),
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::TABLES].as_hint(),
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::BACK].as_hint(),
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::QUIT].as_hint(),
-                    ]
+                    ]);
+                    list
                 } else {
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
@@ -230,14 +239,21 @@ impl Footer {
                 CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_PREV].as_hint(),
                 CONNECTION_SETUP_KEYS[idx::conn_setup::ESC_CANCEL].as_hint(),
             ],
-            InputMode::ConnectionError => vec![
-                CONNECTION_ERROR_ROWS[idx::conn_error::EDIT].as_hint(),
-                CONNECTION_ERROR_ROWS[idx::conn_error::SWITCH].as_hint(),
-                CONNECTION_ERROR_ROWS[idx::conn_error::DETAILS].as_hint(),
-                CONNECTION_ERROR_ROWS[idx::conn_error::COPY].as_hint(),
-                CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
-                CONNECTION_ERROR_ROWS[idx::conn_error::QUIT].as_hint(),
-            ],
+            InputMode::ConnectionError => {
+                let first = if state.runtime.is_service_connection() {
+                    CONNECTION_ERROR_ROWS[idx::conn_error::RETRY].as_hint()
+                } else {
+                    CONNECTION_ERROR_ROWS[idx::conn_error::EDIT].as_hint()
+                };
+                vec![
+                    first,
+                    CONNECTION_ERROR_ROWS[idx::conn_error::SWITCH].as_hint(),
+                    CONNECTION_ERROR_ROWS[idx::conn_error::DETAILS].as_hint(),
+                    CONNECTION_ERROR_ROWS[idx::conn_error::COPY].as_hint(),
+                    CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
+                    CONNECTION_ERROR_ROWS[idx::conn_error::QUIT].as_hint(),
+                ]
+            }
             InputMode::ConfirmDialog => vec![],
             InputMode::ErTablePicker => vec![
                 ER_PICKER_ROWS[idx::er_picker::ENTER_GENERATE].as_hint(),
@@ -247,14 +263,23 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
-            InputMode::ConnectionSelector => vec![
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint(),
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint(),
-                CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint(),
-            ],
+            InputMode::ConnectionSelector => {
+                let is_service_selected = crate::app::connection_list::is_service_selected(
+                    &state.connection_list_items,
+                    state.ui.connection_list_selected,
+                );
+                let mut list = vec![
+                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
+                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
+                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
+                ];
+                if !is_service_selected {
+                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
+                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
+                }
+                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
+                list
+            }
         }
     }
 

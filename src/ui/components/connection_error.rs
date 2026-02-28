@@ -56,9 +56,9 @@ impl ConnectionError {
         .split(inner);
 
         Self::render_summary(frame, chunks[0], error_info.kind.summary());
-        Self::render_hint(frame, chunks[2], error_info.kind.hint());
+        Self::render_hint(frame, chunks[2], state);
         Self::render_details_section(frame, chunks[4], error_state, details_expanded);
-        Self::render_actions(frame, chunks[6], error_state, now);
+        Self::render_actions(frame, chunks[6], state, now);
     }
 
     fn render_summary(frame: &mut Frame, area: Rect, summary: &str) {
@@ -74,11 +74,26 @@ impl ConnectionError {
         frame.render_widget(Paragraph::new(line), area);
     }
 
-    fn render_hint(frame: &mut Frame, area: Rect, hint: &str) {
-        let line = Line::from(vec![
+    fn render_hint(frame: &mut Frame, area: Rect, state: &AppState) {
+        let hint = state
+            .connection_error
+            .error_info
+            .as_ref()
+            .map(|e| e.kind.hint())
+            .unwrap_or("");
+        let mut spans = vec![
             Span::styled("Hint: ", Style::default().fg(Theme::TEXT_ACCENT)),
-            Span::styled(hint, Style::default().fg(Theme::TEXT_SECONDARY)),
-        ]);
+            Span::styled(hint.to_string(), Style::default().fg(Theme::TEXT_SECONDARY)),
+        ];
+        if state.runtime.is_service_connection()
+            && let Some(ref path) = state.runtime.service_file_path
+        {
+            spans.push(Span::styled(
+                format!("  (edit {})", path.display()),
+                Style::default().fg(Theme::TEXT_MUTED),
+            ));
+        }
+        let line = Line::from(spans);
         frame.render_widget(Paragraph::new(line), area);
     }
 
@@ -124,16 +139,22 @@ impl ConnectionError {
         }
     }
 
-    fn render_actions(
-        frame: &mut Frame,
-        area: Rect,
-        error_state: &crate::app::connection_error_state::ConnectionErrorState,
-        now: Instant,
-    ) {
-        let mut spans = vec![
-            Span::styled("Actions: ", Style::default().fg(Theme::TEXT_MUTED)),
-            key_chip("e"),
-            Span::raw(" Re-enter  "),
+    fn render_actions(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
+        let error_state = &state.connection_error;
+        let mut spans = vec![Span::styled(
+            "Actions: ",
+            Style::default().fg(Theme::TEXT_MUTED),
+        )];
+
+        if state.runtime.is_service_connection() {
+            spans.push(key_chip("r"));
+            spans.push(Span::raw(" Retry  "));
+        } else {
+            spans.push(key_chip("e"));
+            spans.push(Span::raw(" Re-enter  "));
+        }
+
+        spans.extend([
             key_chip("s"),
             Span::raw(" Switch  "),
             key_chip("d"),
@@ -142,7 +163,7 @@ impl ConnectionError {
             Span::raw(" Copy  "),
             key_chip("q"),
             Span::raw(" Quit"),
-        ];
+        ]);
 
         if error_state.is_copied_visible_at(now) {
             spans.push(Span::raw("   "));
