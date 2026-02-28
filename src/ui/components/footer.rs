@@ -240,7 +240,7 @@ impl Footer {
                 let r = CONNECTION_SELECTOR_ROWS;
                 use idx::connection_selector as cs;
                 let is_service_selected = crate::app::connection_list::is_service_selected(
-                    &state.connection_list_items,
+                    state.connection_list_items(),
                     state.ui.connection_list_selected,
                 );
                 let mut list = vec![

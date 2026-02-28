@@ -856,7 +856,7 @@ pub fn reduce_navigation(
         }
 
         Action::ConnectionListSelectNext => {
-            let len = state.connection_list_items.len();
+            let len = state.connection_list_items().len();
             let next = state.ui.connection_list_selected + 1;
             if next < len {
                 state.ui.set_connection_list_selection(Some(next));
@@ -883,16 +883,14 @@ pub fn reduce_navigation(
                     .to_lowercase()
                     .cmp(&b.display_name().to_lowercase())
             });
-            state.connections = sorted;
-            state.service_entries = services.clone();
+            state.set_connections_and_services(sorted, services.clone());
             state.runtime.service_file_path = service_file_path.clone();
-            state.rebuild_connection_list();
 
             if let Some(warning) = service_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
             }
 
-            let list_len = state.connection_list_items.len();
+            let list_len = state.connection_list_items().len();
             if list_len == 0 {
                 state.ui.set_connection_list_selection(Some(0));
             } else if state.ui.connection_list_selected >= list_len {
@@ -910,9 +908,9 @@ pub fn reduce_navigation(
             use crate::app::connection_list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
 
-            let effect = match state.connection_list_items.get(selected_idx) {
+            let effect = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => state
-                    .connections
+                    .connections()
                     .get(*i)
                     .filter(|c| state.runtime.active_connection_id.as_ref() != Some(&c.id))
                     .map(|_| Effect::SwitchConnection {
@@ -1074,12 +1072,11 @@ mod tests {
 
     mod connection_list_navigation {
         use super::*;
-        use crate::app::connection_list::build_connection_list;
 
         fn setup_profiles(state: &mut AppState, count: usize) {
             let names: Vec<String> = (1..=count).map(|i| format!("conn{}", i)).collect();
-            state.connections = names.iter().map(|n| create_test_profile(n)).collect();
-            state.connection_list_items = build_connection_list(count, 0);
+            let profiles = names.iter().map(|n| create_test_profile(n)).collect();
+            state.set_connections(profiles);
         }
 
         #[test]
@@ -1166,9 +1163,9 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connections[0].display_name(), "alpha");
-            assert_eq!(state.connections[1].display_name(), "Beta");
-            assert_eq!(state.connections[2].display_name(), "Zebra");
+            assert_eq!(state.connections()[0].display_name(), "alpha");
+            assert_eq!(state.connections()[1].display_name(), "Beta");
+            assert_eq!(state.connections()[2].display_name(), "Zebra");
         }
 
         #[test]
@@ -1230,7 +1227,6 @@ mod tests {
 
     mod confirm_connection_selection {
         use super::*;
-        use crate::app::connection_list::build_connection_list;
         use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
         fn create_test_profile_with_id(name: &str, id: ConnectionId) -> ConnectionProfile {
@@ -1246,25 +1242,16 @@ mod tests {
             }
         }
 
-        fn set_profiles(state: &mut AppState, profiles: Vec<ConnectionProfile>) {
-            let count = profiles.len();
-            state.connections = profiles;
-            state.connection_list_items = build_connection_list(count, 0);
-        }
-
         #[test]
         fn different_connection_dispatches_switch_effect() {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
             let other_id = ConnectionId::new();
 
-            set_profiles(
-                &mut state,
-                vec![
-                    create_test_profile_with_id("active", active_id.clone()),
-                    create_test_profile_with_id("other", other_id.clone()),
-                ],
-            );
+            state.set_connections(vec![
+                create_test_profile_with_id("active", active_id.clone()),
+                create_test_profile_with_id("other", other_id.clone()),
+            ]);
             state.runtime.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(1));
 
@@ -1285,10 +1272,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 
-            set_profiles(
-                &mut state,
-                vec![create_test_profile_with_id("active", active_id.clone())],
-            );
+            state.set_connections(vec![create_test_profile_with_id(
+                "active",
+                active_id.clone(),
+            )]);
             state.runtime.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(0));
 
@@ -1322,13 +1309,10 @@ mod tests {
             let active_id = ConnectionId::new();
             let other_id = ConnectionId::new();
 
-            set_profiles(
-                &mut state,
-                vec![
-                    create_test_profile_with_id("active", active_id.clone()),
-                    create_test_profile_with_id("other", other_id.clone()),
-                ],
-            );
+            state.set_connections(vec![
+                create_test_profile_with_id("active", active_id.clone()),
+                create_test_profile_with_id("other", other_id.clone()),
+            ]);
             state.runtime.active_connection_id = Some(active_id);
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(1));
@@ -1352,10 +1336,10 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 
-            set_profiles(
-                &mut state,
-                vec![create_test_profile_with_id("active", active_id.clone())],
-            );
+            state.set_connections(vec![create_test_profile_with_id(
+                "active",
+                active_id.clone(),
+            )]);
             state.runtime.active_connection_id = Some(active_id);
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(0));

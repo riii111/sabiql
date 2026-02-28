@@ -25,7 +25,7 @@ pub struct ConnectionSelector;
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
         let is_service_selected = crate::app::connection_list::is_service_selected(
-            &state.connection_list_items,
+            state.connection_list_items(),
             state.ui.connection_list_selected,
         );
         let hint = Self::build_hint_string(is_service_selected);
@@ -136,19 +136,19 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
     let content_width = area.width.saturating_sub(2) as usize;
     let source_label = "from pg_service.conf";
 
-    let items: Vec<ListItem> = if state.connection_list_items.is_empty() {
+    let items: Vec<ListItem> = if state.connection_list_items().is_empty() {
         vec![ListItem::new(" No connections")]
     } else {
         state
-            .connection_list_items
+            .connection_list_items()
             .iter()
             .map(|item| match item {
                 ConnectionListItem::Profile(i) => {
-                    let conn = &state.connections[*i];
+                    let conn = &state.connections()[*i];
                     render_profile_item(&conn.id, conn.display_name(), active_id)
                 }
                 ConnectionListItem::Service(i) => {
-                    let entry = &state.service_entries[*i];
+                    let entry = &state.service_entries()[*i];
                     render_service_item(
                         entry.display_name(),
                         entry.connection_id(),
@@ -174,8 +174,8 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
         .with_offset(state.ui.connection_list_scroll_offset);
     frame.render_stateful_widget(list, area, &mut list_state);
 
-    if !state.connection_list_items.is_empty() {
-        let total_items = state.connection_list_items.len();
+    if !state.connection_list_items().is_empty() {
+        let total_items = state.connection_list_items().len();
         let viewport_size = area.height as usize;
 
         if total_items > viewport_size {
