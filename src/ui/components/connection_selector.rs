@@ -14,11 +14,9 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let is_service_selected = matches!(
-            state
-                .connection_list_items
-                .get(state.ui.connection_list_selected),
-            Some(ConnectionListItem::Service(_))
+        let is_service_selected = crate::app::connection_list::is_service_selected(
+            &state.connection_list_items,
+            state.ui.connection_list_selected,
         );
         let hint = Self::build_hint_string(is_service_selected);
         let (_outer, inner) = render_modal(

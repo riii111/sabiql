@@ -955,20 +955,13 @@ pub fn reduce_navigation(
             let selected_idx = state.ui.connection_list_selected;
 
             let effect = match state.connection_list_items.get(selected_idx) {
-                Some(ConnectionListItem::Profile(i)) => {
-                    let connection_index = *i;
-                    if let Some(selected) = state.connections.get(connection_index) {
-                        let selected_id = selected.id.clone();
-                        let active_id = state.runtime.active_connection_id.clone();
-                        if active_id.as_ref() != Some(&selected_id) {
-                            Some(Effect::SwitchConnection { connection_index })
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }
+                Some(ConnectionListItem::Profile(i)) => state
+                    .connections
+                    .get(*i)
+                    .filter(|c| state.runtime.active_connection_id.as_ref() != Some(&c.id))
+                    .map(|_| Effect::SwitchConnection {
+                        connection_index: *i,
+                    }),
                 Some(ConnectionListItem::Service(i)) => {
                     Some(Effect::SwitchToService { service_index: *i })
                 }

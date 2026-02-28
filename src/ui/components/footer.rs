@@ -138,12 +138,9 @@ impl Footer {
                 } else if state.ui.explorer_mode == ExplorerMode::Connections
                     && state.ui.focused_pane == FocusedPane::Explorer
                 {
-                    use crate::app::connection_list::ConnectionListItem;
-                    let is_service_selected = matches!(
-                        state
-                            .connection_list_items
-                            .get(state.ui.connection_list_selected),
-                        Some(ConnectionListItem::Service(_))
+                    let is_service_selected = crate::app::connection_list::is_service_selected(
+                        &state.connection_list_items,
+                        state.ui.connection_list_selected,
                     );
                     let mut list = vec![
                         CONNECTIONS_MODE_KEYS[idx::connections_mode::CONNECT].as_hint(),
@@ -267,12 +264,9 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::ConnectionSelector => {
-                use crate::app::connection_list::ConnectionListItem;
-                let is_service_selected = matches!(
-                    state
-                        .connection_list_items
-                        .get(state.ui.connection_list_selected),
-                    Some(ConnectionListItem::Service(_))
+                let is_service_selected = crate::app::connection_list::is_service_selected(
+                    &state.connection_list_items,
+                    state.ui.connection_list_selected,
                 );
                 let mut list = vec![
                     CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),

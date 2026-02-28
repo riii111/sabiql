@@ -5,6 +5,10 @@ pub enum ConnectionListItem {
     Service(usize),
 }
 
+pub fn is_service_selected(items: &[ConnectionListItem], selected: usize) -> bool {
+    matches!(items.get(selected), Some(ConnectionListItem::Service(_)))
+}
+
 pub fn build_connection_list(
     profile_count: usize,
     service_count: usize,
