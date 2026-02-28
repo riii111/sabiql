@@ -21,6 +21,31 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+pub struct SmartErRefreshResult {
+    pub run_id: u64,
+    pub new_metadata: Box<DatabaseMetadata>,
+    pub stale_tables: Vec<String>,
+    pub added_tables: Vec<String>,
+    pub removed_tables: Vec<String>,
+    pub missing_in_cache: Vec<String>,
+    pub new_signatures: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmartErRefreshError {
+    pub run_id: u64,
+    pub error: String,
+    pub new_metadata: Option<Box<DatabaseMetadata>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ErDiagramInfo {
+    pub path: String,
+    pub table_count: usize,
+    pub total_tables: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct ConnectionsLoadedPayload {
     pub profiles: Vec<ConnectionProfile>,
     pub services: Vec<ServiceEntry>,
@@ -307,25 +332,9 @@ pub enum Action {
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
     ErGenerateFromCache,
-    SmartErRefreshCompleted {
-        run_id: u64,
-        new_metadata: Box<DatabaseMetadata>,
-        stale_tables: Vec<String>,
-        added_tables: Vec<String>,
-        removed_tables: Vec<String>,
-        missing_in_cache: Vec<String>,
-        new_signatures: HashMap<String, String>,
-    },
-    SmartErRefreshFailed {
-        run_id: u64,
-        error: String,
-        new_metadata: Option<Box<DatabaseMetadata>>,
-    },
-    ErDiagramOpened {
-        path: String,
-        table_count: usize,
-        total_tables: usize,
-    },
+    SmartErRefreshCompleted(SmartErRefreshResult),
+    SmartErRefreshFailed(SmartErRefreshError),
+    ErDiagramOpened(ErDiagramInfo),
     ErDiagramFailed(String),
 }
 

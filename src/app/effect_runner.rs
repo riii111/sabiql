@@ -19,7 +19,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
+use crate::app::action::{
+    Action, ConnectionTarget, ConnectionsLoadedPayload, SmartErRefreshError, SmartErRefreshResult,
+};
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
@@ -737,11 +739,11 @@ impl EffectRunner {
                     let new_metadata = match provider.fetch_metadata(&dsn).await {
                         Ok(m) => m,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed {
+                            tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                                 run_id,
                                 error: e.to_string(),
                                 new_metadata: None,
-                            })
+                            }))
                             .await
                             .ok();
                             return;
@@ -751,11 +753,11 @@ impl EffectRunner {
                     let new_sigs_vec = match provider.fetch_table_signatures(&dsn).await {
                         Ok(s) => s,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed {
+                            tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                                 run_id,
                                 error: e.to_string(),
                                 new_metadata: Some(Box::new(new_metadata)),
-                            })
+                            }))
                             .await
                             .ok();
                             return;
@@ -797,7 +799,7 @@ impl EffectRunner {
                         .map(|s| s.to_string())
                         .collect();
 
-                    tx.send(Action::SmartErRefreshCompleted {
+                    tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {
                         run_id,
                         new_metadata: Box::new(new_metadata),
                         stale_tables,
@@ -805,7 +807,7 @@ impl EffectRunner {
                         removed_tables,
                         missing_in_cache,
                         new_signatures,
-                    })
+                    }))
                     .await
                     .ok();
                 });
