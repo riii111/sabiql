@@ -1,3 +1,3 @@
-pub(super) mod ddl;
-pub(super) mod dialect;
-pub(super) mod query;
+pub(in crate::infra::adapters::postgres) mod ddl;
+pub(in crate::infra::adapters::postgres) mod dialect;
+pub(in crate::infra::adapters::postgres) mod query;

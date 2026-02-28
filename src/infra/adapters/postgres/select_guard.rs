@@ -2,7 +2,7 @@
 /// just check if query starts with SELECT/WITH. We need to find the first
 /// top-level SQL verb outside of parentheses, string literals, and comments.
 /// Also rejects multiple statements and SELECT INTO (which creates tables).
-pub(super) fn is_select_query(query: &str) -> bool {
+pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool {
     let lower = query.trim().to_lowercase();
     let chars: Vec<(usize, char)> = lower.char_indices().collect();
     let len = chars.len();
