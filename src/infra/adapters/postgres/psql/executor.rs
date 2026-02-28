@@ -192,6 +192,22 @@ impl PostgresAdapter {
         })
     }
 
+    pub(in crate::infra::adapters::postgres) async fn fetch_preview_order_columns(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<String>, MetadataError> {
+        let query = Self::preview_pk_columns_query(schema, table);
+        let raw = self.execute_query(dsn, &query).await?;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(vec![]);
+        }
+
+        serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))
+    }
+
     pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
         stdout.lines().rev().find_map(|line| {
             let trimmed = line.trim();
