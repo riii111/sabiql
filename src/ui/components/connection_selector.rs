@@ -42,6 +42,7 @@ impl ConnectionSelector {
             hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
         }
         hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::CLOSE].as_hint());
+        hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
 
         let hint_parts: Vec<String> = hints
             .iter()
@@ -50,6 +51,11 @@ impl ConnectionSelector {
         format!(" {} ", hint_parts.join("  "))
     }
 }
+
+/// Display width of the active/inactive prefix ("● " or "  ").
+/// Both are exactly 2 terminal columns; using a constant avoids
+/// byte-length vs display-width mismatches for the multibyte "●".
+const PREFIX_DISPLAY_WIDTH: usize = 2;
 
 /// Shared rendering logic for connection list (used by ConnectionSelector and Explorer).
 pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
@@ -85,15 +91,21 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                     let prefix = if is_active { "● " } else { "  " };
                     let label_col = content_width * 40 / 100;
                     let min_gap = 2;
-                    let max_name_len =
-                        content_width.saturating_sub(prefix.len() + min_gap + source_label.len());
-                    let name = if entry.service_name.len() > max_name_len {
-                        format!("{}…", &entry.service_name[..max_name_len.saturating_sub(1)])
+                    let max_name_len = content_width
+                        .saturating_sub(PREFIX_DISPLAY_WIDTH + min_gap + source_label.len());
+                    let name = if entry.service_name.chars().count() > max_name_len {
+                        let truncated: String = entry
+                            .service_name
+                            .chars()
+                            .take(max_name_len.saturating_sub(1))
+                            .collect();
+                        format!("{}…", truncated)
                     } else {
                         entry.service_name.clone()
                     };
+                    let name_display_width = PREFIX_DISPLAY_WIDTH + name.chars().count();
+                    let gap = label_col.saturating_sub(name_display_width).max(min_gap);
                     let name_part = format!("{}{}", prefix, name);
-                    let gap = label_col.saturating_sub(name_part.len()).max(min_gap);
                     let name_style = if is_active {
                         Style::default().fg(Theme::ACTIVE_INDICATOR)
                     } else {

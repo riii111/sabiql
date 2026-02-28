@@ -8,8 +8,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │               ╭ Select Connection ───────────────────────────╮               │
-│               │>   my-very-long-servic…  from pg_service.conf│               │
-│               │    short          from pg_service.conf       │               │
+│               │> ● dev-local      from pg_service.conf       │               │
+│               │    prod-replica   from pg_service.conf       │               │
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │

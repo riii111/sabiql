@@ -590,6 +590,43 @@ mod connection_management {
     }
 
     #[test]
+    fn connection_selector_with_active_service() {
+        use sabiql::domain::connection::{ConnectionId, ServiceEntry};
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.service_entries = vec![
+            ServiceEntry {
+                service_name: "dev-local".to_string(),
+                host: Some("localhost".to_string()),
+                dbname: Some("devdb".to_string()),
+                port: Some(5432),
+                user: Some("dev".to_string()),
+            },
+            ServiceEntry {
+                service_name: "prod-replica".to_string(),
+                host: Some("replica.example.com".to_string()),
+                dbname: Some("proddb".to_string()),
+                port: Some(5433),
+                user: None,
+            },
+        ];
+        let service_count = state.service_entries.len();
+        state.connection_list_items =
+            sabiql::app::connection_list::build_connection_list(0, service_count);
+        // Set active connection to the first service entry
+        state.runtime.active_connection_id =
+            Some(ConnectionId::from_string("service:dev-local".to_string()));
+        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.ui.set_connection_list_selection(Some(0));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn confirm_dialog_delete_active_connection() {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();

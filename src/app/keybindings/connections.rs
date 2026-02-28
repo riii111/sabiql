@@ -241,13 +241,24 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
     },
     // idx 5: CLOSE
     ModeRow {
-        key_short: "Esc/q",
-        key: "Esc / q",
+        key_short: "Esc",
+        key: "Esc",
         desc_short: "Close",
         description: "Close selector",
         bindings: &[ExecBinding {
             action: Action::Escape,
-            combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+    // idx 6: QUIT
+    ModeRow {
+        key_short: "q",
+        key: "q",
+        desc_short: "Quit",
+        description: "Quit",
+        bindings: &[ExecBinding {
+            action: Action::Quit,
+            combos: &[KeyCombo::plain(Key::Char('q'))],
         }],
     },
 ];
