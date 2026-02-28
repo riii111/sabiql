@@ -50,7 +50,6 @@ pub fn reduce_connection(
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
-            state.runtime.is_service_connection = dsn.starts_with("service=");
 
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
@@ -140,6 +139,9 @@ pub fn reduce_connection(
             Some(vec![])
         }
         Action::ReenterConnectionSetup => {
+            if state.runtime.is_service_connection() {
+                return Some(vec![]);
+            }
             state.connection_error.clear();
             state.runtime.connection_state = ConnectionState::NotConnected;
             state.cache.state = MetadataState::NotLoaded;
@@ -383,7 +385,6 @@ pub fn reduce_connection(
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
-            state.runtime.is_service_connection = false;
             state.runtime.connection_state = ConnectionState::Connecting;
             state.cache.state = MetadataState::Loading;
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
@@ -446,10 +447,7 @@ pub fn reduce_connection(
             state.connections.retain(|c| &c.id != id);
             state.connection_caches.remove(id);
 
-            state.connection_list_items = crate::app::connection_list::build_connection_list(
-                state.connections.len(),
-                state.service_entries.len(),
-            );
+            state.rebuild_connection_list();
 
             let list_len = state.connection_list_items.len();
             if state.ui.connection_list_selected >= list_len && list_len > 0 {
