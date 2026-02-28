@@ -40,7 +40,7 @@ enum Command {
     /// Update sabiql to the latest compatible version
     Update,
     #[cfg(not(feature = "self-update"))]
-    /// Self-update is disabled in this build. Run: brew upgrade sabiql
+    /// Self-update is disabled in this build
     Update,
 }
 
@@ -57,11 +57,8 @@ async fn main() -> Result<()> {
         }
         #[cfg(not(feature = "self-update"))]
         {
-            println!(
-                "Self-update is not available in this build.\n\
-                 To upgrade, run: brew upgrade sabiql"
-            );
-            return Ok(());
+            eprintln!("{}", self_update_disabled_message());
+            std::process::exit(1);
         }
     }
 
@@ -228,6 +225,15 @@ fn run_update() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(feature = "self-update"))]
+fn self_update_disabled_message() -> String {
+    format!(
+        "Self-update is not available in this build (v{}).\n\
+         If installed via Homebrew, run: brew upgrade sabiql",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +257,13 @@ mod tests {
     fn update_subcommand_available_but_self_update_disabled() {
         let args = Args::parse_from(["sabiql", "update"]);
         assert!(matches!(args.command, Some(Command::Update)));
+    }
+
+    #[test]
+    #[cfg(not(feature = "self-update"))]
+    fn disabled_message_contains_version_and_brew_guidance() {
+        let msg = self_update_disabled_message();
+        assert!(msg.contains(env!("CARGO_PKG_VERSION")));
+        assert!(msg.contains("brew upgrade sabiql"));
     }
 }
