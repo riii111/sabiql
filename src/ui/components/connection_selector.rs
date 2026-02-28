@@ -86,11 +86,13 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                     let min_gap = 2;
                     let max_name_len =
                         content_width.saturating_sub(prefix.len() + min_gap + source_label.len());
-                    let name = if entry.display_name().len() > max_name_len {
-                        format!(
-                            "{}…",
-                            &entry.display_name()[..max_name_len.saturating_sub(1)]
-                        )
+                    let name = if entry.display_name().chars().count() > max_name_len {
+                        let clipped: String = entry
+                            .display_name()
+                            .chars()
+                            .take(max_name_len.saturating_sub(1))
+                            .collect();
+                        format!("{}…", clipped)
                     } else {
                         entry.display_name().to_owned()
                     };
