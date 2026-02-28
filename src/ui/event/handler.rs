@@ -1715,10 +1715,17 @@ mod tests {
         }
 
         #[test]
-        fn selector_quit_key() {
+        fn selector_q_closes() {
             let result = handle_connection_selector_keys(combo(Key::Char('q')));
 
-            assert!(matches!(result, Action::Quit));
+            assert!(matches!(result, Action::Escape));
+        }
+
+        #[test]
+        fn selector_esc_closes() {
+            let result = handle_connection_selector_keys(combo(Key::Esc));
+
+            assert!(matches!(result, Action::Escape));
         }
 
         #[test]
