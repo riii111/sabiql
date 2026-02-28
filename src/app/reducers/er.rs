@@ -113,8 +113,11 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(effects)
         }
 
-        Action::SmartErRefreshFailed(_error) => {
-            // Fallback: full cache clear + re-prefetch (legacy behavior)
+        Action::SmartErRefreshFailed { run_id, .. } => {
+            if *run_id != state.er_preparation.run_id {
+                return Some(vec![]);
+            }
+
             let Some(metadata) = &state.cache.metadata else {
                 state.er_preparation.status = ErStatus::Idle;
                 state.set_error("Metadata not loaded yet".to_string());
@@ -552,12 +555,16 @@ mod tests {
         #[test]
         fn falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(5));
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed("timeout".to_string()),
+                &Action::SmartErRefreshFailed {
+                    run_id: 1,
+                    error: "timeout".to_string(),
+                },
                 Instant::now(),
             )
             .unwrap();
@@ -577,13 +584,17 @@ mod tests {
         #[test]
         fn falls_back_to_scoped_prefetch_when_targets_set() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(10));
             state.er_preparation.target_tables = vec!["public.t0".to_string()];
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed("timeout".to_string()),
+                &Action::SmartErRefreshFailed {
+                    run_id: 1,
+                    error: "timeout".to_string(),
+                },
                 Instant::now(),
             )
             .unwrap();
@@ -601,13 +612,37 @@ mod tests {
         }
 
         #[test]
+        fn mismatched_run_id_returns_empty() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 5;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(5));
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed {
+                    run_id: 3,
+                    error: "timeout".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn no_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed("timeout".to_string()),
+                &Action::SmartErRefreshFailed {
+                    run_id: 1,
+                    error: "timeout".to_string(),
+                },
                 Instant::now(),
             )
             .unwrap();

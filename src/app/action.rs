@@ -309,7 +309,10 @@ pub enum Action {
         missing_in_cache: Vec<String>,
         new_signatures: HashMap<String, String>,
     },
-    SmartErRefreshFailed(String),
+    SmartErRefreshFailed {
+        run_id: u64,
+        error: String,
+    },
     ErDiagramOpened {
         path: String,
         table_count: usize,

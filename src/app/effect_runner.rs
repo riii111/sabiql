@@ -714,9 +714,12 @@ impl EffectRunner {
                     let new_metadata = match provider.fetch_metadata(&dsn).await {
                         Ok(m) => m,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed(e.to_string()))
-                                .await
-                                .ok();
+                            tx.send(Action::SmartErRefreshFailed {
+                                run_id,
+                                error: e.to_string(),
+                            })
+                            .await
+                            .ok();
                             return;
                         }
                     };
@@ -724,9 +727,12 @@ impl EffectRunner {
                     let new_sigs_vec = match provider.fetch_table_signatures(&dsn).await {
                         Ok(s) => s,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed(e.to_string()))
-                                .await
-                                .ok();
+                            tx.send(Action::SmartErRefreshFailed {
+                                run_id,
+                                error: e.to_string(),
+                            })
+                            .await
+                            .ok();
                             return;
                         }
                     };
