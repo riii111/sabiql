@@ -1392,7 +1392,6 @@ mod tests {
         use rstest::rstest;
 
         enum Expected {
-            Quit,
             Close,
             Reenter,
             OpenSelector,
@@ -1403,7 +1402,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('q'), Expected::Quit)]
         #[case(Key::Esc, Expected::Close)]
         #[case(Key::Char('e'), Expected::Reenter)]
         #[case(Key::Char('s'), Expected::OpenSelector)]
@@ -1413,7 +1411,6 @@ mod tests {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
-                Expected::Quit => assert!(matches!(result, Action::Quit)),
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
                 Expected::OpenSelector => {
@@ -1722,10 +1719,10 @@ mod tests {
         }
 
         #[test]
-        fn selector_q_quits() {
+        fn selector_q_is_noop() {
             let result = handle_connection_selector_keys(combo(Key::Char('q')));
 
-            assert!(matches!(result, Action::Quit));
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

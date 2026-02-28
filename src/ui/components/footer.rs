@@ -226,7 +226,6 @@ impl Footer {
                     CONNECTION_ERROR_ROWS[idx::conn_error::DETAILS].as_hint(),
                     CONNECTION_ERROR_ROWS[idx::conn_error::COPY].as_hint(),
                     CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
-                    CONNECTION_ERROR_ROWS[idx::conn_error::QUIT].as_hint(),
                 ]
             }
             InputMode::ConfirmDialog => vec![],
@@ -255,7 +254,6 @@ impl Footer {
                     list.push(r[cs::DELETE].as_hint());
                 }
                 list.push(r[cs::CLOSE].as_hint());
-                list.push(r[cs::QUIT].as_hint());
                 list
             }
         }

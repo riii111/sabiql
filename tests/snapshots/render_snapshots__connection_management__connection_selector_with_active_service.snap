@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 626
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -21,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
-│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close  ╯               │
+│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close ─╯               │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Confirm  ↑/↓:Select  n:New  Esc:Close  q:Quit
+Enter:Confirm  ↑/↓:Select  n:New  Esc:Close

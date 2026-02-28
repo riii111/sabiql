@@ -149,18 +149,7 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
-    // idx 6: QUIT
-    ModeRow {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit",
-        bindings: &[ExecBinding {
-            action: Action::Quit,
-            combos: &[KeyCombo::plain(Key::Char('q'))],
-        }],
-    },
-    // idx 7: RETRY (for service connections)
+    // idx 6: RETRY (for service connections)
     ModeRow {
         key_short: "r",
         key: "r",
@@ -248,17 +237,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
         bindings: &[ExecBinding {
             action: Action::Escape,
             combos: &[KeyCombo::plain(Key::Esc)],
-        }],
-    },
-    // idx 6: QUIT
-    ModeRow {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit",
-        bindings: &[ExecBinding {
-            action: Action::Quit,
-            combos: &[KeyCombo::plain(Key::Char('q'))],
         }],
     },
 ];
