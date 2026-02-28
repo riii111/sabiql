@@ -1,143 +1,208 @@
-/// PostgreSQL allows DML inside CTEs (e.g., `WITH ... UPDATE`), so we can't
-/// just check if query starts with SELECT/WITH. We need to find the first
-/// top-level SQL verb outside of parentheses, string literals, and comments.
-/// Also rejects multiple statements and SELECT INTO (which creates tables).
+/// PostgreSQL allows DML inside CTEs (e.g., `WITH ... UPDATE`), so prefix-only
+/// checks are unsafe. We must inspect top-level SQL tokens.
 pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool {
     let lower = query.trim().to_lowercase();
     let chars: Vec<(usize, char)> = lower.char_indices().collect();
-    let len = chars.len();
+    evaluate_query(&lower, &chars)
+}
 
-    let mut i = 0;
-    let mut depth = 0;
-    let mut in_string = false;
-    let mut found_select = false;
+fn evaluate_query(lower: &str, chars: &[(usize, char)]) -> bool {
+    let mut state = ParseState::default();
 
-    while i < len {
-        let (byte_pos, c) = chars[i];
+    while state.i < chars.len() {
+        let (byte_pos, ch) = chars[state.i];
 
-        if c == '-' && i + 1 < len && chars[i + 1].1 == '-' {
-            while i < len && chars[i].1 != '\n' {
-                i += 1;
-            }
+        if let Some(next_i) = skip_line_comment(chars, state.i, ch) {
+            state.i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_block_comment(chars, state.i, ch) {
+            state.i = next_i;
+            continue;
+        }
+        if let Some(next_i) = advance_single_quote(chars, state.i, ch, &mut state.in_string) {
+            state.i = next_i;
+            continue;
+        }
+        if state.in_string {
+            state.i += 1;
+            continue;
+        }
+        if let Some(next_i) = skip_double_quoted_identifier(chars, state.i, ch) {
+            state.i = next_i;
+            continue;
+        }
+        if let Some(next_i) = skip_dollar_quoted_string(lower, chars, state.i, byte_pos, ch) {
+            state.i = next_i;
             continue;
         }
 
-        if c == '/' && i + 1 < len && chars[i + 1].1 == '*' {
-            i += 2;
-            while i + 1 < len && !(chars[i].1 == '*' && chars[i + 1].1 == '/') {
-                i += 1;
-            }
-            i += 2; // skip */
-            continue;
-        }
+        update_parentheses_depth(ch, &mut state.depth);
 
-        if c == '\'' {
-            if in_string {
-                if i + 1 < len && chars[i + 1].1 == '\'' {
-                    i += 2; // escaped quote ''
-                    continue;
-                }
-                in_string = false;
-            } else {
-                in_string = true;
-            }
-            i += 1;
-            continue;
-        }
-
-        if in_string {
-            i += 1;
-            continue;
-        }
-
-        // Skip double-quoted identifiers ("column", "update", etc.)
-        if c == '"' {
-            i += 1;
-            while i < len {
-                if chars[i].1 == '"' {
-                    if i + 1 < len && chars[i + 1].1 == '"' {
-                        i += 2; // escaped "" inside identifier
-                    } else {
-                        i += 1; // closing quote
-                        break;
-                    }
-                } else {
-                    i += 1;
-                }
-            }
-            continue;
-        }
-
-        // Skip dollar-quoted strings ($$...$$, $tag$...$tag$)
-        if c == '$' {
-            let tag_start = byte_pos;
-            let mut j = i + 1;
-            while j < len && (chars[j].1.is_alphanumeric() || chars[j].1 == '_') {
-                j += 1;
-            }
-            if j < len && chars[j].1 == '$' {
-                let tag = &lower[tag_start..=chars[j].0];
-                j += 1;
-                while j + tag.len() <= len {
-                    let candidate_start = chars[j].0;
-                    if chars[j].1 == '$' {
-                        let candidate_end = candidate_start + tag.len();
-                        if candidate_end <= lower.len()
-                            && &lower[candidate_start..candidate_end] == tag
-                        {
-                            let mut k = j;
-                            while k < len && chars[k].0 < candidate_end {
-                                k += 1;
-                            }
-                            j = k;
-                            break;
-                        }
-                    }
-                    j += 1;
-                }
-                i = j;
-                continue;
-            }
-        }
-
-        if c == '(' {
-            depth += 1;
-        } else if c == ')' {
-            depth -= 1;
-        }
-
-        // Reject multiple statements (but allow trailing semicolon)
-        if depth == 0 && c == ';' {
-            let remaining = &lower[byte_pos + 1..];
-            if !remaining.trim().is_empty() {
+        if state.depth == 0 && ch == ';' {
+            if has_non_whitespace_after_semicolon(lower, byte_pos) {
                 return false;
             }
             break;
         }
 
-        if is_word_start(&chars, i) {
+        if is_word_start(chars, state.i) {
             let rest = &lower[byte_pos..];
-            if depth == 0 && is_keyword(rest, "select") {
-                found_select = true;
+            if state.depth == 0 && is_keyword(rest, "select") {
+                state.found_select = true;
             }
-            // SELECT INTO creates a table, reject it
-            if depth == 0 && is_keyword(rest, "into") && found_select {
+            // SELECT INTO creates a table, so SQL modal must reject it.
+            if state.depth == 0 && state.found_select && is_keyword(rest, "into") {
                 return false;
             }
-            // Reject DML/DDL at any depth (including inside CTEs)
-            if is_keyword(rest, "insert")
-                || is_keyword(rest, "update")
-                || is_keyword(rest, "delete")
-                || is_keyword(rest, "create")
-            {
+            if is_rejected_keyword(rest) {
                 return false;
             }
         }
 
-        i += 1;
+        state.i += 1;
     }
 
-    found_select
+    state.found_select
+}
+
+#[derive(Default)]
+struct ParseState {
+    i: usize,
+    depth: i32,
+    in_string: bool,
+    found_select: bool,
+}
+
+fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+    if ch != '-' || !next_char_is(chars, i, '-') {
+        return None;
+    }
+
+    let mut cursor = i;
+    while cursor < chars.len() && chars[cursor].1 != '\n' {
+        cursor += 1;
+    }
+    Some(cursor)
+}
+
+fn skip_block_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+    if ch != '/' || !next_char_is(chars, i, '*') {
+        return None;
+    }
+
+    let mut cursor = i + 2;
+    while cursor + 1 < chars.len() && !(chars[cursor].1 == '*' && chars[cursor + 1].1 == '/') {
+        cursor += 1;
+    }
+    Some(cursor + 2)
+}
+
+fn advance_single_quote(
+    chars: &[(usize, char)],
+    i: usize,
+    ch: char,
+    in_string: &mut bool,
+) -> Option<usize> {
+    if ch != '\'' {
+        return None;
+    }
+
+    if *in_string {
+        if next_char_is(chars, i, '\'') {
+            return Some(i + 2);
+        }
+        *in_string = false;
+    } else {
+        *in_string = true;
+    }
+    Some(i + 1)
+}
+
+fn skip_double_quoted_identifier(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+    if ch != '"' {
+        return None;
+    }
+
+    let mut cursor = i + 1;
+    while cursor < chars.len() {
+        if chars[cursor].1 == '"' {
+            if next_char_is(chars, cursor, '"') {
+                cursor += 2;
+            } else {
+                cursor += 1;
+                break;
+            }
+        } else {
+            cursor += 1;
+        }
+    }
+    Some(cursor)
+}
+
+fn skip_dollar_quoted_string(
+    lower: &str,
+    chars: &[(usize, char)],
+    i: usize,
+    byte_pos: usize,
+    ch: char,
+) -> Option<usize> {
+    if ch != '$' {
+        return None;
+    }
+
+    let mut cursor = i + 1;
+    while cursor < chars.len() && (chars[cursor].1.is_alphanumeric() || chars[cursor].1 == '_') {
+        cursor += 1;
+    }
+    if cursor >= chars.len() || chars[cursor].1 != '$' {
+        return None;
+    }
+
+    let tag = &lower[byte_pos..=chars[cursor].0];
+    cursor += 1;
+
+    while cursor + tag.len() <= chars.len() {
+        let candidate_start = chars[cursor].0;
+        if chars[cursor].1 == '$' {
+            let candidate_end = candidate_start + tag.len();
+            if candidate_end <= lower.len() && &lower[candidate_start..candidate_end] == tag {
+                let mut next = cursor;
+                while next < chars.len() && chars[next].0 < candidate_end {
+                    next += 1;
+                }
+                return Some(next);
+            }
+        }
+        cursor += 1;
+    }
+
+    Some(cursor)
+}
+
+fn update_parentheses_depth(ch: char, depth: &mut i32) {
+    if ch == '(' {
+        *depth += 1;
+    } else if ch == ')' {
+        *depth -= 1;
+    }
+}
+
+fn has_non_whitespace_after_semicolon(lower: &str, byte_pos: usize) -> bool {
+    !lower[byte_pos + 1..].trim().is_empty()
+}
+
+fn is_rejected_keyword(rest: &str) -> bool {
+    // Writable CTEs place DML inside subqueries, so rejection cannot be
+    // limited to top-level keywords.
+    is_keyword(rest, "insert")
+        || is_keyword(rest, "update")
+        || is_keyword(rest, "delete")
+        || is_keyword(rest, "create")
+}
+
+fn next_char_is(chars: &[(usize, char)], i: usize, expected: char) -> bool {
+    i + 1 < chars.len() && chars[i + 1].1 == expected
 }
 
 fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {
@@ -252,9 +317,13 @@ mod tests {
         // DML keyword inside double-quoted identifier (allowed — not real DML)
         #[case("SELECT \"update\" FROM t", true)]
         #[case("WITH x AS (SELECT 1 AS \"delete\") SELECT * FROM x", true)]
+        #[case("SELECT \"up\"\"date\" FROM t", true)]
         // DML keyword inside dollar-quoted string (allowed — not real DML)
         #[case("SELECT $$update$$ AS label", true)]
         #[case("SELECT $tag$delete from here$tag$ AS s", true)]
+        #[case("SELECT $$semi;colon$$ AS label", true)]
+        // Trailing semicolon + whitespace is still a single statement
+        #[case("SELECT 1;   ", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
