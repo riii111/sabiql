@@ -383,6 +383,7 @@ pub fn reduce_connection(
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
+            state.runtime.is_service_connection = false;
             state.runtime.connection_state = ConnectionState::Connecting;
             state.cache.state = MetadataState::Loading;
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
