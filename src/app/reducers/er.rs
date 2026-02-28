@@ -38,7 +38,85 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
+            let Some(dsn) = state.runtime.dsn.clone() else {
+                state.set_error("No active connection".to_string());
+                return Some(vec![]);
+            };
+            if state.cache.metadata.is_none() {
+                state.set_error("Metadata not loaded yet".to_string());
+                return Some(vec![]);
+            }
+
+            state.sql_modal.prefetch_started = false;
+            state.er_preparation.run_id += 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.set_success("Checking for schema changes...".to_string());
+
+            Some(vec![Effect::SmartErRefresh {
+                dsn,
+                run_id: state.er_preparation.run_id,
+            }])
+        }
+
+        Action::SmartErRefreshCompleted {
+            run_id,
+            new_metadata,
+            stale_tables,
+            added_tables,
+            removed_tables,
+            missing_in_cache,
+            new_signatures,
+        } => {
+            if *run_id != state.er_preparation.run_id {
+                return Some(vec![]);
+            }
+
+            state.cache.metadata = Some(*new_metadata.clone());
+            state.er_preparation.last_signatures = new_signatures.clone();
+            state.er_preparation.total_tables = new_metadata.tables.len();
+
+            let mut effects: Vec<Effect> = Vec::new();
+
+            if !removed_tables.is_empty() {
+                effects.push(Effect::EvictTablesFromCompletionCache {
+                    tables: removed_tables.clone(),
+                });
+            }
+
+            let mut refetch: Vec<String> = Vec::new();
+            refetch.extend(stale_tables.iter().cloned());
+            refetch.extend(added_tables.iter().cloned());
+            refetch.extend(missing_in_cache.iter().cloned());
+            refetch.sort();
+            refetch.dedup();
+
+            if refetch.is_empty() {
+                state.set_success(
+                    "No schema changes detected, generating ER diagram...".to_string(),
+                );
+                effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
+            } else {
+                if !stale_tables.is_empty() {
+                    effects.push(Effect::EvictTablesFromCompletionCache {
+                        tables: stale_tables.clone(),
+                    });
+                }
+                state.set_success(format!(
+                    "Refreshing {} table(s) for ER diagram...",
+                    refetch.len()
+                ));
+                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchScoped {
+                    tables: refetch,
+                }]));
+            }
+
+            Some(effects)
+        }
+
+        Action::SmartErRefreshFailed(_error) => {
+            // Fallback: full cache clear + re-prefetch (legacy behavior)
             let Some(metadata) = &state.cache.metadata else {
+                state.er_preparation.status = ErStatus::Idle;
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
             };
@@ -46,14 +124,13 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let is_scoped = !state.er_preparation.target_tables.is_empty()
                 && state.er_preparation.target_tables.len() < total_table_count;
 
-            // Always start fresh: evict stale Tier 2 cache and re-prefetch
-            state.sql_modal.prefetch_started = false;
             state.er_preparation.total_tables = total_table_count;
-            state.er_preparation.status = ErStatus::Waiting;
 
             if is_scoped {
                 let scoped_tables = state.er_preparation.target_tables.clone();
-                state.set_success("Starting scoped prefetch for ER diagram...".to_string());
+                state.set_success(
+                    "Fallback: starting scoped prefetch for ER diagram...".to_string(),
+                );
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchScoped {
@@ -61,7 +138,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                     }]),
                 ])
             } else {
-                state.set_success("Starting table prefetch for ER diagram...".to_string());
+                state.set_success("Fallback: starting full prefetch for ER diagram...".to_string());
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::DispatchActions(vec![Action::StartPrefetchAll]),
@@ -126,77 +203,59 @@ mod tests {
         }
 
         #[test]
-        fn no_prefetch_starts_prefetch_all() {
+        fn emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.cache.metadata = Some(make_metadata(0));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(&effects[1], Effect::DispatchActions(_)));
-        }
-
-        #[test]
-        fn target_tables_non_empty_dispatches_scoped() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(100));
-            state.er_preparation.target_tables =
-                vec!["public.t0".to_string(), "public.t1".to_string()];
-
-            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
-
-            assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert_eq!(state.er_preparation.run_id, 1);
+            assert_eq!(effects.len(), 1);
             assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+                &effects[0],
+                Effect::SmartErRefresh { run_id: 1, .. }
             ));
         }
 
         #[test]
-        fn target_tables_empty_dispatches_prefetch_all() {
+        fn increments_run_id_on_each_call() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(10));
-            // target_tables is empty → StartPrefetchAll
+            state.cache.metadata = Some(make_metadata(5));
+            state.er_preparation.run_id = 3;
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
+            assert_eq!(state.er_preparation.run_id, 4);
             assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+                &effects[0],
+                Effect::SmartErRefresh { run_id: 4, .. }
             ));
         }
 
         #[test]
-        fn prefetch_started_true_still_clears_cache_and_restarts() {
+        fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
-            state.cache.metadata = Some(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                tables: vec![],
-                fetched_at: Instant::now(),
-            });
+            state.cache.metadata = Some(make_metadata(0));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            // prefetch_started must be reset so stale fast-path is never taken
             assert!(!state.sql_modal.prefetch_started);
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert_eq!(effects.len(), 2);
-            assert!(matches!(&effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(
-                &effects[1],
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
-            ));
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
+        }
+
+        #[test]
+        fn no_dsn_returns_error() {
+            let mut state = AppState::new("test".to_string());
+            state.cache.metadata = Some(make_metadata(5));
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
         }
 
         #[test]
