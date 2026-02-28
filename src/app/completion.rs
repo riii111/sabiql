@@ -124,6 +124,12 @@ impl CompletionEngine {
         self.table_detail_cache.contains(qualified_name)
     }
 
+    pub fn evict_tables(&mut self, tables: &[String]) {
+        for table in tables {
+            self.table_detail_cache.pop(table);
+        }
+    }
+
     pub fn clear_table_cache(&mut self) {
         self.table_detail_cache.clear();
     }

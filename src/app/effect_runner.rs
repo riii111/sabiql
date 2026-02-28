@@ -696,6 +696,16 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::SmartErRefresh { .. } => {
+                // Implemented in Phase 3
+                Ok(())
+            }
+
+            Effect::EvictTablesFromCompletionCache { tables } => {
+                completion_engine.borrow_mut().evict_tables(&tables);
+                Ok(())
+            }
+
             Effect::Sequence(_) => {
                 // Handled in run()
                 Ok(())

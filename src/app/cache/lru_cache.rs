@@ -40,6 +40,10 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.peek(key)
     }
 
+    pub fn pop(&mut self, key: &K) -> Option<V> {
+        self.inner.pop(key)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.inner.iter()
     }

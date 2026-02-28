@@ -18,6 +18,8 @@ pub struct ErPreparationState {
     pub target_tables: Vec<String>,
     pub seed_tables: Vec<String>,
     pub fk_expanded: bool,
+    pub last_signatures: HashMap<String, String>,
+    pub run_id: u64,
 }
 
 impl ErPreparationState {
