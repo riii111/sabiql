@@ -13,7 +13,9 @@ use sabiql::app::completion::CompletionEngine;
 use sabiql::app::effect::Effect;
 use sabiql::app::effect_runner::EffectRunner;
 use sabiql::app::input_mode::InputMode;
-use sabiql::app::ports::{ConnectionStore, ConnectionStoreError, ServiceFileReader};
+use sabiql::app::ports::{
+    ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
+};
 use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::state::AppState;
@@ -213,11 +215,16 @@ async fn main() -> Result<()> {
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
-    if let Ok((services, path)) = reader.read_services()
-        && !services.is_empty()
-    {
-        state.service_entries = services;
-        state.runtime.service_file_path = Some(path);
+    match reader.read_services() {
+        Ok((services, path)) if !services.is_empty() => {
+            state.service_entries = services;
+            state.runtime.service_file_path = Some(path);
+        }
+        Ok(_) => {}
+        Err(ServiceFileError::NotFound(_)) => {}
+        Err(e) => {
+            state.messages.set_error(e.to_string());
+        }
     }
     state.connection_list_items = sabiql::app::connection_list::build_connection_list(
         state.connections.len(),
