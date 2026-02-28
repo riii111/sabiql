@@ -252,7 +252,7 @@ impl Footer {
                     list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
                     list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
                 }
-                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
+                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::CLOSE].as_hint());
                 list
             }
         }

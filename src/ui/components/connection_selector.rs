@@ -41,7 +41,7 @@ impl ConnectionSelector {
             hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
             hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
         }
-        hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
+        hints.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::CLOSE].as_hint());
 
         let hint_parts: Vec<String> = hints
             .iter()
