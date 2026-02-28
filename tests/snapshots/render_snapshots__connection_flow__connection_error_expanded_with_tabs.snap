@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │
-│           ╰ Scroll: ↑/↓/j/k  Esc to close  q to quit ────────────╯           │
+│           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-e:Edit  s:Switch  d:Details  c:Copy  Esc:Close  q:Quit
+e:Edit  s:Switch  d:Details  c:Copy  Esc:Close

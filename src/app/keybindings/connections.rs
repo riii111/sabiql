@@ -149,18 +149,7 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
-    // idx 6: QUIT
-    ModeRow {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit",
-        bindings: &[ExecBinding {
-            action: Action::Quit,
-            combos: &[KeyCombo::plain(Key::Char('q'))],
-        }],
-    },
-    // idx 7: RETRY (for service connections)
+    // idx 6: RETRY (for service connections)
     ModeRow {
         key_short: "r",
         key: "r",
@@ -170,97 +159,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             action: Action::RetryServiceConnection,
             combos: &[KeyCombo::plain(Key::Char('r'))],
         }],
-    },
-];
-
-// =============================================================================
-// Connections Mode (Explorer)
-// =============================================================================
-
-pub const CONNECTIONS_MODE_KEYS: &[KeyBinding] = &[
-    // idx 0: CONNECT
-    KeyBinding {
-        key_short: "Enter",
-        key: "Enter",
-        desc_short: "Connect",
-        description: "Connect to selected",
-        action: Action::ConfirmConnectionSelection,
-        combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    // idx 1: NEW
-    KeyBinding {
-        key_short: "n",
-        key: "n",
-        desc_short: "New",
-        description: "New connection",
-        action: Action::OpenConnectionSetup,
-        combos: &[KeyCombo::plain(Key::Char('n'))],
-    },
-    // idx 2: EDIT
-    KeyBinding {
-        key_short: "e",
-        key: "e",
-        desc_short: "Edit",
-        description: "Edit connection",
-        action: Action::RequestEditSelectedConnection,
-        combos: &[KeyCombo::plain(Key::Char('e'))],
-    },
-    // idx 3: DELETE
-    KeyBinding {
-        key_short: "d",
-        key: "d / Del",
-        desc_short: "Delete",
-        description: "Delete connection",
-        action: Action::RequestDeleteSelectedConnection,
-        combos: &[
-            KeyCombo::plain(Key::Char('d')),
-            KeyCombo::plain(Key::Delete),
-        ],
-    },
-    // idx 4: NAVIGATE
-    KeyBinding {
-        key_short: "j/k",
-        key: "j / k / ↑ / ↓",
-        desc_short: "Navigate",
-        description: "Navigate list",
-        action: Action::None,
-        combos: &[],
-    },
-    // idx 5: HELP
-    KeyBinding {
-        key_short: "?",
-        key: "?",
-        desc_short: "Help",
-        description: "Show help",
-        action: Action::OpenHelp,
-        combos: &[KeyCombo::plain(Key::Char('?'))],
-    },
-    // idx 6: TABLES
-    KeyBinding {
-        key_short: "c",
-        key: "c",
-        desc_short: "Tables",
-        description: "Switch to Tables mode",
-        action: Action::ToggleExplorerMode,
-        combos: &[KeyCombo::plain(Key::Char('c'))],
-    },
-    // idx 7: BACK
-    KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Back",
-        description: "Back to Tables mode",
-        action: Action::ToggleExplorerMode,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-    // idx 8: QUIT
-    KeyBinding {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit application",
-        action: Action::Quit,
-        combos: &[KeyCombo::plain(Key::Char('q'))],
     },
 ];
 
@@ -330,15 +228,15 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('d'))],
         }],
     },
-    // idx 5: QUIT
+    // idx 5: CLOSE
     ModeRow {
-        key_short: "q",
-        key: "q",
-        desc_short: "Quit",
-        description: "Quit application",
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close selector",
         bindings: &[ExecBinding {
-            action: Action::Quit,
-            combos: &[KeyCombo::plain(Key::Char('q'))],
+            action: Action::Escape,
+            combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
 ];

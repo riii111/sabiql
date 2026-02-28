@@ -7,13 +7,11 @@ use ratatui::widgets::Paragraph;
 use super::atoms::spinner_char;
 use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
-    CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS,
-    HELP_ROWS, INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS,
-    TABLE_PICKER_ROWS, idx,
+    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS,
+    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -135,29 +133,6 @@ impl Footer {
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list
-                } else if state.ui.explorer_mode == ExplorerMode::Connections
-                    && state.ui.focused_pane == FocusedPane::Explorer
-                {
-                    let is_service_selected = crate::app::connection_list::is_service_selected(
-                        &state.connection_list_items,
-                        state.ui.connection_list_selected,
-                    );
-                    let mut list = vec![
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::CONNECT].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::NEW].as_hint(),
-                    ];
-                    if !is_service_selected {
-                        list.push(CONNECTIONS_MODE_KEYS[idx::connections_mode::EDIT].as_hint());
-                        list.push(CONNECTIONS_MODE_KEYS[idx::connections_mode::DELETE].as_hint());
-                    }
-                    list.extend([
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::NAVIGATE].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::HELP].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::TABLES].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::BACK].as_hint(),
-                        CONNECTIONS_MODE_KEYS[idx::connections_mode::QUIT].as_hint(),
-                    ]);
-                    list
                 } else {
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
@@ -226,7 +201,6 @@ impl Footer {
             InputMode::Help => vec![
                 HELP_ROWS[idx::help::SCROLL].as_hint(),
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
-                HELP_ROWS[idx::help::QUIT].as_hint(),
             ],
             InputMode::SqlModal => vec![
                 SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
@@ -251,7 +225,6 @@ impl Footer {
                     CONNECTION_ERROR_ROWS[idx::conn_error::DETAILS].as_hint(),
                     CONNECTION_ERROR_ROWS[idx::conn_error::COPY].as_hint(),
                     CONNECTION_ERROR_ROWS[idx::conn_error::ESC_CLOSE].as_hint(),
-                    CONNECTION_ERROR_ROWS[idx::conn_error::QUIT].as_hint(),
                 ]
             }
             InputMode::ConfirmDialog => vec![],
@@ -264,20 +237,22 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::ConnectionSelector => {
+                let r = CONNECTION_SELECTOR_ROWS;
+                use idx::connection_selector as cs;
                 let is_service_selected = crate::app::connection_list::is_service_selected(
                     &state.connection_list_items,
                     state.ui.connection_list_selected,
                 );
                 let mut list = vec![
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
+                    r[cs::CONFIRM].as_hint(),
+                    r[cs::SELECT].as_hint(),
+                    r[cs::NEW].as_hint(),
                 ];
                 if !is_service_selected {
-                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
-                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
+                    list.push(r[cs::EDIT].as_hint());
+                    list.push(r[cs::DELETE].as_hint());
                 }
-                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
+                list.push(r[cs::CLOSE].as_hint());
                 list
             }
         }

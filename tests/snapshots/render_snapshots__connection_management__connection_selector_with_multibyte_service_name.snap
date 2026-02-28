@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 634
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -9,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │               ╭ Select Connection ───────────────────────────╮               │
-│               │>   本 番 デ ー タ ベ ー ス 接 続   from pg_service.conf│               │
+│               │>   本 番 デ ー タ ベ ー ス 接 続      from pg_service.c│               │
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
@@ -21,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
-│               ╰ ↑/↓ Select  Enter Confirm  n New  q Quit ────╯               │
+│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close ─╯               │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Confirm  ↑/↓:Select  n:New  q:Quit
+Enter:Confirm  ↑/↓:Select  n:New  Esc:Close

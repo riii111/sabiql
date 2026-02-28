@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use crate::app::action::{Action, ConnectionsLoadedPayload};
 use crate::app::effect::Effect;
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
@@ -856,32 +855,6 @@ pub fn reduce_navigation(
             None // Let the query reducer handle the actual page change
         }
 
-        // Explorer Mode (Tables / Connections)
-        Action::ToggleExplorerMode => {
-            match state.ui.explorer_mode {
-                ExplorerMode::Tables => {
-                    state.ui.explorer_mode = ExplorerMode::Connections;
-                    // Initialize selection if needed
-                    if !state.connections.is_empty() && state.ui.connection_list_selected == 0 {
-                        state.ui.set_connection_list_selection(Some(0));
-                    }
-                    // Load connections list
-                    Some(vec![Effect::LoadConnections])
-                }
-                ExplorerMode::Connections => {
-                    state.ui.explorer_mode = ExplorerMode::Tables;
-                    Some(vec![])
-                }
-            }
-        }
-        Action::SetExplorerMode(mode) => {
-            state.ui.explorer_mode = *mode;
-            if *mode == ExplorerMode::Connections {
-                Some(vec![Effect::LoadConnections])
-            } else {
-                Some(vec![])
-            }
-        }
         Action::ConnectionListSelectNext => {
             let len = state.connection_list_items.len();
             let next = state.ui.connection_list_selected + 1;
@@ -935,7 +908,6 @@ pub fn reduce_navigation(
         }
         Action::ConfirmConnectionSelection => {
             use crate::app::connection_list::ConnectionListItem;
-            let from_selector = state.ui.input_mode == InputMode::ConnectionSelector;
             let selected_idx = state.ui.connection_list_selected;
 
             let effect = match state.connection_list_items.get(selected_idx) {
@@ -952,10 +924,7 @@ pub fn reduce_navigation(
                 _ => None,
             };
 
-            state.ui.explorer_mode = ExplorerMode::Tables;
-            if from_selector {
-                state.ui.input_mode = InputMode::Normal;
-            }
+            state.ui.input_mode = InputMode::Normal;
 
             match effect {
                 Some(e) => Some(vec![e]),
@@ -1100,67 +1069,6 @@ mod tests {
             );
 
             assert_eq!(state.ui.er_filter_input, "public.users");
-        }
-    }
-
-    mod explorer_mode {
-        use super::*;
-
-        #[test]
-        fn toggle_from_tables_switches_to_connections() {
-            let mut state = AppState::new("test".to_string());
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
-
-            let effects =
-                reduce_navigation(&mut state, &Action::ToggleExplorerMode, Instant::now());
-
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Connections);
-            assert!(effects.is_some());
-            let effects = effects.unwrap();
-            assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
-        }
-
-        #[test]
-        fn toggle_from_connections_switches_to_tables() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.explorer_mode = ExplorerMode::Connections;
-
-            let effects =
-                reduce_navigation(&mut state, &Action::ToggleExplorerMode, Instant::now());
-
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
-            assert!(effects.is_some());
-        }
-
-        #[test]
-        fn set_explorer_mode_to_connections_loads_connections() {
-            let mut state = AppState::new("test".to_string());
-
-            let effects = reduce_navigation(
-                &mut state,
-                &Action::SetExplorerMode(ExplorerMode::Connections),
-                Instant::now(),
-            );
-
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Connections);
-            let effects = effects.unwrap();
-            assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
-        }
-
-        #[test]
-        fn set_explorer_mode_to_tables_does_not_load_connections() {
-            let mut state = AppState::new("test".to_string());
-            state.ui.explorer_mode = ExplorerMode::Connections;
-
-            let effects = reduce_navigation(
-                &mut state,
-                &Action::SetExplorerMode(ExplorerMode::Tables),
-                Instant::now(),
-            );
-
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
-            let effects = effects.unwrap();
-            assert!(effects.is_empty());
         }
     }
 
@@ -1358,7 +1266,6 @@ mod tests {
                 ],
             );
             state.runtime.active_connection_id = Some(active_id);
-            state.ui.explorer_mode = ExplorerMode::Connections;
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = reduce_navigation(
@@ -1367,7 +1274,6 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
             assert!(effects.iter().any(
                 |e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)
@@ -1384,7 +1290,6 @@ mod tests {
                 vec![create_test_profile_with_id("active", active_id.clone())],
             );
             state.runtime.active_connection_id = Some(active_id);
-            state.ui.explorer_mode = ExplorerMode::Connections;
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = reduce_navigation(
@@ -1393,15 +1298,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
             assert!(effects.is_empty());
         }
 
         #[test]
-        fn empty_connections_returns_to_tables() {
+        fn empty_connections_returns_empty_effects() {
             let mut state = AppState::new("test".to_string());
-            state.ui.explorer_mode = ExplorerMode::Connections;
 
             let effects = reduce_navigation(
                 &mut state,
@@ -1409,7 +1312,6 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
             let effects = effects.unwrap();
             assert!(effects.is_empty());
         }
@@ -1438,7 +1340,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+
             let effects = effects.unwrap();
             assert!(effects.iter().any(
                 |e| matches!(e, Effect::SwitchConnection { connection_index } if *connection_index == 1)
@@ -1465,7 +1367,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
-            assert_eq!(state.ui.explorer_mode, ExplorerMode::Tables);
+
             let effects = effects.unwrap();
             assert!(effects.is_empty());
         }

@@ -7,7 +7,6 @@ use crate::app::connection_cache::ConnectionCache;
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
     insert_char_at_cursor, insert_str_at_cursor, validate_all, validate_field,
@@ -72,6 +71,7 @@ pub fn reduce_connection(
         // ===== Connection Modes =====
         Action::OpenConnectionSelector => {
             state.ui.input_mode = InputMode::ConnectionSelector;
+            state.ui.set_connection_list_selection(Some(0));
             Some(vec![Effect::LoadConnections])
         }
         Action::OpenConnectionSetup => {
@@ -381,7 +381,6 @@ pub fn reduce_connection(
         Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
             state.connection_setup.is_first_run = false;
             state.ui.input_mode = InputMode::Normal;
-            state.ui.explorer_mode = ExplorerMode::Tables;
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
@@ -682,6 +681,16 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
             let effects = effects.unwrap();
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
+        }
+
+        #[test]
+        fn resets_selection_to_zero() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.set_connection_list_selection(Some(3));
+
+            reduce_connection(&mut state, &Action::OpenConnectionSelector, Instant::now());
+
+            assert_eq!(state.ui.connection_list_selected, 0);
         }
     }
 

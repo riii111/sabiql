@@ -8,9 +8,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │               ╭ Select Connection ───────────────────────────╮               │
-│               │> ● Production                                │               │
-│               │    Staging                                   │               │
-│               │    Local Dev                                 │               │
+│               │> ● dev-local      from pg_service.conf       │               │
+│               │    prod-replica   from pg_service.conf       │               │
+│               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │───────────────┘
@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
-│               ╰ Enter Confirm  ↑/↓ Select  n New  e Edit  d D╯               │
+│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close ─╯               │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Confirm  ↑/↓:Select  n:New  e:Edit  d:Delete  Esc:Close
+Enter:Confirm  ↑/↓:Select  n:New  Esc:Close

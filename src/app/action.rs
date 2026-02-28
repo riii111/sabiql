@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
@@ -164,9 +163,7 @@ pub enum Action {
     ExplorerScrollLeft,
     ExplorerScrollRight,
 
-    // Explorer mode (Tables / Connections)
-    ToggleExplorerMode,
-    SetExplorerMode(ExplorerMode),
+    // Connection list navigation
     ConnectionListSelectNext,
     ConnectionListSelectPrevious,
     ConnectionsLoaded(ConnectionsLoadedPayload),

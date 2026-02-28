@@ -1,5 +1,4 @@
 use crate::app::action::Action;
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::keybindings::{Key, KeyCombo};
@@ -74,8 +73,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 
     let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
     let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
-    let connections_mode = state.ui.explorer_mode == ExplorerMode::Connections
-        && state.ui.focused_pane == FocusedPane::Explorer;
     let result_nav_mode = state.ui.result_selection.mode();
 
     // Ctrl combos (context-independent)
@@ -88,8 +85,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::ResultScrollHalfPageDown
                 } else if inspector_navigation {
                     Action::InspectorScrollHalfPageDown
-                } else if connections_mode {
-                    Action::None
                 } else {
                     Action::SelectHalfPageDown
                 };
@@ -99,8 +94,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::ResultScrollHalfPageUp
                 } else if inspector_navigation {
                     Action::InspectorScrollHalfPageUp
-                } else if connections_mode {
-                    Action::None
                 } else {
                     Action::SelectHalfPageUp
                 };
@@ -110,8 +103,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::ResultScrollFullPageDown
                 } else if inspector_navigation {
                     Action::InspectorScrollFullPageDown
-                } else if connections_mode {
-                    Action::None
                 } else {
                     Action::SelectFullPageDown
                 };
@@ -121,8 +112,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::ResultScrollFullPageUp
                 } else if inspector_navigation {
                     Action::InspectorScrollFullPageUp
-                } else if connections_mode {
-                    Action::None
                 } else {
                     Action::SelectFullPageUp
                 };
@@ -162,8 +151,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     ResultNavMode::RowActive => Action::ResultExitToScroll,
                     ResultNavMode::Scroll => Action::Escape,
                 }
-            } else if connections_mode {
-                Action::SetExplorerMode(ExplorerMode::Tables)
             } else {
                 Action::Escape
             }
@@ -174,8 +161,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::ResultScrollUp
             } else if inspector_navigation {
                 Action::InspectorScrollUp
-            } else if connections_mode {
-                Action::ConnectionListSelectPrevious
             } else {
                 Action::SelectPrevious
             }
@@ -185,8 +170,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::ResultScrollDown
             } else if inspector_navigation {
                 Action::InspectorScrollDown
-            } else if connections_mode {
-                Action::ConnectionListSelectNext
             } else {
                 Action::SelectNext
             }
@@ -257,10 +240,8 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::ResultScrollFullPageDown
             } else if inspector_navigation {
                 Action::InspectorScrollFullPageDown
-            } else if !connections_mode {
-                Action::SelectFullPageDown
             } else {
-                Action::None
+                Action::SelectFullPageDown
             }
         }
         Key::PageUp => {
@@ -268,10 +249,8 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::ResultScrollFullPageUp
             } else if inspector_navigation {
                 Action::InspectorScrollFullPageUp
-            } else if !connections_mode {
-                Action::SelectFullPageUp
             } else {
-                Action::None
+                Action::SelectFullPageUp
             }
         }
 
@@ -310,13 +289,10 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::ResultEnterCellEdit
         }
         Key::Char('s') => Action::OpenSqlModal,
-        Key::Char('e') if connections_mode => Action::RequestEditSelectedConnection,
         Key::Char('e') => Action::OpenErTablePicker,
         Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
-            Action::ToggleExplorerMode
+            Action::OpenConnectionSelector
         }
-        Key::Char('n') if connections_mode => Action::OpenConnectionSetup,
-        Key::Char('d') | Key::Delete if connections_mode => Action::RequestDeleteSelectedConnection,
 
         Key::Enter => {
             if state.connection_error.error_info.is_some() {
@@ -327,8 +303,6 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     ResultNavMode::RowActive => Action::ResultEnterCellActive,
                     ResultNavMode::CellActive => Action::None,
                 }
-            } else if connections_mode {
-                Action::ConfirmConnectionSelection
             } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection
             } else {
@@ -956,12 +930,12 @@ mod tests {
         }
 
         #[test]
-        fn c_key_toggles_when_explorer_focused() {
+        fn c_key_opens_connection_selector() {
             let state = browse_state();
 
             let result = handle_normal_mode(combo(Key::Char('c')), &state);
 
-            assert!(matches!(result, Action::ToggleExplorerMode));
+            assert!(matches!(result, Action::OpenConnectionSelector));
         }
 
         #[test]
@@ -1118,31 +1092,6 @@ mod tests {
             let result = handle_normal_mode(combo(Key::PageDown), &state);
 
             assert!(matches!(result, Action::SelectFullPageDown));
-        }
-
-        fn connections_mode_state() -> AppState {
-            let mut state = browse_state();
-            state.ui.focused_pane = FocusedPane::Explorer;
-            state.ui.explorer_mode = ExplorerMode::Connections;
-            state
-        }
-
-        #[test]
-        fn ctrl_d_noop_in_connections_mode() {
-            let state = connections_mode_state();
-
-            let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
-
-            assert!(matches!(result, Action::None));
-        }
-
-        #[test]
-        fn pagedown_noop_in_connections_mode() {
-            let state = connections_mode_state();
-
-            let result = handle_normal_mode(combo(Key::PageDown), &state);
-
-            assert!(matches!(result, Action::None));
         }
     }
 
@@ -1388,13 +1337,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn q_quits() {
-            let result = handle_help_keys(combo(Key::Char('q')));
-
-            assert!(matches!(result, Action::Quit));
-        }
-
-        #[test]
         fn esc_closes_help() {
             let result = handle_help_keys(combo(Key::Esc));
 
@@ -1443,7 +1385,6 @@ mod tests {
         use rstest::rstest;
 
         enum Expected {
-            Quit,
             Close,
             Reenter,
             OpenSelector,
@@ -1454,7 +1395,6 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Key::Char('q'), Expected::Quit)]
         #[case(Key::Esc, Expected::Close)]
         #[case(Key::Char('e'), Expected::Reenter)]
         #[case(Key::Char('s'), Expected::OpenSelector)]
@@ -1464,7 +1404,6 @@ mod tests {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
-                Expected::Quit => assert!(matches!(result, Action::Quit)),
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
                 Expected::OpenSelector => {
@@ -1766,10 +1705,10 @@ mod tests {
         }
 
         #[test]
-        fn selector_quit_key() {
-            let result = handle_connection_selector_keys(combo(Key::Char('q')));
+        fn selector_esc_closes() {
+            let result = handle_connection_selector_keys(combo(Key::Esc));
 
-            assert!(matches!(result, Action::Quit));
+            assert!(matches!(result, Action::Escape));
         }
 
         #[test]
@@ -1832,40 +1771,6 @@ mod tests {
             let result = handle_paste_event("text".to_string(), &state);
 
             assert!(matches!(result, Action::None));
-        }
-    }
-
-    mod connections_mode {
-        use super::*;
-        use crate::app::explorer_mode::ExplorerMode;
-        use crate::app::focused_pane::FocusedPane;
-        use rstest::rstest;
-
-        fn connections_mode_state() -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.explorer_mode = ExplorerMode::Connections;
-            state.ui.focused_pane = FocusedPane::Explorer;
-            state
-        }
-
-        #[rstest]
-        #[case(Key::Char('d'))]
-        #[case(Key::Delete)]
-        fn delete_key_requests_delete(#[case] code: Key) {
-            let state = connections_mode_state();
-
-            let result = handle_normal_mode(combo(code), &state);
-
-            assert!(matches!(result, Action::RequestDeleteSelectedConnection));
-        }
-
-        #[test]
-        fn e_key_requests_edit() {
-            let state = connections_mode_state();
-
-            let result = handle_normal_mode(combo(Key::Char('e')), &state);
-
-            assert!(matches!(result, Action::RequestEditSelectedConnection));
         }
     }
 

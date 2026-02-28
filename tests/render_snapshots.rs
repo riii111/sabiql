@@ -460,7 +460,6 @@ mod connection_flow {
 
 mod connection_management {
     use super::*;
-    use sabiql::app::explorer_mode::ExplorerMode;
     use sabiql::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
     fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
@@ -498,25 +497,6 @@ mod connection_management {
             },
         ];
         (active_id, profiles)
-    }
-
-    #[test]
-    fn explorer_connections_mode() {
-        let mut state = create_test_state();
-        let mut terminal = create_test_terminal();
-
-        let (active_id, connections) = three_connections();
-        let count = connections.len();
-        state.connections = connections;
-        state.connection_list_items = sabiql::app::connection_list::build_connection_list(count, 0);
-        state.runtime.active_connection_id = Some(active_id);
-        state.ui.explorer_mode = ExplorerMode::Connections;
-        state.ui.focused_pane = FocusedPane::Explorer;
-        state.ui.set_connection_list_selection(Some(0));
-
-        let output = render_to_string(&mut terminal, &mut state);
-
-        insta::assert_snapshot!(output);
     }
 
     #[test]
@@ -610,6 +590,43 @@ mod connection_management {
     }
 
     #[test]
+    fn connection_selector_with_active_service() {
+        use sabiql::domain::connection::{ConnectionId, ServiceEntry};
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.service_entries = vec![
+            ServiceEntry {
+                service_name: "dev-local".to_string(),
+                host: Some("localhost".to_string()),
+                dbname: Some("devdb".to_string()),
+                port: Some(5432),
+                user: Some("dev".to_string()),
+            },
+            ServiceEntry {
+                service_name: "prod-replica".to_string(),
+                host: Some("replica.example.com".to_string()),
+                dbname: Some("proddb".to_string()),
+                port: Some(5433),
+                user: None,
+            },
+        ];
+        let service_count = state.service_entries.len();
+        state.connection_list_items =
+            sabiql::app::connection_list::build_connection_list(0, service_count);
+        // Set active connection to the first service entry
+        state.runtime.active_connection_id =
+            Some(ConnectionId::from_string("service:dev-local".to_string()));
+        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.ui.set_connection_list_selection(Some(0));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn connection_selector_with_multibyte_service_name() {
         use sabiql::domain::connection::ServiceEntry;
 
@@ -665,22 +682,6 @@ mod connection_management {
             "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
         state.confirm_dialog.on_confirm = Action::DeleteConnection(target_id);
         state.confirm_dialog.on_cancel = Action::None;
-
-        let output = render_to_string(&mut terminal, &mut state);
-
-        insta::assert_snapshot!(output);
-    }
-
-    #[test]
-    fn explorer_connections_mode_empty() {
-        let mut state = create_test_state();
-        let mut terminal = create_test_terminal();
-
-        state.connections = vec![];
-        state.runtime.active_connection_id = None;
-        state.ui.explorer_mode = ExplorerMode::Connections;
-        state.ui.focused_pane = FocusedPane::Explorer;
-        state.ui.set_connection_list_selection(None);
 
         let output = render_to_string(&mut terminal, &mut state);
 

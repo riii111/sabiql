@@ -135,7 +135,7 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::app::keybindings::{HELP_ROWS, TABLE_PICKER_ROWS};
+        use crate::app::keybindings::{CONNECTION_ERROR_ROWS, HELP_ROWS, TABLE_PICKER_ROWS};
 
         #[test]
         fn empty_rows_returns_none() {
@@ -158,12 +158,12 @@ mod tests {
             assert!(result.is_none());
         }
 
-        // HELP_ROWS: CloseHelp (Esc) at idx 1, Quit (q) at idx 2 — first match wins
+        // CONNECTION_ERROR_ROWS has multiple bindings; Esc at idx 5 resolves to CloseConnectionError
         #[test]
         fn first_matching_binding_wins() {
-            let result = resolve_mode(&KeyCombo::plain(Key::Char('q')), HELP_ROWS);
+            let result = resolve_mode(&KeyCombo::plain(Key::Esc), CONNECTION_ERROR_ROWS);
 
-            assert!(matches!(result, Some(Action::Quit)));
+            assert!(matches!(result, Some(Action::CloseConnectionError)));
         }
 
         // TYPE_FILTER row has no Enter combo — Enter resolves to ConfirmSelection at idx 0

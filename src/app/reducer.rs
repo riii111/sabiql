@@ -1850,8 +1850,8 @@ mod tests {
         }
 
         #[test]
-        fn confirm_selection_toggle_explorer_mode_closes_palette() {
-            let entry_index = palette_index_of(|a| matches!(a, Action::ToggleExplorerMode));
+        fn confirm_selection_open_connection_selector_closes_palette() {
+            let entry_index = palette_index_of(|a| matches!(a, Action::OpenConnectionSelector));
 
             let mut state = state_in_palette_mode();
             state.ui.picker_selected = entry_index;
