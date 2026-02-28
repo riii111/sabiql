@@ -3,7 +3,6 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 
-use crate::app::explorer_mode::ExplorerMode;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -20,17 +19,10 @@ impl Explorer {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        match state.ui.explorer_mode {
-            ExplorerMode::Tables => {
-                let is_error = matches!(state.cache.state, MetadataState::Error(_));
-                let has_cached_data =
-                    !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
-                Self::render_tables_section(frame, inner, state, has_cached_data);
-            }
-            ExplorerMode::Connections => {
-                Self::render_connections_section(frame, inner, state);
-            }
-        }
+        let is_error = matches!(state.cache.state, MetadataState::Error(_));
+        let has_cached_data =
+            !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
+        Self::render_tables_section(frame, inner, state, has_cached_data);
     }
 
     fn render_tables_section(
@@ -137,10 +129,6 @@ impl Explorer {
                 );
             }
         }
-    }
-
-    fn render_connections_section(frame: &mut Frame, area: Rect, state: &mut AppState) {
-        super::connection_selector::render_connection_list(frame, area, state);
     }
 }
 
