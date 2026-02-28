@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::state::AppState;
@@ -11,11 +11,11 @@ use crate::app::state::AppState;
 /// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::ErDiagramOpened {
+        Action::ErDiagramOpened(ErDiagramInfo {
             path,
             table_count,
             total_tables,
-        } => {
+        }) => {
             state.er_preparation.status = ErStatus::Idle;
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.sql_modal.prefetch_started = false;
@@ -58,7 +58,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }])
         }
 
-        Action::SmartErRefreshCompleted {
+        Action::SmartErRefreshCompleted(SmartErRefreshResult {
             run_id,
             new_metadata,
             stale_tables,
@@ -66,7 +66,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             removed_tables,
             missing_in_cache,
             new_signatures,
-        } => {
+        }) => {
             if *run_id != state.er_preparation.run_id {
                 return Some(vec![]);
             }
@@ -113,11 +113,11 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(effects)
         }
 
-        Action::SmartErRefreshFailed {
+        Action::SmartErRefreshFailed(SmartErRefreshError {
             run_id,
             error,
             new_metadata,
-        } => {
+        }) => {
             if *run_id != state.er_preparation.run_id {
                 return Some(vec![]);
             }
@@ -367,7 +367,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(0));
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(2)),
                 stale_tables: vec![],
@@ -375,7 +375,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -393,7 +393,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(0));
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(2)),
                 stale_tables: vec!["public.users".to_string()],
@@ -401,7 +401,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -424,7 +424,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(0));
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(3)),
                 stale_tables: vec![],
@@ -432,7 +432,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -450,7 +450,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(0));
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(1)),
                 stale_tables: vec![],
@@ -458,7 +458,7 @@ mod tests {
                 removed_tables: vec!["public.dropped".to_string()],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -476,7 +476,7 @@ mod tests {
             state.er_preparation.status = ErStatus::Waiting;
             state.cache.metadata = Some(make_metadata(0));
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(2)),
                 stale_tables: vec![],
@@ -484,7 +484,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec!["public.uncached".to_string()],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -501,7 +501,7 @@ mod tests {
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 3,
                 new_metadata: Box::new(make_metadata(0)),
                 stale_tables: vec![],
@@ -509,7 +509,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: HashMap::new(),
-            };
+            });
 
             let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
 
@@ -528,7 +528,7 @@ mod tests {
                     .into_iter()
                     .collect();
 
-            let action = Action::SmartErRefreshCompleted {
+            let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
                 new_metadata: Box::new(make_metadata(5)),
                 stale_tables: vec![],
@@ -536,7 +536,7 @@ mod tests {
                 removed_tables: vec![],
                 missing_in_cache: vec![],
                 new_signatures: new_sigs.clone(),
-            };
+            });
 
             reduce_er(&mut state, &action, Instant::now());
 
@@ -574,11 +574,11 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed {
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
                     error: "timeout".to_string(),
                     new_metadata: None,
-                },
+                }),
                 Instant::now(),
             )
             .unwrap();
@@ -607,11 +607,11 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed {
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
                     error: "timeout".to_string(),
                     new_metadata: None,
-                },
+                }),
                 Instant::now(),
             )
             .unwrap();
@@ -638,11 +638,11 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed {
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 3,
                     error: "timeout".to_string(),
                     new_metadata: None,
-                },
+                }),
                 Instant::now(),
             )
             .unwrap();
@@ -658,11 +658,11 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed {
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
                     error: "timeout".to_string(),
                     new_metadata: None,
-                },
+                }),
                 Instant::now(),
             )
             .unwrap();
@@ -681,11 +681,11 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::SmartErRefreshFailed {
+                &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
                     error: "sig fetch failed".to_string(),
                     new_metadata: Some(Box::new(make_metadata(20))),
-                },
+                }),
                 Instant::now(),
             )
             .unwrap();

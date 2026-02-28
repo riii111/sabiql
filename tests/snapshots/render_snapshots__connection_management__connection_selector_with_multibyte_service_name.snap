@@ -1,6 +1,6 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 626
+assertion_line: 651
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -9,8 +9,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │               ╭ Select Connection ───────────────────────────╮               │
-│               │> ● dev-local      from pg_service.conf       │               │
-│               │    prod-replica   from pg_service.conf       │               │
+│               │>   本 番 デ ー タ ベ ー ス 接 続      from pg_service.c│               │
+│               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │
 │               │                                              │               │

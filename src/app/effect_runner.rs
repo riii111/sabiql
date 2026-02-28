@@ -19,7 +19,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, ConnectionTarget, ConnectionsLoadedPayload, SmartErRefreshError, SmartErRefreshResult,
+};
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
@@ -251,9 +253,13 @@ impl EffectRunner {
                             cache.set(dsn.clone(), metadata).await;
                             match store.save(&profile) {
                                 Ok(()) => {
-                                    tx.send(Action::ConnectionSaveCompleted { id, dsn, name })
-                                        .await
-                                        .ok();
+                                    tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
+                                        id,
+                                        dsn,
+                                        name,
+                                    }))
+                                    .await
+                                    .ok();
                                 }
                                 Err(e) => {
                                     cache.invalidate(&dsn).await;
@@ -308,12 +314,12 @@ impl EffectRunner {
                             Err(e) => (vec![], None, Some(e.to_string())),
                         };
 
-                    tx.blocking_send(Action::ConnectionsLoaded {
+                    tx.blocking_send(Action::ConnectionsLoaded(ConnectionsLoadedPayload {
                         profiles,
                         services,
                         service_file_path,
                         service_load_warning,
-                    })
+                    }))
                     .ok();
                 });
                 Ok(())
@@ -733,11 +739,11 @@ impl EffectRunner {
                     let new_metadata = match provider.fetch_metadata(&dsn).await {
                         Ok(m) => m,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed {
+                            tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                                 run_id,
                                 error: e.to_string(),
                                 new_metadata: None,
-                            })
+                            }))
                             .await
                             .ok();
                             return;
@@ -747,11 +753,11 @@ impl EffectRunner {
                     let new_sigs_vec = match provider.fetch_table_signatures(&dsn).await {
                         Ok(s) => s,
                         Err(e) => {
-                            tx.send(Action::SmartErRefreshFailed {
+                            tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                                 run_id,
                                 error: e.to_string(),
                                 new_metadata: Some(Box::new(new_metadata)),
-                            })
+                            }))
                             .await
                             .ok();
                             return;
@@ -793,7 +799,7 @@ impl EffectRunner {
                         .map(|s| s.to_string())
                         .collect();
 
-                    tx.send(Action::SmartErRefreshCompleted {
+                    tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {
                         run_id,
                         new_metadata: Box::new(new_metadata),
                         stale_tables,
@@ -801,7 +807,7 @@ impl EffectRunner {
                         removed_tables,
                         missing_in_cache,
                         new_signatures,
-                    })
+                    }))
                     .await
                     .ok();
                 });
@@ -831,7 +837,7 @@ impl EffectRunner {
                     let name = profile.display_name().to_string();
                     let id = profile.id.clone();
                     self.action_tx
-                        .send(Action::SwitchConnection { id, dsn, name })
+                        .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                         .await
                         .ok();
                 }
@@ -842,9 +848,9 @@ impl EffectRunner {
                 if let Some(entry) = state.service_entries.get(service_index) {
                     let id = entry.connection_id();
                     let dsn = entry.to_dsn();
-                    let name = entry.service_name.clone();
+                    let name = entry.display_name().to_owned();
                     self.action_tx
-                        .send(Action::SwitchConnection { id, dsn, name })
+                        .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                         .await
                         .ok();
                 }
@@ -1373,7 +1379,7 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::ConnectionsLoaded { ref profiles, .. } if profiles.is_empty()),
+                matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {:?}",
                 action
             );
@@ -1486,7 +1492,7 @@ mod tests {
 
             let action = rx.recv().await.expect("action dispatched");
             match action {
-                Action::SwitchConnection { id, dsn, name } => {
+                Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
                     assert_eq!(id, state.connections[0].id);

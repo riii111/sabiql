@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::app::action::Action;
+use crate::app::action::{Action, TableTarget};
 use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
@@ -242,11 +242,11 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             })
         }
 
-        Action::ExecutePreview {
+        Action::ExecutePreview(TableTarget {
             schema,
             table,
             generation,
-        } => {
+        }) => {
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
@@ -820,11 +820,11 @@ mod tests {
 
             let _ = reduce_query(
                 &mut state,
-                &Action::ExecutePreview {
+                &Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     generation: 1,
-                },
+                }),
                 now,
             );
 
