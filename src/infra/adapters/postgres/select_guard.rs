@@ -237,108 +237,128 @@ mod tests {
         use super::is_select_query;
         use rstest::rstest;
 
+        fn assert_query(query: &str, expected: bool) {
+            assert_eq!(is_select_query(query), expected);
+        }
+
         #[rstest]
-        // Basic SELECT
-        #[case("SELECT * FROM users", true)]
-        #[case("select id from users", true)]
-        #[case("  SELECT id FROM users  ", true)]
-        // CTE with SELECT (allowed)
-        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
-        #[case("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
-        #[case("WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b", true)]
-        // CTE with DML (rejected)
-        #[case("WITH cte AS (SELECT 1) UPDATE users SET name = 'x'", false)]
-        #[case("WITH cte AS (SELECT 1) DELETE FROM users", false)]
-        #[case("WITH cte AS (SELECT 1) INSERT INTO users VALUES (1)", false)]
-        #[case("with cte as (select 1) update users set name = 'x'", false)]
-        // Plain DML (rejected)
-        #[case("INSERT INTO users VALUES (1)", false)]
-        #[case("  insert into users (id) values (1)", false)]
-        #[case("UPDATE users SET name = 'new'", false)]
-        #[case("  update users set active = true", false)]
-        #[case("DELETE FROM users WHERE id = 1", false)]
-        #[case("  delete from users", false)]
-        // DDL (rejected)
-        #[case("CREATE TABLE foo (id INT)", false)]
-        #[case("DROP TABLE users", false)]
-        #[case("ALTER TABLE users ADD COLUMN foo INT", false)]
-        #[case("TRUNCATE users", false)]
-        // Empty/whitespace
-        #[case("", false)]
-        #[case("   ", false)]
-        // Parentheses after CTE
-        #[case("WITH cte AS (SELECT 1) SELECT (1+2)", true)]
-        #[case("WITH cte AS (SELECT 1) SELECT (SELECT 1)", true)]
-        // String literals containing parentheses
-        #[case("WITH cte AS (SELECT '(' FROM t) SELECT * FROM cte", true)]
-        #[case("SELECT * FROM t WHERE name = '(test)'", true)]
-        // Escaped quotes in strings
-        #[case("SELECT * FROM t WHERE name = 'it''s'", true)]
-        #[case("WITH cte AS (SELECT 'a''b') SELECT * FROM cte", true)]
-        // SQL keywords inside string literals
-        #[case("SELECT * FROM t WHERE action = 'delete'", true)]
-        #[case("SELECT * FROM t WHERE cmd = 'INSERT INTO'", true)]
-        // Identifiers containing keywords (word boundary test)
-        #[case("SELECT mydelete FROM t", true)]
-        #[case("SELECT delete_flag FROM t", true)]
-        #[case("WITH mydelete AS (SELECT 1) SELECT * FROM mydelete", true)]
-        #[case("SELECT * FROM users_to_delete", true)]
-        // SQL comments containing keywords
-        #[case("-- delete old records\nSELECT * FROM t", true)]
-        #[case("/* update cache */ SELECT * FROM t", true)]
-        #[case("SELECT * FROM t -- insert comment", true)]
-        #[case("SELECT /* delete */ * FROM t", true)]
-        // Non-ASCII characters (UTF-8 safety test)
-        #[case("SELECT * FROM \"ユーザー\"", true)]
-        #[case("SELECT name FROM users WHERE name = '日本語'", true)]
-        #[case("WITH cte AS (SELECT '中文') SELECT * FROM cte", true)]
-        // Multiple statements (rejected)
-        #[case("SELECT 1; DELETE FROM users", false)]
-        #[case("SELECT * FROM t; UPDATE t SET x = 1", false)]
-        #[case("SELECT 1; SELECT 2", false)]
-        // Semicolon in string is OK
-        #[case("SELECT * FROM t WHERE x = ';'", true)]
-        // Trailing semicolon is OK
-        #[case("SELECT * FROM users;", true)]
-        #[case("SELECT 1;", true)]
-        #[case("SELECT * FROM t WHERE x = 1;", true)]
-        #[case("WITH cte AS (SELECT 1) SELECT * FROM cte;", true)]
-        // SELECT INTO (rejected - creates table)
-        #[case("SELECT * INTO new_table FROM old_table", false)]
-        #[case("SELECT id, name INTO backup FROM users", false)]
-        // INTO in subquery is OK
-        #[case("SELECT * FROM (SELECT 1) AS sub", true)]
-        // INTO in string is OK
-        #[case("SELECT * FROM t WHERE x = 'INTO'", true)]
-        // CREATE TABLE AS SELECT (rejected)
-        #[case("CREATE TABLE t AS SELECT * FROM users", false)]
-        #[case("CREATE TABLE backup AS SELECT id FROM users", false)]
-        // Writable CTE: DML inside CTE body (rejected)
-        #[case(
+        #[case::plain_select("SELECT * FROM users", true)]
+        #[case::lowercase_select("select id from users", true)]
+        #[case::trimmed_select("  SELECT id FROM users  ", true)]
+        #[case::cte_select("WITH cte AS (SELECT 1) SELECT * FROM cte", true)]
+        #[case::recursive_cte_select("with recursive tree AS (SELECT 1) SELECT * FROM tree", true)]
+        #[case::multiple_ctes_select(
+            "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b",
+            true
+        )]
+        #[case::select_with_parenthesized_expr("WITH cte AS (SELECT 1) SELECT (1+2)", true)]
+        #[case::select_with_subquery_expr("WITH cte AS (SELECT 1) SELECT (SELECT 1)", true)]
+        fn basic_select_accepted(#[case] query: &str, #[case] expected: bool) {
+            assert_query(query, expected);
+        }
+
+        #[rstest]
+        #[case::cte_update("WITH cte AS (SELECT 1) UPDATE users SET name = 'x'", false)]
+        #[case::cte_delete("WITH cte AS (SELECT 1) DELETE FROM users", false)]
+        #[case::cte_insert("WITH cte AS (SELECT 1) INSERT INTO users VALUES (1)", false)]
+        #[case::cte_update_lowercase("with cte as (select 1) update users set name = 'x'", false)]
+        #[case::plain_insert("INSERT INTO users VALUES (1)", false)]
+        #[case::plain_insert_with_whitespace("  insert into users (id) values (1)", false)]
+        #[case::plain_update("UPDATE users SET name = 'new'", false)]
+        #[case::plain_update_with_whitespace("  update users set active = true", false)]
+        #[case::plain_delete("DELETE FROM users WHERE id = 1", false)]
+        #[case::plain_delete_with_whitespace("  delete from users", false)]
+        #[case::create_table("CREATE TABLE foo (id INT)", false)]
+        #[case::drop_table("DROP TABLE users", false)]
+        #[case::alter_table("ALTER TABLE users ADD COLUMN foo INT", false)]
+        #[case::truncate_table("TRUNCATE users", false)]
+        #[case::select_into("SELECT * INTO new_table FROM old_table", false)]
+        #[case::select_into_columns("SELECT id, name INTO backup FROM users", false)]
+        #[case::create_table_as_select("CREATE TABLE t AS SELECT * FROM users", false)]
+        #[case::create_table_as_select_columns(
+            "CREATE TABLE backup AS SELECT id FROM users",
+            false
+        )]
+        #[case::writable_cte_update_returning(
             "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
             false
         )]
-        #[case("WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x", false)]
-        // DML keyword inside double-quoted identifier (allowed — not real DML)
-        #[case("SELECT \"update\" FROM t", true)]
-        #[case("WITH x AS (SELECT 1 AS \"delete\") SELECT * FROM x", true)]
-        #[case("SELECT \"up\"\"date\" FROM t", true)]
-        // DML keyword inside dollar-quoted string (allowed — not real DML)
-        #[case("SELECT $$update$$ AS label", true)]
-        #[case("SELECT $tag$delete from here$tag$ AS s", true)]
-        #[case("SELECT $$semi;colon$$ AS label", true)]
-        // Unterminated dollar-quote currently consumes until end
-        #[case("SELECT $$unclosed", true)]
-        // Trailing semicolon + whitespace is still a single statement
-        #[case("SELECT 1;   ", true)]
-        // Semicolon followed by a comment is treated as additional content
-        #[case("SELECT 1; -- done", false)]
-        // Non-nested block comment parsing: leaked tokens after the first */
-        // can appear, and rejected keywords there are conservatively blocked.
-        #[case("SELECT /* outer /* inner */ still comment */ 1", true)]
-        #[case("SELECT /* /* */ delete */ 1", false)]
-        fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
-            assert_eq!(is_select_query(query), expected);
+        #[case::writable_cte_delete_returning(
+            "WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x",
+            false
+        )]
+        fn mutation_and_schema_change_rejected(#[case] query: &str, #[case] expected: bool) {
+            assert_query(query, expected);
+        }
+
+        #[rstest]
+        #[case::multiple_statement_delete("SELECT 1; DELETE FROM users", false)]
+        #[case::multiple_statement_update("SELECT * FROM t; UPDATE t SET x = 1", false)]
+        #[case::multiple_statement_select("SELECT 1; SELECT 2", false)]
+        #[case::semicolon_inside_string("SELECT * FROM t WHERE x = ';'", true)]
+        #[case::trailing_semicolon("SELECT * FROM users;", true)]
+        #[case::trailing_semicolon_select_literal("SELECT 1;", true)]
+        #[case::trailing_semicolon_predicate("SELECT * FROM t WHERE x = 1;", true)]
+        #[case::trailing_semicolon_cte("WITH cte AS (SELECT 1) SELECT * FROM cte;", true)]
+        #[case::trailing_semicolon_whitespace_only("SELECT 1;   ", true)]
+        #[case::semicolon_followed_by_comment("SELECT 1; -- done", false)]
+        fn statement_boundary_rules(#[case] query: &str, #[case] expected: bool) {
+            assert_query(query, expected);
+        }
+
+        #[rstest]
+        #[case::string_with_parenthesis("WITH cte AS (SELECT '(' FROM t) SELECT * FROM cte", true)]
+        #[case::string_parenthesized_text("SELECT * FROM t WHERE name = '(test)'", true)]
+        #[case::string_with_escaped_quote("SELECT * FROM t WHERE name = 'it''s'", true)]
+        #[case::cte_string_with_escaped_quote(
+            "WITH cte AS (SELECT 'a''b') SELECT * FROM cte",
+            true
+        )]
+        #[case::string_contains_delete("SELECT * FROM t WHERE action = 'delete'", true)]
+        #[case::string_contains_insert_into("SELECT * FROM t WHERE cmd = 'INSERT INTO'", true)]
+        #[case::identifier_contains_delete("SELECT mydelete FROM t", true)]
+        #[case::identifier_contains_delete_prefix("SELECT delete_flag FROM t", true)]
+        #[case::cte_name_contains_delete(
+            "WITH mydelete AS (SELECT 1) SELECT * FROM mydelete",
+            true
+        )]
+        #[case::table_name_contains_delete("SELECT * FROM users_to_delete", true)]
+        #[case::double_quoted_keyword("SELECT \"update\" FROM t", true)]
+        #[case::double_quoted_alias_keyword(
+            "WITH x AS (SELECT 1 AS \"delete\") SELECT * FROM x",
+            true
+        )]
+        #[case::double_quoted_escaped_identifier("SELECT \"up\"\"date\" FROM t", true)]
+        #[case::dollar_quoted_keyword("SELECT $$update$$ AS label", true)]
+        #[case::tagged_dollar_quoted_keyword("SELECT $tag$delete from here$tag$ AS s", true)]
+        #[case::dollar_quoted_with_semicolon("SELECT $$semi;colon$$ AS label", true)]
+        #[case::into_in_subquery("SELECT * FROM (SELECT 1) AS sub", true)]
+        #[case::into_in_string("SELECT * FROM t WHERE x = 'INTO'", true)]
+        fn keywords_inside_literals_or_identifiers_allowed(
+            #[case] query: &str,
+            #[case] expected: bool,
+        ) {
+            assert_query(query, expected);
+        }
+
+        #[rstest]
+        #[case::line_comment_with_keyword("-- delete old records\nSELECT * FROM t", true)]
+        #[case::block_comment_with_keyword("/* update cache */ SELECT * FROM t", true)]
+        #[case::trailing_comment_with_keyword("SELECT * FROM t -- insert comment", true)]
+        #[case::inline_block_comment_with_keyword("SELECT /* delete */ * FROM t", true)]
+        #[case::empty_input("", false)]
+        #[case::whitespace_only_input("   ", false)]
+        #[case::non_ascii_identifier("SELECT * FROM \"ユーザー\"", true)]
+        #[case::non_ascii_literal("SELECT name FROM users WHERE name = '日本語'", true)]
+        #[case::non_ascii_literal_in_cte("WITH cte AS (SELECT '中文') SELECT * FROM cte", true)]
+        #[case::unterminated_dollar_quote("SELECT $$unclosed", true)]
+        #[case::nested_block_comment_with_safe_leak(
+            "SELECT /* outer /* inner */ still comment */ 1",
+            true
+        )]
+        #[case::nested_block_comment_with_rejected_leak("SELECT /* /* */ delete */ 1", false)]
+        fn edge_cases_and_comment_behavior(#[case] query: &str, #[case] expected: bool) {
+            assert_query(query, expected);
         }
     }
 }
