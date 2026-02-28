@@ -312,6 +312,7 @@ pub enum Action {
     SmartErRefreshFailed {
         run_id: u64,
         error: String,
+        new_metadata: Option<Box<DatabaseMetadata>>,
     },
     ErDiagramOpened {
         path: String,

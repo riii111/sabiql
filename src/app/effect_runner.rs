@@ -717,6 +717,7 @@ impl EffectRunner {
                             tx.send(Action::SmartErRefreshFailed {
                                 run_id,
                                 error: e.to_string(),
+                                new_metadata: None,
                             })
                             .await
                             .ok();
@@ -730,6 +731,7 @@ impl EffectRunner {
                             tx.send(Action::SmartErRefreshFailed {
                                 run_id,
                                 error: e.to_string(),
+                                new_metadata: Some(Box::new(new_metadata)),
                             })
                             .await
                             .ok();

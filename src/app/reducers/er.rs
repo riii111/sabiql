@@ -113,9 +113,17 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             Some(effects)
         }
 
-        Action::SmartErRefreshFailed { run_id, error } => {
+        Action::SmartErRefreshFailed {
+            run_id,
+            error,
+            new_metadata,
+        } => {
             if *run_id != state.er_preparation.run_id {
                 return Some(vec![]);
+            }
+
+            if let Some(md) = new_metadata.as_deref() {
+                state.cache.metadata = Some(md.clone());
             }
 
             let Some(metadata) = &state.cache.metadata else {
@@ -569,6 +577,7 @@ mod tests {
                 &Action::SmartErRefreshFailed {
                     run_id: 1,
                     error: "timeout".to_string(),
+                    new_metadata: None,
                 },
                 Instant::now(),
             )
@@ -601,6 +610,7 @@ mod tests {
                 &Action::SmartErRefreshFailed {
                     run_id: 1,
                     error: "timeout".to_string(),
+                    new_metadata: None,
                 },
                 Instant::now(),
             )
@@ -631,6 +641,7 @@ mod tests {
                 &Action::SmartErRefreshFailed {
                     run_id: 3,
                     error: "timeout".to_string(),
+                    new_metadata: None,
                 },
                 Instant::now(),
             )
@@ -650,6 +661,7 @@ mod tests {
                 &Action::SmartErRefreshFailed {
                     run_id: 1,
                     error: "timeout".to_string(),
+                    new_metadata: None,
                 },
                 Instant::now(),
             )
@@ -658,6 +670,40 @@ mod tests {
             assert_eq!(state.er_preparation.status, ErStatus::Idle);
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn new_metadata_applied_before_fallback() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            // stale metadata with 3 tables
+            state.cache.metadata = Some(make_metadata(3));
+
+            // fetch_metadata succeeded (20 tables), but signatures fetch failed
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed {
+                    run_id: 1,
+                    error: "sig fetch failed".to_string(),
+                    new_metadata: Some(Box::new(make_metadata(20))),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            // new_metadata must be applied so fallback prefetches the full 20-table set
+            assert_eq!(state.cache.metadata.as_ref().unwrap().tables.len(), 20);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+            )));
         }
     }
 }
