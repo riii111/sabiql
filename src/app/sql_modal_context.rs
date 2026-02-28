@@ -24,7 +24,7 @@ pub enum CompletionKind {
     Column,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionCandidate {
     pub text: String,
     pub kind: CompletionKind,

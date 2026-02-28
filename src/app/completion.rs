@@ -3008,4 +3008,148 @@ mod tests {
             assert!(e.has_cached_table("public.t3"));
         }
     }
+
+    mod prepared_equivalence {
+        use super::*;
+
+        fn meta_with_tables(tables: &[(&str, &str, &[&str])]) -> DatabaseMetadata {
+            use crate::domain::TableSummary;
+            let mut meta = DatabaseMetadata::new("test".to_string());
+            meta.tables = tables
+                .iter()
+                .map(|(schema, name, _cols)| {
+                    TableSummary::new(schema.to_string(), name.to_string(), None, false)
+                })
+                .collect();
+            meta
+        }
+
+        #[test]
+        fn missing_tables_equivalence() {
+            let e = engine();
+            let meta = meta_with_tables(&[("public", "users", &["id", "name"])]);
+            let cases = [
+                ("SELECT * FROM users", 20),
+                (
+                    "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                    55,
+                ),
+                ("WITH cte AS (SELECT 1) SELECT * FROM cte", 41),
+                ("", 0),
+            ];
+            for (sql, _) in &cases {
+                let old = e.missing_tables(sql, Some(&meta));
+                let prep = e.prepare(sql, sql.len());
+                let new = e.missing_tables_prepared(&prep, Some(&meta));
+                assert_eq!(old, new, "mismatch for: {sql}");
+            }
+        }
+
+        #[test]
+        fn get_candidates_equivalence() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "public.users".to_string(),
+                create_table("public", "users", &["id", "name", "email"]),
+            );
+            let meta = meta_with_tables(&[("public", "users", &["id", "name", "email"])]);
+            let table = create_table("public", "users", &["id", "name", "email"]);
+            let recent: Vec<String> = vec![];
+
+            let cases = [
+                ("SELECT ", 7),
+                ("SELECT * FROM ", 14),
+                ("SELECT n", 8),
+                ("SELECT * FROM users WHERE ", 26),
+                ("UPDATE users SET ", 17),
+            ];
+            for (sql, cursor) in &cases {
+                let old = e.get_candidates(sql, *cursor, Some(&meta), Some(&table), &recent);
+                let prep = e.prepare(sql, *cursor);
+                let new = e.get_candidates_prepared(
+                    sql,
+                    *cursor,
+                    &prep,
+                    Some(&meta),
+                    Some(&table),
+                    &recent,
+                );
+                assert_eq!(old, new, "candidates mismatch for: {sql} at {cursor}");
+            }
+        }
+
+        #[test]
+        fn current_token_len_equivalence() {
+            let e = engine();
+            let cases = [
+                ("SELECT abc", 10),
+                ("SELECT ", 7),
+                ("", 0),
+                ("SELECT あいう", 10), // multibyte
+            ];
+            for (sql, cursor) in &cases {
+                let old = e.current_token_len(sql, *cursor);
+                let prep = e.prepare(sql, *cursor);
+                let new = CompletionEngine::current_token_len_prepared(&prep);
+                assert_eq!(old, new, "token_len mismatch for: {sql} at {cursor}");
+            }
+        }
+
+        #[test]
+        fn is_in_string_or_comment_from_tokens_edges() {
+            let lexer = SqlLexer::new();
+
+            let cases = [
+                ("SELECT 'hello'", 10, true),     // inside string
+                ("SELECT 'hello'", 14, true),     // at closing quote
+                ("SELECT 'hello' ", 15, false),   // after string
+                ("SELECT -- comment", 12, true),  // inside line comment
+                ("SELECT /* block */", 11, true), // inside block comment
+                ("SELECT $$dollar$$", 10, true),  // inside dollar quote
+                ("SELECT 'unclosed", 12, true),   // unclosed string
+                ("", 0, false),                   // empty
+            ];
+            for (sql, cursor, expected) in &cases {
+                let old = lexer.is_in_string_or_comment(sql, *cursor);
+                let tokens = lexer.tokenize(sql, sql.len());
+                let new = SqlLexer::is_in_string_or_comment_from_tokens(&tokens, *cursor);
+                assert_eq!(
+                    *expected, new,
+                    "from_tokens mismatch for: {sql} at {cursor}"
+                );
+                assert_eq!(
+                    old, new,
+                    "old vs from_tokens mismatch for: {sql} at {cursor}"
+                );
+            }
+        }
+
+        #[test]
+        fn target_table_priority_in_prepared() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "public.users".to_string(),
+                create_table("public", "users", &["id", "name"]),
+            );
+            let meta = meta_with_tables(&[("public", "users", &["id", "name"])]);
+            let table = create_table("public", "users", &["id", "name"]);
+            let recent: Vec<String> = vec![];
+
+            let sql = "UPDATE users SET ";
+            let cursor = sql.len();
+            let old = e.get_candidates(sql, cursor, Some(&meta), Some(&table), &recent);
+            let prep = e.prepare(sql, cursor);
+            let new =
+                e.get_candidates_prepared(sql, cursor, &prep, Some(&meta), Some(&table), &recent);
+            assert_eq!(old, new, "UPDATE target_table priority mismatch");
+
+            let sql = "DELETE FROM users WHERE ";
+            let cursor = sql.len();
+            let old = e.get_candidates(sql, cursor, Some(&meta), Some(&table), &recent);
+            let prep = e.prepare(sql, cursor);
+            let new =
+                e.get_candidates_prepared(sql, cursor, &prep, Some(&meta), Some(&table), &recent);
+            assert_eq!(old, new, "DELETE target_table priority mismatch");
+        }
+    }
 }
