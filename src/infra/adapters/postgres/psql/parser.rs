@@ -354,6 +354,64 @@ mod tests {
     use crate::app::ports::MetadataError;
     use crate::infra::adapters::postgres::PostgresAdapter;
 
+    mod table_signature_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("")]
+        #[case("null")]
+        #[case("   ")]
+        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+            let result = PostgresAdapter::parse_table_signatures(input).unwrap();
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn valid_single_signature_parses_all_fields() {
+            let json = r#"[{
+                "schema": "public",
+                "name": "users",
+                "signature": "abc123def456"
+            }]"#;
+
+            let result = PostgresAdapter::parse_table_signatures(json).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].schema, "public");
+            assert_eq!(result[0].name, "users");
+            assert_eq!(result[0].signature, "abc123def456");
+            assert_eq!(result[0].qualified_name(), "public.users");
+        }
+
+        #[test]
+        fn multiple_signatures_parse_in_order() {
+            let json = r#"[
+                {"schema": "public", "name": "users", "signature": "aaa"},
+                {"schema": "auth", "name": "sessions", "signature": "bbb"}
+            ]"#;
+
+            let result = PostgresAdapter::parse_table_signatures(json).unwrap();
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0].qualified_name(), "public.users");
+            assert_eq!(result[1].qualified_name(), "auth.sessions");
+        }
+
+        #[test]
+        fn malformed_json_returns_invalid_json_error() {
+            let result = PostgresAdapter::parse_table_signatures("{not valid}");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn missing_field_returns_error() {
+            let json = r#"[{"schema": "public", "name": "users"}]"#;
+            let result = PostgresAdapter::parse_table_signatures(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+    }
+
     mod rls_parsing {
         use super::*;
         use crate::domain::RlsCommand;

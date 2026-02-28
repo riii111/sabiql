@@ -384,6 +384,55 @@ mod tests {
         }
     }
 
+    mod table_signatures_query {
+        use super::*;
+
+        #[test]
+        fn contains_md5_hash() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("md5("));
+        }
+
+        #[test]
+        fn uses_same_filter_as_tables_query() {
+            let sig_sql = PostgresAdapter::table_signatures_query();
+            let tab_sql = PostgresAdapter::tables_query();
+
+            assert!(sig_sql.contains("c.relkind = 'r'"));
+            assert!(
+                sig_sql
+                    .contains("n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')")
+            );
+            assert!(sig_sql.contains("has_table_privilege(c.oid, 'SELECT')"));
+
+            // Verify the WHERE clauses share the same filters
+            for fragment in [
+                "c.relkind = 'r'",
+                "n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')",
+                "has_table_privilege(c.oid, 'SELECT')",
+                "has_table_privilege(c.oid, 'INSERT')",
+                "has_table_privilege(c.oid, 'TRIGGER')",
+            ] {
+                assert!(
+                    tab_sql.contains(fragment) && sig_sql.contains(fragment),
+                    "Filter mismatch: {fragment}"
+                );
+            }
+        }
+
+        #[test]
+        fn includes_fk_separator() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("'##FK##'"));
+        }
+
+        #[test]
+        fn returns_json_aggregate() {
+            let sql = PostgresAdapter::table_signatures_query();
+            assert!(sql.contains("json_agg(row_to_json(t))"));
+        }
+    }
+
     mod preview_query_edge_cases {
         use super::*;
 

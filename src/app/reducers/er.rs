@@ -329,4 +329,292 @@ mod tests {
             assert!(effects.is_empty());
         }
     }
+
+    mod smart_er_refresh_completed {
+        use super::*;
+        use std::collections::HashMap;
+
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .collect();
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            }
+        }
+
+        #[test]
+        fn no_changes_dispatches_generate_from_cache() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(2)),
+                stale_tables: vec![],
+                added_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec![],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
+            )));
+        }
+
+        #[test]
+        fn stale_tables_trigger_evict_and_scoped_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(2)),
+                stale_tables: vec!["public.users".to_string()],
+                added_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec![],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::EvictTablesFromCompletionCache { .. }))
+            );
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+            )));
+        }
+
+        #[test]
+        fn added_tables_trigger_scoped_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(3)),
+                stale_tables: vec![],
+                added_tables: vec!["public.new_table".to_string()],
+                removed_tables: vec![],
+                missing_in_cache: vec![],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+            )));
+        }
+
+        #[test]
+        fn removed_tables_trigger_evict() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(1)),
+                stale_tables: vec![],
+                added_tables: vec![],
+                removed_tables: vec!["public.dropped".to_string()],
+                missing_in_cache: vec![],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::EvictTablesFromCompletionCache { tables }
+                    if tables.contains(&"public.dropped".to_string())
+            )));
+        }
+
+        #[test]
+        fn missing_in_cache_triggers_scoped_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(2)),
+                stale_tables: vec![],
+                added_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec!["public.uncached".to_string()],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+            )));
+        }
+
+        #[test]
+        fn mismatched_run_id_returns_empty() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 5;
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 3,
+                new_metadata: Box::new(make_metadata(0)),
+                stale_tables: vec![],
+                added_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec![],
+                new_signatures: HashMap::new(),
+            };
+
+            let effects = reduce_er(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn updates_metadata_and_signatures() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.run_id = 1;
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(0));
+
+            let new_sigs: HashMap<String, String> =
+                [("public.users".to_string(), "abc123".to_string())]
+                    .into_iter()
+                    .collect();
+
+            let action = Action::SmartErRefreshCompleted {
+                run_id: 1,
+                new_metadata: Box::new(make_metadata(5)),
+                stale_tables: vec![],
+                added_tables: vec![],
+                removed_tables: vec![],
+                missing_in_cache: vec![],
+                new_signatures: new_sigs.clone(),
+            };
+
+            reduce_er(&mut state, &action, Instant::now());
+
+            assert_eq!(state.cache.metadata.as_ref().unwrap().tables.len(), 5);
+            assert_eq!(state.er_preparation.last_signatures, new_sigs);
+        }
+    }
+
+    mod smart_er_refresh_failed {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .collect();
+            DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables,
+                fetched_at: Instant::now(),
+            }
+        }
+
+        #[test]
+        fn falls_back_to_full_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(5));
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed("timeout".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+            )));
+        }
+
+        #[test]
+        fn falls_back_to_scoped_prefetch_when_targets_set() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+            state.cache.metadata = Some(make_metadata(10));
+            state.er_preparation.target_tables = vec!["public.t0".to_string()];
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed("timeout".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(effects.iter().any(|e| matches!(
+                e,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+            )));
+        }
+
+        #[test]
+        fn no_metadata_sets_idle_and_error() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.er_preparation.status = ErStatus::Waiting;
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::SmartErRefreshFailed("timeout".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.er_preparation.status, ErStatus::Idle);
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+    }
 }
