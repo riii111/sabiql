@@ -10,7 +10,6 @@ use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
-/// Raw output from a psql invocation.
 struct PsqlOutput {
     status: ExitStatus,
     stdout: String,
@@ -18,8 +17,6 @@ struct PsqlOutput {
 }
 
 impl PostgresAdapter {
-    /// Spawn psql with the given DSN, extra flags, and query, returning the
-    /// raw stdout/stderr. All three `execute_*` methods delegate here.
     async fn run_psql(
         &self,
         dsn: &str,
@@ -41,7 +38,7 @@ impl PostgresAdapter {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true) // Ensure child process is killed on timeout/drop
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
 
@@ -90,9 +87,7 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
     ) -> Result<String, MetadataError> {
-        let output = self
-            .run_psql(dsn, &["-t", "-A"], query) // Tuples only, unaligned output
-            .await?;
+        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
 
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
@@ -101,8 +96,6 @@ impl PostgresAdapter {
         Ok(output.stdout)
     }
 
-    /// Execute a raw SQL query and return structured results.
-    /// This is used for adhoc queries and preview queries.
     pub(in crate::infra::adapters::postgres) async fn execute_query_raw(
         &self,
         dsn: &str,
@@ -111,9 +104,7 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self
-            .run_psql(dsn, &["--csv"], query) // CSV output format
-            .await?;
+        let output = self.run_psql(dsn, &["--csv"], query).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -126,7 +117,6 @@ impl PostgresAdapter {
             ));
         }
 
-        // Parse CSV output using csv crate for robust handling
         if output.stdout.trim().is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
@@ -141,7 +131,6 @@ impl PostgresAdapter {
             .has_headers(true)
             .from_reader(output.stdout.as_bytes());
 
-        // Get column headers
         let columns: Vec<String> = reader
             .headers()
             .map_err(|e| MetadataError::QueryFailed(format!("CSV parse error: {}", e)))?
@@ -149,7 +138,6 @@ impl PostgresAdapter {
             .map(|s| s.to_string())
             .collect();
 
-        // Parse data rows
         let mut rows = Vec::new();
         for result in reader.records() {
             let record = result

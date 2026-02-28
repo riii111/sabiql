@@ -15,7 +15,6 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
     while i < len {
         let (byte_pos, c) = chars[i];
 
-        // Skip -- line comments
         if c == '-' && i + 1 < len && chars[i + 1].1 == '-' {
             while i < len && chars[i].1 != '\n' {
                 i += 1;
@@ -23,7 +22,6 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
             continue;
         }
 
-        // Skip /* block comments */
         if c == '/' && i + 1 < len && chars[i + 1].1 == '*' {
             i += 2;
             while i + 1 < len && !(chars[i].1 == '*' && chars[i + 1].1 == '/') {
@@ -33,7 +31,6 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
             continue;
         }
 
-        // Handle string literals
         if c == '\'' {
             if in_string {
                 if i + 1 < len && chars[i + 1].1 == '\'' {
@@ -61,16 +58,13 @@ pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool
 
         // Reject multiple statements (but allow trailing semicolon)
         if depth == 0 && c == ';' {
-            // Check if there's anything after the semicolon (besides whitespace)
             let remaining = &lower[byte_pos + 1..];
             if !remaining.trim().is_empty() {
                 return false;
             }
-            // Trailing semicolon is OK, stop processing
             break;
         }
 
-        // At top level and word boundary, check for SQL keywords
         if depth == 0 && is_word_start(&chars, i) {
             let rest = &lower[byte_pos..];
             if is_keyword(rest, "select") {
