@@ -1192,24 +1192,28 @@ mod tests {
             }
         }
 
-        // Completion-aware keys: behavior changes based on completion visibility
+        // Completion-aware keys: behavior when completion is hidden
         #[rstest]
-        #[case(Key::Esc, false, Expected::CloseSqlModal)]
-        #[case(Key::Esc, true, Expected::CompletionDismiss)]
-        #[case(Key::Tab, false, Expected::SqlModalTab)]
-        #[case(Key::Tab, true, Expected::CompletionAccept)]
-        #[case(Key::Enter, false, Expected::SqlModalNewLine)]
-        #[case(Key::Enter, true, Expected::CompletionAccept)]
-        #[case(Key::Up, false, Expected::SqlModalMoveCursor(CursorMove::Up))]
-        #[case(Key::Up, true, Expected::CompletionPrev)]
-        #[case(Key::Down, false, Expected::SqlModalMoveCursor(CursorMove::Down))]
-        #[case(Key::Down, true, Expected::CompletionNext)]
-        fn completion_aware_keys(
-            #[case] code: Key,
-            #[case] completion_visible: bool,
-            #[case] expected: Expected,
-        ) {
-            let result = handle_sql_modal_keys(combo(code), completion_visible);
+        #[case(Key::Esc, Expected::CloseSqlModal)]
+        #[case(Key::Tab, Expected::SqlModalTab)]
+        #[case(Key::Enter, Expected::SqlModalNewLine)]
+        #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
+        #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
+        fn completion_hidden_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_sql_modal_keys(combo(code), false);
+
+            assert_action(result, expected);
+        }
+
+        // Completion-aware keys: behavior when completion is visible
+        #[rstest]
+        #[case(Key::Esc, Expected::CompletionDismiss)]
+        #[case(Key::Tab, Expected::CompletionAccept)]
+        #[case(Key::Enter, Expected::CompletionAccept)]
+        #[case(Key::Up, Expected::CompletionPrev)]
+        #[case(Key::Down, Expected::CompletionNext)]
+        fn completion_visible_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_sql_modal_keys(combo(code), true);
 
             assert_action(result, expected);
         }
@@ -1447,7 +1451,6 @@ mod tests {
             Copy,
             ScrollUp,
             ScrollDown,
-            None,
         }
 
         #[rstest]
@@ -1457,13 +1460,7 @@ mod tests {
         #[case(Key::Char('s'), Expected::OpenSelector)]
         #[case(Key::Char('d'), Expected::ToggleDetails)]
         #[case(Key::Char('c'), Expected::Copy)]
-        #[case(Key::Up, Expected::ScrollUp)]
-        #[case(Key::Char('k'), Expected::ScrollUp)]
-        #[case(Key::Down, Expected::ScrollDown)]
-        #[case(Key::Char('j'), Expected::ScrollDown)]
-        #[case(Key::Char('r'), Expected::None)]
-        #[case(Key::Tab, Expected::None)]
-        fn connection_error_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn connection_error_action_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -1477,12 +1474,34 @@ mod tests {
                     assert!(matches!(result, Action::ToggleConnectionErrorDetails))
                 }
                 Expected::Copy => assert!(matches!(result, Action::CopyConnectionError)),
+                _ => unreachable!(),
+            }
+        }
+
+        #[rstest]
+        #[case(Key::Up, Expected::ScrollUp)]
+        #[case(Key::Char('k'), Expected::ScrollUp)]
+        #[case(Key::Down, Expected::ScrollDown)]
+        #[case(Key::Char('j'), Expected::ScrollDown)]
+        fn connection_error_scroll_keys(#[case] code: Key, #[case] expected: Expected) {
+            let result = handle_connection_error_keys(combo(code));
+
+            match expected {
                 Expected::ScrollUp => assert!(matches!(result, Action::ScrollConnectionErrorUp)),
                 Expected::ScrollDown => {
                     assert!(matches!(result, Action::ScrollConnectionErrorDown))
                 }
-                Expected::None => assert!(matches!(result, Action::None)),
+                _ => unreachable!(),
             }
+        }
+
+        #[rstest]
+        #[case(Key::Char('r'))]
+        #[case(Key::Tab)]
+        fn connection_error_unbound_keys(#[case] code: Key) {
+            let result = handle_connection_error_keys(combo(code));
+
+            assert!(matches!(result, Action::None));
         }
     }
 
@@ -1714,22 +1733,38 @@ mod tests {
         use rstest::rstest;
 
         #[rstest]
-        #[case(Key::Char('q'), Action::Quit)]
         #[case(Key::Char('j'), Action::ConnectionListSelectNext)]
         #[case(Key::Down, Action::ConnectionListSelectNext)]
         #[case(Key::Char('k'), Action::ConnectionListSelectPrevious)]
         #[case(Key::Up, Action::ConnectionListSelectPrevious)]
-        #[case(Key::Enter, Action::ConfirmConnectionSelection)]
-        #[case(Key::Char('n'), Action::OpenConnectionSetup)]
-        #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
-        #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
-        fn selector_keys(#[case] code: Key, #[case] expected: Action) {
+        fn selector_navigation_keys(#[case] code: Key, #[case] expected: Action) {
             let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(
                 std::mem::discriminant(&result),
                 std::mem::discriminant(&expected)
             );
+        }
+
+        #[rstest]
+        #[case(Key::Enter, Action::ConfirmConnectionSelection)]
+        #[case(Key::Char('n'), Action::OpenConnectionSetup)]
+        #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
+        #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
+        fn selector_action_keys(#[case] code: Key, #[case] expected: Action) {
+            let result = handle_connection_selector_keys(combo(code));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn selector_quit_key() {
+            let result = handle_connection_selector_keys(combo(Key::Char('q')));
+
+            assert!(matches!(result, Action::Quit));
         }
 
         #[test]
