@@ -93,15 +93,15 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                     let min_gap = 2;
                     let max_name_len = content_width
                         .saturating_sub(PREFIX_DISPLAY_WIDTH + min_gap + source_label.len());
-                    let name = if entry.service_name.chars().count() > max_name_len {
+                    let name = if entry.display_name().chars().count() > max_name_len {
                         let truncated: String = entry
-                            .service_name
+                            .display_name()
                             .chars()
                             .take(max_name_len.saturating_sub(1))
                             .collect();
                         format!("{}…", truncated)
                     } else {
-                        entry.service_name.clone()
+                        entry.display_name().to_owned()
                     };
                     let name_display_width = PREFIX_DISPLAY_WIDTH + name.chars().count();
                     let gap = label_col.saturating_sub(name_display_width).max(min_gap);

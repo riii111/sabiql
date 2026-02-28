@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, TableTarget};
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
@@ -119,11 +119,11 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 Some(vec![])
             }
         }
-        Action::LoadTableDetail {
+        Action::LoadTableDetail(TableTarget {
             schema,
             table,
             generation,
-        } => {
+        }) => {
             if let Some(dsn) = &state.runtime.dsn {
                 Some(vec![Effect::FetchTableDetail {
                     dsn: dsn.clone(),
