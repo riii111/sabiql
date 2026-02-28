@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ErDiagramInfo};
 use crate::app::ports::ErDiagramExporter;
 use crate::domain::ErTableInfo;
 
@@ -25,11 +25,11 @@ pub fn spawn_er_diagram_task(
         match result {
             Ok(Ok(path)) => {
                 let _ = tx
-                    .send(Action::ErDiagramOpened {
+                    .send(Action::ErDiagramOpened(ErDiagramInfo {
                         path: path.display().to_string(),
                         table_count,
                         total_tables,
-                    })
+                    }))
                     .await;
             }
             Ok(Err(e)) => {
@@ -120,11 +120,11 @@ mod tests {
 
             let action = receive_action(&mut rx).await;
             match action {
-                Action::ErDiagramOpened {
+                Action::ErDiagramOpened(ErDiagramInfo {
                     path,
                     table_count,
                     total_tables,
-                } => {
+                }) => {
                     assert!(path.contains("test.svg"));
                     assert_eq!(table_count, 0);
                     assert_eq!(total_tables, 5);

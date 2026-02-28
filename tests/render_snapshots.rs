@@ -610,6 +610,31 @@ mod connection_management {
     }
 
     #[test]
+    fn connection_selector_with_multibyte_service_name() {
+        use sabiql::domain::connection::ServiceEntry;
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.service_entries = vec![ServiceEntry {
+            service_name: "本番データベース接続".to_string(),
+            host: Some("db.example.com".to_string()),
+            dbname: Some("mydb".to_string()),
+            port: Some(5432),
+            user: None,
+        }];
+        let service_count = state.service_entries.len();
+        state.connection_list_items =
+            sabiql::app::connection_list::build_connection_list(0, service_count);
+        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.ui.set_connection_list_selection(Some(0));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn confirm_dialog_delete_active_connection() {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();

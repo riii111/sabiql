@@ -21,6 +21,53 @@ pub enum CursorMove {
 }
 
 #[derive(Debug, Clone)]
+pub struct SmartErRefreshResult {
+    pub run_id: u64,
+    pub new_metadata: Box<DatabaseMetadata>,
+    pub stale_tables: Vec<String>,
+    pub added_tables: Vec<String>,
+    pub removed_tables: Vec<String>,
+    pub missing_in_cache: Vec<String>,
+    pub new_signatures: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmartErRefreshError {
+    pub run_id: u64,
+    pub error: String,
+    pub new_metadata: Option<Box<DatabaseMetadata>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ErDiagramInfo {
+    pub path: String,
+    pub table_count: usize,
+    pub total_tables: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectionsLoadedPayload {
+    pub profiles: Vec<ConnectionProfile>,
+    pub services: Vec<ServiceEntry>,
+    pub service_file_path: Option<std::path::PathBuf>,
+    pub service_load_warning: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableTarget {
+    pub schema: String,
+    pub table: String,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectionTarget {
+    pub id: ConnectionId,
+    pub dsn: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum Action {
     None,
     Quit,
@@ -40,11 +87,7 @@ pub enum Action {
 
     // Connection lifecycle
     TryConnect,
-    SwitchConnection {
-        id: ConnectionId,
-        dsn: String,
-        name: String,
-    },
+    SwitchConnection(ConnectionTarget),
 
     // Connection Setup
     OpenConnectionSetup,
@@ -62,11 +105,7 @@ pub enum Action {
     ConnectionSetupDropdownCancel,
     ConnectionSetupSave,
     ConnectionSetupCancel,
-    ConnectionSaveCompleted {
-        id: ConnectionId,
-        dsn: String,
-        name: String,
-    },
+    ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(String),
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(String),
@@ -130,12 +169,7 @@ pub enum Action {
     SetExplorerMode(ExplorerMode),
     ConnectionListSelectNext,
     ConnectionListSelectPrevious,
-    ConnectionsLoaded {
-        profiles: Vec<ConnectionProfile>,
-        services: Vec<ServiceEntry>,
-        service_file_path: Option<std::path::PathBuf>,
-        service_load_warning: Option<String>,
-    },
+    ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
 
     // Selection
@@ -151,11 +185,7 @@ pub enum Action {
     MetadataFailed(String),
 
     // Table detail loading
-    LoadTableDetail {
-        schema: String,
-        table: String,
-        generation: u64,
-    },
+    LoadTableDetail(TableTarget),
     TableDetailLoaded(Box<Table>, u64),
     TableDetailFailed(String, u64),
 
@@ -235,11 +265,7 @@ pub enum Action {
     CompletionPrev,
 
     // Query execution
-    ExecutePreview {
-        schema: String,
-        table: String,
-        generation: u64,
-    },
+    ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
     ExecuteWrite(String),
     QueryCompleted {
@@ -306,25 +332,9 @@ pub enum Action {
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
     ErGenerateFromCache,
-    SmartErRefreshCompleted {
-        run_id: u64,
-        new_metadata: Box<DatabaseMetadata>,
-        stale_tables: Vec<String>,
-        added_tables: Vec<String>,
-        removed_tables: Vec<String>,
-        missing_in_cache: Vec<String>,
-        new_signatures: HashMap<String, String>,
-    },
-    SmartErRefreshFailed {
-        run_id: u64,
-        error: String,
-        new_metadata: Option<Box<DatabaseMetadata>>,
-    },
-    ErDiagramOpened {
-        path: String,
-        table_count: usize,
-        total_tables: usize,
-    },
+    SmartErRefreshCompleted(SmartErRefreshResult),
+    SmartErRefreshFailed(SmartErRefreshError),
+    ErDiagramOpened(ErDiagramInfo),
     ErDiagramFailed(String),
 }
 
