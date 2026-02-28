@@ -1,7 +1,7 @@
 use crate::app::ports::MetadataError;
 use crate::domain::{
     Column, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy, Schema,
-    TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 use super::super::PostgresAdapter;
@@ -74,6 +74,33 @@ impl PostgresAdapter {
         Ok(raw
             .into_iter()
             .map(|t| TableSummary::new(t.schema, t.name, t.row_count_estimate, t.has_rls))
+            .collect())
+    }
+
+    pub(in crate::infra::adapters::postgres) fn parse_table_signatures(
+        json: &str,
+    ) -> Result<Vec<TableSignature>, MetadataError> {
+        let Some(trimmed) = non_empty_json(json) else {
+            return Ok(Vec::new());
+        };
+
+        #[derive(serde::Deserialize)]
+        struct RawTableSignature {
+            schema: String,
+            name: String,
+            signature: String,
+        }
+
+        let raw: Vec<RawTableSignature> =
+            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+
+        Ok(raw
+            .into_iter()
+            .map(|t| TableSignature {
+                schema: t.schema,
+                name: t.name,
+                signature: t.signature,
+            })
             .collect())
     }
 

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::{DatabaseMetadata, Table};
+use crate::domain::{DatabaseMetadata, Table, TableSignature};
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -13,6 +13,9 @@ pub trait MetadataProvider: Send + Sync {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError>;
+
+    async fn fetch_table_signatures(&self, dsn: &str)
+    -> Result<Vec<TableSignature>, MetadataError>;
 }
 
 #[derive(Debug, Clone)]

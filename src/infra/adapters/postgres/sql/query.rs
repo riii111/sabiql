@@ -30,6 +30,56 @@ impl PostgresAdapter {
         "#
     }
 
+    pub(in crate::infra::adapters::postgres) fn table_signatures_query() -> &'static str {
+        r#"
+        SELECT json_agg(row_to_json(t))
+        FROM (
+            SELECT
+                n.nspname AS schema,
+                c.relname AS name,
+                md5(
+                    COALESCE((
+                        SELECT string_agg(
+                            a.attname || ':' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+                                || ':' || a.attnotnull::text
+                                || ':' || COALESCE(pg_get_expr(d.adbin, d.adrelid), ''),
+                            '|' ORDER BY a.attnum
+                        )
+                        FROM pg_attribute a
+                        LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+                        WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                    ), '')
+                    || '##FK##'
+                    || COALESCE((
+                        SELECT string_agg(
+                            con.conname || ':'
+                                || n2.nspname || '.' || c2.relname,
+                            '|' ORDER BY con.conname
+                        )
+                        FROM pg_constraint con
+                        JOIN pg_class c2 ON c2.oid = con.confrelid
+                        JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
+                        WHERE con.conrelid = c.oid AND con.contype = 'f'
+                    ), '')
+                ) AS signature
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r'
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND (
+                  has_table_privilege(c.oid, 'SELECT')
+                  OR has_table_privilege(c.oid, 'INSERT')
+                  OR has_table_privilege(c.oid, 'UPDATE')
+                  OR has_table_privilege(c.oid, 'DELETE')
+                  OR has_table_privilege(c.oid, 'TRUNCATE')
+                  OR has_table_privilege(c.oid, 'REFERENCES')
+                  OR has_table_privilege(c.oid, 'TRIGGER')
+              )
+            ORDER BY n.nspname, c.relname
+        ) t
+        "#
+    }
+
     pub(in crate::infra::adapters::postgres) fn schemas_query() -> &'static str {
         r#"
         SELECT json_agg(row_to_json(s))
