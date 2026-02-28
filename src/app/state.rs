@@ -43,9 +43,9 @@ pub struct AppState {
     pub pending_write_preview: Option<WritePreview>,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
-    pub connections: Vec<ConnectionProfile>,
-    pub service_entries: Vec<ServiceEntry>,
-    pub connection_list_items: Vec<ConnectionListItem>,
+    connections: Vec<ConnectionProfile>,
+    service_entries: Vec<ServiceEntry>,
+    connection_list_items: Vec<ConnectionListItem>,
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
 }
@@ -242,7 +242,7 @@ impl AppState {
         self.rebuild_connection_list();
     }
 
-    pub fn rebuild_connection_list(&mut self) {
+    fn rebuild_connection_list(&mut self) {
         self.connection_list_items = super::connection_list::build_connection_list(
             self.connections.len(),
             self.service_entries.len(),
