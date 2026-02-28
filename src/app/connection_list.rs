@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionListItem {
     Profile(usize),
-    Separator,
     Service(usize),
 }
 
@@ -19,10 +18,6 @@ pub fn build_connection_list(
         items.push(ConnectionListItem::Profile(i));
     }
 
-    if profile_count > 0 && service_count > 0 {
-        items.push(ConnectionListItem::Separator);
-    }
-
     for i in 0..service_count {
         items.push(ConnectionListItem::Service(i));
     }
@@ -35,7 +30,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn both_profiles_and_services_includes_separator() {
+    fn both_profiles_and_services_concatenated() {
         let items = build_connection_list(2, 3);
 
         assert_eq!(
@@ -43,7 +38,6 @@ mod tests {
             vec![
                 ConnectionListItem::Profile(0),
                 ConnectionListItem::Profile(1),
-                ConnectionListItem::Separator,
                 ConnectionListItem::Service(0),
                 ConnectionListItem::Service(1),
                 ConnectionListItem::Service(2),

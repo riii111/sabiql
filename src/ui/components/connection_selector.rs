@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
 use super::molecules::render_modal;
@@ -55,6 +56,10 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
     state.ui.connection_list_pane_height = area.height;
     let active_id = state.runtime.active_connection_id.as_ref();
 
+    // highlight_symbol "> " takes 2 columns
+    let content_width = area.width.saturating_sub(2) as usize;
+    let source_label = "from pg_service.conf";
+
     let items: Vec<ListItem> = if state.connection_list_items.is_empty() {
         vec![ListItem::new(" No connections")]
     } else {
@@ -74,12 +79,18 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
                     };
                     ListItem::new(text).style(style)
                 }
-                ConnectionListItem::Separator => ListItem::new("── pg_service.conf ──")
-                    .style(Style::default().fg(Theme::TEXT_MUTED)),
                 ConnectionListItem::Service(i) => {
                     let entry = &state.service_entries[*i];
-                    ListItem::new(format!("  {}", entry.service_name))
-                        .style(Style::default().fg(Theme::TEXT_SECONDARY))
+                    let name_part = format!("  {}", entry.service_name);
+                    let label_col = content_width * 40 / 100;
+                    let min_gap = 2;
+                    let gap = label_col.saturating_sub(name_part.len()).max(min_gap);
+                    let line = Line::from(vec![
+                        Span::styled(name_part, Style::default().fg(Theme::TEXT_SECONDARY)),
+                        Span::raw(" ".repeat(gap)),
+                        Span::styled(source_label, Style::default().fg(Theme::TEXT_MUTED)),
+                    ]);
+                    ListItem::new(line)
                 }
             })
             .collect()

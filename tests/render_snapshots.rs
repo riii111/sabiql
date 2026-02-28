@@ -538,6 +538,78 @@ mod connection_management {
     }
 
     #[test]
+    fn connection_selector_with_service_entries() {
+        use sabiql::domain::connection::ServiceEntry;
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        let (active_id, connections) = three_connections();
+        let profile_count = connections.len();
+        state.connections = connections;
+        state.service_entries = vec![
+            ServiceEntry {
+                service_name: "dev-db".to_string(),
+                host: Some("localhost".to_string()),
+                dbname: Some("devdb".to_string()),
+                port: Some(5432),
+                user: Some("dev".to_string()),
+            },
+            ServiceEntry {
+                service_name: "prod-replica".to_string(),
+                host: Some("replica.example.com".to_string()),
+                dbname: Some("proddb".to_string()),
+                port: Some(5433),
+                user: None,
+            },
+        ];
+        let service_count = state.service_entries.len();
+        state.connection_list_items =
+            sabiql::app::connection_list::build_connection_list(profile_count, service_count);
+        state.runtime.active_connection_id = Some(active_id);
+        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.ui.set_connection_list_selection(Some(0));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn connection_selector_with_long_service_name() {
+        use sabiql::domain::connection::ServiceEntry;
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.service_entries = vec![
+            ServiceEntry {
+                service_name: "my-very-long-service-name-that-exceeds-normal-length".to_string(),
+                host: Some("db.example.com".to_string()),
+                dbname: Some("mydb".to_string()),
+                port: Some(5432),
+                user: None,
+            },
+            ServiceEntry {
+                service_name: "short".to_string(),
+                host: Some("localhost".to_string()),
+                dbname: None,
+                port: None,
+                user: None,
+            },
+        ];
+        let service_count = state.service_entries.len();
+        state.connection_list_items =
+            sabiql::app::connection_list::build_connection_list(0, service_count);
+        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.ui.set_connection_list_selection(Some(0));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn confirm_dialog_delete_active_connection() {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();

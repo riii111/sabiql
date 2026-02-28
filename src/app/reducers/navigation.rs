@@ -883,31 +883,18 @@ pub fn reduce_navigation(
             }
         }
         Action::ConnectionListSelectNext => {
-            use crate::app::connection_list::ConnectionListItem;
-            let items = &state.connection_list_items;
-            let len = items.len();
-            if len > 0 {
-                let mut next = state.ui.connection_list_selected + 1;
-                while next < len && matches!(items[next], ConnectionListItem::Separator) {
-                    next += 1;
-                }
-                if next < len {
-                    state.ui.set_connection_list_selection(Some(next));
-                }
+            let len = state.connection_list_items.len();
+            let next = state.ui.connection_list_selected + 1;
+            if next < len {
+                state.ui.set_connection_list_selection(Some(next));
             }
             Some(vec![])
         }
         Action::ConnectionListSelectPrevious => {
-            use crate::app::connection_list::ConnectionListItem;
-            let items = &state.connection_list_items;
-            if !items.is_empty() && state.ui.connection_list_selected > 0 {
-                let mut prev = state.ui.connection_list_selected - 1;
-                while prev > 0 && matches!(items[prev], ConnectionListItem::Separator) {
-                    prev -= 1;
-                }
-                if !matches!(items[prev], ConnectionListItem::Separator) {
-                    state.ui.set_connection_list_selection(Some(prev));
-                }
+            if state.ui.connection_list_selected > 0 {
+                state
+                    .ui
+                    .set_connection_list_selection(Some(state.ui.connection_list_selected - 1));
             }
             Some(vec![])
         }
@@ -926,10 +913,7 @@ pub fn reduce_navigation(
             state.connections = sorted;
             state.service_entries = services.clone();
             state.runtime.service_file_path = service_file_path.clone();
-            state.connection_list_items = crate::app::connection_list::build_connection_list(
-                state.connections.len(),
-                state.service_entries.len(),
-            );
+            state.rebuild_connection_list();
 
             if let Some(warning) = service_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
