@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
     let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
 
-    let service_file_reader = Arc::new(PgServiceFileReader::new());
+    let service_file_reader: Arc<dyn ServiceFileReader> = Arc::new(PgServiceFileReader::new());
 
     let effect_runner = EffectRunner::builder()
         .metadata_provider(Arc::clone(&adapter) as _)
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
         .config_writer(Arc::new(FileConfigWriter::new()))
         .er_log_writer(Arc::new(FsErLogWriter))
         .connection_store(Arc::clone(&connection_store) as _)
-        .service_file_reader(service_file_reader as _)
+        .service_file_reader(Arc::clone(&service_file_reader))
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();
@@ -98,30 +98,13 @@ async fn main() -> Result<()> {
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
-            // Even with no profiles, pg_service.conf entries allow ConnectionSelector
-            let service_reader = sabiql::infra::adapters::PgServiceFileReader::new();
-            let has_services = if let Ok((services, path)) = service_reader.read_services() {
-                if !services.is_empty() {
-                    state.service_entries = services;
-                    state.runtime.service_file_path = Some(path);
-                    state.connection_list_items =
-                        sabiql::app::connection_list::build_connection_list(
-                            0,
-                            state.service_entries.len(),
-                        );
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-            if has_services {
-                state.ui.input_mode = InputMode::ConnectionSelector;
-                state.ui.set_connection_list_selection(Some(0));
-            } else {
+            load_service_entries(&mut state, &*service_file_reader);
+            if state.service_entries.is_empty() {
                 state.connection_setup.is_first_run = true;
                 state.ui.input_mode = InputMode::ConnectionSetup;
+            } else {
+                state.ui.input_mode = InputMode::ConnectionSelector;
+                state.ui.set_connection_list_selection(Some(0));
             }
         }
         Ok(mut profiles) => {
@@ -131,18 +114,7 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.connections = profiles;
-
-            let service_reader = sabiql::infra::adapters::PgServiceFileReader::new();
-            if let Ok((services, path)) = service_reader.read_services()
-                && !services.is_empty()
-            {
-                state.service_entries = services;
-                state.runtime.service_file_path = Some(path);
-            }
-            state.connection_list_items = sabiql::app::connection_list::build_connection_list(
-                state.connections.len(),
-                state.service_entries.len(),
-            );
+            load_service_entries(&mut state, &*service_file_reader);
 
             state.ui.input_mode = InputMode::ConnectionSelector;
             state.ui.set_connection_list_selection(Some(0));
@@ -238,6 +210,19 @@ async fn main() -> Result<()> {
 
     tui.exit()?;
     Ok(())
+}
+
+fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
+    if let Ok((services, path)) = reader.read_services()
+        && !services.is_empty()
+    {
+        state.service_entries = services;
+        state.runtime.service_file_path = Some(path);
+    }
+    state.connection_list_items = sabiql::app::connection_list::build_connection_list(
+        state.connections.len(),
+        state.service_entries.len(),
+    );
 }
 
 #[cfg(feature = "self-update")]
