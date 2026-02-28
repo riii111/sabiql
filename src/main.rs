@@ -36,7 +36,12 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Command {
+    #[cfg(feature = "self-update")]
     /// Update sabiql to the latest compatible version
+    Update,
+    #[cfg(not(feature = "self-update"))]
+    #[command(hide = true)]
+    /// Self-update is disabled in this build
     Update,
 }
 
@@ -47,7 +52,15 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     if let Some(Command::Update) = args.command {
-        return run_update();
+        #[cfg(feature = "self-update")]
+        {
+            return run_update();
+        }
+        #[cfg(not(feature = "self-update"))]
+        {
+            eprintln!("{}", self_update_disabled_message());
+            std::process::exit(1);
+        }
     }
 
     let project_root = find_project_root()?;
@@ -188,6 +201,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "self-update")]
 fn run_update() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     println!("Current version: v{}", current);
@@ -212,6 +226,15 @@ fn run_update() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(feature = "self-update"))]
+fn self_update_disabled_message() -> String {
+    format!(
+        "Self-update is not available in this build (v{}).\n\
+         If installed via Homebrew, run: brew upgrade sabiql",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,8 +247,24 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "self-update")]
     fn update_subcommand_is_recognized() {
         let args = Args::parse_from(["sabiql", "update"]);
         assert!(matches!(args.command, Some(Command::Update)));
+    }
+
+    #[test]
+    #[cfg(not(feature = "self-update"))]
+    fn update_subcommand_available_but_self_update_disabled() {
+        let args = Args::parse_from(["sabiql", "update"]);
+        assert!(matches!(args.command, Some(Command::Update)));
+    }
+
+    #[test]
+    #[cfg(not(feature = "self-update"))]
+    fn disabled_message_contains_version_and_brew_guidance() {
+        let msg = self_update_disabled_message();
+        assert!(msg.contains(env!("CARGO_PKG_VERSION")));
+        assert!(msg.contains("brew upgrade sabiql"));
     }
 }
