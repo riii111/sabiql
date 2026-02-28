@@ -3,10 +3,10 @@
 pub(in crate::infra::adapters::postgres) fn is_select_query(query: &str) -> bool {
     let lower = query.trim().to_lowercase();
     let chars: Vec<(usize, char)> = lower.char_indices().collect();
-    evaluate_query(&lower, &chars)
+    check_select_safety(&lower, &chars)
 }
 
-fn evaluate_query(lower: &str, chars: &[(usize, char)]) -> bool {
+fn check_select_safety(lower: &str, chars: &[(usize, char)]) -> bool {
     let mut state = ParseState::default();
 
     while state.i < chars.len() {
@@ -83,6 +83,8 @@ fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usiz
     while cursor < chars.len() && chars[cursor].1 != '\n' {
         cursor += 1;
     }
+    // Treat an unclosed dollar-quote as "consume until end". This keeps keyword
+    // scanning out of unterminated string-like input.
     Some(cursor)
 }
 
@@ -189,7 +191,10 @@ fn update_parentheses_depth(ch: char, depth: &mut i32) {
 }
 
 fn has_non_whitespace_after_semicolon(lower: &str, byte_pos: usize) -> bool {
-    !lower[byte_pos + 1..].trim().is_empty()
+    lower
+        .get(byte_pos + 1..)
+        .map(|tail| !tail.trim().is_empty())
+        .unwrap_or(false)
 }
 
 fn is_rejected_keyword(rest: &str) -> bool {
@@ -322,8 +327,14 @@ mod tests {
         #[case("SELECT $$update$$ AS label", true)]
         #[case("SELECT $tag$delete from here$tag$ AS s", true)]
         #[case("SELECT $$semi;colon$$ AS label", true)]
+        // Unterminated dollar-quote currently consumes until end
+        #[case("SELECT $$unclosed", true)]
         // Trailing semicolon + whitespace is still a single statement
         #[case("SELECT 1;   ", true)]
+        // Semicolon followed by a comment is treated as additional content
+        #[case("SELECT 1; -- done", false)]
+        // Nested block comments are accepted by preserving outer SELECT detection
+        #[case("SELECT /* outer /* inner */ still comment */ 1", true)]
         fn query_validation_returns_expected(#[case] query: &str, #[case] expected: bool) {
             assert_eq!(is_select_query(query), expected);
         }
