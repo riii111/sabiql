@@ -176,8 +176,8 @@ impl PostgresAdapter {
             on_update: String,
         }
 
-        fn parse_fk_action(s: &str) -> FkAction {
-            match s {
+        fn parse_fk_action(code: &str) -> FkAction {
+            match code {
                 "a" => FkAction::NoAction,
                 "r" => FkAction::Restrict,
                 "c" => FkAction::Cascade,
