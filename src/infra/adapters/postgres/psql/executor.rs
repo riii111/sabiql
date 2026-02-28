@@ -308,7 +308,7 @@ mod tests {
         }
 
         #[test]
-        fn non_csv_output_like_notice_returns_error() {
+        fn non_csv_output_like_notice_parses_as_header() {
             let non_csv = "NOTICE: some database notice\nNOTICE: another line";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
