@@ -915,6 +915,7 @@ pub fn reduce_navigation(
             profiles,
             services,
             service_file_path,
+            service_load_warning,
         } => {
             let mut sorted = profiles.clone();
             sorted.sort_by(|a, b| {
@@ -929,6 +930,10 @@ pub fn reduce_navigation(
                 state.connections.len(),
                 state.service_entries.len(),
             );
+
+            if let Some(warning) = service_load_warning {
+                state.messages.set_error_at(warning.clone(), now);
+            }
 
             let list_len = state.connection_list_items.len();
             if list_len == 0 {
@@ -1271,6 +1276,7 @@ mod tests {
                     profiles,
                     services: vec![],
                     service_file_path: None,
+                    service_load_warning: None,
                 },
                 Instant::now(),
             );
@@ -1291,6 +1297,7 @@ mod tests {
                     profiles,
                     services: vec![],
                     service_file_path: None,
+                    service_load_warning: None,
                 },
                 Instant::now(),
             );

@@ -134,6 +134,7 @@ pub enum Action {
         profiles: Vec<ConnectionProfile>,
         services: Vec<ServiceEntry>,
         service_file_path: Option<std::path::PathBuf>,
+        service_load_warning: Option<String>,
     },
     ConfirmConnectionSelection,
 

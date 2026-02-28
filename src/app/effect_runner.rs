@@ -26,7 +26,7 @@ use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{
     ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
-    QueryExecutor, Renderer, ServiceFileReader,
+    QueryExecutor, Renderer, ServiceFileError, ServiceFileReader,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionProfile;
@@ -301,15 +301,18 @@ impl EffectRunner {
 
                 tokio::task::spawn_blocking(move || {
                     let profiles = store.load_all().unwrap_or_default();
-                    let (services, service_file_path) = reader
-                        .read_services()
-                        .map(|(s, p)| (s, Some(p)))
-                        .unwrap_or_default();
+                    let (services, service_file_path, service_load_warning) =
+                        match reader.read_services() {
+                            Ok((s, p)) => (s, Some(p), None),
+                            Err(ServiceFileError::NotFound(_)) => (vec![], None, None),
+                            Err(e) => (vec![], None, Some(e.to_string())),
+                        };
 
                     tx.blocking_send(Action::ConnectionsLoaded {
                         profiles,
                         services,
                         service_file_path,
+                        service_load_warning,
                     })
                     .ok();
                 });
