@@ -1572,7 +1572,7 @@ mod tests {
             }
         }
 
-        mod only_keyword {
+        mod table_reference_edge_cases {
             use super::*;
 
             #[test]
