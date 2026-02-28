@@ -963,24 +963,41 @@ mod tests {
         }
 
         #[rstest]
-        #[case("", true)]
-        #[case("abc", true)]
-        #[case("0", true)]
-        #[case("1", false)]
-        #[case("5432", false)]
-        #[case("65535", false)]
-        #[case("65536", true)]
-        #[case("99999", true)]
-        fn port_validation(#[case] value: &str, #[case] has_error: bool) {
+        #[case("")]
+        #[case("abc")]
+        fn port_validation_invalid_format(#[case] value: &str) {
             let mut state = setup_state();
             state.port = value.to_string();
 
             validate_field(&mut state, ConnectionField::Port);
 
-            assert_eq!(
-                state.validation_errors.contains_key(&ConnectionField::Port),
-                has_error
-            );
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+        }
+
+        #[rstest]
+        #[case("0")]
+        #[case("65536")]
+        #[case("99999")]
+        fn port_validation_out_of_range(#[case] value: &str) {
+            let mut state = setup_state();
+            state.port = value.to_string();
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert!(state.validation_errors.contains_key(&ConnectionField::Port));
+        }
+
+        #[rstest]
+        #[case("1")]
+        #[case("5432")]
+        #[case("65535")]
+        fn port_validation_valid_range(#[case] value: &str) {
+            let mut state = setup_state();
+            state.port = value.to_string();
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert!(!state.validation_errors.contains_key(&ConnectionField::Port));
         }
 
         #[rstest]

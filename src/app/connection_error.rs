@@ -156,31 +156,64 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case("psql: command not found", ConnectionErrorKind::CliNotFound)]
-        #[case("/bin/sh: psql: command not found", ConnectionErrorKind::CliNotFound)]
-        #[case("zsh: command not found: psql", ConnectionErrorKind::CliNotFound)]
-        #[case("not found: mysql", ConnectionErrorKind::CliNotFound)]
-        #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#, ConnectionErrorKind::HostUnreachable)]
-        #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#, ConnectionErrorKind::HostUnreachable)]
-        #[case(
-            r#"FATAL: password authentication failed for user "user""#,
-            ConnectionErrorKind::AuthFailed
-        )]
-        #[case(
-            r#"psql: error: FATAL:  password authentication failed"#,
-            ConnectionErrorKind::AuthFailed
-        )]
-        #[case(
-            r#"FATAL: database "nonexistent" does not exist"#,
-            ConnectionErrorKind::DatabaseNotFound
-        )]
-        #[case("psql: error: timeout expired", ConnectionErrorKind::Timeout)]
-        #[case("Connection timed out", ConnectionErrorKind::Timeout)]
-        #[case("Connection refused", ConnectionErrorKind::Unknown)]
-        #[case("Some random error", ConnectionErrorKind::Unknown)]
-        #[case("", ConnectionErrorKind::Unknown)]
-        fn from_stderr(#[case] stderr: &str, #[case] expected: ConnectionErrorKind) {
-            assert_eq!(ConnectionErrorKind::classify(stderr), expected);
+        #[case("psql: command not found")]
+        #[case("/bin/sh: psql: command not found")]
+        #[case("zsh: command not found: psql")]
+        #[case("not found: mysql")]
+        fn classify_stderr_as_cli_not_found(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::CliNotFound
+            );
+        }
+
+        #[rstest]
+        #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#)]
+        #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#)]
+        fn classify_stderr_as_host_unreachable(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::HostUnreachable
+            );
+        }
+
+        #[rstest]
+        #[case(r#"FATAL: password authentication failed for user "user""#)]
+        #[case(r#"psql: error: FATAL:  password authentication failed"#)]
+        fn classify_stderr_as_auth_failed(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::AuthFailed
+            );
+        }
+
+        #[test]
+        fn classify_stderr_as_database_not_found() {
+            assert_eq!(
+                ConnectionErrorKind::classify(r#"FATAL: database "nonexistent" does not exist"#),
+                ConnectionErrorKind::DatabaseNotFound
+            );
+        }
+
+        #[rstest]
+        #[case("psql: error: timeout expired")]
+        #[case("Connection timed out")]
+        fn classify_stderr_as_timeout(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::Timeout
+            );
+        }
+
+        #[rstest]
+        #[case("Connection refused")]
+        #[case("Some random error")]
+        #[case("")]
+        fn classify_stderr_as_unknown_fallback(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::Unknown
+            );
         }
     }
 
@@ -234,15 +267,32 @@ mod tests {
         #[case("postgresql://user:secret@host", "postgresql://user:****@host")]
         #[case("POSTGRES://user:secret@host", "POSTGRES://user:****@host")]
         #[case("PostgreSQL://user:secret@host", "PostgreSQL://user:****@host")]
+        fn masks_postgres_url_scheme(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+        }
+
+        #[rstest]
         #[case("password=mysecret host=localhost", "password=**** host=localhost")]
         #[case("PASSWORD=mysecret host=localhost", "PASSWORD=**** host=localhost")]
         #[case("PGPASSWORD=secret123 psql", "PGPASSWORD=**** psql")]
+        fn masks_key_value_dsn(#[case] input: &str, #[case] expected: &str) {
+            assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+        }
+
+        #[rstest]
         #[case("mysql://user:secret@host", "mysql://user:****@host")]
         #[case("MYSQL_PASSWORD=secret123 mysql", "MYSQL_PASSWORD=**** mysql")]
         #[case("MYSQL_PWD=secret123 mysql", "MYSQL_PWD=**** mysql")]
-        #[case("no password here", "no password here")]
-        fn masks_correctly(#[case] input: &str, #[case] expected: &str) {
+        fn masks_mysql_credentials(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(ConnectionErrorInfo::mask_password(input), expected);
+        }
+
+        #[test]
+        fn passthrough_when_no_password() {
+            assert_eq!(
+                ConnectionErrorInfo::mask_password("no password here"),
+                "no password here"
+            );
         }
 
         #[test]

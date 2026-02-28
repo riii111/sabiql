@@ -953,7 +953,21 @@ pub fn reduce_navigation(
 mod tests {
     use super::*;
     use crate::app::effect::Effect;
+    use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
     use std::time::Instant;
+
+    fn create_test_profile(name: &str) -> ConnectionProfile {
+        ConnectionProfile {
+            id: ConnectionId::new(),
+            name: ConnectionName::new(name).unwrap(),
+            host: "localhost".to_string(),
+            port: 5432,
+            database: "test".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            ssl_mode: SslMode::Prefer,
+        }
+    }
 
     mod paste {
         use super::*;
@@ -1134,20 +1148,6 @@ mod tests {
 
     mod connection_list_navigation {
         use super::*;
-        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
-
-        fn create_test_profile(name: &str) -> ConnectionProfile {
-            ConnectionProfile {
-                id: ConnectionId::new(),
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
-        }
 
         #[test]
         fn select_next_increments_selection() {
@@ -1216,20 +1216,6 @@ mod tests {
 
     mod connections_loaded {
         use super::*;
-        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
-
-        fn create_test_profile(name: &str) -> ConnectionProfile {
-            ConnectionProfile {
-                id: ConnectionId::new(),
-                name: ConnectionName::new(name).unwrap(),
-                host: "localhost".to_string(),
-                port: 5432,
-                database: "test".to_string(),
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                ssl_mode: SslMode::Prefer,
-            }
-        }
 
         #[test]
         fn sorts_connections_by_name_case_insensitive() {
@@ -1728,6 +1714,22 @@ mod tests {
         use crate::domain::{QueryResult, QuerySource, Table};
         use std::sync::Arc;
 
+        fn minimal_users_table() -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: Some(vec!["id".to_string()]),
+                foreign_keys: vec![],
+                indexes: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
         fn preview_state_with_selection() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.query.current_result = Some(Arc::new(QueryResult {
@@ -1750,19 +1752,7 @@ mod tests {
         #[test]
         fn re_entering_same_cell_with_pending_draft_preserves_draft() {
             let mut state = preview_state_with_selection();
-            state.cache.table_detail = Some(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            });
+            state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 1, "alice".to_string());
             state.cell_edit.draft_value = "modified".to_string();
             state.ui.input_mode = InputMode::Normal;
@@ -1776,19 +1766,7 @@ mod tests {
         #[test]
         fn entering_different_cell_resets_draft() {
             let mut state = preview_state_with_selection();
-            state.cache.table_detail = Some(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: Some(vec!["id".to_string()]),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            });
+            state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 99, "stale".to_string());
             state.cell_edit.draft_value = "stale-modified".to_string();
 
