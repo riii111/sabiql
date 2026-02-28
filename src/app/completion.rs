@@ -845,9 +845,55 @@ impl CompletionEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{Column, Table};
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
+    }
+
+    fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
+        Table {
+            schema: schema.to_string(),
+            name: name.to_string(),
+            owner: None,
+            columns: columns
+                .iter()
+                .enumerate()
+                .map(|(i, col)| Column {
+                    name: (*col).to_string(),
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: (i + 1) as i32,
+                })
+                .collect(),
+            primary_key: None,
+            indexes: vec![],
+            foreign_keys: vec![],
+            rls: None,
+            triggers: vec![],
+            row_count_estimate: None,
+            comment: None,
+        }
+    }
+
+    fn table_with_two_columns(col1: Column, col2: Column) -> Table {
+        Table {
+            schema: "public".to_string(),
+            name: "test".to_string(),
+            owner: None,
+            columns: vec![col1, col2],
+            primary_key: None,
+            indexes: vec![],
+            foreign_keys: vec![],
+            rls: None,
+            triggers: vec![],
+            row_count_estimate: None,
+            comment: None,
+        }
     }
 
     mod context_detection {
@@ -1251,45 +1297,32 @@ mod tests {
 
     mod score_ranking {
         use super::*;
-        use crate::domain::{Column, Table};
 
         #[test]
         fn pk_column_returns_higher_score() {
             let e = engine();
-            let table = Table {
-                schema: "public".to_string(),
-                name: "test".to_string(),
-                owner: None,
-                columns: vec![
-                    Column {
-                        name: "name".to_string(),
-                        data_type: "text".to_string(),
-                        nullable: true,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "id".to_string(),
-                        data_type: "int".to_string(),
-                        nullable: false,
-                        default: None,
-                        is_primary_key: true,
-                        is_unique: true,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
-                ],
-                primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            };
+            let table = table_with_two_columns(
+                Column {
+                    name: "name".to_string(),
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "id".to_string(),
+                    data_type: "int".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            );
 
             let candidates = e.column_candidates(Some(&table), "");
 
@@ -1300,40 +1333,28 @@ mod tests {
         #[test]
         fn not_null_column_returns_higher_score() {
             let e = engine();
-            let table = Table {
-                schema: "public".to_string(),
-                name: "test".to_string(),
-                owner: None,
-                columns: vec![
-                    Column {
-                        name: "optional_field".to_string(),
-                        data_type: "text".to_string(),
-                        nullable: true,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "required_field".to_string(),
-                        data_type: "text".to_string(),
-                        nullable: false,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
-                ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            };
+            let table = table_with_two_columns(
+                Column {
+                    name: "optional_field".to_string(),
+                    data_type: "text".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "required_field".to_string(),
+                    data_type: "text".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            );
 
             let candidates = e.column_candidates(Some(&table), "");
 
@@ -2497,36 +2518,7 @@ mod tests {
 
     mod target_table_boost {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
-
-        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
-            Table {
-                schema: schema.to_string(),
-                name: name.to_string(),
-                owner: None,
-                columns: columns
-                    .iter()
-                    .enumerate()
-                    .map(|(i, col)| Column {
-                        name: (*col).to_string(),
-                        data_type: "text".to_string(),
-                        nullable: true,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: (i + 1) as i32,
-                    })
-                    .collect(),
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            }
-        }
+        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn update_target_columns_get_boost() {
@@ -2598,36 +2590,7 @@ mod tests {
 
     mod all_cache_columns {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
-
-        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
-            Table {
-                schema: schema.to_string(),
-                name: name.to_string(),
-                owner: None,
-                columns: columns
-                    .iter()
-                    .enumerate()
-                    .map(|(i, c)| Column {
-                        name: c.to_string(),
-                        data_type: "text".to_string(),
-                        nullable: true,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: (i + 1) as i32,
-                    })
-                    .collect(),
-                primary_key: None,
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            }
-        }
+        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn no_from_with_2char_prefix_returns_all_cached_columns() {
@@ -2687,36 +2650,7 @@ mod tests {
 
     mod lru_cache_behavior {
         use super::*;
-        use crate::domain::{Column, Table, TableSummary};
-
-        fn create_table(schema: &str, name: &str, columns: &[&str]) -> Table {
-            Table {
-                schema: schema.to_string(),
-                name: name.to_string(),
-                owner: None,
-                columns: columns
-                    .iter()
-                    .enumerate()
-                    .map(|(i, c)| Column {
-                        name: c.to_string(),
-                        data_type: "text".to_string(),
-                        nullable: true,
-                        default: None,
-                        is_primary_key: false,
-                        is_unique: false,
-                        comment: None,
-                        ordinal_position: i as i32,
-                    })
-                    .collect(),
-                primary_key: None,
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            }
-        }
+        use crate::domain::TableSummary;
 
         #[test]
         fn evicted_table_appears_in_missing_tables() {
