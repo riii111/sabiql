@@ -239,21 +239,23 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::ConnectionSelector => {
+                let r = CONNECTION_SELECTOR_ROWS;
+                use idx::connection_selector as cs;
                 let is_service_selected = crate::app::connection_list::is_service_selected(
                     &state.connection_list_items,
                     state.ui.connection_list_selected,
                 );
                 let mut list = vec![
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::CONFIRM].as_hint(),
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::SELECT].as_hint(),
-                    CONNECTION_SELECTOR_ROWS[idx::connection_selector::NEW].as_hint(),
+                    r[cs::CONFIRM].as_hint(),
+                    r[cs::SELECT].as_hint(),
+                    r[cs::NEW].as_hint(),
                 ];
                 if !is_service_selected {
-                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::EDIT].as_hint());
-                    list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::DELETE].as_hint());
+                    list.push(r[cs::EDIT].as_hint());
+                    list.push(r[cs::DELETE].as_hint());
                 }
-                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::CLOSE].as_hint());
-                list.push(CONNECTION_SELECTOR_ROWS[idx::connection_selector::QUIT].as_hint());
+                list.push(r[cs::CLOSE].as_hint());
+                list.push(r[cs::QUIT].as_hint());
                 list
             }
         }
