@@ -121,8 +121,8 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         key_short: "c",
         key: "c",
         desc_short: "Connections",
-        description: "Toggle Connections mode",
-        action: Action::ToggleExplorerMode,
+        description: "Open Connection Selector",
+        action: Action::OpenConnectionSelector,
         combos: &[KeyCombo::plain(Key::Char('c'))],
     },
 ];

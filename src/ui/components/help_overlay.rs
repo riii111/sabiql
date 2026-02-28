@@ -8,9 +8,9 @@ use crate::ui::theme::Theme;
 
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
-    CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, CONNECTIONS_MODE_KEYS,
-    ER_PICKER_ROWS, GLOBAL_KEYS, HELP_ROWS, INSPECTOR_DDL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS,
-    RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS,
+    CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
+    GLOBAL_KEYS, HELP_ROWS, INSPECTOR_DDL_KEYS, NAVIGATION_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS,
+    SQL_MODAL_KEYS, TABLE_PICKER_ROWS,
 };
 use crate::app::state::AppState;
 
@@ -86,12 +86,6 @@ impl HelpOverlay {
         help_lines.push(Self::section("Connection Error"));
         for row in CONNECTION_ERROR_ROWS {
             help_lines.push(Self::key_line(row.key, row.description));
-        }
-
-        help_lines.push(Line::from(""));
-        help_lines.push(Self::section("Connections Mode"));
-        for kb in CONNECTIONS_MODE_KEYS {
-            help_lines.push(Self::key_line(kb.key, kb.description));
         }
 
         help_lines.push(Line::from(""));

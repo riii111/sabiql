@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 
-use super::explorer_mode::ExplorerMode;
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
@@ -103,7 +102,6 @@ pub struct UiState {
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
-    pub explorer_mode: ExplorerMode,
 
     pub connection_list_selected: usize,
     pub connection_list_scroll_offset: usize,
@@ -432,13 +430,6 @@ mod tests {
         state.set_explorer_selection(None);
 
         assert_eq!(state.explorer_selected, 0);
-    }
-
-    #[test]
-    fn default_explorer_mode_is_tables() {
-        let state = UiState::default();
-
-        assert_eq!(state.explorer_mode, ExplorerMode::Tables);
     }
 
     #[test]

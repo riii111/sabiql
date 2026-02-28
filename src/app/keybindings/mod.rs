@@ -219,18 +219,6 @@ pub mod idx {
         pub const ESC_CANCEL: usize = 3;
     }
 
-    pub mod connections_mode {
-        pub const CONNECT: usize = 0;
-        pub const NEW: usize = 1;
-        pub const EDIT: usize = 2;
-        pub const DELETE: usize = 3;
-        pub const NAVIGATE: usize = 4;
-        pub const HELP: usize = 5;
-        pub const TABLES: usize = 6;
-        pub const BACK: usize = 7;
-        pub const QUIT: usize = 8;
-    }
-
     pub mod connection_selector {
         pub const CONFIRM: usize = 0;
         pub const SELECT: usize = 1;
@@ -251,9 +239,9 @@ pub mod idx {
 
 /// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
-    // 17 sections × 1 header each = 17
-    // 16 blank-line separators between sections = 16
-    17 + 16
+    // 16 sections × 1 header each = 16
+    // 15 blank-line separators between sections = 15
+    16 + 15
         + GLOBAL_KEYS.len()
         + NAVIGATION_KEYS.len()
         + RESULT_ACTIVE_KEYS.len()
@@ -264,7 +252,6 @@ pub const fn help_content_line_count() -> usize {
         + COMMAND_LINE_KEYS.len()
         + CONNECTION_SETUP_KEYS.len()
         + CONNECTION_ERROR_ROWS.len()
-        + CONNECTIONS_MODE_KEYS.len()
         + CONNECTION_SELECTOR_ROWS.len()
         + ER_PICKER_ROWS.len()
         + TABLE_PICKER_ROWS.len()
@@ -317,7 +304,7 @@ pub fn is_open_er(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
 }
 
-pub fn is_toggle_connections(combo: &KeyCombo) -> bool {
+pub fn is_open_connection_selector(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::CONNECTIONS].combos.contains(combo)
 }
 
@@ -434,17 +421,6 @@ mod tests {
         assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
         assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
 
-        // CONNECTIONS_MODE_KEYS
-        assert!(idx::connections_mode::CONNECT < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::NEW < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::EDIT < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::DELETE < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::NAVIGATE < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::HELP < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::TABLES < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::BACK < CONNECTIONS_MODE_KEYS.len());
-        assert!(idx::connections_mode::QUIT < CONNECTIONS_MODE_KEYS.len());
-
         // CONNECTION_SELECTOR_ROWS
         assert!(idx::connection_selector::CONFIRM < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::SELECT < CONNECTION_SELECTOR_ROWS.len());
@@ -467,7 +443,6 @@ mod tests {
             COMMAND_LINE_KEYS.len(),
             CONNECTION_SETUP_KEYS.len(),
             CONNECTION_ERROR_ROWS.len(),
-            CONNECTIONS_MODE_KEYS.len(),
             CONNECTION_SELECTOR_ROWS.len(),
             ER_PICKER_ROWS.len(),
             TABLE_PICKER_ROWS.len(),
@@ -499,7 +474,7 @@ mod tests {
         #[case(idx::global::RELOAD, Action::ReloadMetadata)]
         #[case(idx::global::SQL, Action::OpenSqlModal)]
         #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
-        #[case(idx::global::CONNECTIONS, Action::ToggleExplorerMode)]
+        #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
         fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
@@ -785,10 +760,6 @@ mod tests {
                 "CONNECTION_SETUP_KEYS",
             );
             check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-            check_none_action_entries_have_no_combos(
-                CONNECTIONS_MODE_KEYS,
-                "CONNECTIONS_MODE_KEYS",
-            );
         }
 
         // ------------------------------------------------------------------ //
