@@ -3,7 +3,7 @@ use crate::infra::utils::{quote_ident, quote_literal};
 
 use super::super::PostgresAdapter;
 
-fn pg_sql_value_expr(value: &str) -> String {
+fn sql_literal_or_null(value: &str) -> String {
     if value == "NULL" {
         "NULL".to_string()
     } else {
@@ -31,7 +31,7 @@ impl SqlDialect for PostgresAdapter {
             quote_ident(schema),
             quote_ident(table),
             quote_ident(column),
-            pg_sql_value_expr(new_value),
+            sql_literal_or_null(new_value),
             where_clause
         )
     }
@@ -53,7 +53,7 @@ impl SqlDialect for PostgresAdapter {
             let col = quote_ident(&pk_pairs_per_row[0][0].0);
             let values = pk_pairs_per_row
                 .iter()
-                .map(|pairs| pg_sql_value_expr(&pairs[0].1))
+                .map(|pairs| sql_literal_or_null(&pairs[0].1))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{} IN ({})", col, values)
@@ -68,7 +68,7 @@ impl SqlDialect for PostgresAdapter {
                 .map(|pairs| {
                     let vals = pairs
                         .iter()
-                        .map(|(_, val)| pg_sql_value_expr(val))
+                        .map(|(_, val)| sql_literal_or_null(val))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("({})", vals)
