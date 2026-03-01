@@ -57,11 +57,17 @@ fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 }
 
 fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+    use crate::app::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
         return action;
     }
     match combo.key {
         Key::Backspace => Action::ResultCellEditBackspace,
+        Key::Delete => Action::ResultCellEditDelete,
+        Key::Left => Action::ResultCellEditMoveCursor(CursorMove::Left),
+        Key::Right => Action::ResultCellEditMoveCursor(CursorMove::Right),
+        Key::Home => Action::ResultCellEditMoveCursor(CursorMove::Home),
+        Key::End => Action::ResultCellEditMoveCursor(CursorMove::End),
         Key::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
@@ -863,7 +869,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
             state.cell_edit.begin(0, 1, "original".to_string());
-            state.cell_edit.draft_value = "modified".to_string();
+            state.cell_edit.input.set_content("modified".to_string());
 
             let result = handle_normal_mode(combo(Key::Esc), &state);
 
@@ -1451,6 +1457,7 @@ mod tests {
 
     mod cell_edit_mode {
         use super::*;
+        use crate::app::action::CursorMove;
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {
@@ -1471,6 +1478,53 @@ mod tests {
             let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ResultCellEditBackspace));
+        }
+
+        #[test]
+        fn delete_returns_cell_edit_delete() {
+            let result = handle_cell_edit_keys(combo(Key::Delete));
+
+            assert!(matches!(result, Action::ResultCellEditDelete));
+        }
+
+        #[test]
+        fn left_returns_move_cursor_left() {
+            let result = handle_cell_edit_keys(combo(Key::Left));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Left)
+            ));
+        }
+
+        #[test]
+        fn right_returns_move_cursor_right() {
+            let result = handle_cell_edit_keys(combo(Key::Right));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Right)
+            ));
+        }
+
+        #[test]
+        fn home_returns_move_cursor_home() {
+            let result = handle_cell_edit_keys(combo(Key::Home));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Home)
+            ));
+        }
+
+        #[test]
+        fn end_returns_move_cursor_end() {
+            let result = handle_cell_edit_keys(combo(Key::End));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::End)
+            ));
         }
     }
 

@@ -32,6 +32,7 @@ pub mod runtime_state;
 pub mod sql_lexer;
 pub mod sql_modal_context;
 pub mod state;
+pub mod text_input;
 pub mod ui_state;
 pub mod viewport;
 pub mod write_guardrails;

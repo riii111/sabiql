@@ -213,8 +213,10 @@ pub mod idx {
     pub mod cell_edit {
         pub const WRITE: usize = 0;
         pub const TYPE: usize = 1;
-        pub const COMMAND: usize = 2;
-        pub const ESC_CANCEL: usize = 3;
+        pub const MOVE: usize = 2;
+        pub const HOME_END: usize = 3;
+        pub const COMMAND: usize = 4;
+        pub const ESC_CANCEL: usize = 5;
     }
 
     pub mod connection_selector {
@@ -410,6 +412,8 @@ mod tests {
         // CELL_EDIT_KEYS
         assert!(idx::cell_edit::WRITE < CELL_EDIT_KEYS.len());
         assert!(idx::cell_edit::TYPE < CELL_EDIT_KEYS.len());
+        assert!(idx::cell_edit::MOVE < CELL_EDIT_KEYS.len());
+        assert!(idx::cell_edit::HOME_END < CELL_EDIT_KEYS.len());
         assert!(idx::cell_edit::COMMAND < CELL_EDIT_KEYS.len());
         assert!(idx::cell_edit::ESC_CANCEL < CELL_EDIT_KEYS.len());
 

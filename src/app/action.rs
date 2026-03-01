@@ -309,6 +309,8 @@ pub enum Action {
     ResultDiscardCellEdit,
     ResultCellEditInput(char),
     ResultCellEditBackspace,
+    ResultCellEditDelete,
+    ResultCellEditMoveCursor(CursorMove),
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
     CellCopied,

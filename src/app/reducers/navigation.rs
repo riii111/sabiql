@@ -291,7 +291,7 @@ pub fn reduce_navigation(
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.cell_edit.draft_value.push_str(&clean);
+                state.cell_edit.input.insert_str(&clean);
                 Some(vec![])
             }
             _ => None,
@@ -835,11 +835,19 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ResultCellEditInput(c) => {
-            state.cell_edit.draft_value.push(*c);
+            state.cell_edit.input.insert_char(*c);
             Some(vec![])
         }
         Action::ResultCellEditBackspace => {
-            state.cell_edit.draft_value.pop();
+            state.cell_edit.input.backspace();
+            Some(vec![])
+        }
+        Action::ResultCellEditDelete => {
+            state.cell_edit.input.delete();
+            Some(vec![])
+        }
+        Action::ResultCellEditMoveCursor(m) => {
+            state.cell_edit.input.move_cursor(*m);
             Some(vec![])
         }
         Action::CopyFailed(msg) => {
@@ -1727,13 +1735,13 @@ mod tests {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 1, "alice".to_string());
-            state.cell_edit.draft_value = "modified".to_string();
+            state.cell_edit.input.set_content("modified".to_string());
             state.ui.input_mode = InputMode::Normal;
 
             reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
-            assert_eq!(state.cell_edit.draft_value, "modified");
+            assert_eq!(state.cell_edit.draft_value(), "modified");
         }
 
         #[test]
@@ -1741,13 +1749,16 @@ mod tests {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 99, "stale".to_string());
-            state.cell_edit.draft_value = "stale-modified".to_string();
+            state
+                .cell_edit
+                .input
+                .set_content("stale-modified".to_string());
 
             reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert_eq!(state.cell_edit.col, Some(1));
-            assert_eq!(state.cell_edit.draft_value, "alice");
+            assert_eq!(state.cell_edit.draft_value(), "alice");
         }
 
         #[test]
@@ -1972,6 +1983,114 @@ mod tests {
 
             let effects = effects.expect("should return Some");
             assert!(effects.is_empty());
+        }
+    }
+
+    mod cell_edit_cursor_ops {
+        use super::*;
+        use crate::app::action::CursorMove;
+
+        fn state_in_cell_edit(content: &str, cursor: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::CellEdit;
+            state.cell_edit.begin(0, 0, content.to_string());
+            state.cell_edit.input.cursor = cursor;
+            state
+        }
+
+        #[test]
+        fn delete_removes_char_at_cursor() {
+            let mut state = state_in_cell_edit("abcd", 1);
+
+            reduce_navigation(&mut state, &Action::ResultCellEditDelete, Instant::now());
+
+            assert_eq!(state.cell_edit.draft_value(), "acd");
+            assert_eq!(state.cell_edit.input.cursor, 1);
+        }
+
+        #[test]
+        fn delete_at_end_is_noop() {
+            let mut state = state_in_cell_edit("abc", 3);
+
+            reduce_navigation(&mut state, &Action::ResultCellEditDelete, Instant::now());
+
+            assert_eq!(state.cell_edit.draft_value(), "abc");
+        }
+
+        #[test]
+        fn move_cursor_left_decrements() {
+            let mut state = state_in_cell_edit("abc", 2);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditMoveCursor(CursorMove::Left),
+                Instant::now(),
+            );
+
+            assert_eq!(state.cell_edit.input.cursor, 1);
+        }
+
+        #[test]
+        fn move_cursor_right_increments() {
+            let mut state = state_in_cell_edit("abc", 1);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditMoveCursor(CursorMove::Right),
+                Instant::now(),
+            );
+
+            assert_eq!(state.cell_edit.input.cursor, 2);
+        }
+
+        #[test]
+        fn move_cursor_home_jumps_to_start() {
+            let mut state = state_in_cell_edit("abc", 3);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditMoveCursor(CursorMove::Home),
+                Instant::now(),
+            );
+
+            assert_eq!(state.cell_edit.input.cursor, 0);
+        }
+
+        #[test]
+        fn move_cursor_end_jumps_to_end() {
+            let mut state = state_in_cell_edit("abc", 0);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditMoveCursor(CursorMove::End),
+                Instant::now(),
+            );
+
+            assert_eq!(state.cell_edit.input.cursor, 3);
+        }
+
+        #[test]
+        fn input_inserts_at_cursor_not_at_end() {
+            let mut state = state_in_cell_edit("ac", 1);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditInput('b'),
+                Instant::now(),
+            );
+
+            assert_eq!(state.cell_edit.draft_value(), "abc");
+            assert_eq!(state.cell_edit.input.cursor, 2);
+        }
+
+        #[test]
+        fn backspace_removes_char_before_cursor() {
+            let mut state = state_in_cell_edit("abc", 2);
+
+            reduce_navigation(&mut state, &Action::ResultCellEditBackspace, Instant::now());
+
+            assert_eq!(state.cell_edit.draft_value(), "ac");
+            assert_eq!(state.cell_edit.input.cursor, 1);
         }
     }
 }
