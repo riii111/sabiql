@@ -425,8 +425,13 @@ impl CompletionEngine {
             return vec![];
         }
 
-        let (current_token, context) =
-            self.analyze_with_context(content, cursor_pos, &prep.context, &prep.tokens);
+        let (current_token, context) = self.analyze_with_precomputed(
+            &prep.before_cursor,
+            &prep.current_token,
+            &prep.context,
+            &prep.tokens,
+            cursor_pos,
+        );
 
         let mut candidates = match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
@@ -551,18 +556,38 @@ impl CompletionEngine {
         tokens: &[Token],
     ) -> (String, CompletionContext) {
         let before_cursor: String = content.chars().take(cursor_pos).collect();
-
-        // Extract current token (word being typed)
         let current_token = self.extract_current_token(&before_cursor);
+        self.analyze_with_precomputed(
+            &before_cursor,
+            &current_token,
+            sql_context,
+            tokens,
+            cursor_pos,
+        )
+    }
 
+    fn analyze_with_precomputed(
+        &self,
+        before_cursor: &str,
+        current_token: &str,
+        sql_context: &SqlContext,
+        tokens: &[Token],
+        cursor_pos: usize,
+    ) -> (String, CompletionContext) {
         // Check for alias.column pattern first (e.g., "u." or "u.na")
-        if let Some(alias) = self.detect_alias_prefix(&before_cursor, &current_token, sql_context) {
-            return (current_token, CompletionContext::AliasColumn(alias));
+        if let Some(alias) = self.detect_alias_prefix(before_cursor, current_token, sql_context) {
+            return (
+                current_token.to_string(),
+                CompletionContext::AliasColumn(alias),
+            );
         }
 
         // Check for schema-qualified context: "schema."
-        if let Some(schema) = self.detect_schema_prefix(&before_cursor, &current_token) {
-            return (current_token, CompletionContext::SchemaQualified(schema));
+        if let Some(schema) = self.detect_schema_prefix(before_cursor, current_token) {
+            return (
+                current_token.to_string(),
+                CompletionContext::SchemaQualified(schema),
+            );
         }
 
         // Detect context from tokens (ignores strings/comments)
@@ -570,10 +595,10 @@ impl CompletionEngine {
 
         // If in FROM clause and CTEs are defined, suggest CTE names too
         if base_context == CompletionContext::Table && !sql_context.ctes.is_empty() {
-            return (current_token, CompletionContext::CteOrTable);
+            return (current_token.to_string(), CompletionContext::CteOrTable);
         }
 
-        (current_token, base_context)
+        (current_token.to_string(), base_context)
     }
 
     fn detect_alias_prefix(
