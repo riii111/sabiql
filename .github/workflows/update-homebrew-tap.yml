@@ -60,6 +60,7 @@ jobs:
         if: steps.get-tag.outputs.skip != 'true'
         id: sha256
         run: |
+          set -o pipefail
           TAG="${{ steps.get-tag.outputs.tag }}"
           URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
