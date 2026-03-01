@@ -428,7 +428,7 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     let result = tokio::time::timeout(
                         tokio::time::Duration::from_secs(10),
-                        provider.fetch_table_detail(&dsn, &schema, &table),
+                        provider.fetch_table_detail_light(&dsn, &schema, &table),
                     )
                     .await;
                     match result {
@@ -1428,6 +1428,124 @@ mod tests {
                 .unwrap();
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
+        }
+    }
+
+    mod table_detail_dispatch {
+        use super::*;
+        use crate::domain::Table;
+
+        fn sample_table() -> Table {
+            Table {
+                schema: "public".to_string(),
+                name: "users".to_string(),
+                owner: None,
+                columns: vec![],
+                primary_key: None,
+                indexes: vec![],
+                foreign_keys: vec![],
+                rls: None,
+                triggers: vec![],
+                row_count_estimate: None,
+                comment: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn fetch_table_detail_calls_full_provider() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider
+                .expect_fetch_table_detail()
+                .once()
+                .returning(|_, _, _| Ok(sample_table()));
+            mock_provider.expect_fetch_table_detail_light().never();
+
+            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchTableDetail {
+                        dsn: "dsn://test".to_string(),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(
+                matches!(action, Action::TableDetailLoaded(_, 1)),
+                "expected TableDetailLoaded, got {:?}",
+                action
+            );
+        }
+
+        #[tokio::test]
+        async fn prefetch_table_detail_calls_light_provider() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider.expect_fetch_table_detail().never();
+            mock_provider
+                .expect_fetch_table_detail_light()
+                .once()
+                .returning(|_, _, _| Ok(sample_table()));
+
+            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::PrefetchTableDetail {
+                        dsn: "dsn://test".to_string(),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(
+                matches!(action, Action::TableDetailCached { .. }),
+                "expected TableDetailCached, got {:?}",
+                action
+            );
         }
     }
 

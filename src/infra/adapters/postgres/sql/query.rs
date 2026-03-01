@@ -340,6 +340,54 @@ impl PostgresAdapter {
             quote_literal(table)
         )
     }
+
+    /// Light query that fetches only columns + foreign keys (used by prefetch
+    /// for CompletionEngine and ER diagrams).
+    pub(in crate::infra::adapters::postgres) fn table_detail_light_query(
+        schema: &str,
+        table: &str,
+    ) -> String {
+        format!(
+            r#"
+            SELECT json_build_object(
+                'columns', ({columns}),
+                'foreign_keys', ({fks})
+            )
+            "#,
+            columns = Self::columns_query(schema, table).trim(),
+            fks = Self::foreign_keys_query(schema, table).trim(),
+        )
+    }
+
+    /// Combined query that fetches all 6 table detail categories in a single
+    /// `json_build_object(...)` call, reducing 6 psql spawns to 1.
+    ///
+    /// Each sub-query is embedded as a scalar subquery. `rls_query` and
+    /// `table_info_query` return a single row (not `json_agg`), which is safe
+    /// because `(pg_namespace.nspname, pg_class.relname)` is unique per table.
+    pub(in crate::infra::adapters::postgres) fn table_detail_query(
+        schema: &str,
+        table: &str,
+    ) -> String {
+        format!(
+            r#"
+            SELECT json_build_object(
+                'columns', ({columns}),
+                'indexes', ({indexes}),
+                'foreign_keys', ({fks}),
+                'rls', ({rls}),
+                'triggers', ({triggers}),
+                'table_info', ({table_info})
+            )
+            "#,
+            columns = Self::columns_query(schema, table).trim(),
+            indexes = Self::indexes_query(schema, table).trim(),
+            fks = Self::foreign_keys_query(schema, table).trim(),
+            rls = Self::rls_query(schema, table).trim(),
+            triggers = Self::triggers_query(schema, table).trim(),
+            table_info = Self::table_info_query(schema, table).trim(),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -473,6 +521,60 @@ mod tests {
         }
     }
 
+    mod table_detail_query {
+        use super::*;
+
+        #[test]
+        fn wraps_all_six_categories_in_json_build_object() {
+            let sql = PostgresAdapter::table_detail_query("public", "users");
+
+            assert!(sql.contains("json_build_object("));
+            for key in [
+                "'columns'",
+                "'indexes'",
+                "'foreign_keys'",
+                "'rls'",
+                "'triggers'",
+                "'table_info'",
+            ] {
+                assert!(sql.contains(key), "Missing key: {key}");
+            }
+        }
+
+        #[test]
+        fn uses_quoted_schema_and_table() {
+            let sql = PostgresAdapter::table_detail_query("my_schema", "my_table");
+
+            assert!(sql.contains("'my_schema'"));
+            assert!(sql.contains("'my_table'"));
+        }
+    }
+
+    mod table_detail_light_query {
+        use super::*;
+
+        #[test]
+        fn wraps_columns_and_fks_only_in_json_build_object() {
+            let sql = PostgresAdapter::table_detail_light_query("public", "users");
+
+            assert!(sql.contains("json_build_object("));
+            assert!(sql.contains("'columns'"));
+            assert!(sql.contains("'foreign_keys'"));
+            assert!(!sql.contains("'indexes'"));
+            assert!(!sql.contains("'rls'"));
+            assert!(!sql.contains("'triggers'"));
+            assert!(!sql.contains("'table_info'"));
+        }
+
+        #[test]
+        fn uses_quoted_schema_and_table() {
+            let sql = PostgresAdapter::table_detail_light_query("my_schema", "my_table");
+
+            assert!(sql.contains("'my_schema'"));
+            assert!(sql.contains("'my_table'"));
+        }
+    }
+
     mod metadata_query_injection {
         use super::*;
         use rstest::rstest;
@@ -493,6 +595,22 @@ mod tests {
         )]
         #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
         #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
+        #[case(
+            "table_detail_query",
+            PostgresAdapter::table_detail_query(HOSTILE, "t")
+        )]
+        #[case(
+            "table_detail_query_table",
+            PostgresAdapter::table_detail_query("public", HOSTILE)
+        )]
+        #[case(
+            "table_detail_light_query",
+            PostgresAdapter::table_detail_light_query(HOSTILE, "t")
+        )]
+        #[case(
+            "table_detail_light_query_table",
+            PostgresAdapter::table_detail_light_query("public", HOSTILE)
+        )]
         fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
             assert!(
                 sql.contains(ESCAPED),

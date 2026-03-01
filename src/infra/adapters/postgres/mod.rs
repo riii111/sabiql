@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
-    DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
+    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
 };
 
 mod dsn;
@@ -27,6 +27,21 @@ impl PostgresAdapter {
 impl Default for PostgresAdapter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PostgresAdapter {
+    fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
+        let pk_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect();
+        if pk_cols.is_empty() {
+            None
+        } else {
+            Some(pk_cols)
+        }
     }
 }
 
@@ -63,41 +78,11 @@ impl MetadataProvider for PostgresAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError> {
-        let columns_q = Self::columns_query(schema, table);
-        let indexes_q = Self::indexes_query(schema, table);
-        let fks_q = Self::foreign_keys_query(schema, table);
-        let rls_q = Self::rls_query(schema, table);
-        let triggers_q = Self::triggers_query(schema, table);
-        let table_info_q = Self::table_info_query(schema, table);
-
-        // Execute queries sequentially to avoid connection pool exhaustion
-        // on tables with many columns
-        // TODO: If performance becomes an issue, consider migrating to controlled parallel
-        // execution using semaphores (e.g., tokio::sync::Semaphore) to limit concurrency
-        let columns_json = self.execute_query(dsn, &columns_q).await?;
-        let indexes_json = self.execute_query(dsn, &indexes_q).await?;
-        let fks_json = self.execute_query(dsn, &fks_q).await?;
-        let rls_json = self.execute_query(dsn, &rls_q).await?;
-        let triggers_json = self.execute_query(dsn, &triggers_q).await?;
-        let table_info_json = self.execute_query(dsn, &table_info_q).await?;
-
-        let columns = Self::parse_columns(&columns_json)?;
-        let indexes = Self::parse_indexes(&indexes_json)?;
-        let foreign_keys = Self::parse_foreign_keys(&fks_json)?;
-        let rls = Self::parse_rls(&rls_json)?;
-        let triggers = Self::parse_triggers(&triggers_json)?;
-        let table_info = Self::parse_table_info(&table_info_json)?;
-
-        let pk_cols: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
-        let primary_key = if pk_cols.is_empty() {
-            None
-        } else {
-            Some(pk_cols)
-        };
+        let query = Self::table_detail_query(schema, table);
+        let json = self.execute_query(dsn, &query).await?;
+        let (columns, indexes, foreign_keys, rls, triggers, table_info) =
+            Self::parse_table_detail_combined(&json)?;
+        let primary_key = Self::extract_primary_key(&columns);
 
         Ok(Table {
             schema: schema.to_string(),
@@ -111,6 +96,32 @@ impl MetadataProvider for PostgresAdapter {
             triggers,
             row_count_estimate: table_info.row_count_estimate,
             comment: table_info.comment,
+        })
+    }
+
+    async fn fetch_table_detail_light(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Table, MetadataError> {
+        let query = Self::table_detail_light_query(schema, table);
+        let json = self.execute_query(dsn, &query).await?;
+        let (columns, foreign_keys) = Self::parse_table_detail_light(&json)?;
+        let primary_key = Self::extract_primary_key(&columns);
+
+        Ok(Table {
+            schema: schema.to_string(),
+            name: table.to_string(),
+            owner: None,
+            columns,
+            primary_key,
+            foreign_keys,
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
         })
     }
 }

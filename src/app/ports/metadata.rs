@@ -14,6 +14,13 @@ pub trait MetadataProvider: Send + Sync {
         table: &str,
     ) -> Result<Table, MetadataError>;
 
+    async fn fetch_table_detail_light(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Table, MetadataError>;
+
     async fn fetch_table_signatures(&self, dsn: &str)
     -> Result<Vec<TableSignature>, MetadataError>;
 }
