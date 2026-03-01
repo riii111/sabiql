@@ -5,6 +5,9 @@ on:
     workflows: ["Release"]
     types: [completed]
 
+permissions:
+  contents: read
+
 jobs:
   update-tap:
     name: Update homebrew-sabiql formula
@@ -18,41 +21,37 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHA="${{ github.event.workflow_run.head_sha }}"
-          TAG=$(gh api "repos/${{ github.repository }}/git/refs/tags" \
-            --jq ".[] | select(.object.sha == \"$SHA\" or .object.sha == (\"$SHA\" | .[0:7])) | .ref | ltrimstr(\"refs/tags/\")" \
-            2>/dev/null || true)
 
-          # Dereference annotated tags (object.sha points to tag object, not commit)
-          if [ -z "$TAG" ]; then
-            TAG=$(gh api "repos/${{ github.repository }}/git/refs/tags" \
-              --jq ".[] | .ref | ltrimstr(\"refs/tags/\")" | \
-              while IFS= read -r t; do
-                obj_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.sha')
-                obj_type=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.type')
-                if [ "$obj_type" = "tag" ]; then
-                  commit_sha=$(gh api "repos/${{ github.repository }}/git/tags/$obj_sha" --jq '.object.sha')
-                else
-                  commit_sha="$obj_sha"
-                fi
-                if [ "$commit_sha" = "$SHA" ]; then
-                  echo "$t"
-                  break
-                fi
-              done)
-          fi
+          # Collect all SemVer tags pointing to this commit (lightweight or annotated)
+          TAGS=$(gh api "repos/${{ github.repository }}/git/refs/tags" \
+            --jq ".[] | .ref | ltrimstr(\"refs/tags/\")" | \
+            while IFS= read -r t; do
+              obj_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.sha')
+              obj_type=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.type')
+              if [ "$obj_type" = "tag" ]; then
+                commit_sha=$(gh api "repos/${{ github.repository }}/git/tags/$obj_sha" --jq '.object.sha')
+              else
+                commit_sha="$obj_sha"
+              fi
+              if [ "$commit_sha" = "$SHA" ]; then
+                echo "$t"
+              fi
+            done | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
 
-          if [ -z "$TAG" ]; then
-            echo "::error::No tag found for commit $SHA"
-            exit 1
-          fi
+          TAG_COUNT=$(echo "$TAGS" | grep -c . || true)
 
-          # Validate SemVer (vX.Y.Z)
-          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::notice::Tag '$TAG' is not a SemVer release tag — skipping"
+          if [ "$TAG_COUNT" -eq 0 ]; then
+            echo "::notice::No SemVer tag found for commit $SHA — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          if [ "$TAG_COUNT" -gt 1 ]; then
+            echo "::error::Multiple SemVer tags found for commit $SHA: $(echo "$TAGS" | tr '\n' ' ')"
+            exit 1
+          fi
+
+          TAG="$TAGS"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -91,15 +90,33 @@ jobs:
               lines = f.readlines()
 
           updated = []
+          in_bottle = False
+          url_updated = 0
+          sha256_updated = 0
+
           for line in lines:
-              if re.match(r'^\s*url\s+"', line):
+              if re.match(r'^\s*bottle\s+do\b', line):
+                  in_bottle = True
+              elif in_bottle and re.match(r'^\s*end\b', line):
+                  in_bottle = False
+
+              if not in_bottle and re.match(r'^\s*url\s+"', line):
                   indent = re.match(r'^(\s*)', line).group(1)
                   updated.append(f'{indent}url "{new_url}"\n')
-              elif re.match(r'^\s*sha256\s+"', line):
+                  url_updated += 1
+              elif not in_bottle and re.match(r'^\s*sha256\s+"', line):
                   indent = re.match(r'^(\s*)', line).group(1)
                   updated.append(f'{indent}sha256 "{new_sha}"\n')
+                  sha256_updated += 1
               else:
                   updated.append(line)
+
+          if url_updated != 1:
+              print(f"ERROR: expected exactly 1 source url line, found {url_updated}", file=sys.stderr)
+              sys.exit(1)
+          if sha256_updated != 1:
+              print(f"ERROR: expected exactly 1 source sha256 line, found {sha256_updated}", file=sys.stderr)
+              sys.exit(1)
 
           with open(formula_path, "w") as f:
               f.writelines(updated)
