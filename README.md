@@ -40,6 +40,12 @@ https://github.com/user-attachments/assets/7d2c34ae-94b7-4746-86a5-6aadd0a4ab45
 curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 ```
 
+Or via Homebrew:
+
+```bash
+brew install riii111/sabiql/sabiql
+```
+
 Or from source:
 
 ```bash
