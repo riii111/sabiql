@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
 use crate::domain::{
-    DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
+    Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
 };
 
 mod dsn;
@@ -27,6 +27,21 @@ impl PostgresAdapter {
 impl Default for PostgresAdapter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PostgresAdapter {
+    fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
+        let pk_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect();
+        if pk_cols.is_empty() {
+            None
+        } else {
+            Some(pk_cols)
+        }
     }
 }
 
@@ -67,17 +82,7 @@ impl MetadataProvider for PostgresAdapter {
         let json = self.execute_query(dsn, &query).await?;
         let (columns, indexes, foreign_keys, rls, triggers, table_info) =
             Self::parse_table_detail_combined(&json)?;
-
-        let pk_cols: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
-        let primary_key = if pk_cols.is_empty() {
-            None
-        } else {
-            Some(pk_cols)
-        };
+        let primary_key = Self::extract_primary_key(&columns);
 
         Ok(Table {
             schema: schema.to_string(),
@@ -103,17 +108,7 @@ impl MetadataProvider for PostgresAdapter {
         let query = Self::table_detail_light_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
         let (columns, foreign_keys) = Self::parse_table_detail_light(&json)?;
-
-        let pk_cols: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
-        let primary_key = if pk_cols.is_empty() {
-            None
-        } else {
-            Some(pk_cols)
-        };
+        let primary_key = Self::extract_primary_key(&columns);
 
         Ok(Table {
             schema: schema.to_string(),
