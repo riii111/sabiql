@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::app::cache::BoundedLruCache;
 use crate::app::reducers::char_to_byte_index;
 use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
@@ -22,6 +24,16 @@ pub enum CompletionContext {
     AliasColumn(String),
     /// CTE or table names (in FROM clause with CTEs defined)
     CteOrTable,
+}
+
+/// Pre-computed tokenization and context for a single completion trigger.
+pub struct PreparedCompletion {
+    pub(crate) tokens: Vec<Token>,
+    pub(crate) context: SqlContext,
+    pub(crate) before_cursor: String,
+    pub(crate) current_token: String,
+    pub(crate) in_string_or_comment: bool,
+    pub(crate) cte_names: HashSet<String>,
 }
 
 pub struct CompletionEngine {
@@ -149,40 +161,8 @@ impl CompletionEngine {
         content: &str,
         metadata: Option<&DatabaseMetadata>,
     ) -> Vec<String> {
-        const MAX_MISSING_TABLES: usize = 10;
-
-        let tokens = self.lexer.tokenize(content, content.len());
-        let sql_context = self.lexer.build_context(&tokens, content.len());
-
-        let cte_names: std::collections::HashSet<String> = sql_context
-            .ctes
-            .iter()
-            .map(|cte| cte.name.to_lowercase())
-            .collect();
-
-        let mut missing = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-
-        for table_ref in &sql_context.tables {
-            if cte_names.contains(&table_ref.table.to_lowercase()) {
-                continue;
-            }
-
-            let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
-
-            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
-                continue;
-            }
-
-            seen.insert(qualified_name.clone());
-            missing.push(qualified_name);
-
-            if missing.len() >= MAX_MISSING_TABLES {
-                break;
-            }
-        }
-
-        missing
+        let prep = self.prepare(content, content.len());
+        self.missing_tables_prepared(&prep, metadata)
     }
 
     pub fn get_candidates(
@@ -193,23 +173,120 @@ impl CompletionEngine {
         table_detail: Option<&Table>,
         recent_columns: &[String],
     ) -> Vec<CompletionCandidate> {
-        // Skip completion inside strings or comments
-        if self.lexer.is_in_string_or_comment(content, cursor_pos) {
+        let prep = self.prepare(content, cursor_pos);
+        self.get_candidates_inner(
+            content,
+            cursor_pos,
+            &prep,
+            metadata,
+            table_detail,
+            recent_columns,
+        )
+    }
+
+    pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
+        let before_cursor: String = content.chars().take(cursor_pos).collect();
+        self.extract_current_token(&before_cursor).chars().count()
+    }
+
+    /// Tokenize + build context once for reuse across missing_tables / get_candidates.
+    pub fn prepare(&self, content: &str, cursor_pos: usize) -> PreparedCompletion {
+        let tokens = self.lexer.tokenize(content, content.len());
+        let context = self.lexer.build_context(&tokens, cursor_pos);
+        let in_string_or_comment =
+            SqlLexer::is_in_string_or_comment_from_tokens(&tokens, cursor_pos);
+        let before_cursor: String = content.chars().take(cursor_pos).collect();
+        let current_token = self.extract_current_token(&before_cursor);
+        let cte_names: HashSet<String> = context
+            .ctes
+            .iter()
+            .map(|cte| cte.name.to_lowercase())
+            .collect();
+        PreparedCompletion {
+            tokens,
+            context,
+            before_cursor,
+            current_token,
+            in_string_or_comment,
+            cte_names,
+        }
+    }
+
+    pub fn missing_tables_prepared(
+        &self,
+        prep: &PreparedCompletion,
+        metadata: Option<&DatabaseMetadata>,
+    ) -> Vec<String> {
+        const MAX_MISSING_TABLES: usize = 10;
+
+        let mut missing = Vec::new();
+        let mut seen = HashSet::new();
+
+        for table_ref in &prep.context.tables {
+            if prep.cte_names.contains(&table_ref.table.to_lowercase()) {
+                continue;
+            }
+            let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
+            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
+                continue;
+            }
+            seen.insert(qualified_name.clone());
+            missing.push(qualified_name);
+            if missing.len() >= MAX_MISSING_TABLES {
+                break;
+            }
+        }
+        missing
+    }
+
+    pub fn current_token_len_prepared(prep: &PreparedCompletion) -> usize {
+        prep.current_token.chars().count()
+    }
+
+    pub fn get_candidates_prepared(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        prep: &PreparedCompletion,
+        metadata: Option<&DatabaseMetadata>,
+        table_detail: Option<&Table>,
+        recent_columns: &[String],
+    ) -> Vec<CompletionCandidate> {
+        self.get_candidates_inner(
+            content,
+            cursor_pos,
+            prep,
+            metadata,
+            table_detail,
+            recent_columns,
+        )
+    }
+
+    fn get_candidates_inner(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        prep: &PreparedCompletion,
+        metadata: Option<&DatabaseMetadata>,
+        table_detail: Option<&Table>,
+        recent_columns: &[String],
+    ) -> Vec<CompletionCandidate> {
+        if prep.in_string_or_comment {
             return vec![];
         }
 
-        // Skip completion immediately after semicolon (end of statement)
         let byte_pos = char_to_byte_index(content, cursor_pos);
         if content[..byte_pos].trim_end().ends_with(';') {
             return vec![];
         }
 
-        // Build SQL context for alias resolution
-        let tokens = self.lexer.tokenize(content, content.len());
-        let sql_context = self.lexer.build_context(&tokens, cursor_pos);
-
-        let (current_token, context) =
-            self.analyze_with_context(content, cursor_pos, &sql_context, &tokens);
+        let (current_token, context) = self.analyze_with_precomputed(
+            &prep.before_cursor,
+            &prep.current_token,
+            &prep.context,
+            &prep.tokens,
+            cursor_pos,
+        );
 
         let mut candidates = match &context {
             CompletionContext::Keyword => self.keyword_candidates(&current_token),
@@ -217,16 +294,16 @@ impl CompletionEngine {
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
 
-                // Check if cursor is right after a comma (column list continuation)
-                let before_cursor: String = content.chars().take(cursor_pos).collect();
-                let before_token = before_cursor
+                let before_token = prep
+                    .before_cursor
                     .trim_end()
                     .strip_suffix(&current_token)
-                    .unwrap_or(&before_cursor)
+                    .unwrap_or(&prep.before_cursor)
                     .trim_end();
                 let after_comma = before_token.ends_with(',');
 
-                let target_qualified = sql_context
+                let target_qualified = prep
+                    .context
                     .target_table
                     .as_ref()
                     .map(|t| self.qualified_name_from_ref(t, metadata));
@@ -243,16 +320,11 @@ impl CompletionEngine {
                     }
                 }
 
-                // Build set of tables referenced in current SQL (excluding CTEs)
-                let cte_names: std::collections::HashSet<String> = sql_context
-                    .ctes
-                    .iter()
-                    .map(|cte| cte.name.to_lowercase())
-                    .collect();
-                let referenced_tables: std::collections::HashSet<String> = sql_context
+                let referenced_tables: HashSet<String> = prep
+                    .context
                     .tables
                     .iter()
-                    .filter(|t| !cte_names.contains(&t.table.to_lowercase()))
+                    .filter(|t| !prep.cte_names.contains(&t.table.to_lowercase()))
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
@@ -270,7 +342,6 @@ impl CompletionEngine {
                         &current_token,
                         recent_columns,
                     );
-
                     if target_qualified.as_ref() == Some(qualified_name) {
                         for col in &mut cached_columns {
                             col.score += 200;
@@ -317,30 +388,24 @@ impl CompletionEngine {
                 self.schema_qualified_candidates(metadata, schema, &current_token)
             }
             CompletionContext::AliasColumn(alias) => {
-                self.alias_column_candidates(alias, &sql_context, metadata, &current_token)
+                self.alias_column_candidates(alias, &prep.context, metadata, &current_token)
             }
             CompletionContext::CteOrTable => {
-                self.cte_or_table_candidates(&sql_context, metadata, &current_token)
+                self.cte_or_table_candidates(&prep.context, metadata, &current_token)
             }
         };
 
-        // Fallback to keywords if context-specific candidates are empty
         if candidates.is_empty() && context != CompletionContext::Keyword {
             return self.keyword_candidates(&current_token);
         }
 
-        // Deduplicate by text (keep highest score - first occurrence after sort)
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         candidates.retain(|c| seen.insert(c.text.to_uppercase()));
 
         candidates
     }
 
-    pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
-        let before_cursor: String = content.chars().take(cursor_pos).collect();
-        self.extract_current_token(&before_cursor).chars().count()
-    }
-
+    #[cfg(test)]
     fn analyze_with_context(
         &self,
         content: &str,
@@ -349,18 +414,38 @@ impl CompletionEngine {
         tokens: &[Token],
     ) -> (String, CompletionContext) {
         let before_cursor: String = content.chars().take(cursor_pos).collect();
-
-        // Extract current token (word being typed)
         let current_token = self.extract_current_token(&before_cursor);
+        self.analyze_with_precomputed(
+            &before_cursor,
+            &current_token,
+            sql_context,
+            tokens,
+            cursor_pos,
+        )
+    }
 
+    fn analyze_with_precomputed(
+        &self,
+        before_cursor: &str,
+        current_token: &str,
+        sql_context: &SqlContext,
+        tokens: &[Token],
+        cursor_pos: usize,
+    ) -> (String, CompletionContext) {
         // Check for alias.column pattern first (e.g., "u." or "u.na")
-        if let Some(alias) = self.detect_alias_prefix(&before_cursor, &current_token, sql_context) {
-            return (current_token, CompletionContext::AliasColumn(alias));
+        if let Some(alias) = self.detect_alias_prefix(before_cursor, current_token, sql_context) {
+            return (
+                current_token.to_string(),
+                CompletionContext::AliasColumn(alias),
+            );
         }
 
         // Check for schema-qualified context: "schema."
-        if let Some(schema) = self.detect_schema_prefix(&before_cursor, &current_token) {
-            return (current_token, CompletionContext::SchemaQualified(schema));
+        if let Some(schema) = self.detect_schema_prefix(before_cursor, current_token) {
+            return (
+                current_token.to_string(),
+                CompletionContext::SchemaQualified(schema),
+            );
         }
 
         // Detect context from tokens (ignores strings/comments)
@@ -368,10 +453,10 @@ impl CompletionEngine {
 
         // If in FROM clause and CTEs are defined, suggest CTE names too
         if base_context == CompletionContext::Table && !sql_context.ctes.is_empty() {
-            return (current_token, CompletionContext::CteOrTable);
+            return (current_token.to_string(), CompletionContext::CteOrTable);
         }
 
-        (current_token, base_context)
+        (current_token.to_string(), base_context)
     }
 
     fn detect_alias_prefix(
@@ -414,14 +499,14 @@ impl CompletionEngine {
     }
 
     fn extract_current_token(&self, before_cursor: &str) -> String {
-        before_cursor
-            .chars()
+        let start = before_cursor
+            .char_indices()
             .rev()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect()
+            .take_while(|(_, c)| c.is_alphanumeric() || *c == '_')
+            .last()
+            .map(|(i, _)| i)
+            .unwrap_or(before_cursor.len());
+        before_cursor[start..].to_string()
     }
 
     /// Check if cursor is after "schema." pattern
@@ -2804,6 +2889,152 @@ mod tests {
             assert!(!e.has_cached_table("public.t1")); // evicted
             assert!(e.has_cached_table("public.t2"));
             assert!(e.has_cached_table("public.t3"));
+        }
+    }
+
+    mod prepared_equivalence {
+        use super::*;
+
+        fn meta_with_tables(tables: &[(&str, &str, &[&str])]) -> DatabaseMetadata {
+            use crate::domain::TableSummary;
+            let mut meta = DatabaseMetadata::new("test".to_string());
+            meta.tables = tables
+                .iter()
+                .map(|(schema, name, _cols)| {
+                    TableSummary::new(schema.to_string(), name.to_string(), None, false)
+                })
+                .collect();
+            meta
+        }
+
+        #[test]
+        fn missing_tables_equivalence() {
+            let e = engine();
+            let meta = meta_with_tables(&[("public", "users", &["id", "name"])]);
+            let cases = [
+                ("SELECT * FROM users", 20),
+                (
+                    "SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
+                    55,
+                ),
+                ("WITH cte AS (SELECT 1) SELECT * FROM cte", 41),
+                ("", 0),
+            ];
+            for (sql, _) in &cases {
+                let old = e.missing_tables(sql, Some(&meta));
+                let prep = e.prepare(sql, sql.len());
+                let new = e.missing_tables_prepared(&prep, Some(&meta));
+                assert_eq!(old, new, "mismatch for: {sql}");
+            }
+        }
+
+        #[test]
+        fn get_candidates_equivalence() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "public.users".to_string(),
+                create_table("public", "users", &["id", "name", "email"]),
+            );
+            let meta = meta_with_tables(&[("public", "users", &["id", "name", "email"])]);
+            let table = create_table("public", "users", &["id", "name", "email"]);
+            let recent: Vec<String> = vec![];
+
+            let cases = [
+                ("SELECT ", 7),
+                ("SELECT * FROM ", 14),
+                ("SELECT n", 8),
+                ("SELECT * FROM users WHERE ", 26),
+                ("UPDATE users SET ", 17),
+            ];
+            for (sql, cursor) in &cases {
+                let old = e.get_candidates(sql, *cursor, Some(&meta), Some(&table), &recent);
+                let prep = e.prepare(sql, *cursor);
+                let new = e.get_candidates_prepared(
+                    sql,
+                    *cursor,
+                    &prep,
+                    Some(&meta),
+                    Some(&table),
+                    &recent,
+                );
+                assert_eq!(old, new, "candidates mismatch for: {sql} at {cursor}");
+            }
+        }
+
+        #[test]
+        fn current_token_len_equivalence() {
+            let e = engine();
+            let cases = [
+                ("SELECT abc", 10),
+                ("SELECT ", 7),
+                ("", 0),
+                ("SELECT あいう", 10), // multibyte
+            ];
+            for (sql, cursor) in &cases {
+                let old = e.current_token_len(sql, *cursor);
+                let prep = e.prepare(sql, *cursor);
+                let new = CompletionEngine::current_token_len_prepared(&prep);
+                assert_eq!(old, new, "token_len mismatch for: {sql} at {cursor}");
+            }
+        }
+
+        #[test]
+        fn is_in_string_or_comment_from_tokens_edges() {
+            let lexer = SqlLexer::new();
+
+            let cases = [
+                ("SELECT 'hello'", 10, true),     // inside string
+                ("SELECT 'hello'", 14, true),     // at closing quote
+                ("SELECT 'hello'", 7, false),     // at opening quote (boundary)
+                ("SELECT 'hello' ", 15, false),   // after string
+                ("SELECT -- comment", 12, true),  // inside line comment
+                ("SELECT -- comment", 7, false),  // at -- start (boundary)
+                ("SELECT /* block */", 11, true), // inside block comment
+                ("SELECT $$dollar$$", 10, true),  // inside dollar quote
+                ("SELECT 'unclosed", 12, true),   // unclosed string
+                ("", 0, false),                   // empty
+            ];
+            for (sql, cursor, expected) in &cases {
+                let old = lexer.is_in_string_or_comment(sql, *cursor);
+                let tokens = lexer.tokenize(sql, sql.len());
+                let new = SqlLexer::is_in_string_or_comment_from_tokens(&tokens, *cursor);
+                assert_eq!(
+                    *expected, new,
+                    "from_tokens mismatch for: {sql} at {cursor}"
+                );
+                assert_eq!(
+                    old, new,
+                    "old vs from_tokens mismatch for: {sql} at {cursor}"
+                );
+            }
+        }
+
+        #[test]
+        fn target_table_priority_in_prepared() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "public.users".to_string(),
+                create_table("public", "users", &["id", "name"]),
+            );
+            let meta = meta_with_tables(&[("public", "users", &["id", "name"])]);
+            let table = create_table("public", "users", &["id", "name"]);
+            let recent: Vec<String> = vec![];
+
+            let sql = "UPDATE users SET ";
+            let cursor = sql.len();
+            let old = e.get_candidates(sql, cursor, Some(&meta), Some(&table), &recent);
+            let prep = e.prepare(sql, cursor);
+            let new =
+                e.get_candidates_prepared(sql, cursor, &prep, Some(&meta), Some(&table), &recent);
+            assert_eq!(old, new, "UPDATE target_table priority mismatch");
+
+            let sql = "DELETE FROM users WHERE ";
+            let cursor = sql.len();
+            let old = e.get_candidates(sql, cursor, Some(&meta), Some(&table), &recent);
+            let prep = e.prepare(sql, cursor);
+            let new =
+                e.get_candidates_prepared(sql, cursor, &prep, Some(&meta), Some(&table), &recent);
+            assert_eq!(old, new, "DELETE target_table priority mismatch");
         }
     }
 }

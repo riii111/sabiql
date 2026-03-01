@@ -572,10 +572,14 @@ impl EffectRunner {
 
             Effect::TriggerCompletion => {
                 let cursor = state.sql_modal.cursor;
+                let content = &state.sql_modal.content;
 
-                let missing = {
+                let (prep, missing) = {
                     let engine = completion_engine.borrow();
-                    engine.missing_tables(&state.sql_modal.content, state.cache.metadata.as_ref())
+                    let prep = engine.prepare(content, cursor);
+                    let missing =
+                        engine.missing_tables_prepared(&prep, state.cache.metadata.as_ref());
+                    (prep, missing)
                 };
 
                 let prefetch_actions: Vec<Action> = missing
@@ -596,17 +600,17 @@ impl EffectRunner {
 
                 let (candidates, token_len, visible) = {
                     let engine = completion_engine.borrow();
-                    let token_len = engine.current_token_len(&state.sql_modal.content, cursor);
+                    let token_len = CompletionEngine::current_token_len_prepared(&prep);
                     let recent_cols = state.sql_modal.completion.recent_columns_vec();
-                    let candidates = engine.get_candidates(
-                        &state.sql_modal.content,
+                    let candidates = engine.get_candidates_prepared(
+                        content,
                         cursor,
+                        &prep,
                         state.cache.metadata.as_ref(),
                         state.cache.table_detail.as_ref(),
                         &recent_cols,
                     );
-                    let visible =
-                        !candidates.is_empty() && !state.sql_modal.content.trim().is_empty();
+                    let visible = !candidates.is_empty() && !content.trim().is_empty();
                     (candidates, token_len, visible)
                 };
 
