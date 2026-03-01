@@ -428,7 +428,7 @@ impl EffectRunner {
                 tokio::spawn(async move {
                     let result = tokio::time::timeout(
                         tokio::time::Duration::from_secs(10),
-                        provider.fetch_table_detail(&dsn, &schema, &table),
+                        provider.fetch_table_detail_light(&dsn, &schema, &table),
                     )
                     .await;
                     match result {

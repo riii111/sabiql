@@ -93,6 +93,42 @@ impl MetadataProvider for PostgresAdapter {
             comment: table_info.comment,
         })
     }
+
+    async fn fetch_table_detail_light(
+        &self,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+    ) -> Result<Table, MetadataError> {
+        let query = Self::table_detail_light_query(schema, table);
+        let json = self.execute_query(dsn, &query).await?;
+        let (columns, foreign_keys) = Self::parse_table_detail_light(&json)?;
+
+        let pk_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect();
+        let primary_key = if pk_cols.is_empty() {
+            None
+        } else {
+            Some(pk_cols)
+        };
+
+        Ok(Table {
+            schema: schema.to_string(),
+            name: table.to_string(),
+            owner: None,
+            columns,
+            primary_key,
+            foreign_keys,
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+        })
+    }
 }
 
 #[async_trait]

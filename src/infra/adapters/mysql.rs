@@ -39,6 +39,17 @@ impl MetadataProvider for MySqlAdapter {
         ))
     }
 
+    async fn fetch_table_detail_light(
+        &self,
+        _dsn: &str,
+        _schema: &str,
+        _table: &str,
+    ) -> Result<Table, MetadataError> {
+        Err(MetadataError::ConnectionFailed(
+            "MySQL adapter not yet implemented".to_string(),
+        ))
+    }
+
     async fn fetch_table_signatures(
         &self,
         _dsn: &str,
