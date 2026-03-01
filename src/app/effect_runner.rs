@@ -600,7 +600,6 @@ impl EffectRunner {
 
                 let (candidates, token_len, visible) = {
                     let engine = completion_engine.borrow();
-                    use crate::app::completion::CompletionEngine;
                     let token_len = CompletionEngine::current_token_len_prepared(&prep);
                     let recent_cols = state.sql_modal.completion.recent_columns_vec();
                     let candidates = engine.get_candidates_prepared(

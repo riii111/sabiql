@@ -28,12 +28,12 @@ pub enum CompletionContext {
 
 /// Pre-computed tokenization and context for a single completion trigger.
 pub struct PreparedCompletion {
-    pub tokens: Vec<Token>,
-    pub context: SqlContext,
-    pub before_cursor: String,
-    pub current_token: String,
-    pub in_string_or_comment: bool,
-    pub cte_names: HashSet<String>,
+    pub(crate) tokens: Vec<Token>,
+    pub(crate) context: SqlContext,
+    pub(crate) before_cursor: String,
+    pub(crate) current_token: String,
+    pub(crate) in_string_or_comment: bool,
+    pub(crate) cte_names: HashSet<String>,
 }
 
 pub struct CompletionEngine {
@@ -161,40 +161,8 @@ impl CompletionEngine {
         content: &str,
         metadata: Option<&DatabaseMetadata>,
     ) -> Vec<String> {
-        const MAX_MISSING_TABLES: usize = 10;
-
-        let tokens = self.lexer.tokenize(content, content.len());
-        let sql_context = self.lexer.build_context(&tokens, content.len());
-
-        let cte_names: std::collections::HashSet<String> = sql_context
-            .ctes
-            .iter()
-            .map(|cte| cte.name.to_lowercase())
-            .collect();
-
-        let mut missing = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-
-        for table_ref in &sql_context.tables {
-            if cte_names.contains(&table_ref.table.to_lowercase()) {
-                continue;
-            }
-
-            let qualified_name = self.qualified_name_from_ref(table_ref, metadata);
-
-            if seen.contains(&qualified_name) || self.table_detail_cache.contains(&qualified_name) {
-                continue;
-            }
-
-            seen.insert(qualified_name.clone());
-            missing.push(qualified_name);
-
-            if missing.len() >= MAX_MISSING_TABLES {
-                break;
-            }
-        }
-
-        missing
+        let prep = self.prepare(content, content.len());
+        self.missing_tables_prepared(&prep, metadata)
     }
 
     pub fn get_candidates(
@@ -205,147 +173,15 @@ impl CompletionEngine {
         table_detail: Option<&Table>,
         recent_columns: &[String],
     ) -> Vec<CompletionCandidate> {
-        // Skip completion inside strings or comments
-        if self.lexer.is_in_string_or_comment(content, cursor_pos) {
-            return vec![];
-        }
-
-        // Skip completion immediately after semicolon (end of statement)
-        let byte_pos = char_to_byte_index(content, cursor_pos);
-        if content[..byte_pos].trim_end().ends_with(';') {
-            return vec![];
-        }
-
-        // Build SQL context for alias resolution
-        let tokens = self.lexer.tokenize(content, content.len());
-        let sql_context = self.lexer.build_context(&tokens, cursor_pos);
-
-        let (current_token, context) =
-            self.analyze_with_context(content, cursor_pos, &sql_context, &tokens);
-
-        let mut candidates = match &context {
-            CompletionContext::Keyword => self.keyword_candidates(&current_token),
-            CompletionContext::Table => self.table_candidates(metadata, &current_token),
-            CompletionContext::Column => {
-                let keywords = self.primary_clause_keywords(&current_token);
-
-                // Check if cursor is right after a comma (column list continuation)
-                let before_cursor: String = content.chars().take(cursor_pos).collect();
-                let before_token = before_cursor
-                    .trim_end()
-                    .strip_suffix(&current_token)
-                    .unwrap_or(&before_cursor)
-                    .trim_end();
-                let after_comma = before_token.ends_with(',');
-
-                let target_qualified = sql_context
-                    .target_table
-                    .as_ref()
-                    .map(|t| self.qualified_name_from_ref(t, metadata));
-
-                let mut columns =
-                    self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
-
-                // UPDATE/DELETE/INSERT target table columns get priority
-                if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
-                    && detail.qualified_name() == *target
-                {
-                    for col in &mut columns {
-                        col.score += 200;
-                    }
-                }
-
-                // Build set of tables referenced in current SQL (excluding CTEs)
-                let cte_names: std::collections::HashSet<String> = sql_context
-                    .ctes
-                    .iter()
-                    .map(|cte| cte.name.to_lowercase())
-                    .collect();
-                let referenced_tables: std::collections::HashSet<String> = sql_context
-                    .tables
-                    .iter()
-                    .filter(|t| !cte_names.contains(&t.table.to_lowercase()))
-                    .map(|t| self.qualified_name_from_ref(t, metadata))
-                    .collect();
-
-                let selected_qualified = table_detail.map(|t| t.qualified_name());
-                let use_all_cache = referenced_tables.is_empty();
-                for (qualified_name, cached_table) in self.table_detail_cache.iter() {
-                    if selected_qualified.as_ref() == Some(qualified_name) {
-                        continue;
-                    }
-                    if !use_all_cache && !referenced_tables.contains(qualified_name) {
-                        continue;
-                    }
-                    let mut cached_columns = self.column_candidates_with_fk(
-                        Some(cached_table),
-                        &current_token,
-                        recent_columns,
-                    );
-
-                    if target_qualified.as_ref() == Some(qualified_name) {
-                        for col in &mut cached_columns {
-                            col.score += 200;
-                        }
-                    }
-                    columns.extend(cached_columns);
-                }
-
-                let has_prefix = current_token.len() >= 2;
-                if has_prefix && !columns.is_empty() {
-                    for col in &mut columns {
-                        if col.score >= 100 {
-                            col.score += 250;
-                        }
-                    }
-                }
-
-                // After comma, strongly prefer columns over keywords
-                if after_comma {
-                    for col in &mut columns {
-                        col.score += 300;
-                    }
-                }
-
-                let max_keywords = if after_comma {
-                    3
-                } else if has_prefix {
-                    5
-                } else {
-                    15
-                }
-                .min(keywords.len());
-                let max_columns = (COMPLETION_MAX_CANDIDATES - max_keywords).min(columns.len());
-
-                let mut mixed: Vec<_> = keywords.into_iter().take(max_keywords).collect();
-                mixed.extend(columns.into_iter().take(max_columns));
-                mixed.sort_by(|a, b| match b.score.cmp(&a.score) {
-                    std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-                    other => other,
-                });
-                mixed
-            }
-            CompletionContext::SchemaQualified(schema) => {
-                self.schema_qualified_candidates(metadata, schema, &current_token)
-            }
-            CompletionContext::AliasColumn(alias) => {
-                self.alias_column_candidates(alias, &sql_context, metadata, &current_token)
-            }
-            CompletionContext::CteOrTable => {
-                self.cte_or_table_candidates(&sql_context, metadata, &current_token)
-            }
-        };
-
-        // Fallback to keywords if context-specific candidates are empty
-        if candidates.is_empty() && context != CompletionContext::Keyword {
-            return self.keyword_candidates(&current_token);
-        }
-
-        // Deduplicate by text (keep highest score - first occurrence after sort)
-        let mut seen = std::collections::HashSet::new();
-        candidates.retain(|c| seen.insert(c.text.to_uppercase()));
-
-        candidates
+        let prep = self.prepare(content, cursor_pos);
+        self.get_candidates_inner(
+            content,
+            cursor_pos,
+            &prep,
+            metadata,
+            table_detail,
+            recent_columns,
+        )
     }
 
     pub fn current_token_len(&self, content: &str, cursor_pos: usize) -> usize {
@@ -408,6 +244,25 @@ impl CompletionEngine {
     }
 
     pub fn get_candidates_prepared(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        prep: &PreparedCompletion,
+        metadata: Option<&DatabaseMetadata>,
+        table_detail: Option<&Table>,
+        recent_columns: &[String],
+    ) -> Vec<CompletionCandidate> {
+        self.get_candidates_inner(
+            content,
+            cursor_pos,
+            prep,
+            metadata,
+            table_detail,
+            recent_columns,
+        )
+    }
+
+    fn get_candidates_inner(
         &self,
         content: &str,
         cursor_pos: usize,
@@ -548,6 +403,7 @@ impl CompletionEngine {
         candidates
     }
 
+    #[cfg(test)]
     fn analyze_with_context(
         &self,
         content: &str,
