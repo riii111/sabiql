@@ -31,7 +31,7 @@ Use this skill when releasing a new version of sabiql.
 
 4. **Create GitHub Release with release notes**
    ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes --notes "$(cat <<'EOF'
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
    ## What's Changed in vX.Y.Z
 
    ### 🎯 User-Facing Changes
