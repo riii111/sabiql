@@ -1,4 +1,5 @@
 use ratatui::prelude::*;
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
@@ -136,27 +137,6 @@ impl ConnectionSetup {
         };
 
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
-        let input_content = if is_focused {
-            let viewport = state.viewport_offset;
-            let cursor = state.cursor_position;
-            let char_count = display_value.chars().count();
-            let visible_chars = content_width - 1; // Reserve 1 char for cursor
-            let visible_end = (viewport + visible_chars).min(char_count);
-            let visible_start = viewport.min(char_count);
-            let visible_text: String = display_value
-                .chars()
-                .skip(visible_start)
-                .take(visible_end - visible_start)
-                .collect();
-            let cursor_in_visible = cursor.saturating_sub(viewport);
-            let before_cursor: String = visible_text.chars().take(cursor_in_visible).collect();
-            let after_cursor: String = visible_text.chars().skip(cursor_in_visible).collect();
-            let with_cursor = format!("{}█{}", before_cursor, after_cursor);
-            format!("{:<1$}", with_cursor, content_width)
-        } else {
-            let truncated: String = display_value.chars().take(content_width).collect();
-            format!("{:<1$}", truncated, content_width)
-        };
 
         let border_style = if error.is_some() {
             Style::default().fg(Theme::STATUS_ERROR)
@@ -166,7 +146,78 @@ impl ConnectionSetup {
             Style::default().fg(Theme::MODAL_BORDER)
         };
 
-        let input_para = Paragraph::new(bracketed_input(&input_content, border_style));
+        let input_line = if is_focused {
+            let viewport = state.viewport_offset;
+            let cursor = state.cursor_position;
+            let chars: Vec<char> = display_value.chars().collect();
+            let char_count = chars.len();
+
+            // same reservation logic as TextInputState::update_viewport
+            let effective_width = if cursor >= char_count {
+                content_width.saturating_sub(1)
+            } else {
+                content_width
+            };
+            let visible_end = (viewport + effective_width).min(char_count);
+            let visible_start = viewport.min(char_count);
+            let visible: Vec<char> = chars[visible_start..visible_end].to_vec();
+            let cursor_in_view = cursor.saturating_sub(viewport);
+
+            let cursor_style = Style::default()
+                .bg(Theme::CURSOR_FG)
+                .fg(Theme::SELECTION_BG)
+                .add_modifier(Modifier::BOLD);
+
+            let mut spans = vec![
+                Span::styled("[", border_style),
+                Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)),
+            ];
+
+            if cursor >= char_count {
+                let text: String = visible.iter().collect();
+                let padding = effective_width.saturating_sub(visible.len());
+                spans.push(Span::raw(text));
+                spans.push(Span::styled(
+                    "\u{2588}",
+                    Style::default().fg(Theme::CURSOR_FG),
+                ));
+                if padding > 0 {
+                    spans.push(Span::raw(" ".repeat(padding)));
+                }
+            } else if cursor_in_view < visible.len() {
+                let before: String = visible[..cursor_in_view].iter().collect();
+                let cursor_char: String = visible[cursor_in_view].to_string();
+                let after: String = visible[cursor_in_view + 1..].iter().collect();
+                let used = before.chars().count() + 1 + after.chars().count();
+                let padding = content_width.saturating_sub(used);
+                spans.push(Span::raw(before));
+                spans.push(Span::styled(cursor_char, cursor_style));
+                spans.push(Span::raw(after));
+                if padding > 0 {
+                    spans.push(Span::raw(" ".repeat(padding)));
+                }
+            } else {
+                let text: String = visible.iter().collect();
+                let padding = content_width.saturating_sub(text.chars().count());
+                spans.push(Span::raw(text));
+                if padding > 0 {
+                    spans.push(Span::raw(" ".repeat(padding)));
+                }
+            }
+
+            spans.push(Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)));
+            spans.push(Span::styled("]", border_style));
+            Line::from(spans)
+        } else {
+            let truncated: String = display_value.chars().take(content_width).collect();
+            let padding = content_width.saturating_sub(truncated.chars().count());
+            bracketed_input(
+                &format!("{}{}", truncated, " ".repeat(padding)),
+                border_style,
+            )
+        };
+
+        let input_para = Paragraph::new(input_line);
         frame.render_widget(input_para, chunks[1]);
 
         if let Some(err) = error {
