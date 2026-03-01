@@ -1,0 +1,148 @@
+name: Update Homebrew Tap
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  update-tap:
+    name: Update homebrew-sabiql formula
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Get release tag
+        id: get-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+
+          # Collect all SemVer tags pointing to this commit (lightweight or annotated)
+          TAGS=$(gh api "repos/${{ github.repository }}/git/refs/tags" \
+            --jq ".[] | .ref | ltrimstr(\"refs/tags/\")" | \
+            while IFS= read -r t; do
+              obj_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.sha')
+              obj_type=$(gh api "repos/${{ github.repository }}/git/ref/tags/$t" --jq '.object.type')
+              if [ "$obj_type" = "tag" ]; then
+                commit_sha=$(gh api "repos/${{ github.repository }}/git/tags/$obj_sha" --jq '.object.sha')
+              else
+                commit_sha="$obj_sha"
+              fi
+              if [ "$commit_sha" = "$SHA" ]; then
+                echo "$t"
+              fi
+            done | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+
+          TAG_COUNT=$(echo "$TAGS" | grep -c . || true)
+
+          if [ "$TAG_COUNT" -eq 0 ]; then
+            echo "::notice::No SemVer tag found for commit $SHA — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$TAG_COUNT" -gt 1 ]; then
+            echo "::error::Multiple SemVer tags found for commit $SHA: $(echo "$TAGS" | tr '\n' ' ')"
+            exit 1
+          fi
+
+          TAG="$TAGS"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Compute tarball sha256
+        if: steps.get-tag.outputs.skip != 'true'
+        id: sha256
+        run: |
+          set -o pipefail
+          TAG="${{ steps.get-tag.outputs.tag }}"
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+          SHA256=$(curl -fsSL "$URL" | sha256sum | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Clone homebrew-sabiql
+        if: steps.get-tag.outputs.skip != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/riii111/homebrew-sabiql.git" tap
+
+      - name: Update formula
+        if: steps.get-tag.outputs.skip != 'true'
+        run: |
+          FORMULA="tap/Formula/sabiql.rb"
+          NEW_URL="${{ steps.sha256.outputs.url }}"
+          NEW_SHA="${{ steps.sha256.outputs.sha256 }}"
+
+          python3 - "$FORMULA" "$NEW_URL" "$NEW_SHA" <<'PYEOF'
+          import sys, re
+
+          formula_path, new_url, new_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+
+          with open(formula_path, "r") as f:
+              lines = f.readlines()
+
+          updated = []
+          in_bottle = False
+          url_updated = 0
+          sha256_updated = 0
+
+          for line in lines:
+              if re.match(r'^\s*bottle\s+do\b', line):
+                  in_bottle = True
+              elif in_bottle and re.match(r'^\s*end\b', line):
+                  in_bottle = False
+
+              if not in_bottle and re.match(r'^\s*url\s+"', line):
+                  indent = re.match(r'^(\s*)', line).group(1)
+                  updated.append(f'{indent}url "{new_url}"\n')
+                  url_updated += 1
+              elif not in_bottle and re.match(r'^\s*sha256\s+"', line):
+                  indent = re.match(r'^(\s*)', line).group(1)
+                  updated.append(f'{indent}sha256 "{new_sha}"\n')
+                  sha256_updated += 1
+              else:
+                  updated.append(line)
+
+          if url_updated != 1:
+              print(f"ERROR: expected exactly 1 source url line, found {url_updated}", file=sys.stderr)
+              sys.exit(1)
+          if sha256_updated != 1:
+              print(f"ERROR: expected exactly 1 source sha256 line, found {sha256_updated}", file=sys.stderr)
+              sys.exit(1)
+
+          with open(formula_path, "w") as f:
+              f.writelines(updated)
+
+          print("Formula updated successfully.")
+          PYEOF
+
+      - name: Show diff
+        if: steps.get-tag.outputs.skip != 'true'
+        run: |
+          git -C tap diff
+
+      - name: Commit and push
+        if: steps.get-tag.outputs.skip != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          cd tap
+          if git diff --quiet; then
+            echo "No changes — formula already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/sabiql.rb
+          git commit -m "chore: update sabiql to ${{ steps.get-tag.outputs.tag }}"
+          git push
