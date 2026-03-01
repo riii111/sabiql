@@ -57,11 +57,17 @@ fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 }
 
 fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
+    use crate::app::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
         return action;
     }
     match combo.key {
         Key::Backspace => Action::ResultCellEditBackspace,
+        Key::Delete => Action::ResultCellEditDelete,
+        Key::Left => Action::ResultCellEditMoveCursor(CursorMove::Left),
+        Key::Right => Action::ResultCellEditMoveCursor(CursorMove::Right),
+        Key::Home => Action::ResultCellEditMoveCursor(CursorMove::Home),
+        Key::End => Action::ResultCellEditMoveCursor(CursorMove::End),
         Key::Char(c) => Action::ResultCellEditInput(c),
         _ => Action::None,
     }
@@ -863,7 +869,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(1);
             state.cell_edit.begin(0, 1, "original".to_string());
-            state.cell_edit.draft_value = "modified".to_string();
+            state.cell_edit.input.set_content("modified".to_string());
 
             let result = handle_normal_mode(combo(Key::Esc), &state);
 

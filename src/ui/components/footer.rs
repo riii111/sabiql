@@ -181,6 +181,7 @@ impl Footer {
             InputMode::CellEdit => vec![
                 CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
                 CELL_EDIT_KEYS[idx::cell_edit::TYPE].as_hint(),
+                CELL_EDIT_KEYS[idx::cell_edit::MOVE].as_hint(),
                 GLOBAL_KEYS[idx::global::HELP].as_hint(),
                 CELL_EDIT_KEYS[idx::cell_edit::ESC_CANCEL].as_hint(),
                 GLOBAL_KEYS[idx::global::QUIT].as_hint(),

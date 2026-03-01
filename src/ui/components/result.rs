@@ -4,6 +4,7 @@ use std::time::Instant;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
 use super::atoms::panel_block_highlight;
@@ -56,8 +57,9 @@ impl ResultPane {
                         Some((
                             state.cell_edit.row.unwrap_or_default(),
                             state.cell_edit.col.unwrap_or_default(),
-                            state.cell_edit.draft_value.as_str(),
+                            state.cell_edit.draft_value(),
                             state.ui.input_mode == crate::app::input_mode::InputMode::CellEdit,
+                            state.cell_edit.input.cursor,
                         ))
                     } else {
                         None
@@ -178,7 +180,7 @@ impl ResultPane {
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
         selection: &ResultSelection,
-        editing_cell: Option<(usize, usize, &str, bool)>,
+        editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
@@ -270,45 +272,47 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let mut val = row
+                        let val = row
                             .get(orig_idx)
                             .map(|s| s.as_str())
                             .unwrap_or("")
                             .to_string();
                         let is_editing_cell = editing_cell
-                            .is_some_and(|(er, ec, _, _)| er == abs_row_idx && ec == orig_idx);
-                        if let Some((_, _, draft, actively_editing)) = editing_cell
+                            .is_some_and(|(er, ec, _, _, _)| er == abs_row_idx && ec == orig_idx);
+                        let mut cell;
+                        if let Some((_, _, draft, actively_editing, cursor_pos)) = editing_cell
                             && is_editing_cell
                         {
                             if actively_editing {
-                                val = format!("{}█", draft);
-                            } else {
-                                val = draft.to_string();
-                            }
-                        }
-
-                        let display = truncate_cell(&val, col_width as usize);
-                        let mut cell = Cell::from(display);
-                        if let Some((_, _, _, actively_editing)) = editing_cell
-                            && is_editing_cell
-                        {
-                            if actively_editing {
-                                cell = cell.style(
+                                let line = cell_edit_line_with_cursor(
+                                    draft,
+                                    cursor_pos,
+                                    col_width as usize,
+                                );
+                                cell = Cell::from(line).style(
                                     Style::default()
                                         .bg(Theme::RESULT_CELL_ACTIVE_BG)
                                         .fg(Theme::CELL_EDIT_FG),
                                 );
                             } else {
-                                cell = cell.style(
+                                let display = truncate_cell(draft, col_width as usize);
+                                cell = Cell::from(display).style(
                                     Style::default()
                                         .bg(Theme::RESULT_CELL_ACTIVE_BG)
                                         .fg(Theme::CELL_DRAFT_PENDING_FG),
                                 );
                             }
-                        } else if is_staged_for_delete {
-                            cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
-                        } else if is_active_row && active_cell == Some(orig_idx) {
-                            cell = cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
+                        } else {
+                            let display = truncate_cell(&val, col_width as usize);
+                            cell = Cell::from(display);
+                        }
+                        if !is_editing_cell {
+                            if is_staged_for_delete {
+                                cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
+                            } else if is_active_row && active_cell == Some(orig_idx) {
+                                cell =
+                                    cell.style(Style::default().bg(Theme::RESULT_CELL_ACTIVE_BG));
+                            }
                         }
                         cell
                     })
@@ -379,6 +383,64 @@ fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> 
             (max_width as u16 + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
         .collect()
+}
+
+fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Line<'static> {
+    let chars: Vec<char> = text.chars().collect();
+    let total = chars.len();
+
+    // For narrow columns, try to keep cursor visible
+    if max_chars == 0 {
+        return Line::from(vec![]);
+    }
+
+    // Determine viewport window to keep cursor visible
+    let (view_start, view_len) = if cursor >= total {
+        // Cursor at end: need space for block cursor
+        let effective = max_chars.saturating_sub(1);
+        let start = total.saturating_sub(effective);
+        (start, total - start)
+    } else {
+        // Cursor on a character
+        let start = if cursor < max_chars {
+            0
+        } else {
+            cursor.saturating_sub(max_chars / 2)
+        };
+        let end = (start + max_chars).min(total);
+        (start, end - start)
+    };
+
+    let visible: Vec<char> = chars[view_start..view_start + view_len].to_vec();
+    let cursor_in_view = cursor.saturating_sub(view_start);
+
+    let cursor_style = Style::default()
+        .bg(Theme::CURSOR_FG)
+        .fg(Theme::SELECTION_BG)
+        .add_modifier(Modifier::BOLD);
+
+    if cursor >= total {
+        // Cursor at end: text + block cursor
+        let text_str: String = visible.iter().collect();
+        Line::from(vec![
+            Span::raw(text_str),
+            Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
+        ])
+    } else if cursor_in_view < visible.len() {
+        // Cursor on a character within view
+        let before: String = visible[..cursor_in_view].iter().collect();
+        let cursor_char: String = visible[cursor_in_view].to_string();
+        let after: String = visible[cursor_in_view + 1..].iter().collect();
+        Line::from(vec![
+            Span::raw(before),
+            Span::styled(cursor_char, cursor_style),
+            Span::raw(after),
+        ])
+    } else {
+        // Fallback: just show text
+        let text_str: String = visible.iter().collect();
+        Line::from(vec![Span::raw(text_str)])
+    }
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {

@@ -1,9 +1,5 @@
 use crate::app::action::CursorMove;
 
-/// Shared single-line text input state with cursor management.
-///
-/// Used by Cell Edit and potentially other single-line text inputs.
-/// SQL Modal uses its own multi-line editor and is NOT covered by this.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
     pub content: String,
@@ -62,24 +58,18 @@ impl TextInputState {
             CursorMove::End => {
                 self.cursor = self.char_count();
             }
-            CursorMove::Up | CursorMove::Down => {
-                // no-op for single-line input
-            }
+            CursorMove::Up | CursorMove::Down => {}
         }
     }
 
-    /// Adjusts `viewport_offset` so cursor stays visible within `visible_width` characters.
-    ///
-    /// When cursor is at the end (cursor == char_count), one cell is reserved for the
-    /// block cursor `█`, so the effective visible width is `visible_width - 1`.
     pub fn update_viewport(&mut self, visible_width: usize) {
         if visible_width == 0 {
             self.viewport_offset = 0;
             return;
         }
 
+        // █ occupies one terminal cell at end-of-input; shrink effective width to keep it visible
         let effective_width = if self.cursor == self.char_count() {
-            // Reserve 1 cell for the block cursor at the end
             visible_width.saturating_sub(1)
         } else {
             visible_width

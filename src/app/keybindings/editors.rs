@@ -156,7 +156,25 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: COMMAND
+    // idx 2: MOVE (display-only)
+    KeyBinding {
+        key_short: "←→",
+        key: "←→",
+        desc_short: "Move",
+        description: "Move cursor",
+        action: Action::None,
+        combos: &[],
+    },
+    // idx 3: HOME_END (display-only)
+    KeyBinding {
+        key_short: "Home/End",
+        key: "Home/End",
+        desc_short: "Jump",
+        description: "Jump to start/end",
+        action: Action::None,
+        combos: &[],
+    },
+    // idx 4: COMMAND
     KeyBinding {
         key_short: ":",
         key: ":",
@@ -165,7 +183,7 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::EnterCommandLine,
         combos: &[KeyCombo::plain(Key::Char(':'))],
     },
-    // idx 3: ESC_CANCEL
+    // idx 5: ESC_CANCEL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",

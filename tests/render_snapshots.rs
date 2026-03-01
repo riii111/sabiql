@@ -982,7 +982,10 @@ mod result_pane {
         state.ui.result_selection.enter_cell(2);
         state.ui.input_mode = InputMode::CellEdit;
         state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.draft_value = "new@example.com".to_string();
+        state
+            .cell_edit
+            .input
+            .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1005,7 +1008,10 @@ mod result_pane {
         state.ui.result_selection.enter_cell(2);
         state.ui.input_mode = InputMode::Normal;
         state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.draft_value = "new@example.com".to_string();
+        state
+            .cell_edit
+            .input
+            .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1064,7 +1070,10 @@ mod style_assertions {
         state.ui.result_selection.enter_cell(2);
         state.ui.input_mode = InputMode::Normal;
         state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.draft_value = "new@example.com".to_string();
+        state
+            .cell_edit
+            .input
+            .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -1093,7 +1102,10 @@ mod style_assertions {
         state.ui.result_selection.enter_cell(2);
         state.ui.input_mode = InputMode::CellEdit;
         state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.draft_value = "new@example.com".to_string();
+        state
+            .cell_edit
+            .input
+            .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 

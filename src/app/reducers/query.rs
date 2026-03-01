@@ -70,7 +70,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         &target.schema,
         &target.table,
         &column_name,
-        &state.cell_edit.draft_value,
+        state.cell_edit.draft_value(),
         &target.key_values,
     );
     let preview = WritePreview {
@@ -80,7 +80,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         diff: vec![ColumnDiff {
             column: column_name,
             before: state.cell_edit.original_value.clone(),
-            after: state.cell_edit.draft_value.clone(),
+            after: state.cell_edit.draft_value().to_string(),
         }],
         guardrail,
     };
@@ -983,7 +983,7 @@ mod tests {
             state.query.pagination.table = "users".to_string();
             state.ui.input_mode = InputMode::CellEdit;
             state.cell_edit.begin(0, 1, "Alice".to_string());
-            state.cell_edit.draft_value = "Bob".to_string();
+            state.cell_edit.input.set_content("Bob".to_string());
             state
         }
 

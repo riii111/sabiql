@@ -291,7 +291,7 @@ pub fn reduce_navigation(
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.cell_edit.draft_value.push_str(&clean);
+                state.cell_edit.input.insert_str(&clean);
                 Some(vec![])
             }
             _ => None,
@@ -835,11 +835,19 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ResultCellEditInput(c) => {
-            state.cell_edit.draft_value.push(*c);
+            state.cell_edit.input.insert_char(*c);
             Some(vec![])
         }
         Action::ResultCellEditBackspace => {
-            state.cell_edit.draft_value.pop();
+            state.cell_edit.input.backspace();
+            Some(vec![])
+        }
+        Action::ResultCellEditDelete => {
+            state.cell_edit.input.delete();
+            Some(vec![])
+        }
+        Action::ResultCellEditMoveCursor(m) => {
+            state.cell_edit.input.move_cursor(*m);
             Some(vec![])
         }
         Action::CopyFailed(msg) => {
@@ -1727,13 +1735,13 @@ mod tests {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 1, "alice".to_string());
-            state.cell_edit.draft_value = "modified".to_string();
+            state.cell_edit.input.set_content("modified".to_string());
             state.ui.input_mode = InputMode::Normal;
 
             reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
-            assert_eq!(state.cell_edit.draft_value, "modified");
+            assert_eq!(state.cell_edit.draft_value(), "modified");
         }
 
         #[test]
@@ -1741,13 +1749,16 @@ mod tests {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 99, "stale".to_string());
-            state.cell_edit.draft_value = "stale-modified".to_string();
+            state
+                .cell_edit
+                .input
+                .set_content("stale-modified".to_string());
 
             reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert_eq!(state.cell_edit.col, Some(1));
-            assert_eq!(state.cell_edit.draft_value, "alice");
+            assert_eq!(state.cell_edit.draft_value(), "alice");
         }
 
         #[test]
