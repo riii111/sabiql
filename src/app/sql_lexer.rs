@@ -505,7 +505,7 @@ impl SqlLexer {
     /// Like `is_in_string_or_comment` but uses pre-computed tokens.
     pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
         tokens.iter().any(|t| {
-            t.start <= cursor_pos
+            t.start < cursor_pos
                 && cursor_pos <= t.end
                 && matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment)
         })
