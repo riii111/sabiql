@@ -589,7 +589,7 @@ mod connection_management {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.service_entries = vec![
+        state.set_service_entries(vec![
             ServiceEntry {
                 service_name: "dev-local".to_string(),
                 host: Some("localhost".to_string()),
@@ -604,10 +604,7 @@ mod connection_management {
                 port: Some(5433),
                 user: None,
             },
-        ];
-        let service_count = state.service_entries.len();
-        state.connection_list_items =
-            sabiql::app::connection_list::build_connection_list(0, service_count);
+        ]);
         // Set active connection to the first service entry
         state.runtime.active_connection_id =
             Some(ConnectionId::from_string("service:dev-local".to_string()));
