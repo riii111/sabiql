@@ -311,6 +311,7 @@ impl CompletionEngine {
                 let mut columns =
                     self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
 
+                // UPDATE/DELETE/INSERT target table columns get priority
                 if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
                     && detail.qualified_name() == *target
                 {
@@ -358,6 +359,7 @@ impl CompletionEngine {
                     }
                 }
 
+                // After comma, strongly prefer columns over keywords
                 if after_comma {
                     for col in &mut columns {
                         col.score += 300;
