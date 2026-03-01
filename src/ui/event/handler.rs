@@ -1457,6 +1457,7 @@ mod tests {
 
     mod cell_edit_mode {
         use super::*;
+        use crate::app::action::CursorMove;
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {
@@ -1477,6 +1478,53 @@ mod tests {
             let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(result, Action::ResultCellEditBackspace));
+        }
+
+        #[test]
+        fn delete_returns_cell_edit_delete() {
+            let result = handle_cell_edit_keys(combo(Key::Delete));
+
+            assert!(matches!(result, Action::ResultCellEditDelete));
+        }
+
+        #[test]
+        fn left_returns_move_cursor_left() {
+            let result = handle_cell_edit_keys(combo(Key::Left));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Left)
+            ));
+        }
+
+        #[test]
+        fn right_returns_move_cursor_right() {
+            let result = handle_cell_edit_keys(combo(Key::Right));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Right)
+            ));
+        }
+
+        #[test]
+        fn home_returns_move_cursor_home() {
+            let result = handle_cell_edit_keys(combo(Key::Home));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::Home)
+            ));
+        }
+
+        #[test]
+        fn end_returns_move_cursor_end() {
+            let result = handle_cell_edit_keys(combo(Key::End));
+
+            assert!(matches!(
+                result,
+                Action::ResultCellEditMoveCursor(CursorMove::End)
+            ));
         }
     }
 
