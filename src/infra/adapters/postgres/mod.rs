@@ -63,30 +63,10 @@ impl MetadataProvider for PostgresAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError> {
-        let columns_q = Self::columns_query(schema, table);
-        let indexes_q = Self::indexes_query(schema, table);
-        let fks_q = Self::foreign_keys_query(schema, table);
-        let rls_q = Self::rls_query(schema, table);
-        let triggers_q = Self::triggers_query(schema, table);
-        let table_info_q = Self::table_info_query(schema, table);
-
-        // Execute queries sequentially to avoid connection pool exhaustion
-        // on tables with many columns
-        // TODO: If performance becomes an issue, consider migrating to controlled parallel
-        // execution using semaphores (e.g., tokio::sync::Semaphore) to limit concurrency
-        let columns_json = self.execute_query(dsn, &columns_q).await?;
-        let indexes_json = self.execute_query(dsn, &indexes_q).await?;
-        let fks_json = self.execute_query(dsn, &fks_q).await?;
-        let rls_json = self.execute_query(dsn, &rls_q).await?;
-        let triggers_json = self.execute_query(dsn, &triggers_q).await?;
-        let table_info_json = self.execute_query(dsn, &table_info_q).await?;
-
-        let columns = Self::parse_columns(&columns_json)?;
-        let indexes = Self::parse_indexes(&indexes_json)?;
-        let foreign_keys = Self::parse_foreign_keys(&fks_json)?;
-        let rls = Self::parse_rls(&rls_json)?;
-        let triggers = Self::parse_triggers(&triggers_json)?;
-        let table_info = Self::parse_table_info(&table_info_json)?;
+        let query = Self::table_detail_query(schema, table);
+        let json = self.execute_query(dsn, &query).await?;
+        let (columns, indexes, foreign_keys, rls, triggers, table_info) =
+            Self::parse_table_detail_combined(&json)?;
 
         let pk_cols: Vec<String> = columns
             .iter()

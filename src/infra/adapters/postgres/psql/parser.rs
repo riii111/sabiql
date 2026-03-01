@@ -347,6 +347,51 @@ impl PostgresAdapter {
             })
             .collect())
     }
+
+    /// Parse the combined JSON from `table_detail_query()`.
+    /// Strictly requires all 6 keys; missing/unknown keys cause an error.
+    pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
+        json: &str,
+    ) -> Result<
+        (
+            Vec<Column>,
+            Vec<Index>,
+            Vec<ForeignKey>,
+            Option<RlsInfo>,
+            Vec<Trigger>,
+            TableInfo,
+        ),
+        MetadataError,
+    > {
+        let Some(trimmed) = non_empty_json(json) else {
+            return Err(MetadataError::InvalidJson(
+                "table_detail_combined: empty response".to_string(),
+            ));
+        };
+
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct CombinedDetail {
+            columns: serde_json::Value,
+            indexes: serde_json::Value,
+            foreign_keys: serde_json::Value,
+            rls: serde_json::Value,
+            triggers: serde_json::Value,
+            table_info: serde_json::Value,
+        }
+
+        let combined: CombinedDetail =
+            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+
+        let columns = Self::parse_columns(&combined.columns.to_string())?;
+        let indexes = Self::parse_indexes(&combined.indexes.to_string())?;
+        let foreign_keys = Self::parse_foreign_keys(&combined.foreign_keys.to_string())?;
+        let rls = Self::parse_rls(&combined.rls.to_string())?;
+        let triggers = Self::parse_triggers(&combined.triggers.to_string())?;
+        let table_info = Self::parse_table_info(&combined.table_info.to_string())?;
+
+        Ok((columns, indexes, foreign_keys, rls, triggers, table_info))
+    }
 }
 
 #[cfg(test)]
@@ -980,6 +1025,97 @@ mod tests {
             let json = r#"[]"#;
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
+        }
+    }
+
+    mod table_detail_combined_parsing {
+        use super::*;
+
+        fn build_combined_json(
+            columns: &str,
+            indexes: &str,
+            fks: &str,
+            rls: &str,
+            triggers: &str,
+            table_info: &str,
+        ) -> String {
+            format!(
+                r#"{{
+                    "columns": {columns},
+                    "indexes": {indexes},
+                    "foreign_keys": {fks},
+                    "rls": {rls},
+                    "triggers": {triggers},
+                    "table_info": {table_info}
+                }}"#
+            )
+        }
+
+        #[test]
+        fn valid_combined_json_parses_all_categories() {
+            let json = build_combined_json(
+                r#"[{"name":"id","data_type":"integer","nullable":false,"default":null,"is_primary_key":true,"is_unique":false,"comment":null,"ordinal_position":1}]"#,
+                "null",
+                "null",
+                r#"{"enabled":false,"force":false,"policies":[]}"#,
+                "null",
+                r#"{"owner":"postgres","comment":null,"row_count_estimate":42}"#,
+            );
+
+            let (columns, indexes, fks, rls, triggers, table_info) =
+                PostgresAdapter::parse_table_detail_combined(&json).unwrap();
+
+            assert_eq!(columns.len(), 1);
+            assert_eq!(columns[0].name, "id");
+            assert!(indexes.is_empty());
+            assert!(fks.is_empty());
+            assert!(rls.is_some());
+            assert!(!rls.unwrap().enabled);
+            assert!(triggers.is_empty());
+            assert_eq!(table_info.owner.as_deref(), Some("postgres"));
+            assert_eq!(table_info.row_count_estimate, Some(42));
+        }
+
+        #[test]
+        fn all_null_sub_values_parse_to_empty_defaults() {
+            let json = build_combined_json("null", "null", "null", "null", "null", "null");
+
+            let (columns, indexes, fks, rls, triggers, table_info) =
+                PostgresAdapter::parse_table_detail_combined(&json).unwrap();
+
+            assert!(columns.is_empty());
+            assert!(indexes.is_empty());
+            assert!(fks.is_empty());
+            assert!(rls.is_none());
+            assert!(triggers.is_empty());
+            assert!(table_info.owner.is_none());
+        }
+
+        #[test]
+        fn missing_key_returns_invalid_json_error() {
+            let json = r#"{"columns": null, "indexes": null}"#;
+            let result = PostgresAdapter::parse_table_detail_combined(json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn unknown_key_returns_invalid_json_error() {
+            let json = build_combined_json("null", "null", "null", "null", "null", "null")
+                .replace("}", r#","extra_key": null}"#);
+            let result = PostgresAdapter::parse_table_detail_combined(&json);
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn empty_input_returns_error() {
+            let result = PostgresAdapter::parse_table_detail_combined("");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+
+        #[test]
+        fn null_input_returns_error() {
+            let result = PostgresAdapter::parse_table_detail_combined("null");
+            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
     }
 }
