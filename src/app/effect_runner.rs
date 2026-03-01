@@ -832,7 +832,7 @@ impl EffectRunner {
             }
 
             Effect::SwitchConnection { connection_index } => {
-                if let Some(profile) = state.connections.get(connection_index) {
+                if let Some(profile) = state.connections().get(connection_index) {
                     let dsn = self.dsn_builder.build_dsn(profile);
                     let name = profile.display_name().to_string();
                     let id = profile.id.clone();
@@ -845,7 +845,7 @@ impl EffectRunner {
             }
 
             Effect::SwitchToService { service_index } => {
-                if let Some(entry) = state.service_entries.get(service_index) {
+                if let Some(entry) = state.service_entries().get(service_index) {
                     let id = entry.connection_id();
                     let dsn = entry.to_dsn();
                     let name = entry.display_name().to_owned();
@@ -1473,7 +1473,7 @@ mod tests {
             .unwrap();
 
             let mut state = AppState::new("test".to_string());
-            state.connections = vec![profile];
+            state.set_connections(vec![profile]);
 
             let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
@@ -1495,7 +1495,7 @@ mod tests {
                 Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
-                    assert_eq!(id, state.connections[0].id);
+                    assert_eq!(id, state.connections()[0].id);
                 }
                 other => panic!("expected SwitchConnection, got {:?}", other),
             }

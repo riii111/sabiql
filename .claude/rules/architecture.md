@@ -79,6 +79,23 @@ crossterm::KeyEvent
 - Side effects are ONLY allowed in: `infra/adapters/`, `ui/adapters/`, `main.rs`
 - Reducers MUST return `Vec<Effect>` for side effects; NEVER execute them inline.
 
+## Derived State Invariants (MUST)
+
+When an `AppState` field is derived from other fields (e.g. `connection_list_items` is derived from `connections` + `service_entries`), **all source fields MUST be private** and mutated only through setters that automatically rebuild the derived field.
+
+| Pattern | Status |
+|---------|--------|
+| Direct field assignment (`state.foo = x`) for derived groups | **Forbidden** |
+| Setter with auto-rebuild (`state.set_foo(x)`) | **Required** |
+| Standalone `rebuild_*()` as public API | **Forbidden** (must be private, called internally by setters) |
+
+Existing enforced group:
+- **Connection group**: `connections`, `service_entries` → `connection_list_items`
+  - Setters: `set_connections`, `set_service_entries`, `set_connections_and_services`, `retain_connections`
+  - Getters: `connections()`, `service_entries()`, `connection_list_items()`
+
+When adding a new derived field to `AppState`, apply the same pattern: private fields + setter with auto-rebuild + read-only getters.
+
 ## Key Principles
 
 1. **app/ is I/O-free**: Reducers and state logic have no side effects. Effects are returned as data.

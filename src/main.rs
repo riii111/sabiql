@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, &*service_file_reader);
-            if state.service_entries.is_empty() {
+            if state.service_entries().is_empty() {
                 state.connection_setup.is_first_run = true;
                 state.ui.input_mode = InputMode::ConnectionSetup;
             } else {
@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
                     .to_lowercase()
                     .cmp(&b.display_name().to_lowercase())
             });
-            state.connections = profiles;
+            state.set_connections(profiles);
             load_service_entries(&mut state, &*service_file_reader);
 
             state.ui.input_mode = InputMode::ConnectionSelector;
@@ -217,7 +217,7 @@ async fn main() -> Result<()> {
 fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
-            state.service_entries = services;
+            state.set_service_entries(services);
             state.runtime.service_file_path = Some(path);
         }
         Ok(_) => {}
@@ -226,7 +226,6 @@ fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
             state.messages.set_error(e.to_string());
         }
     }
-    state.rebuild_connection_list();
 }
 
 #[cfg(feature = "self-update")]

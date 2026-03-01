@@ -43,9 +43,9 @@ pub struct AppState {
     pub pending_write_preview: Option<WritePreview>,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
-    pub connections: Vec<ConnectionProfile>,
-    pub service_entries: Vec<ServiceEntry>,
-    pub connection_list_items: Vec<ConnectionListItem>,
+    connections: Vec<ConnectionProfile>,
+    service_entries: Vec<ServiceEntry>,
+    connection_list_items: Vec<ConnectionListItem>,
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
 }
@@ -201,7 +201,48 @@ impl AppState {
             .unwrap_or_default()
     }
 
-    pub fn rebuild_connection_list(&mut self) {
+    // --- Connection state getters ---
+
+    pub fn connections(&self) -> &[ConnectionProfile] {
+        &self.connections
+    }
+
+    pub fn service_entries(&self) -> &[ServiceEntry] {
+        &self.service_entries
+    }
+
+    pub fn connection_list_items(&self) -> &[ConnectionListItem] {
+        &self.connection_list_items
+    }
+
+    // --- Connection state setters (auto-rebuild connection_list_items) ---
+
+    pub fn set_connections(&mut self, connections: Vec<ConnectionProfile>) {
+        self.connections = connections;
+        self.rebuild_connection_list();
+    }
+
+    pub fn set_service_entries(&mut self, entries: Vec<ServiceEntry>) {
+        self.service_entries = entries;
+        self.rebuild_connection_list();
+    }
+
+    pub fn set_connections_and_services(
+        &mut self,
+        connections: Vec<ConnectionProfile>,
+        entries: Vec<ServiceEntry>,
+    ) {
+        self.connections = connections;
+        self.service_entries = entries;
+        self.rebuild_connection_list();
+    }
+
+    pub fn retain_connections<F: FnMut(&ConnectionProfile) -> bool>(&mut self, f: F) {
+        self.connections.retain(f);
+        self.rebuild_connection_list();
+    }
+
+    fn rebuild_connection_list(&mut self) {
         self.connection_list_items = super::connection_list::build_connection_list(
             self.connections.len(),
             self.service_entries.len(),
@@ -620,6 +661,133 @@ mod tests {
             let visible = state.inspector_ddl_visible_rows();
 
             assert_eq!(visible, 0);
+        }
+    }
+
+    mod connection_setters {
+        use super::*;
+        use crate::app::connection_list::ConnectionListItem;
+        use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+
+        fn make_profile(name: &str) -> ConnectionProfile {
+            ConnectionProfile {
+                id: ConnectionId::new(),
+                name: ConnectionName::new(name).unwrap(),
+                host: "localhost".to_string(),
+                port: 5432,
+                database: "test".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                ssl_mode: SslMode::Prefer,
+            }
+        }
+
+        fn make_service(name: &str) -> crate::domain::connection::ServiceEntry {
+            crate::domain::connection::ServiceEntry {
+                service_name: name.to_string(),
+                host: None,
+                dbname: None,
+                port: None,
+                user: None,
+            }
+        }
+
+        #[test]
+        fn set_connections_rebuilds_list() {
+            let mut state = AppState::new("test".to_string());
+
+            state.set_connections(vec![make_profile("a"), make_profile("b")]);
+
+            assert_eq!(state.connections().len(), 2);
+            assert_eq!(
+                state.connection_list_items(),
+                &[
+                    ConnectionListItem::Profile(0),
+                    ConnectionListItem::Profile(1)
+                ]
+            );
+        }
+
+        #[test]
+        fn set_service_entries_rebuilds_list() {
+            let mut state = AppState::new("test".to_string());
+
+            state.set_service_entries(vec![make_service("s1"), make_service("s2")]);
+
+            assert_eq!(state.service_entries().len(), 2);
+            assert_eq!(
+                state.connection_list_items(),
+                &[
+                    ConnectionListItem::Service(0),
+                    ConnectionListItem::Service(1)
+                ]
+            );
+        }
+
+        #[test]
+        fn set_connections_and_services_rebuilds_combined_list() {
+            let mut state = AppState::new("test".to_string());
+
+            state.set_connections_and_services(
+                vec![make_profile("p1")],
+                vec![make_service("s1"), make_service("s2")],
+            );
+
+            assert_eq!(state.connections().len(), 1);
+            assert_eq!(state.service_entries().len(), 2);
+            assert_eq!(state.connection_list_items().len(), 3);
+            assert_eq!(
+                state.connection_list_items(),
+                &[
+                    ConnectionListItem::Profile(0),
+                    ConnectionListItem::Service(0),
+                    ConnectionListItem::Service(1),
+                ]
+            );
+        }
+
+        #[test]
+        fn retain_connections_filters_and_rebuilds() {
+            let mut state = AppState::new("test".to_string());
+            let keep = make_profile("keep");
+            let drop = make_profile("drop");
+            let keep_id = keep.id.clone();
+
+            state.set_connections(vec![keep, drop]);
+            assert_eq!(state.connections().len(), 2);
+
+            state.retain_connections(|c| c.id == keep_id);
+
+            assert_eq!(state.connections().len(), 1);
+            assert_eq!(state.connections()[0].id, keep_id);
+            assert_eq!(
+                state.connection_list_items(),
+                &[ConnectionListItem::Profile(0)]
+            );
+        }
+
+        #[test]
+        fn set_connections_with_empty_vec_clears_list() {
+            let mut state = AppState::new("test".to_string());
+            state.set_connections(vec![make_profile("a")]);
+            assert_eq!(state.connections().len(), 1);
+
+            state.set_connections(vec![]);
+
+            assert!(state.connections().is_empty());
+            assert!(state.connection_list_items().is_empty());
+        }
+
+        #[test]
+        fn set_service_entries_with_empty_vec_clears_list() {
+            let mut state = AppState::new("test".to_string());
+            state.set_service_entries(vec![make_service("s1")]);
+            assert_eq!(state.service_entries().len(), 1);
+
+            state.set_service_entries(vec![]);
+
+            assert!(state.service_entries().is_empty());
+            assert!(state.connection_list_items().is_empty());
         }
     }
 }
