@@ -149,14 +149,23 @@ jobs:
           BRANCH="bump-sabiql-${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           git add Formula/sabiql.rb
           git commit -m "sabiql ${TAG}"
-          git push origin "$BRANCH"
+          git push --force-with-lease origin "$BRANCH"
 
-          GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr create \
+          # Idempotent: reuse existing PR or create a new one
+          EXISTING_PR=$(GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr view "$BRANCH" \
             --repo riii111/homebrew-sabiql \
-            --base main \
-            --head "$BRANCH" \
-            --title "sabiql ${TAG}" \
-            --body "Created by [update-homebrew-tap](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow."
+            --json number --jq '.number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists — updated branch."
+          else
+            GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr create \
+              --repo riii111/homebrew-sabiql \
+              --base main \
+              --head "$BRANCH" \
+              --title "sabiql ${TAG}" \
+              --body "Created by [update-homebrew-tap](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow."
+          fi
