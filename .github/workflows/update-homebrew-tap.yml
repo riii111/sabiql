@@ -98,14 +98,18 @@ jobs:
           for line in lines:
               if re.match(r'^\s*bottle\s+do\b', line):
                   in_bottle = True
+                  continue
               elif in_bottle and re.match(r'^\s*end\b', line):
                   in_bottle = False
+                  continue
+              elif in_bottle:
+                  continue
 
-              if not in_bottle and re.match(r'^\s*url\s+"', line):
+              if re.match(r'^\s*url\s+"', line):
                   indent = re.match(r'^(\s*)', line).group(1)
                   updated.append(f'{indent}url "{new_url}"\n')
                   url_updated += 1
-              elif not in_bottle and re.match(r'^\s*sha256\s+"', line):
+              elif re.match(r'^\s*sha256\s+"', line):
                   indent = re.match(r'^(\s*)', line).group(1)
                   updated.append(f'{indent}sha256 "{new_sha}"\n')
                   sha256_updated += 1
@@ -130,10 +134,11 @@ jobs:
         run: |
           git -C tap diff
 
-      - name: Commit and push
+      - name: Create pull request
         if: steps.get-tag.outputs.skip != 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ steps.get-tag.outputs.tag }}
         run: |
           cd tap
           if git diff --quiet; then
@@ -141,8 +146,17 @@ jobs:
             exit 0
           fi
 
+          BRANCH="bump-sabiql-${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add Formula/sabiql.rb
-          git commit -m "chore: update sabiql to ${{ steps.get-tag.outputs.tag }}"
-          git push
+          git commit -m "sabiql ${TAG}"
+          git push origin "$BRANCH"
+
+          GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr create \
+            --repo riii111/homebrew-sabiql \
+            --base main \
+            --head "$BRANCH" \
+            --title "sabiql ${TAG}" \
+            --body "Created by [update-homebrew-tap](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow."
