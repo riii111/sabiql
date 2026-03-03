@@ -1,8 +1,8 @@
 use ratatui::prelude::*;
-use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
+use super::atoms::text_cursor_spans;
 use super::molecules::render_modal;
 use crate::app::connection_setup_state::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
@@ -149,8 +149,7 @@ impl ConnectionSetup {
         let input_line = if is_focused {
             let viewport = state.viewport_offset;
             let cursor = state.cursor_position;
-            let chars: Vec<char> = display_value.chars().collect();
-            let char_count = chars.len();
+            let char_count = display_value.chars().count();
 
             // same reservation logic as TextInputState::update_viewport
             let effective_width = if cursor >= char_count {
@@ -158,53 +157,21 @@ impl ConnectionSetup {
             } else {
                 content_width
             };
-            let visible_end = (viewport + effective_width).min(char_count);
-            let visible_start = viewport.min(char_count);
-            let visible: Vec<char> = chars[visible_start..visible_end].to_vec();
-            let cursor_in_view = cursor.saturating_sub(viewport);
 
-            let cursor_style = Style::default()
-                .bg(Theme::CURSOR_FG)
-                .fg(Theme::SELECTION_BG)
-                .add_modifier(Modifier::BOLD);
+            let cursor_spans = text_cursor_spans(&display_value, cursor, viewport, effective_width);
+
+            // Calculate total display width of cursor spans (including block cursor)
+            let used_width: usize = cursor_spans.iter().map(|s| s.content.chars().count()).sum();
+            let padding = content_width.saturating_sub(used_width);
 
             let mut spans = vec![
                 Span::styled("[", border_style),
                 Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)),
             ];
-
-            if cursor >= char_count {
-                let text: String = visible.iter().collect();
-                let padding = effective_width.saturating_sub(visible.len());
-                spans.push(Span::raw(text));
-                spans.push(Span::styled(
-                    "\u{2588}",
-                    Style::default().fg(Theme::CURSOR_FG),
-                ));
-                if padding > 0 {
-                    spans.push(Span::raw(" ".repeat(padding)));
-                }
-            } else if cursor_in_view < visible.len() {
-                let before: String = visible[..cursor_in_view].iter().collect();
-                let cursor_char: String = visible[cursor_in_view].to_string();
-                let after: String = visible[cursor_in_view + 1..].iter().collect();
-                let used = before.chars().count() + 1 + after.chars().count();
-                let padding = content_width.saturating_sub(used);
-                spans.push(Span::raw(before));
-                spans.push(Span::styled(cursor_char, cursor_style));
-                spans.push(Span::raw(after));
-                if padding > 0 {
-                    spans.push(Span::raw(" ".repeat(padding)));
-                }
-            } else {
-                let text: String = visible.iter().collect();
-                let padding = content_width.saturating_sub(text.chars().count());
-                spans.push(Span::raw(text));
-                if padding > 0 {
-                    spans.push(Span::raw(" ".repeat(padding)));
-                }
+            spans.extend(cursor_spans);
+            if padding > 0 {
+                spans.push(Span::raw(" ".repeat(padding)));
             }
-
             spans.push(Span::styled(" ", Style::default().fg(Theme::TEXT_PRIMARY)));
             spans.push(Span::styled("]", border_style));
             Line::from(spans)
