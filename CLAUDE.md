@@ -57,6 +57,3 @@ Skills are stored in `.claude/skills/`:
 | Skill | Type | Description |
 |-------|------|-------------|
 | **release** | Manual | Version bump, tag creation, GitHub release workflow |
-| **interaction-check** | Auto | Verify keybinding consistency across SSOT/handler/footer/help |
-| **db-extension-readiness** | Auto | Review port traits and adapters for DB-agnostic design |
-| **spec-gap-tracking** | Auto | Audit `#[ignore]`, TODOs, and missing test coverage |
