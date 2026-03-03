@@ -4,10 +4,10 @@ use std::time::Instant;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
-use super::atoms::panel_block_highlight;
+use super::atoms::{panel_block_highlight, text_cursor_spans};
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
@@ -59,7 +59,7 @@ impl ResultPane {
                             state.cell_edit.col.unwrap_or_default(),
                             state.cell_edit.draft_value(),
                             state.ui.input_mode == crate::app::input_mode::InputMode::CellEdit,
-                            state.cell_edit.input.cursor,
+                            state.cell_edit.input.cursor(),
                         ))
                     } else {
                         None
@@ -395,52 +395,17 @@ fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Li
     }
 
     // Determine viewport window to keep cursor visible
-    let (view_start, view_len) = if cursor >= total {
+    let view_start = if cursor >= total {
         // Cursor at end: need space for block cursor
         let effective = max_chars.saturating_sub(1);
-        let start = total.saturating_sub(effective);
-        (start, total - start)
+        total.saturating_sub(effective)
+    } else if cursor < max_chars {
+        0
     } else {
-        // Cursor on a character
-        let start = if cursor < max_chars {
-            0
-        } else {
-            cursor.saturating_sub(max_chars / 2)
-        };
-        let end = (start + max_chars).min(total);
-        (start, end - start)
+        cursor.saturating_sub(max_chars / 2)
     };
 
-    let visible: Vec<char> = chars[view_start..view_start + view_len].to_vec();
-    let cursor_in_view = cursor.saturating_sub(view_start);
-
-    let cursor_style = Style::default()
-        .bg(Theme::CURSOR_FG)
-        .fg(Theme::SELECTION_BG)
-        .add_modifier(Modifier::BOLD);
-
-    if cursor >= total {
-        // Cursor at end: text + block cursor
-        let text_str: String = visible.iter().collect();
-        Line::from(vec![
-            Span::raw(text_str),
-            Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
-        ])
-    } else if cursor_in_view < visible.len() {
-        // Cursor on a character within view
-        let before: String = visible[..cursor_in_view].iter().collect();
-        let cursor_char: String = visible[cursor_in_view].to_string();
-        let after: String = visible[cursor_in_view + 1..].iter().collect();
-        Line::from(vec![
-            Span::raw(before),
-            Span::styled(cursor_char, cursor_style),
-            Span::raw(after),
-        ])
-    } else {
-        // Fallback: just show text
-        let text_str: String = visible.iter().collect();
-        Line::from(vec![Span::raw(text_str)])
-    }
+    Line::from(text_cursor_spans(text, cursor, view_start, max_chars))
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
