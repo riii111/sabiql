@@ -46,10 +46,10 @@ Or via Homebrew:
 brew install riii111/sabiql/sabiql
 ```
 
-Or from source:
+Or via cargo:
 
 ```bash
-cargo install --git https://github.com/riii111/sabiql
+cargo install sabiql
 ```
 
 ## Quick Start
