@@ -4,42 +4,42 @@ paths:
   - "**/tests/**/*.rs"
 ---
 
-# Testing Obligations
+# テスト義務
 
-## MUST-test Targets by Layer
+## レイヤ別の必須テスト対象
 
-| Layer | MUST-test Scenario | Example |
-|-------|-------------------|---------|
-| **Domain** | Every public constructor / validation | `ConnectionConfig::new()` boundary values |
-| **App (reducers)** | Every state transition that changes `AppState` | Action dispatch → state diff |
-| **App (ports)** | Default-impl methods on port traits | `DdlGenerator::ddl_line_count()` |
-| **Infra (parsers)** | CLI output parsing for each adapter | `psql` tabular output → `QueryResult` |
-| **Infra (adapters)** | SQL generation (dialect-specific) | `build_update_sql` for PG (and MySQL when implemented) |
-| **UI (components)** | Rendering boundary conditions | Empty table, overflow, error states |
-| **Integration** | Cross-layer round-trips | `tests/render_snapshots.rs` |
+| レイヤ | 必須テストシナリオ | 例 |
+|--------|-------------------|-----|
+| **Domain** | すべての public コンストラクタ / バリデーション | `ConnectionConfig::new()` の境界値 |
+| **App (reducers)** | `AppState` を変更するすべての状態遷移 | Action ディスパッチ → state diff |
+| **App (ports)** | port trait のデフォルト実装メソッド | `DdlGenerator::ddl_line_count()` |
+| **Infra (parsers)** | 各 adapter の CLI 出力パース | `psql` テーブル出力 → `QueryResult` |
+| **Infra (adapters)** | SQL 生成（方言固有） | PG 用 `build_update_sql`（MySQL 実装時はそちらも） |
+| **UI (components)** | 描画の境界条件 | 空テーブル、オーバーフロー、エラー状態 |
+| **Integration** | レイヤ横断のラウンドトリップ | `tests/render_snapshots.rs` |
 
-## `#[ignore]` Tracking Rule (MUST)
+## `#[ignore]` トラッキングルール（必須）
 
-- Every `#[ignore]` test MUST have a comment linking to a tracking Issue
-- Format: `#[ignore] // tracked: #<issue-number> — <reason>`
-- Bare `#[ignore]` without tracking comment is **FORBIDDEN**
-- When resolving the linked Issue, the `#[ignore]` MUST be removed or updated
+- すべての `#[ignore]` テストにトラッキング Issue へのリンクコメントが必要
+- 形式: `#[ignore] // tracked: #<issue番号> — <理由>`
+- トラッキングコメントなしの `#[ignore]` は**禁止**
+- リンク先 Issue を解決したら `#[ignore]` を削除または更新すること
 
 ```rust
-#[ignore] // tracked: #42 — waiting for MySQL adapter
+#[ignore] // tracked: #42 — MySQL adapter 待ち
 #[test]
 fn mysql_query_parsing() { ... }
 ```
 
-## Snapshot Test Obligation
+## スナップショットテスト義務
 
-- Each new `InputMode` variant MUST have at least one snapshot in `tests/render_snapshots.rs`
-- See `visual-regression.md` for detailed coverage criteria
+- 新しい `InputMode` バリアントには `tests/render_snapshots.rs` に最低1つのスナップショットが必要
+- 詳細なカバレッジ基準は `visual-regression.md` を参照
 
-## PR Self-check (for Claude)
+## PR セルフチェック（Claude 向け）
 
-Before marking a PR ready:
-- [ ] New public functions have unit tests
-- [ ] Adapter SQL generation tested for all supported dialects
-- [ ] No bare `#[ignore]` without tracking Issue
-- [ ] New `InputMode` variants have snapshot tests
+PR を ready にする前に:
+- [ ] 新しい public 関数にユニットテストがある
+- [ ] adapter の SQL 生成がサポート対象の全方言でテストされている
+- [ ] トラッキング Issue なしの `#[ignore]` がない
+- [ ] 新しい `InputMode` バリアントにスナップショットテストがある
