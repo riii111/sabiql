@@ -3,145 +3,68 @@ paths:
   - "**/src/**/*.rs"
 ---
 
-# Architecture Rules
+# アーキテクチャルール
 
-## Layer Structure (Hexagonal / Ports & Adapters)
+## レイヤ構造（ヘキサゴナル / Ports & Adapters）
 
 ```
 src/
-├── ui/          # Presentation Layer + UI Adapters
-├── app/         # Application Layer (State, Reducers, Ports)
-├── infra/       # Infrastructure Adapters
-└── domain/      # Domain Models (pure data structures)
+├── ui/          # プレゼンテーション層 + UI Adapters
+├── app/         # アプリケーション層（State, Reducers, Ports）
+├── infra/       # インフラストラクチャ Adapters
+└── domain/      # ドメインモデル（純粋なデータ構造）
 ```
 
-## Dependency Rules
+## 依存ルール
 
-**Allowed:**
+**許可:**
 - `ui/` → `app/` → `domain/`
-- `infra/adapters/` → `app/ports/` (implements traits)
-- `ui/adapters/` → `app/ports/` (implements traits)
+- `infra/adapters/` → `app/ports/`（trait を実装）
+- `ui/adapters/` → `app/ports/`（trait を実装）
 
-## Forbidden Dependencies (MUST NOT violate)
+## 禁止依存（違反不可）
 
-- `app/` → `ui/` — use Renderer port instead
-- `app/` → `infra/` — use ports like MetadataProvider, ConfigWriter
+- `app/` → `ui/` — 代わりに Renderer port を使う
+- `app/` → `infra/` — MetadataProvider, ConfigWriter 等の port を使う
 - `ui/` → `infra/`
 
-If you need app→infra communication, you MUST define a port trait in `app/ports/` and implement it in `infra/adapters/`.
+app→infra の通信が必要な場合、`app/ports/` に port trait を定義し `infra/adapters/` で実装すること。
 
-## Ports & Adapters Pattern
+## Ports & Adapters パターン
 
-Ports are **traits defined in `app/ports/`** that abstract external dependencies:
+Port は `app/ports/` に定義された **trait** で、外部依存を抽象化する:
 
-| Port | Purpose | Adapter Location |
-|------|---------|------------------|
-| `MetadataProvider` | DB metadata fetching | `infra/adapters/` |
-| `QueryExecutor` | SQL execution | `infra/adapters/` |
-| `ConfigWriter` | Cache dir | `infra/adapters/` |
-| `Renderer` | TUI drawing | `ui/adapters/` |
+| Port | 用途 | Adapter の場所 |
+|------|------|---------------|
+| `MetadataProvider` | DBメタデータ取得 | `infra/adapters/` |
+| `QueryExecutor` | SQL実行 | `infra/adapters/` |
+| `ConfigWriter` | キャッシュディレクトリ | `infra/adapters/` |
+| `Renderer` | TUI描画 | `ui/adapters/` |
 
-## Where to Put New Code
+## 新規コードの配置先
 
-| If you need to... | Put it in... |
-|-------------------|--------------|
-| Add UI component | `ui/components/` |
-| Add business logic | `app/` (pure functions, no I/O) |
-| Add external I/O | Define port in `app/ports/`, impl in `infra/adapters/` or `ui/adapters/` |
-| Add database-specific SQL or connection string logic | Define port in `app/ports/`, impl in `infra/adapters/` |
-| Add domain model | `domain/` |
-| Add pure calculation used by app | `app/` (e.g., `viewport.rs`, `ddl.rs`) |
-| Add key-to-action mapping (simple mode) | `app/keybindings/` (add entry with `combos` to appropriate submodule); `keymap::resolve()` handles it automatically |
-| Add key-to-action mapping (Normal mode) | `app/keybindings/normal.rs` + add predicate fn in `mod.rs` + wire in `handler.rs` |
-| Add DB-specific SQL or dialect logic | `infra/adapters/{postgres,mysql}/` (NEVER in `app/ports/`) |
+| やりたいこと | 配置先 |
+|-------------|--------|
+| UIコンポーネント追加 | `ui/components/` |
+| ビジネスロジック追加 | `app/`（純粋関数、I/Oなし） |
+| 外部I/O追加 | `app/ports/` に port 定義 → `infra/adapters/` or `ui/adapters/` で実装 |
+| DB固有のSQL・接続文字列ロジック追加 | `app/ports/` に port 定義 → `infra/adapters/` で実装 |
+| ドメインモデル追加 | `domain/` |
+| app層の純粋計算追加 | `app/`（例: `viewport.rs`, `ddl.rs`） |
+| キーマッピング追加（simpleモード） | `app/keybindings/` の該当サブモジュールにエントリ追加; `keymap::resolve()` が自動処理 |
+| キーマッピング追加（Normalモード） | `app/keybindings/normal.rs` + `mod.rs` に predicate fn + `handler.rs` で配線 |
+| DB固有SQL・方言ロジック追加 | `infra/adapters/{postgres,mysql}/`（`app/ports/` には絶対に置かない） |
 
-## Key Translation Flow
+## 副作用境界（必須）
 
-```
-crossterm::KeyEvent
-  → ui/event/key_translator::translate()
-  → app::keybindings::KeyCombo
-  → app::keymap::resolve(combo, bindings)   (simple modes)
-     OR keybindings::is_quit(&combo) etc.   (Normal mode predicates)
-  → Action
-```
+- `app/` は I/O 禁止。ファイルシステム、ネットワーク、プロセス起動は不可。
+- `domain/` は純粋データのみ。副作用のあるメソッド禁止。
+- 副作用が許可される場所: `infra/adapters/`, `ui/adapters/`, `main.rs` のみ
+- Reducer は副作用を `Vec<Effect>` として返すこと。インラインで実行してはならない。
 
-**Responsibilities:**
-- `app/keybindings/`: SSOT module — `KeyBinding` (simple modes) and `ModeRow` (mixed modes with unified display+exec). Split by domain: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`. Mixed modes use `ModeBindings { rows: &[ModeRow] }`, resolved via `.resolve()`.
-- `app/keymap.rs`: `resolve(combo, bindings)` for `KeyBinding` slices; `resolve_mode(combo, rows)` for `ModeRow` slices
-- `ui/event/key_translator.rs`: UI adapter — converts `crossterm::KeyEvent` → app-layer `KeyCombo`
-- `ui/event/handler.rs`: mode dispatch — calls `ModeBindings::resolve()` or predicate fns, applies context logic
+## 基本原則
 
-## Side-Effect Boundaries (MUST)
-
-- `app/` MUST be I/O-free. No filesystem, network, or process spawning.
-- `domain/` MUST be pure data. No methods with side effects.
-- Side effects are ONLY allowed in: `infra/adapters/`, `ui/adapters/`, `main.rs`
-- Reducers MUST return `Vec<Effect>` for side effects; NEVER execute them inline.
-
-## Derived State Invariants (MUST)
-
-When an `AppState` field is derived from other fields (e.g. `connection_list_items` is derived from `connections` + `service_entries`), **all source fields MUST be private** and mutated only through setters that automatically rebuild the derived field.
-
-| Pattern | Status |
-|---------|--------|
-| Direct field assignment (`state.foo = x`) for derived groups | **Forbidden** |
-| Setter with auto-rebuild (`state.set_foo(x)`) | **Required** |
-| Standalone `rebuild_*()` as public API | **Forbidden** (must be private, called internally by setters) |
-
-Existing enforced group:
-- **Connection group**: `connections`, `service_entries` → `connection_list_items`
-  - Setters: `set_connections`, `set_service_entries`, `set_connections_and_services`, `retain_connections`
-  - Getters: `connections()`, `service_entries()`, `connection_list_items()`
-
-When adding a new derived field to `AppState`, apply the same pattern: private fields + setter with auto-rebuild + read-only getters.
-
-### State/View Separation (MUST)
-
-- Cursor position MUST NOT be encoded as part of the content `String` (e.g., inserting a cursor character into the text). Cursor position is view-layer concern and must be kept as a separate numeric index in state.
-
-## Key Principles
-
-1. **app/ is I/O-free**: Reducers and state logic have no side effects. Effects are returned as data.
-2. **Ports invert dependencies**: app defines what it needs, adapters provide implementations.
-3. **UI adapters for UI concerns**: Rendering abstractions live in `ui/adapters/`, not `infra/`.
-4. **Domain is pure data**: No business logic in domain models, just structure.
-
-## Postgres Adapter Internal Structure
-
-```
-src/infra/adapters/postgres/
-├── mod.rs              # struct PostgresAdapter + MetadataProvider + QueryExecutor
-│                       # (orchestration: sql/ generates SQL → psql/ executes & parses)
-├── psql/               # psql process interaction
-│   ├── mod.rs          #   re-exports
-│   ├── executor.rs     #   process spawning (I/O, side effects)
-│   └── parser.rs       #   stdout → domain types (pure functions)
-├── sql/                # SQL string generation (all pure functions)
-│   ├── mod.rs          #   re-exports
-│   ├── query.rs        #   metadata queries + preview
-│   ├── ddl.rs          #   DDL generation (CREATE TABLE)
-│   └── dialect.rs      #   DML generation (UPDATE/DELETE)
-├── select_guard.rs     # SELECT safety check (pure function)
-└── dsn.rs              # DSN construction
-```
-
-**Data flow:** `mod.rs` orchestrates → `sql/` generates SQL → `psql/executor.rs` runs psql → `psql/parser.rs` parses output.
-
-**Visibility:** Functions default to private. Use `pub(in crate::infra::adapters::postgres)` for cross-submodule access. Tests use `#[cfg(test)]` within each submodule.
-
-**Quote functions:** Use `crate::infra::utils::{quote_ident, quote_literal}`. Do NOT duplicate as `pg_quote_*`.
-
-## Rendering Strategy
-
-Ratatui requires explicit render control. This app uses **event-driven rendering** (not fixed FPS):
-
-| Trigger | When to render |
-|---------|----------------|
-| State change | Reducer sets `render_dirty = true`; main loop adds `Effect::Render` |
-| Animation deadline | Spinner (150ms), cursor blink (500ms), message timeout, result highlight |
-| No activity | Sleep indefinitely until input or deadline |
-
-**Architecture split:**
-- `app/render_schedule.rs`: Pure function calculates next deadline (no I/O)
-- `main.rs`: UI layer handles `tokio::select!` with `sleep_until(deadline)`
+1. **app/ は I/O フリー**: Reducer と状態ロジックに副作用なし。副作用はデータとして返す。
+2. **Port が依存を反転**: app が必要なものを定義し、adapter が実装を提供。
+3. **UI adapter は UI の関心事**: 描画の抽象化は `ui/adapters/` に置く（`infra/` ではない）。
+4. **Domain は純粋データ**: ドメインモデルにビジネスロジックは置かず、構造のみ。

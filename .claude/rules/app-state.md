@@ -1,0 +1,30 @@
+---
+paths:
+  - "**/src/app/state.rs"
+  - "**/src/app/reducers/**/*.rs"
+---
+
+# AppState 不変条件
+
+## 派生状態パターン（必須）
+
+`AppState` のフィールドが他フィールドから派生する場合（例: `connection_list_items` は `connections` + `service_entries` から派生）、**ソースフィールドはすべて private** にし、派生フィールドを自動再構築する setter 経由でのみ変更すること。
+
+| パターン | 可否 |
+|---------|------|
+| 派生グループへの直接代入（`state.foo = x`） | **禁止** |
+| 自動再構築付き setter（`state.set_foo(x)`） | **必須** |
+| `rebuild_*()` を公開APIとして提供 | **禁止**（private にして setter 内部から呼ぶ） |
+
+### 既存の適用例
+
+- **Connection グループ**: `connections`, `service_entries` → `connection_list_items`
+  - Setter: `set_connections`, `set_service_entries`, `set_connections_and_services`, `retain_connections`
+  - Getter: `connections()`, `service_entries()`, `connection_list_items()`
+
+新しい派生フィールドを追加する場合も同じパターンを適用すること。
+
+## State/View 分離（必須）
+
+- カーソル位置をコンテンツ `String` の一部としてエンコードしてはならない（例: テキスト中にカーソル文字を挿入する）
+- カーソル位置は View 層の関心事であり、State 内では独立した数値インデックスとして保持すること
