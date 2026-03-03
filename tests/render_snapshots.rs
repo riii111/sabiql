@@ -156,6 +156,51 @@ mod overlays {
     }
 
     #[test]
+    fn sql_modal_cursor_at_head() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "SELECT 1".to_string();
+        state.sql_modal.cursor = 0;
+        state.sql_modal.status = SqlModalStatus::Editing;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_cursor_at_middle() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "SELECT 1".to_string();
+        state.sql_modal.cursor = 4;
+        state.sql_modal.status = SqlModalStatus::Editing;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_cursor_at_tail() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "SELECT 1".to_string();
+        state.sql_modal.cursor = 8;
+        state.sql_modal.status = SqlModalStatus::Editing;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn help_overlay() {
         let now = test_instant();
         let mut state = create_test_state();
@@ -359,6 +404,54 @@ mod connection_flow {
         state.ui.input_mode = InputMode::ConnectionSetup;
         state.connection_setup.database = "mydb".to_string();
         state.connection_setup.user = "postgres".to_string();
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn connection_setup_cursor_at_head() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.connection_setup.focused_field = ConnectionField::Host;
+        state.connection_setup.host = "db.example.com".to_string();
+        state.connection_setup.cursor_position = 0;
+        state.connection_setup.viewport_offset = 0;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn connection_setup_cursor_at_middle() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.connection_setup.focused_field = ConnectionField::Host;
+        state.connection_setup.host = "db.example.com".to_string();
+        state.connection_setup.cursor_position = 7;
+        state.connection_setup.viewport_offset = 0;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn connection_setup_cursor_at_tail() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.connection_setup.focused_field = ConnectionField::Host;
+        state.connection_setup.host = "db.example.com".to_string();
+        state.connection_setup.cursor_position = 14;
+        state.connection_setup.viewport_offset = 0;
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -986,6 +1079,52 @@ mod result_pane {
             .cell_edit
             .input
             .set_content("new@example.com".to_string());
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn result_pane_cell_edit_cursor_at_head() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = MetadataState::Loaded;
+        state.ui.set_explorer_selection(Some(0));
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.result_selection.enter_row(1);
+        state.ui.result_selection.enter_cell(2);
+        state.ui.input_mode = InputMode::CellEdit;
+        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.cell_edit.input.set_cursor(0);
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn result_pane_cell_edit_cursor_at_middle() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = MetadataState::Loaded;
+        state.ui.set_explorer_selection(Some(0));
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.result_selection.enter_row(1);
+        state.ui.result_selection.enter_cell(2);
+        state.ui.input_mode = InputMode::CellEdit;
+        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.cell_edit.input.set_cursor(7);
 
         let output = render_to_string(&mut terminal, &mut state);
 
