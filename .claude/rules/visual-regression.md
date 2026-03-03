@@ -4,69 +4,69 @@ paths:
   - "**/tests/snapshots/**"
 ---
 
-# Visual Regression Testing
+# ビジュアルリグレッションテスト
 
-## Overview
+## 概要
 
-- **Library**: [insta](https://insta.rs) - Rust snapshot testing
-- **Scope**: Tests `AppState` → `MainLayout::render()` integration
-- **Backend**: Ratatui `TestBackend` (in-memory terminal 80x24)
+- **ライブラリ**: [insta](https://insta.rs) - Rust スナップショットテスト
+- **スコープ**: `AppState` → `MainLayout::render()` の統合テスト
+- **バックエンド**: Ratatui `TestBackend`（インメモリターミナル 80x24）
 
-## Directory Structure
+## ディレクトリ構成
 
 ```
 tests/
 ├── harness/
-│   ├── mod.rs       # Test utilities (render_to_string, create_test_*)
-│   └── fixtures.rs  # Sample data builders (metadata, table detail, query result)
-├── render_snapshots.rs  # Snapshot test scenarios
-└── snapshots/           # Generated .snap files (auto-created by insta)
+│   ├── mod.rs       # テストユーティリティ（render_to_string, create_test_*）
+│   └── fixtures.rs  # サンプルデータビルダー（metadata, table detail, query result）
+├── render_snapshots.rs  # スナップショットテストシナリオ
+└── snapshots/           # 生成された .snap ファイル（insta が自動作成）
 ```
 
-## Commands
+## コマンド
 
 ```bash
-mise run test                      # Run all tests
-mise exec -- cargo insta review    # Review pending snapshots interactively
-mise exec -- cargo insta accept    # Accept all pending snapshots
-mise exec -- cargo insta reject    # Reject all pending snapshots
+mise run test                      # 全テスト実行
+mise exec -- cargo insta review    # 保留中のスナップショットを対話的にレビュー
+mise exec -- cargo insta accept    # 保留中のスナップショットをすべて承認
+mise exec -- cargo insta reject    # 保留中のスナップショットをすべて拒否
 ```
 
-## Adding New Scenarios
+## 新しいシナリオの追加方法
 
-1. Add test function in `tests/render_snapshots.rs`
-2. Run `mise run test` (will fail with new snapshot)
-3. Review the generated `.snap.new` file
-4. Run `mise exec -- cargo insta accept`
+1. `tests/render_snapshots.rs` にテスト関数を追加
+2. `mise run test` を実行（新しいスナップショットで失敗する）
+3. 生成された `.snap.new` ファイルをレビュー
+4. `mise exec -- cargo insta accept` を実行
 
-## Coverage Criteria
+## カバレッジ基準
 
-### Mode Coverage Obligation (MUST)
+### モードカバレッジ義務（必須）
 
-- Every `InputMode` variant MUST have at least one snapshot test
-- When adding a new `InputMode`, add a corresponding snapshot BEFORE the PR is merged
+- すべての `InputMode` バリアントに最低1つのスナップショットテストが必要
+- 新しい `InputMode` を追加する場合、PR マージ前に対応するスナップショットを追加すること
 
-### When to Add a Snapshot Test
+### スナップショットテストを追加すべきとき
 
-- **Each InputMode** - At least one scenario per mode
-- **Major UI state changes** - Focus pane switching, message display
-- **Boundary conditions** - Empty results, initial loading state, error states
-- **Text input components** - Cursor at head, middle, and tail positions (3 states minimum)
+- **各 InputMode** — モードごとに最低1シナリオ
+- **主要な UI 状態変更** — フォーカスペイン切り替え、メッセージ表示
+- **境界条件** — 空の結果、初期ロード状態、エラー状態
+- **テキスト入力コンポーネント** — カーソルが先頭、中間、末尾の3状態（最低3つ）
 
-### When NOT to Add
+### 追加不要なケース
 
-- **Data variations** - Different row counts, column counts within same screen
-- **Exhaustive combinations** - All possible state permutations
-- **Transient states** - Brief loading indicators (except persistent ones like ER progress)
+- **データバリエーション** — 同じ画面内での行数・列数の違い
+- **網羅的な組み合わせ** — すべての状態の順列
+- **一時的な状態** — 短時間のローディングインジケータ（ER 進捗表示のような永続的なものは除く）
 
-## Snapshot Update Policy
+## スナップショット更新ポリシー
 
-### Allowed
+### 許可
 
-- **Intentional UI changes** - Layout, styling, new features
-- **Bug fixes that change visual output** - After fixing the display bug
+- **意図的な UI 変更** — レイアウト、スタイリング、新機能
+- **表示バグの修正で出力が変わる場合** — バグ修正後
 
-### Not Allowed
+### 不許可
 
-- **Failing tests due to regressions** - Fix the code, not the snapshot
-- **Unintentional changes** - Investigate the diff first
+- **リグレッションによるテスト失敗** — スナップショットではなくコードを修正する
+- **意図しない変更** — まず diff を調査すること

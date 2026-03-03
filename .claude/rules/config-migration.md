@@ -5,16 +5,16 @@ paths:
   - "**/src/infra/adapters/connection_store.rs"
 ---
 
-# Config Migration Rules
+# 設定マイグレーションルール
 
-## Backward Compatibility (MUST)
+## 後方互換性（必須）
 
-- Changes to `connections.toml` schema MUST NOT break existing config files
-- New fields MUST have sensible defaults so old configs load without error
-- Removed fields MUST be silently ignored during deserialization
+- `connections.toml` スキーマの変更は既存の設定ファイルを壊してはならない
+- 新しいフィールドには適切なデフォルト値を設定し、古い設定がエラーなくロードできるようにする
+- 削除されたフィールドはデシリアライズ時にサイレントに無視すること
 
-## Schema Versioning
+## スキーマバージョニング
 
-- If a breaking schema change is unavoidable, add a `version` field to the config
-- Provide a migration path from the previous version
-- Log a clear warning when migrating old configs automatically
+- 破壊的なスキーマ変更がやむを得ない場合、設定に `version` フィールドを追加する
+- 前バージョンからのマイグレーションパスを提供する
+- 古い設定を自動マイグレーションする際は明確な警告をログに出すこと

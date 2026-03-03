@@ -4,39 +4,39 @@ paths:
   - "**/src/infra/adapters/**/*.rs"
 ---
 
-# DB-Agnostic Rules
+# DB 非依存ルール
 
-## Port-level Neutrality (MUST)
+## Port レベルの中立性（必須）
 
-- Port traits in `app/ports/` MUST NOT contain PostgreSQL-specific SQL or syntax
-- Port method signatures MUST use generic types (no `PgType`, no PG-specific enums)
-- Port documentation MUST describe behavior without referencing a specific RDBMS
+- `app/ports/` の port trait に PostgreSQL 固有の SQL や構文を含めてはならない
+- port メソッドのシグネチャは汎用型を使うこと（`PgType` や PG 固有 enum は不可）
+- port のドキュメントは特定の RDBMS を参照せずに振る舞いを記述すること
 
-## Adapter Isolation (MUST)
+## Adapter の分離（必須）
 
-- All DB-specific SQL, quoting, and connection string logic MUST live in `infra/adapters/{postgres,mysql}/`
-- Adapters MUST NOT leak dialect-specific types into port return types
-- When adding a feature to one adapter, open a tracking Issue for the other adapter
+- DB 固有の SQL、クォート、接続文字列ロジックはすべて `infra/adapters/{postgres,mysql}/` に配置すること
+- Adapter は方言固有の型を port の戻り値型に漏洩させてはならない
+- 一方の adapter に機能を追加したら、もう一方の adapter 用にトラッキング Issue を作成すること
 
-## Extension Readiness Checklist
+## 拡張準備チェックリスト
 
-When modifying any port trait:
-1. Verify the new method signature is dialect-neutral
-2. Check if existing PG adapter impl uses PG-specific syntax that should be abstracted
-3. If MySQL adapter stub exists, verify it compiles (even if `#[ignore]` tested)
+port trait を変更する際:
+1. 新しいメソッドシグネチャが方言中立であることを確認
+2. 既存の PG adapter 実装が抽象化すべき PG 固有構文を使っていないかチェック
+3. MySQL adapter スタブが存在する場合、コンパイルが通ることを確認（`#[ignore]` テストでも可）
 
-## Adapter Internal Submodule Conventions
+## Adapter 内部サブモジュール規約
 
-Each adapter directory (e.g., `postgres/`) follows this structure:
+各 adapter ディレクトリ（例: `postgres/`）は以下の構造に従う:
 
-- **`mod.rs`**: Struct definition + port trait impls (`MetadataProvider`, `QueryExecutor`). Orchestration only — no SQL generation or parsing logic.
-- **`psql/` (or `mysql/` CLI dir)**: Process execution (`executor.rs`) and output parsing (`parser.rs`). Side effects are confined to `executor.rs`.
-- **`sql/`**: Pure SQL string generation. Split by concern: `query.rs` (metadata), `ddl.rs` (DDL), `dialect.rs` (DML).
-- **Utility modules** (`select_guard.rs`, `dsn.rs`): Single-purpose pure functions.
+- **`mod.rs`**: 構造体定義 + port trait 実装（`MetadataProvider`, `QueryExecutor`）。オーケストレーションのみ — SQL 生成やパースロジックは置かない。
+- **`psql/`（または `mysql/` CLI ディレクトリ）**: プロセス実行（`executor.rs`）と出力パース（`parser.rs`）。副作用は `executor.rs` に限定。
+- **`sql/`**: 純粋な SQL 文字列生成。関心事で分割: `query.rs`（メタデータ）、`ddl.rs`（DDL）、`dialect.rs`（DML）。
+- **ユーティリティモジュール**（`select_guard.rs`, `dsn.rs`）: 単一目的の純粋関数。
 
-**When adding a MySQL adapter**, mirror this structure: `mysql/mod.rs`, `mysql/mysql_cli/`, `mysql/sql/`, etc. Port trait impls go in `mod.rs`; dialect-specific SQL goes in `sql/`.
+**MySQL adapter を追加する場合**、この構造をミラーすること: `mysql/mod.rs`, `mysql/mysql_cli/`, `mysql/sql/` 等。port trait 実装は `mod.rs` に、方言固有 SQL は `sql/` に配置。
 
-## Current Adapter Status
+## 現在の Adapter 状況
 
-- PostgreSQL: primary, fully implemented
-- MySQL: planned, not yet implemented
+- PostgreSQL: メイン、完全実装済み
+- MySQL: 計画中、未実装
