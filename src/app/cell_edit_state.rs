@@ -21,11 +21,11 @@ impl CellEditState {
     }
 
     pub fn has_pending_draft(&self) -> bool {
-        self.is_active() && self.input.content != self.original_value
+        self.is_active() && self.input.content() != self.original_value
     }
 
     pub fn draft_value(&self) -> &str {
-        &self.input.content
+        self.input.content()
     }
 
     pub fn clear(&mut self) {
@@ -51,7 +51,7 @@ mod tests {
         assert_eq!(state.col, Some(5));
         assert_eq!(state.original_value, "Alice");
         assert_eq!(state.draft_value(), "Alice");
-        assert_eq!(state.input.cursor, 5); // cursor at end
+        assert_eq!(state.input.cursor(), 5); // cursor at end
         assert!(state.is_active());
     }
 
@@ -124,11 +124,11 @@ mod tests {
         state.begin(0, 0, "hello".to_string());
 
         state.input.move_cursor(CursorMove::Home);
-        assert_eq!(state.input.cursor, 0);
+        assert_eq!(state.input.cursor(), 0);
 
         state.input.insert_char('X');
         assert_eq!(state.draft_value(), "Xhello");
-        assert_eq!(state.input.cursor, 1);
+        assert_eq!(state.input.cursor(), 1);
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod tests {
         state.input.backspace();
 
         assert_eq!(state.draft_value(), "acd");
-        assert_eq!(state.input.cursor, 1);
+        assert_eq!(state.input.cursor(), 1);
     }
 
     #[test]
@@ -153,6 +153,6 @@ mod tests {
         state.input.delete();
 
         assert_eq!(state.draft_value(), "bcd");
-        assert_eq!(state.input.cursor, 0);
+        assert_eq!(state.input.cursor(), 0);
     }
 }

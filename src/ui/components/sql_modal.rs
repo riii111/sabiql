@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
@@ -8,7 +8,7 @@ use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::atoms::spinner_char;
+use super::atoms::{spinner_char, text_cursor_spans};
 use super::molecules::render_modal;
 
 pub struct SqlModal;
@@ -94,31 +94,7 @@ impl SqlModal {
     }
 
     fn line_with_cursor(line: &str, cursor_col: usize) -> Line<'static> {
-        let chars: Vec<char> = line.chars().collect();
-
-        if cursor_col >= chars.len() {
-            // Cursor at end of line
-            let mut spans = vec![Span::raw(line.to_string())];
-            spans.push(Span::styled("█", Style::default().fg(Theme::CURSOR_FG)));
-            Line::from(spans)
-        } else {
-            // Cursor in middle of line
-            let before: String = chars[..cursor_col].iter().collect();
-            let cursor_char: String = chars[cursor_col].to_string();
-            let after: String = chars[cursor_col + 1..].iter().collect();
-
-            Line::from(vec![
-                Span::raw(before),
-                Span::styled(
-                    cursor_char,
-                    Style::default()
-                        .bg(Theme::CURSOR_FG)
-                        .fg(Theme::SELECTION_BG)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(after),
-            ])
-        }
+        Line::from(text_cursor_spans(line, cursor_col, 0, usize::MAX))
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {

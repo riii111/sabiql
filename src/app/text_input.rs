@@ -2,12 +2,55 @@ use crate::app::action::CursorMove;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
-    pub content: String,
-    pub cursor: usize,
-    pub viewport_offset: usize,
+    content: String,
+    cursor: usize,
+    viewport_offset: usize,
 }
 
 impl TextInputState {
+    pub fn new(content: impl Into<String>, cursor: usize) -> Self {
+        let content = content.into();
+        let len = content.chars().count();
+        Self {
+            content,
+            cursor: cursor.min(len),
+            viewport_offset: 0,
+        }
+    }
+
+    /// Test helper: construct with explicit viewport_offset
+    pub fn with_viewport(
+        content: impl Into<String>,
+        cursor: usize,
+        viewport_offset: usize,
+    ) -> Self {
+        let content = content.into();
+        let len = content.chars().count();
+        Self {
+            content,
+            cursor: cursor.min(len),
+            viewport_offset,
+        }
+    }
+
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn viewport_offset(&self) -> usize {
+        self.viewport_offset
+    }
+
+    /// Set cursor position directly (clamped to char_count, viewport_offset reset to 0)
+    pub fn set_cursor(&mut self, pos: usize) {
+        self.cursor = pos.min(self.char_count());
+        self.viewport_offset = 0;
+    }
+
     pub fn insert_char(&mut self, c: char) {
         let byte_idx = char_to_byte_index(&self.content, self.cursor);
         self.content.insert(byte_idx, c);
@@ -117,11 +160,7 @@ mod tests {
     use super::*;
 
     fn state_with(content: &str, cursor: usize) -> TextInputState {
-        TextInputState {
-            content: content.to_string(),
-            cursor,
-            viewport_offset: 0,
-        }
+        TextInputState::new(content, cursor)
     }
 
     mod insert_char_tests {
@@ -133,8 +172,8 @@ mod tests {
 
             s.insert_char('a');
 
-            assert_eq!(s.content, "a");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "a");
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -143,8 +182,8 @@ mod tests {
 
             s.insert_char('c');
 
-            assert_eq!(s.content, "abc");
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
@@ -153,8 +192,8 @@ mod tests {
 
             s.insert_char('a');
 
-            assert_eq!(s.content, "abc");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -163,8 +202,8 @@ mod tests {
 
             s.insert_char('b');
 
-            assert_eq!(s.content, "abc");
-            assert_eq!(s.cursor, 2);
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 2);
         }
 
         #[test]
@@ -173,8 +212,8 @@ mod tests {
 
             s.insert_char('い');
 
-            assert_eq!(s.content, "あいう");
-            assert_eq!(s.cursor, 2);
+            assert_eq!(s.content(), "あいう");
+            assert_eq!(s.cursor(), 2);
         }
     }
 
@@ -187,8 +226,8 @@ mod tests {
 
             s.insert_str("ab");
 
-            assert_eq!(s.content, "abcd");
-            assert_eq!(s.cursor, 2);
+            assert_eq!(s.content(), "abcd");
+            assert_eq!(s.cursor(), 2);
         }
 
         #[test]
@@ -197,8 +236,8 @@ mod tests {
 
             s.insert_str("bc");
 
-            assert_eq!(s.content, "abcd");
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.content(), "abcd");
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
@@ -207,8 +246,8 @@ mod tests {
 
             s.insert_str("いう");
 
-            assert_eq!(s.content, "あいうえ");
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.content(), "あいうえ");
+            assert_eq!(s.cursor(), 3);
         }
     }
 
@@ -221,8 +260,8 @@ mod tests {
 
             s.backspace();
 
-            assert_eq!(s.content, "abc");
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -231,8 +270,8 @@ mod tests {
 
             s.backspace();
 
-            assert_eq!(s.content, "ab");
-            assert_eq!(s.cursor, 2);
+            assert_eq!(s.content(), "ab");
+            assert_eq!(s.cursor(), 2);
         }
 
         #[test]
@@ -241,8 +280,8 @@ mod tests {
 
             s.backspace();
 
-            assert_eq!(s.content, "ac");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "ac");
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -251,8 +290,8 @@ mod tests {
 
             s.backspace();
 
-            assert_eq!(s.content, "");
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.content(), "");
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -261,8 +300,8 @@ mod tests {
 
             s.backspace();
 
-            assert_eq!(s.content, "あう");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "あう");
+            assert_eq!(s.cursor(), 1);
         }
     }
 
@@ -275,8 +314,8 @@ mod tests {
 
             s.delete();
 
-            assert_eq!(s.content, "abc");
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
@@ -285,8 +324,8 @@ mod tests {
 
             s.delete();
 
-            assert_eq!(s.content, "bc");
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.content(), "bc");
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -295,8 +334,8 @@ mod tests {
 
             s.delete();
 
-            assert_eq!(s.content, "ac");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "ac");
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -305,8 +344,8 @@ mod tests {
 
             s.delete();
 
-            assert_eq!(s.content, "");
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.content(), "");
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -315,8 +354,8 @@ mod tests {
 
             s.delete();
 
-            assert_eq!(s.content, "あう");
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.content(), "あう");
+            assert_eq!(s.cursor(), 1);
         }
     }
 
@@ -329,7 +368,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Left);
 
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -338,7 +377,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Left);
 
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -347,7 +386,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Right);
 
-            assert_eq!(s.cursor, 2);
+            assert_eq!(s.cursor(), 2);
         }
 
         #[test]
@@ -356,7 +395,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Right);
 
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
@@ -365,7 +404,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Home);
 
-            assert_eq!(s.cursor, 0);
+            assert_eq!(s.cursor(), 0);
         }
 
         #[test]
@@ -374,7 +413,7 @@ mod tests {
 
             s.move_cursor(CursorMove::End);
 
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
@@ -383,7 +422,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Up);
 
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.cursor(), 1);
         }
 
         #[test]
@@ -392,7 +431,7 @@ mod tests {
 
             s.move_cursor(CursorMove::Down);
 
-            assert_eq!(s.cursor, 1);
+            assert_eq!(s.cursor(), 1);
         }
     }
 
@@ -401,66 +440,60 @@ mod tests {
 
         #[test]
         fn cursor_within_viewport_no_change() {
-            let mut s = state_with("abcdef", 2);
-            s.viewport_offset = 0;
+            let mut s = TextInputState::with_viewport("abcdef", 2, 0);
 
             s.update_viewport(5);
 
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.viewport_offset(), 0);
         }
 
         #[test]
         fn cursor_past_right_edge_scrolls() {
-            let mut s = state_with("abcdefgh", 7);
-            s.viewport_offset = 0;
+            let mut s = TextInputState::with_viewport("abcdefgh", 7, 0);
 
             s.update_viewport(5);
 
-            assert_eq!(s.viewport_offset, 3);
+            assert_eq!(s.viewport_offset(), 3);
         }
 
         #[test]
         fn cursor_before_viewport_scrolls_left() {
-            let mut s = state_with("abcdefgh", 1);
-            s.viewport_offset = 4;
+            let mut s = TextInputState::with_viewport("abcdefgh", 1, 4);
 
             s.update_viewport(5);
 
-            assert_eq!(s.viewport_offset, 1);
+            assert_eq!(s.viewport_offset(), 1);
         }
 
         #[test]
         fn cursor_at_end_reserves_space_for_block_cursor() {
-            let mut s = state_with("abcde", 5);
-            s.viewport_offset = 0;
+            let mut s = TextInputState::with_viewport("abcde", 5, 0);
 
             s.update_viewport(5);
 
             // cursor == char_count, effective_width = 5 - 1 = 4
             // cursor(5) >= viewport(0) + effective(4), so scroll
-            assert_eq!(s.viewport_offset, 2);
+            assert_eq!(s.viewport_offset(), 2);
         }
 
         #[test]
         fn zero_visible_width() {
-            let mut s = state_with("abc", 1);
-            s.viewport_offset = 2;
+            let mut s = TextInputState::with_viewport("abc", 1, 2);
 
             s.update_viewport(0);
 
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.viewport_offset(), 0);
         }
 
         #[test]
         fn cursor_on_last_char_no_extra_reserve() {
-            let mut s = state_with("abcde", 4);
-            s.viewport_offset = 0;
+            let mut s = TextInputState::with_viewport("abcde", 4, 0);
 
             s.update_viewport(5);
 
             // cursor(4) is on last char (not at end), effective_width = 5
             // cursor(4) < viewport(0) + effective(5), no scroll needed
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.viewport_offset(), 0);
         }
     }
 
@@ -473,19 +506,18 @@ mod tests {
 
             s.set_content("hello".to_string());
 
-            assert_eq!(s.content, "hello");
-            assert_eq!(s.cursor, 5);
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.content(), "hello");
+            assert_eq!(s.cursor(), 5);
+            assert_eq!(s.viewport_offset(), 0);
         }
 
         #[test]
         fn set_content_resets_viewport() {
-            let mut s = state_with("old", 2);
-            s.viewport_offset = 5;
+            let mut s = TextInputState::with_viewport("old", 2, 5);
 
             s.set_content("new value".to_string());
 
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.viewport_offset(), 0);
         }
 
         #[test]
@@ -494,19 +526,18 @@ mod tests {
 
             s.set_content("日本語".to_string());
 
-            assert_eq!(s.cursor, 3);
+            assert_eq!(s.cursor(), 3);
         }
 
         #[test]
         fn clear_resets_all() {
-            let mut s = state_with("hello", 3);
-            s.viewport_offset = 2;
+            let mut s = TextInputState::with_viewport("hello", 3, 2);
 
             s.clear();
 
-            assert_eq!(s.content, "");
-            assert_eq!(s.cursor, 0);
-            assert_eq!(s.viewport_offset, 0);
+            assert_eq!(s.content(), "");
+            assert_eq!(s.cursor(), 0);
+            assert_eq!(s.viewport_offset(), 0);
         }
     }
 
@@ -539,6 +570,54 @@ mod tests {
             let s = state_with("a日b本c", 0);
 
             assert_eq!(s.char_count(), 5);
+        }
+    }
+
+    mod constructor_tests {
+        use super::*;
+
+        #[test]
+        fn new_clamps_cursor_to_char_count() {
+            let s = TextInputState::new("abc", 100);
+
+            assert_eq!(s.cursor(), 3);
+            assert_eq!(s.viewport_offset(), 0);
+        }
+
+        #[test]
+        fn new_accepts_valid_cursor() {
+            let s = TextInputState::new("abc", 1);
+
+            assert_eq!(s.content(), "abc");
+            assert_eq!(s.cursor(), 1);
+        }
+
+        #[test]
+        fn with_viewport_clamps_cursor() {
+            let s = TextInputState::with_viewport("ab", 10, 5);
+
+            assert_eq!(s.cursor(), 2);
+            assert_eq!(s.viewport_offset(), 5);
+        }
+
+        #[test]
+        fn set_cursor_clamps_and_resets_viewport() {
+            let mut s = TextInputState::with_viewport("abcde", 3, 2);
+
+            s.set_cursor(100);
+
+            assert_eq!(s.cursor(), 5);
+            assert_eq!(s.viewport_offset(), 0);
+        }
+
+        #[test]
+        fn set_cursor_valid_position() {
+            let mut s = TextInputState::with_viewport("abcde", 4, 2);
+
+            s.set_cursor(1);
+
+            assert_eq!(s.cursor(), 1);
+            assert_eq!(s.viewport_offset(), 0);
         }
     }
 }

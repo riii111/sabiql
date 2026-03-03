@@ -51,6 +51,7 @@ mise exec -- cargo insta reject    # Reject all pending snapshots
 - **Each InputMode** - At least one scenario per mode
 - **Major UI state changes** - Focus pane switching, message display
 - **Boundary conditions** - Empty results, initial loading state, error states
+- **Text input components** - Cursor at head, middle, and tail positions (3 states minimum)
 
 ### When NOT to Add
 

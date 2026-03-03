@@ -18,7 +18,7 @@ src/ui/components/
 
 | Layer | Purpose | Examples |
 |-------|---------|----------|
-| atoms | Single-purpose primitives | `spinner_char()`, `key_chip()`, `panel_block()` |
+| atoms | Single-purpose primitives | `spinner_char()`, `key_chip()`, `panel_block()`, `text_cursor_spans()` |
 | molecules | Reusable patterns combining atoms | `render_modal()`, `hint_line()` |
 | organisms | Screen sections, may use molecules/atoms | `Explorer`, `SqlModal`, `Footer` |
 
@@ -26,6 +26,12 @@ When adding UI components:
 - Extract repeated visual patterns into atoms/molecules
 - Use `Theme::*` tokens instead of raw `Color::*` values
 - Organisms should compose molecules/atoms, not duplicate their logic
+
+## Single-line Text Input
+
+- All **new** single-line text input fields MUST use `TextInputState` (`app/text_input.rs`) for state management
+  - Known exception: `ConnectionSetupState` currently manages its own `cursor_position` / `viewport_offset` (migration tracked separately)
+- Cursor rendering MUST use `text_cursor_spans()` (`ui/components/atoms/text_cursor.rs`); do NOT duplicate cursor drawing logic inline
 
 ## Footer Hint Ordering
 
