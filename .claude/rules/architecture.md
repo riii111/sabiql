@@ -96,6 +96,10 @@ Existing enforced group:
 
 When adding a new derived field to `AppState`, apply the same pattern: private fields + setter with auto-rebuild + read-only getters.
 
+### State/View Separation (MUST)
+
+- Cursor position MUST NOT be encoded as part of the content `String` (e.g., inserting a cursor character into the text). Cursor position is view-layer concern and must be kept as a separate numeric index in state.
+
 ## Key Principles
 
 1. **app/ is I/O-free**: Reducers and state logic have no side effects. Effects are returned as data.
