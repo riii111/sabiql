@@ -257,7 +257,8 @@ fn run_update() -> Result<()> {
 fn self_update_disabled_message() -> String {
     format!(
         "Self-update is not available in this build (v{}).\n\
-         If installed via Homebrew, run: brew upgrade sabiql",
+         If installed via Homebrew: brew upgrade sabiql\n\
+         If installed via cargo:    cargo install sabiql",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -289,9 +290,10 @@ mod tests {
 
     #[test]
     #[cfg(not(feature = "self-update"))]
-    fn disabled_message_contains_version_and_brew_guidance() {
+    fn disabled_message_contains_version_and_upgrade_guidance() {
         let msg = self_update_disabled_message();
         assert!(msg.contains(env!("CARGO_PKG_VERSION")));
         assert!(msg.contains("brew upgrade sabiql"));
+        assert!(msg.contains("cargo install sabiql"));
     }
 }
