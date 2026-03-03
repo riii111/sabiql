@@ -37,19 +37,20 @@ https://github.com/user-attachments/assets/7d2c34ae-94b7-4746-86a5-6aadd0a4ab45
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
-```
-
-Or via Homebrew:
-
-```bash
+# macOS / Linux
 brew install riii111/sabiql/sabiql
-```
 
-Or via cargo:
-
-```bash
+# Cargo (crates.io)
 cargo install sabiql
+
+# Arch Linux (AUR)
+paru -S sabiql  # or yay -S sabiql
+
+# FreeBSD (ports)
+cd /usr/ports/databases/sabiql/ && make install clean
+
+# Install script
+curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 ```
 
 ## Quick Start
