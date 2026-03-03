@@ -29,7 +29,8 @@ When adding UI components:
 
 ## Single-line Text Input
 
-- All single-line text input fields MUST use `TextInputState` (`app/text_input.rs`) for state management
+- All **new** single-line text input fields MUST use `TextInputState` (`app/text_input.rs`) for state management
+  - Known exception: `ConnectionSetupState` currently manages its own `cursor_position` / `viewport_offset` (migration tracked separately)
 - Cursor rendering MUST use `text_cursor_spans()` (`ui/components/atoms/text_cursor.rs`); do NOT duplicate cursor drawing logic inline
 
 ## Footer Hint Ordering
