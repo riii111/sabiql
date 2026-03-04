@@ -14,27 +14,8 @@ paths:
 
 ## テスト構造
 
-### ユニットテスト（モジュール内）
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn valid_email_returns_ok() {
-        let input = "user@example.com";
-
-        let result = Email::new(input);
-
-        assert!(result.is_ok());
-    }
-}
-```
-
-### インテグレーションテスト
-
-`tests/` ディレクトリに配置。
+- ユニットテストは `#[cfg(test)] mod tests` でモジュール内に配置
+- インテグレーションテストは `tests/` ディレクトリに配置
 
 ## 命名規約
 

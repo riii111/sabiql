@@ -8,9 +8,9 @@ paths:
 
 ## Port レベルの中立性（必須）
 
-- `app/ports/` の port trait に PostgreSQL 固有の SQL や構文を含めてはならない
+- `app/ports/` の port trait は RDBMS 非依存の汎用型・構文のみ使用する
 - port メソッドのシグネチャは汎用型を使うこと（`PgType` や PG 固有 enum は不可）
-- port のドキュメントは特定の RDBMS を参照せずに振る舞いを記述すること
+- port のドキュメントは RDBMS 非依存の振る舞いとして記述する
 
 ## Adapter の分離（必須）
 
