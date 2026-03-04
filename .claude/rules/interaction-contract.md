@@ -1,38 +1,58 @@
 ---
 paths:
   - "**/src/app/keybindings/**/*.rs"
+  - "**/src/app/keymap.rs"
   - "**/src/ui/event/**/*.rs"
   - "**/src/ui/components/footer.rs"
   - "**/src/ui/components/help_overlay.rs"
   - "**/src/app/palette.rs"
 ---
 
-# Interaction Contract
+# インタラクション契約
 
-## Single Source of Truth (MUST)
+## 唯一の信頼できる情報源（必須）
 
-- `app/keybindings/` is the SSOT for ALL key bindings
-- Footer hints, Help overlay, and Command Palette MUST derive from keybindings data
-- NEVER define a key combo in `handler.rs` that is not declared in `keybindings/`
+- `app/keybindings/` がすべてのキーバインドの **SSOT**
+- フッターヒント、ヘルプオーバーレイ、コマンドパレットはキーバインドデータから派生させること
+- `keybindings/` で宣言されていないキーコンボを `handler.rs` に定義してはならない
 
-## Consistency Invariants (MUST)
+## 整合性の不変条件（必須）
 
-1. Every `KeyBinding` / `ModeRow` entry with a display label MUST appear in Help overlay
-2. Every keybinding shown in Footer MUST resolve to an action in `handler.rs`
-3. Command Palette entries MUST map to the same action names as keybindings
+1. `KeyBinding` / `ModeRow` エントリに表示ラベルがあれば、ヘルプオーバーレイに必ず表示する
+2. フッターに表示するキーバインドは `handler.rs` のアクションに必ず解決できる
+3. コマンドパレットのエントリはキーバインドと同じアクション名にマッピングする
 
-## Adding a New Keybinding — Full Checklist
+## キー変換フロー
 
-1. Add entry in `app/keybindings/{normal,overlays,connections,editors}.rs`
-2. If Normal mode: add predicate fn in `keybindings/mod.rs` + wire in `handler.rs`
-3. If ModeBindings mode: add `ModeRow` entry; dispatch is automatic
-4. Update Footer `display_hint` if the binding should be visible
-5. Update Help overlay section for the relevant mode
-6. If the action is palette-worthy: add to `app/palette.rs`
-7. Run snapshot tests to verify footer/help rendering
+```
+crossterm::KeyEvent
+  → ui/event/key_translator::translate()
+  → app::keybindings::KeyCombo
+  → app::keymap::resolve(combo, bindings)   (simple modes)
+     OR keybindings::is_quit(&combo) 等     (Normal mode predicates)
+  → Action
+```
 
-## Anti-patterns (FORBIDDEN)
+**責務分担:**
+- `app/keybindings/`: SSOT モジュール — `KeyBinding`（simple modes）と `ModeRow`（mixed modes）。サブモジュール: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`。Mixed modes は `ModeBindings { rows: &[ModeRow] }` を使い `.resolve()` で解決
+- `app/keymap.rs`: `KeyBinding` スライス用の `resolve(combo, bindings)` と `ModeRow` スライス用の `resolve_mode(combo, rows)`
+- `ui/event/key_translator.rs`: UI adapter — `crossterm::KeyEvent` → app 層の `KeyCombo` に変換
+- `ui/event/handler.rs`: モードディスパッチ — `ModeBindings::resolve()` または predicate fn を呼び出し、コンテキストロジックを適用
 
-- Hardcoded key checks in `handler.rs` without `keybindings/` entry
-- Footer hint text that does not match keybindings display label
-- Help overlay listing a key that has no corresponding keybinding entry
+**Char フォールバックルール**: フリーテキスト入力のあるモード（TablePicker, ErTablePicker, CommandLine, CellEdit）は `keymap::resolve()` を先に試し、その後 `Char(c)` にフォールスルーする。これらのモードにコマンドキーとして `KeyCombo::plain(Key::Char(x))` を追加してはならない。非 Char キー（Up/Down/Esc/Enter）を使うこと。
+
+## 新規キーバインド追加チェックリスト
+
+1. `app/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
+2. Normal mode の場合: `keybindings/mod.rs` に predicate fn を追加 + `handler.rs` で配線
+3. ModeBindings mode の場合: `ModeRow` エントリを追加（ディスパッチは自動）
+4. バインドをフッターに表示する場合: `display_hint` を更新
+5. 該当モードのヘルプオーバーレイセクションを更新
+6. パレットに表示すべきアクションなら `app/palette.rs` に追加
+7. スナップショットテストを実行してフッター/ヘルプの描画を確認
+
+## アンチパターン（禁止）
+
+- `keybindings/` エントリなしに `handler.rs` にハードコードしたキーチェック
+- キーバインドの表示ラベルと一致しないフッターヒントテキスト
+- 対応するキーバインドエントリがないキーをヘルプオーバーレイに記載

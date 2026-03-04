@@ -33,27 +33,36 @@ mise run test               # Run tests
 
 ## Rules and Skills
 
-Rules are stored in `.claude/rules/` and are **automatically loaded** based on `paths` frontmatter patterns.
-Skills are stored in `.claude/skills/`:
-- **Manual** skills: only user can invoke via `/skill-name` (`disable-model-invocation: true`)
-- **Auto** skills: Claude fires automatically based on conversation context
-  - `user-invocable: false` additionally hides the skill from the `/` menu
+Rules（`.claude/rules/`）は `paths` フロントマターのパターンに基づき**自動ロード**される。
+Skills（`.claude/skills/`）は手動で `/skill-name` で呼び出す。
 
 ### Available Rules
 
-| Rule | Applies to | Description |
-|------|-----------|-------------|
-| **architecture** | `**/src/**/*.rs` | Hexagonal architecture, layer deps, ports & adapters, side-effect boundaries |
-| **ui-design** | `**/src/ui/**/*.rs` | Atomic Design pattern, footer hint ordering, keybindings |
-| **interaction-contract** | keybindings, event handler, footer, help, palette files | Keybinding SSOT consistency, full checklist |
-| **db-agnostic** | `**/src/app/ports/**`, `**/src/infra/adapters/**` | Port neutrality, adapter isolation, MySQL readiness |
-| **config-migration** | config_writer, connection_store files | Backward-compatible config schema changes |
-| **rust-testing-style** | `**/src/**/*.rs`, `**/tests/**/*.rs` | Test naming, structure, rstest usage |
-| **testing-obligations** | `**/src/**/*.rs`, `**/tests/**/*.rs` | MUST-test targets by layer, `#[ignore]` tracking |
-| **visual-regression** | `**/tests/render_snapshots.rs`, `**/tests/snapshots/**` | insta snapshots, mode coverage obligation |
+**全体（`**/src/**/*.rs`）:**
+
+| Rule | 説明 |
+|------|------|
+| **architecture** | ヘキサゴナルアーキテクチャ、レイヤ依存、Ports & Adapters、副作用境界 |
+| **rust-testing-style** | テスト命名、構造、given/when/then |
+| **testing-obligations** | レイヤ別必須テスト、`#[ignore]` トラッキング |
+
+**レイヤ・パス限定**（対象パスは概要。正確な glob は各ルールの frontmatter を参照）**:**
+
+| Rule | 対象パス | 説明 |
+|------|---------|------|
+| **app-state** | `app/state.rs`, `app/reducers/**` | 派生状態パターン、State/View分離 |
+| **postgres-adapter** | `infra/adapters/postgres/**` | Adapter内部構造、data flow、可視性 |
+| **rendering-strategy** | `app/render_schedule.rs`, `main.rs` | イベント駆動レンダリング、トリガー表 |
+| **ui-design** | `src/ui/**` | Atomic Design、フッター順序、テキスト入力 |
+| **interaction-contract** | keybindings, handler, footer, help, palette | SSOT整合性、キー変換フロー、チェックリスト |
+| **db-agnostic** | `app/ports/**`, `infra/adapters/**` | Port中立性、Adapter分離、MySQL準備 |
+| **config-migration** | config_writer, connection_store | 後方互換スキーマ変更 |
+| **rstest-patterns** | `domain/**`, `infra/**/parser*`, `infra/**/sql/**` | rstest凝集度、境界値パターン |
+| **test-organization** | `app/**`, `ui/event/**` | mod構造、フィクスチャ抽出 |
+| **visual-regression** | `tests/render_snapshots.rs`, `tests/snapshots/**` | instaスナップショット、モードカバレッジ |
 
 ### Available Skills
 
 | Skill | Type | Description |
 |-------|------|-------------|
-| **release** | Manual | Version bump, tag creation, GitHub release workflow |
+| **release** | Manual | バージョンバンプ、タグ作成、GitHub リリース |
