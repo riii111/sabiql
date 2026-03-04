@@ -1,6 +1,7 @@
 ---
 paths:
   - "**/src/app/keybindings/**/*.rs"
+  - "**/src/app/keymap.rs"
   - "**/src/ui/event/**/*.rs"
   - "**/src/ui/components/footer.rs"
   - "**/src/ui/components/help_overlay.rs"

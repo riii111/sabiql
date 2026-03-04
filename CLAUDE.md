@@ -46,7 +46,7 @@ Skills（`.claude/skills/`）は手動で `/skill-name` で呼び出す。
 | **rust-testing-style** | テスト命名、構造、given/when/then |
 | **testing-obligations** | レイヤ別必須テスト、`#[ignore]` トラッキング |
 
-**レイヤ・パス限定:**
+**レイヤ・パス限定**（対象パスは概要。正確な glob は各ルールの frontmatter を参照）**:**
 
 | Rule | 対象パス | 説明 |
 |------|---------|------|

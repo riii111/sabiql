@@ -22,7 +22,6 @@ paths:
 
 - すべての `#[ignore]` テストにトラッキング Issue へのリンクコメントが必要
 - 形式: `#[ignore] // tracked: #<issue番号> — <理由>`
-- トラッキングコメントなしの `#[ignore]` は**禁止**
 - リンク先 Issue を解決したら `#[ignore]` を削除または更新すること
 
 ```rust
