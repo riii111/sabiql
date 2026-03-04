@@ -13,8 +13,8 @@ sabiql wraps your existing `psql` CLI — no Rust database drivers, no connectio
 Built in Rust for minimal memory footprint and near-zero idle CPU — no runtime, no GC pauses.
 
 ## Features
+![hero](https://github.com/user-attachments/assets/52b40fa0-61ab-48f0-81d3-151eef08d20e)
 
-https://github.com/user-attachments/assets/7d2c34ae-94b7-4746-86a5-6aadd0a4ab45
 
 ### Core
 
