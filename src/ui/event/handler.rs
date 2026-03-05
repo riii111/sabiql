@@ -85,6 +85,7 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if combo.modifiers.ctrl {
         match combo.key {
             Key::Char('p') => return Action::OpenTablePicker,
+            Key::Char('h') => return Action::OpenResultHistory,
             Key::Char('k') => return Action::OpenCommandPalette,
             Key::Char('d') => {
                 return if result_navigation {
@@ -123,6 +124,16 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 };
             }
             _ => {}
+        }
+    }
+
+    // History mode intercept (global, pane-independent)
+    if state.query.history_index.is_some() {
+        match combo.key {
+            Key::Esc => return Action::ExitResultHistory,
+            Key::Char('h') | Key::Left => return Action::HistoryOlder,
+            Key::Char('l') | Key::Right => return Action::HistoryNewer,
+            _ => {} // fall through to normal handling
         }
     }
 
@@ -1364,25 +1375,120 @@ mod tests {
         }
     }
 
-    /// Gap detection tests: spec vs implementation discrepancies
-    /// These tests document features specified but not yet implemented.
-    mod spec_gaps {
+    mod result_history {
         use super::*;
+        use crate::domain::{QueryResult, QuerySource};
+        use std::sync::Arc;
 
-        /// Spec: Ctrl+H should open Result History (screen_spec.md)
-        /// Status: NOT IMPLEMENTED - key binding missing in handler
+        fn make_result(query: &str) -> Arc<QueryResult> {
+            Arc::new(QueryResult::success(
+                query.to_string(),
+                vec!["col".to_string()],
+                vec![vec!["val".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            ))
+        }
+
+        fn state_with_history(count: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            for i in 0..count {
+                state
+                    .query
+                    .result_history
+                    .push(make_result(&format!("SELECT {}", i + 1)));
+            }
+            state.query.current_result = Some(make_result("SELECT latest"));
+            state
+        }
+
         #[test]
-        #[ignore = "Ctrl+H Result History not implemented yet (spec gap)"]
-        fn ctrl_h_should_open_result_history() {
+        fn ctrl_h_opens_result_history() {
             let state = AppState::new("test".to_string());
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
 
-            // When implemented, this should match Action::OpenResultHistory or similar
+            assert!(matches!(result, Action::OpenResultHistory));
+        }
+
+        #[test]
+        fn h_navigates_history_older_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(2);
+
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+
+            assert!(matches!(result, Action::HistoryOlder));
+        }
+
+        #[test]
+        fn l_navigates_history_newer_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(0);
+
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
+
+            assert!(matches!(result, Action::HistoryNewer));
+        }
+
+        #[test]
+        fn esc_exits_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+
+            let result = handle_normal_mode(combo(Key::Esc), &state);
+
+            assert!(matches!(result, Action::ExitResultHistory));
+        }
+
+        #[test]
+        fn h_still_scrolls_left_when_not_in_history() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.focus_mode = true;
+
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+
+            assert!(matches!(result, Action::ResultScrollLeft));
+        }
+
+        #[test]
+        fn h_navigates_history_from_explorer_pane() {
+            use crate::app::focused_pane::FocusedPane;
+
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(2);
+            state.ui.focused_pane = FocusedPane::Explorer;
+
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+
+            assert!(matches!(result, Action::HistoryOlder));
+        }
+
+        #[test]
+        fn bracket_page_nav_noop_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            let result_next = handle_normal_mode(combo(Key::Char(']')), &state);
+            let result_prev = handle_normal_mode(combo(Key::Char('[')), &state);
+
             assert!(
-                !matches!(result, Action::None),
-                "Ctrl+H should open Result History per spec, but returns None"
+                matches!(result_next, Action::ResultNextPage),
+                "]/[ still dispatched to page nav (not intercepted by history)"
             );
+            assert!(matches!(result_prev, Action::ResultPrevPage));
+        }
+
+        #[test]
+        fn enter_safe_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            let result = handle_normal_mode(combo(Key::Enter), &state);
+
+            assert!(matches!(result, Action::ResultEnterRowActive));
         }
     }
 
