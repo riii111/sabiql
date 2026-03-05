@@ -44,6 +44,16 @@ impl ResultPane {
                 Self::render_empty(frame, area, block);
                 ViewportPlan::default()
             } else {
+                let history_bar = state.query.history_index.map(|idx| {
+                    let total = state.query.result_history.len();
+                    let query_text = state
+                        .query
+                        .result_history
+                        .get(idx)
+                        .map(|r| r.query.as_str())
+                        .unwrap_or("");
+                    (idx, total, query_text)
+                });
                 Self::render_table(
                     frame,
                     area,
@@ -65,6 +75,7 @@ impl ResultPane {
                         None
                     },
                     &state.ui.staged_delete_rows,
+                    history_bar,
                 )
             }
         } else {
@@ -86,45 +97,51 @@ impl ResultPane {
             Some(r) => {
                 let source_badge = match r.source {
                     QuerySource::Preview => {
-                        let pagination = &state.query.pagination;
-                        let page_num = pagination.current_page + 1;
-
-                        if r.rows.is_empty() {
-                            match pagination.total_pages_estimate() {
-                                Some(total_pages) => {
-                                    format!("PREVIEW p.{}/{}", page_num, total_pages)
-                                }
-                                None => format!("PREVIEW p.{}", page_num),
-                            }
+                        let total = state.query.result_history.len();
+                        if let Some(idx) = state.query.history_index {
+                            format!("PREVIEW \u{25C0} {}/{} \u{25B6}", idx + 1, total)
                         } else {
-                            let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
-                            let row_end = row_start + r.rows.len() - 1;
+                            let pagination = &state.query.pagination;
+                            let page_num = pagination.current_page + 1;
 
-                            match pagination.total_pages_estimate() {
-                                Some(total_pages) => {
-                                    let total_rows = pagination
-                                        .total_rows_estimate
-                                        .map(|t| t.max(0) as usize)
-                                        .unwrap_or(0);
-                                    format!(
-                                        "PREVIEW p.{}/{} (rows {}–{} of ~{})",
-                                        page_num, total_pages, row_start, row_end, total_rows
-                                    )
+                            if r.rows.is_empty() {
+                                match pagination.total_pages_estimate() {
+                                    Some(total_pages) => {
+                                        format!("PREVIEW p.{}/{}", page_num, total_pages)
+                                    }
+                                    None => format!("PREVIEW p.{}", page_num),
                                 }
-                                None => {
-                                    format!(
-                                        "PREVIEW p.{} (rows {}–{})",
-                                        page_num, row_start, row_end
-                                    )
+                            } else {
+                                let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
+                                let row_end = row_start + r.rows.len() - 1;
+
+                                match pagination.total_pages_estimate() {
+                                    Some(total_pages) => {
+                                        let total_rows = pagination
+                                            .total_rows_estimate
+                                            .map(|t| t.max(0) as usize)
+                                            .unwrap_or(0);
+                                        format!(
+                                            "PREVIEW p.{}/{} (rows {}–{} of ~{})",
+                                            page_num, total_pages, row_start, row_end, total_rows
+                                        )
+                                    }
+                                    None => {
+                                        format!(
+                                            "PREVIEW p.{} (rows {}–{})",
+                                            page_num, row_start, row_end
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                     QuerySource::Adhoc => {
+                        let total = state.query.result_history.len();
                         if let Some(idx) = state.query.history_index {
-                            format!("ADHOC #{}", idx + 1)
+                            format!("QUERY \u{25C0} {}/{} \u{25B6}", idx + 1, total)
                         } else {
-                            "ADHOC".to_string()
+                            "QUERY".to_string()
                         }
                     }
                 };
@@ -182,6 +199,7 @@ impl ResultPane {
         selection: &ResultSelection,
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
+        history_bar: Option<(usize, usize, &str)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -357,6 +375,23 @@ impl ResultPane {
             },
         );
 
+        // History bar (bottom-left, shares row with horizontal scroll indicator)
+        if let Some((idx, total, query_text)) = history_bar {
+            let bottom_row = inner.y + inner.height.saturating_sub(1);
+            let label = format!("\u{25C0} {}/{}  ", idx + 1, total);
+            let label_width = label.chars().count();
+            let remaining = (inner.width as usize).saturating_sub(label_width);
+            let truncated_query = truncate_query(query_text, remaining);
+            let text = format!("{}{}", label, truncated_query);
+
+            let bar_area = Rect::new(inner.x, bottom_row, inner.width, 1);
+            let bar = Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
+                text,
+                Style::default().fg(Theme::TEXT_SECONDARY),
+            )]));
+            frame.render_widget(bar, bar_area);
+        }
+
         plan
     }
 }
@@ -406,6 +441,23 @@ fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Li
     };
 
     Line::from(text_cursor_spans(text, cursor, view_start, max_chars))
+}
+
+fn truncate_query(s: &str, max_chars: usize) -> String {
+    let single_line: String = s
+        .chars()
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .collect();
+    let trimmed = single_line.trim();
+    let char_count = trimmed.chars().count();
+    if char_count <= max_chars {
+        trimmed.to_string()
+    } else if max_chars <= 3 {
+        trimmed.chars().take(max_chars).collect()
+    } else {
+        let truncated: String = trimmed.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    }
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {

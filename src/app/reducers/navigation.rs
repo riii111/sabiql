@@ -949,11 +949,11 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::HistoryOlder => {
-            if let Some(idx) = state.query.history_index {
-                if idx > 0 {
-                    state.query.history_index = Some(idx - 1);
-                    reset_result_view(state);
-                }
+            if let Some(idx) = state.query.history_index
+                && idx > 0
+            {
+                state.query.history_index = Some(idx - 1);
+                reset_result_view(state);
             }
             Some(vec![])
         }
@@ -962,12 +962,10 @@ pub fn reduce_navigation(
                 let len = state.query.result_history.len();
                 if idx + 1 < len {
                     state.query.history_index = Some(idx + 1);
-                    reset_result_view(state);
                 } else {
-                    // At newest entry, exit history mode
                     state.query.history_index = None;
-                    reset_result_view(state);
                 }
+                reset_result_view(state);
             }
             Some(vec![])
         }
@@ -2144,7 +2142,6 @@ mod tests {
 
     mod result_history {
         use super::*;
-        use crate::app::result_history::ResultHistory;
         use crate::domain::{QueryResult, QuerySource};
         use std::sync::Arc;
 
