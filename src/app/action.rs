@@ -316,6 +316,12 @@ pub enum Action {
     CellCopied,
     CopyFailed(String),
 
+    // Result history navigation
+    OpenResultHistory,
+    HistoryOlder,
+    HistoryNewer,
+    ExitResultHistory,
+
     // Focus mode
     ToggleFocus,
 
