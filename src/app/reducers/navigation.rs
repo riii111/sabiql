@@ -962,10 +962,9 @@ pub fn reduce_navigation(
                 let len = state.query.result_history.len();
                 if idx + 1 < len {
                     state.query.history_index = Some(idx + 1);
-                } else {
-                    state.query.history_index = None;
+                    reset_result_view(state);
                 }
-                reset_result_view(state);
+                // At newest: no-op (use Esc to exit history)
             }
             Some(vec![])
         }
@@ -2216,13 +2215,13 @@ mod tests {
         }
 
         #[test]
-        fn newer_at_last_exits_history() {
+        fn newer_at_last_is_noop() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(2);
 
             reduce_navigation(&mut state, &Action::HistoryNewer, Instant::now());
 
-            assert_eq!(state.query.history_index, None);
+            assert_eq!(state.query.history_index, Some(2));
         }
 
         #[test]

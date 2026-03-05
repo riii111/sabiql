@@ -127,13 +127,12 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
     }
 
-    // History mode intercept (global, pane-independent)
+    // History mode: [/] navigate entries (hijacks page-nav, which is irrelevant in history)
     if state.query.history_index.is_some() {
         match combo.key {
-            Key::Esc => return Action::ExitResultHistory,
-            Key::Char('h') | Key::Left => return Action::HistoryOlder,
-            Key::Char('l') | Key::Right => return Action::HistoryNewer,
-            _ => {} // fall through to normal handling
+            Key::Char('[') => return Action::HistoryOlder,
+            Key::Char(']') => return Action::HistoryNewer,
+            _ => {}
         }
     }
 
@@ -166,8 +165,16 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                         }
                     }
                     ResultNavMode::RowActive => Action::ResultExitToScroll,
-                    ResultNavMode::Scroll => Action::Escape,
+                    ResultNavMode::Scroll => {
+                        if state.query.history_index.is_some() {
+                            Action::ExitResultHistory
+                        } else {
+                            Action::Escape
+                        }
+                    }
                 }
+            } else if state.query.history_index.is_some() {
+                Action::ExitResultHistory
             } else {
                 Action::Escape
             }
@@ -1412,29 +1419,30 @@ mod tests {
         }
 
         #[test]
-        fn h_navigates_history_older_in_history_mode() {
+        fn bracket_left_navigates_history_older() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(2);
 
-            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
             assert!(matches!(result, Action::HistoryOlder));
         }
 
         #[test]
-        fn l_navigates_history_newer_in_history_mode() {
+        fn bracket_right_navigates_history_newer() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(0);
 
-            let result = handle_normal_mode(combo(Key::Char('l')), &state);
+            let result = handle_normal_mode(combo(Key::Char(']')), &state);
 
             assert!(matches!(result, Action::HistoryNewer));
         }
 
         #[test]
-        fn esc_exits_history_mode() {
+        fn esc_exits_history_in_scroll_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
+            state.ui.focus_mode = true; // result_navigation = true, Scroll mode
 
             let result = handle_normal_mode(combo(Key::Esc), &state);
 
@@ -1442,46 +1450,89 @@ mod tests {
         }
 
         #[test]
-        fn h_still_scrolls_left_when_not_in_history() {
-            let mut state = AppState::new("test".to_string());
+        fn esc_exits_row_active_not_history() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
             state.ui.focus_mode = true;
+            state.ui.result_selection.enter_row(0);
 
-            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
-            assert!(matches!(result, Action::ResultScrollLeft));
+            assert!(
+                matches!(result, Action::ResultExitToScroll),
+                "Esc in RowActive should exit to Scroll, not exit history"
+            );
         }
 
         #[test]
-        fn h_navigates_history_from_explorer_pane() {
+        fn esc_exits_history_from_non_result_pane() {
             use crate::app::focused_pane::FocusedPane;
 
             let mut state = state_with_history(3);
-            state.query.history_index = Some(2);
+            state.query.history_index = Some(1);
             state.ui.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Esc), &state);
 
-            assert!(matches!(result, Action::HistoryOlder));
+            assert!(matches!(result, Action::ExitResultHistory));
         }
 
         #[test]
-        fn bracket_page_nav_noop_in_history_mode() {
+        fn h_still_scrolls_left_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
             state.ui.focus_mode = true;
 
-            let result_next = handle_normal_mode(combo(Key::Char(']')), &state);
-            let result_prev = handle_normal_mode(combo(Key::Char('[')), &state);
+            let result = handle_normal_mode(combo(Key::Char('h')), &state);
 
             assert!(
-                matches!(result_next, Action::ResultNextPage),
-                "]/[ still dispatched to page nav (not intercepted by history)"
+                matches!(result, Action::ResultScrollLeft),
+                "h should horizontal-scroll, not navigate history"
             );
-            assert!(matches!(result_prev, Action::ResultPrevPage));
         }
 
         #[test]
-        fn enter_safe_in_history_mode() {
+        fn l_still_scrolls_right_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            let result = handle_normal_mode(combo(Key::Char('l')), &state);
+
+            assert!(
+                matches!(result, Action::ResultScrollRight),
+                "l should horizontal-scroll, not navigate history"
+            );
+        }
+
+        #[test]
+        fn jk_scroll_works_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            let down = handle_normal_mode(combo(Key::Char('j')), &state);
+            let up = handle_normal_mode(combo(Key::Char('k')), &state);
+
+            assert!(matches!(down, Action::ResultScrollDown));
+            assert!(matches!(up, Action::ResultScrollUp));
+        }
+
+        #[test]
+        fn g_and_shift_g_work_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            let top = handle_normal_mode(combo(Key::Char('g')), &state);
+            let bottom = handle_normal_mode(combo(Key::Char('G')), &state);
+
+            assert!(matches!(top, Action::ResultScrollTop));
+            assert!(matches!(bottom, Action::ResultScrollBottom));
+        }
+
+        #[test]
+        fn enter_works_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
             state.ui.focus_mode = true;
@@ -1489,6 +1540,18 @@ mod tests {
             let result = handle_normal_mode(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ResultEnterRowActive));
+        }
+
+        #[test]
+        fn bracket_nav_falls_through_when_not_in_history() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.focus_mode = true;
+
+            let next = handle_normal_mode(combo(Key::Char(']')), &state);
+            let prev = handle_normal_mode(combo(Key::Char('[')), &state);
+
+            assert!(matches!(next, Action::ResultNextPage));
+            assert!(matches!(prev, Action::ResultPrevPage));
         }
     }
 

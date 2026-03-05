@@ -355,10 +355,10 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
     },
     // idx 1: NAV (display-only)
     KeyBinding {
-        key_short: "h/l",
-        key: "h / l",
+        key_short: "]/[",
+        key: "] / [",
         desc_short: "History",
-        description: "Navigate history older/newer",
+        description: "Navigate history newer/older",
         action: Action::None,
         combos: &[],
     },
