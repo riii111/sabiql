@@ -97,41 +97,36 @@ impl ResultPane {
             Some(r) => {
                 let source_badge = match r.source {
                     QuerySource::Preview => {
-                        let total = state.query.result_history.len();
-                        if let Some(idx) = state.query.history_index {
-                            format!("PREVIEW \u{25C0} {}/{} \u{25B6}", idx + 1, total)
-                        } else {
-                            let pagination = &state.query.pagination;
-                            let page_num = pagination.current_page + 1;
+                        let pagination = &state.query.pagination;
+                        let page_num = pagination.current_page + 1;
 
-                            if r.rows.is_empty() {
-                                match pagination.total_pages_estimate() {
-                                    Some(total_pages) => {
-                                        format!("PREVIEW p.{}/{}", page_num, total_pages)
-                                    }
-                                    None => format!("PREVIEW p.{}", page_num),
+                        if r.rows.is_empty() {
+                            match pagination.total_pages_estimate() {
+                                Some(total_pages) => {
+                                    format!("PREVIEW p.{}/{}", page_num, total_pages)
                                 }
-                            } else {
-                                let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
-                                let row_end = row_start + r.rows.len() - 1;
+                                None => format!("PREVIEW p.{}", page_num),
+                            }
+                        } else {
+                            let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
+                            let row_end = row_start + r.rows.len() - 1;
 
-                                match pagination.total_pages_estimate() {
-                                    Some(total_pages) => {
-                                        let total_rows = pagination
-                                            .total_rows_estimate
-                                            .map(|t| t.max(0) as usize)
-                                            .unwrap_or(0);
-                                        format!(
-                                            "PREVIEW p.{}/{} (rows {}–{} of ~{})",
-                                            page_num, total_pages, row_start, row_end, total_rows
-                                        )
-                                    }
-                                    None => {
-                                        format!(
-                                            "PREVIEW p.{} (rows {}–{})",
-                                            page_num, row_start, row_end
-                                        )
-                                    }
+                            match pagination.total_pages_estimate() {
+                                Some(total_pages) => {
+                                    let total_rows = pagination
+                                        .total_rows_estimate
+                                        .map(|t| t.max(0) as usize)
+                                        .unwrap_or(0);
+                                    format!(
+                                        "PREVIEW p.{}/{} (rows {}–{} of ~{})",
+                                        page_num, total_pages, row_start, row_end, total_rows
+                                    )
+                                }
+                                None => {
+                                    format!(
+                                        "PREVIEW p.{} (rows {}–{})",
+                                        page_num, row_start, row_end
+                                    )
                                 }
                             }
                         }
@@ -692,5 +687,47 @@ mod tests {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
+    }
+
+    mod truncate_query_tests {
+        use super::*;
+
+        #[test]
+        fn fits_within_budget() {
+            assert_eq!(truncate_query("SELECT 1", 20), "SELECT 1");
+        }
+
+        #[test]
+        fn truncates_with_ellipsis() {
+            assert_eq!(truncate_query("SELECT * FROM users", 12), "SELECT * ...")
+        }
+
+        #[test]
+        fn normalizes_whitespace() {
+            assert_eq!(
+                truncate_query("SELECT\n  *\tFROM\n  users", 30),
+                "SELECT   * FROM   users"
+            );
+        }
+
+        #[test]
+        fn trims_surrounding_whitespace() {
+            assert_eq!(truncate_query("  SELECT 1  ", 20), "SELECT 1");
+        }
+
+        #[rstest]
+        #[case(0, "")]
+        #[case(1, "S")]
+        #[case(2, "SE")]
+        #[case(3, "SEL")]
+        #[case(4, "S...")]
+        fn small_budget_edge_cases(#[case] max: usize, #[case] expected: &str) {
+            assert_eq!(truncate_query("SELECT 1", max), expected);
+        }
+
+        #[test]
+        fn multibyte_characters() {
+            assert_eq!(truncate_query("SELECT 'あいう' FROM t", 10), "SELECT ...");
+        }
     }
 }
