@@ -80,6 +80,9 @@ impl SqlDialect for StubSqlDialect {
     ) -> String {
         unimplemented!("inject a real SqlDialect via AppState::with_ports()")
     }
+    fn build_export_select(&self, _schema: &str, _table: &str, _limit: usize) -> String {
+        unimplemented!("inject a real SqlDialect via AppState::with_ports()")
+    }
 }
 
 impl AppState {

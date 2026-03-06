@@ -115,6 +115,7 @@ pub mod idx {
         pub const SQL: usize = 10;
         pub const ER_DIAGRAM: usize = 11;
         pub const CONNECTIONS: usize = 12;
+        pub const CSV_EXPORT: usize = 13;
     }
 
     pub mod footer_nav {
@@ -311,6 +312,10 @@ pub fn is_open_er(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::ER_DIAGRAM].combos.contains(combo)
 }
 
+pub fn is_csv_export(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::CSV_EXPORT].combos.contains(combo)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +336,7 @@ mod tests {
         assert!(idx::global::SQL < GLOBAL_KEYS.len());
         assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
         assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
+        assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
 
         // FOOTER_NAV_KEYS
         assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
@@ -484,6 +490,7 @@ mod tests {
         #[case(idx::global::SQL, Action::OpenSqlModal)]
         #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
         #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
+        #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
         fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),

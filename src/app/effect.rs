@@ -107,6 +107,18 @@ pub enum Effect {
         seed_tables: Vec<String>,
     },
 
+    CountRowsForExport {
+        dsn: String,
+        count_query: String,
+        export_query: String,
+        file_name: String,
+    },
+    ExportCsv {
+        dsn: String,
+        query: String,
+        path: std::path::PathBuf,
+    },
+
     /// Triggers completion: fetches missing tables and updates candidates
     TriggerCompletion,
 

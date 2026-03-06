@@ -17,7 +17,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││  s                  Open SQL Editor  │───────────────────┐
 │                  ││  e                  Open ER Diagram  │                   │
 │                  ││  c                  Open Connection S│                   │
-│                  ││                                      │                   │
+│                  ││  Ctrl+E             Export result to │                   │
 │                  ││                                      │                   │
 │                  │╰ j/k / ↑↓ Navigate │ Enter Select │ Es╯                   │
 │                  ││                                                          │

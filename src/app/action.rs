@@ -334,6 +334,23 @@ pub enum Action {
     ErSelectAll,
     ErConfirmSelection,
 
+    // CSV Export
+    RequestCsvExport,
+    CsvExportRowsCounted {
+        row_count: Option<usize>,
+        export_query: String,
+        file_name: String,
+    },
+    ExecuteCsvExport {
+        export_query: String,
+        path: std::path::PathBuf,
+    },
+    CsvExportSucceeded {
+        path: String,
+        row_count: usize,
+    },
+    CsvExportFailed(String),
+
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
     ErGenerateFromCache,
