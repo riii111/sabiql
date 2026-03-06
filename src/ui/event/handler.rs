@@ -84,7 +84,9 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos (context-independent)
     if combo.modifiers.ctrl {
         match combo.key {
-            Key::Char('p') => return Action::OpenTablePicker,
+            Key::Char('p') if state.query.history_index.is_none() => {
+                return Action::OpenTablePicker;
+            }
             Key::Char('h') => {
                 return if state.query.history_index.is_some() {
                     Action::ExitResultHistory
@@ -92,7 +94,9 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::OpenResultHistory
                 };
             }
-            Key::Char('k') => return Action::OpenCommandPalette,
+            Key::Char('k') if state.query.history_index.is_none() => {
+                return Action::OpenCommandPalette;
+            }
             Key::Char('d') => {
                 return if result_navigation {
                     Action::ResultScrollHalfPageDown
@@ -129,18 +133,33 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     Action::SelectFullPageUp
                 };
             }
-            _ => {}
+            _ => {
+                if state.query.history_index.is_some() {
+                    return Action::None;
+                }
+            }
         }
     }
 
-    // History mode: whitelist — only navigation and help allowed
+    // History mode: whitelist — only history nav, help, and scroll allowed
     if state.query.history_index.is_some() {
-        return match combo.key {
-            Key::Char('[') => Action::HistoryOlder,
-            Key::Char(']') => Action::HistoryNewer,
-            Key::Char('?') => Action::OpenHelp,
-            _ => Action::None,
-        };
+        match combo.key {
+            Key::Char('[') => return Action::HistoryOlder,
+            Key::Char(']') => return Action::HistoryNewer,
+            Key::Char('?') => return Action::OpenHelp,
+            // Scroll keys fall through to normal handling
+            Key::Char('j')
+            | Key::Char('k')
+            | Key::Up
+            | Key::Down
+            | Key::Char('h')
+            | Key::Char('l')
+            | Key::Left
+            | Key::Right
+            | Key::Char('g')
+            | Key::Char('G') => {}
+            _ => return Action::None,
+        }
     }
 
     // Global actions (predicate-based, no modifiers)
@@ -1464,12 +1483,6 @@ mod tests {
         #[case(Key::Char('f'), "f (focus toggle)")]
         #[case(Key::Char('r'), "r (reload)")]
         #[case(Key::Char(':'), ": (command line)")]
-        #[case(Key::Char('h'), "h (scroll left)")]
-        #[case(Key::Char('l'), "l (scroll right)")]
-        #[case(Key::Char('j'), "j (scroll down)")]
-        #[case(Key::Char('k'), "k (scroll up)")]
-        #[case(Key::Char('g'), "g (scroll top)")]
-        #[case(Key::Char('G'), "G (scroll bottom)")]
         #[case(Key::Enter, "Enter")]
         #[case(Key::Esc, "Esc")]
         fn blocked_keys_are_noop_in_history_mode(#[case] key: Key, #[case] label: &str) {
@@ -1484,6 +1497,72 @@ mod tests {
                 label,
                 result
             );
+        }
+
+        #[test]
+        fn scroll_keys_allowed_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('j')), &state),
+                Action::ResultScrollDown
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('k')), &state),
+                Action::ResultScrollUp
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('h')), &state),
+                Action::ResultScrollLeft
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('l')), &state),
+                Action::ResultScrollRight
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('g')), &state),
+                Action::ResultScrollTop
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('G')), &state),
+                Action::ResultScrollBottom
+            ));
+        }
+
+        #[test]
+        fn ctrl_p_and_ctrl_k_blocked_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+
+            let p = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
+            let k = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
+
+            assert!(
+                matches!(p, Action::None),
+                "^P should be blocked in history mode"
+            );
+            assert!(
+                matches!(k, Action::None),
+                "^K should be blocked in history mode"
+            );
+        }
+
+        #[test]
+        fn ctrl_scroll_allowed_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+            state.ui.focus_mode = true;
+
+            assert!(matches!(
+                handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
+                Action::ResultScrollHalfPageDown
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo_ctrl(Key::Char('u')), &state),
+                Action::ResultScrollHalfPageUp
+            ));
         }
 
         #[test]
