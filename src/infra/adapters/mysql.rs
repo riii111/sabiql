@@ -90,6 +90,23 @@ impl QueryExecutor for MySqlAdapter {
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
+
+    async fn count_query_rows(&self, _dsn: &str, _query: &str) -> Result<usize, MetadataError> {
+        Err(MetadataError::ConnectionFailed(
+            "MySQL adapter not yet implemented".to_string(),
+        ))
+    }
+
+    async fn export_to_csv(
+        &self,
+        _dsn: &str,
+        _query: &str,
+        _path: &std::path::Path,
+    ) -> Result<usize, MetadataError> {
+        Err(MetadataError::ConnectionFailed(
+            "MySQL adapter not yet implemented".to_string(),
+        ))
+    }
 }
 
 impl DdlGenerator for MySqlAdapter {
@@ -116,6 +133,10 @@ impl SqlDialect for MySqlAdapter {
         _table: &str,
         _pk_pairs_per_row: &[Vec<(String, String)>],
     ) -> String {
+        unimplemented!("MySQL adapter not yet implemented")
+    }
+
+    fn build_export_select(&self, _schema: &str, _table: &str, _limit: usize) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
 }

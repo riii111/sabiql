@@ -560,6 +560,50 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::CountRowsForExport {
+                dsn,
+                count_query,
+                export_query,
+                file_name,
+            } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
+                    tx.send(Action::CsvExportRowsCounted {
+                        row_count,
+                        export_query,
+                        file_name,
+                    })
+                    .await
+                    .ok();
+                });
+                Ok(())
+            }
+
+            Effect::ExportCsv { dsn, query, path } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    match executor.export_to_csv(&dsn, &query, &path).await {
+                        Ok(row_count) => {
+                            tx.send(Action::CsvExportSucceeded {
+                                path: path.display().to_string(),
+                                row_count,
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(e) => {
+                            tx.send(Action::CsvExportFailed(e.to_string())).await.ok();
+                        }
+                    }
+                });
+                Ok(())
+            }
+
             Effect::CacheTableInCompletionEngine {
                 qualified_name,
                 table,
