@@ -14,7 +14,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  │└──────────────────────────────────────────────────────────┘
-│                  │┌ [3] Result [PREVIEW p.1] (0 rows, 5ms) ──────────────────┐
+│                  │┌ [3] Result (0 rows, 5ms) ────────────────────────────────┐
 │                  ││No rows returned                                          │
 │                  ││                                                          │
 │                  ││                                                          │
@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^K:Palette  1/2/3:Pane
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^K:Palette  f:Focus  ?:

@@ -231,6 +231,12 @@ pub mod idx {
     pub mod inspector_ddl {
         pub const YANK: usize = 0;
     }
+
+    pub mod history {
+        pub const OPEN: usize = 0;
+        pub const NAV: usize = 1;
+        pub const EXIT: usize = 2;
+    }
 }
 
 // =============================================================================
@@ -239,11 +245,12 @@ pub mod idx {
 
 /// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
-    // 16 sections × 1 header each = 16
-    // 15 blank-line separators between sections = 15
-    16 + 15
+    // 17 sections × 1 header each = 17
+    // 16 blank-line separators between sections = 16
+    17 + 16
         + GLOBAL_KEYS.len()
         + NAVIGATION_KEYS.len()
+        + HISTORY_KEYS.len()
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
@@ -406,6 +413,11 @@ mod tests {
         assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
 
+        // HISTORY_KEYS
+        assert!(idx::history::OPEN < HISTORY_KEYS.len());
+        assert!(idx::history::NAV < HISTORY_KEYS.len());
+        assert!(idx::history::EXIT < HISTORY_KEYS.len());
+
         // INSPECTOR_DDL_KEYS
         assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());
 
@@ -431,6 +443,7 @@ mod tests {
         let sections: &[usize] = &[
             GLOBAL_KEYS.len(),
             NAVIGATION_KEYS.len(),
+            HISTORY_KEYS.len(),
             RESULT_ACTIVE_KEYS.len(),
             INSPECTOR_DDL_KEYS.len(),
             CELL_EDIT_KEYS.len(),
@@ -518,6 +531,7 @@ mod tests {
             check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
+            check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
         }
 
         // ------------------------------------------------------------------ //
@@ -756,6 +770,7 @@ mod tests {
                 "CONNECTION_SETUP_KEYS",
             );
             check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
+            check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
         }
 
         // ------------------------------------------------------------------ //

@@ -11,7 +11,6 @@ use super::atoms::{panel_block_highlight, text_cursor_spans};
 
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
-use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::state::AppState;
 use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
 use crate::app::viewport::{
@@ -44,6 +43,10 @@ impl ResultPane {
                 Self::render_empty(frame, area, block);
                 ViewportPlan::default()
             } else {
+                let history_bar = state.query.history_index.map(|idx| {
+                    let total = state.query.result_history.len();
+                    (idx, total)
+                });
                 Self::render_table(
                     frame,
                     area,
@@ -65,6 +68,7 @@ impl ResultPane {
                         None
                     },
                     &state.ui.staged_delete_rows,
+                    history_bar,
                 )
             }
         } else {
@@ -84,59 +88,28 @@ impl ResultPane {
         match result {
             None => " [3] Result ".to_string(),
             Some(r) => {
-                let source_badge = match r.source {
-                    QuerySource::Preview => {
-                        let pagination = &state.query.pagination;
-                        let page_num = pagination.current_page + 1;
+                let name = match r.source {
+                    QuerySource::Preview => "Result",
+                    QuerySource::Adhoc => "Result Query",
+                };
 
-                        if r.rows.is_empty() {
-                            match pagination.total_pages_estimate() {
-                                Some(total_pages) => {
-                                    format!("PREVIEW p.{}/{}", page_num, total_pages)
-                                }
-                                None => format!("PREVIEW p.{}", page_num),
-                            }
-                        } else {
-                            let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
-                            let row_end = row_start + r.rows.len() - 1;
-
-                            match pagination.total_pages_estimate() {
-                                Some(total_pages) => {
-                                    let total_rows = pagination
-                                        .total_rows_estimate
-                                        .map(|t| t.max(0) as usize)
-                                        .unwrap_or(0);
-                                    format!(
-                                        "PREVIEW p.{}/{} (rows {}–{} of ~{})",
-                                        page_num, total_pages, row_start, row_end, total_rows
-                                    )
-                                }
-                                None => {
-                                    format!(
-                                        "PREVIEW p.{} (rows {}–{})",
-                                        page_num, row_start, row_end
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    QuerySource::Adhoc => {
-                        if let Some(idx) = state.query.history_index {
-                            format!("ADHOC #{}", idx + 1)
-                        } else {
-                            "ADHOC".to_string()
-                        }
-                    }
+                let history_hint = if state.query.history_index.is_none()
+                    && !state.query.result_history.is_empty()
+                {
+                    " (history: ^H)"
+                } else {
+                    ""
                 };
 
                 if r.is_error() {
-                    format!(" [3] Result [{}] ERROR ", source_badge)
+                    format!(" [3] {} ERROR{} ", name, history_hint)
                 } else {
                     format!(
-                        " [3] Result [{}] ({}, {}ms) ",
-                        source_badge,
+                        " [3] {} ({}, {}ms){} ",
+                        name,
                         r.row_count_display(),
-                        r.execution_time_ms
+                        r.execution_time_ms,
+                        history_hint,
                     )
                 }
             }
@@ -182,6 +155,7 @@ impl ResultPane {
         selection: &ResultSelection,
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
+        history_bar: Option<(usize, usize)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -347,12 +321,36 @@ impl ResultPane {
                 total_items: total_rows,
             },
         );
+        // Split bottom row: history bar on left, h-scroll indicator on right
+        let history_bar_width = if let Some((idx, total)) = history_bar {
+            let text = format!("\u{25C0} {}/{} \u{25B6}", idx + 1, total);
+            let render_width = (text.chars().count() as u16).min(inner.width);
+            let bottom_row = inner.y + inner.height.saturating_sub(1);
+            frame.render_widget(
+                Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
+                    text,
+                    Style::default().fg(Theme::TEXT_SECONDARY),
+                )])),
+                Rect::new(inner.x, bottom_row, render_width, 1),
+            );
+            render_width
+        } else {
+            0
+        };
+
+        // Shift h-scroll indicator right to avoid overlapping the history bar
+        let h_scroll_area = Rect::new(
+            inner.x + history_bar_width,
+            inner.y,
+            inner.width.saturating_sub(history_bar_width),
+            inner.height,
+        );
         render_horizontal_scroll_indicator(
             frame,
-            inner,
+            h_scroll_area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
+                viewport_size: plan.column_count,
                 total_items: total_cols,
             },
         );

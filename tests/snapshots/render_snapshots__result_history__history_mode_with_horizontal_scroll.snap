@@ -3,10 +3,9 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [3] Result (2 rows, 15ms) ───────────────────────────────────────────────────┐
-│id   name    email                                                            │
-│1    Alice   alice@example.com                                                │
-│2    Bob     bob@example.com                                                  │
+┌ [3] Result Query (1 row, 12ms) ──────────────────────────────────────────────┐
+│column_1   column_2   column_3   column_4   column_5   column_6   column_7    │
+│value_1    value_2    value_3    value_4    value_5    value_6    value_7     │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -23,5 +22,6 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                                                              │
 │                                                                              │
 │                                                                              │
+│◀ 3/3 ▶ col   0% ◀︎═════════════════════════════════════════════════════════──▶︎│
 └──────────────────────────────────────────────────────────────────────────────┘
-Enter:Select  f:Exit Focus  j/k / ↑↓:Scroll  h/l / ←→:H-Scroll  g/G:Top/Bottom
+]/[:History  ?:Help  ^H:Back

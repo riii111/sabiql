@@ -506,6 +506,7 @@ fn restore_cache(state: &mut AppState, cache: &ConnectionCache) {
     state.cache.current_table = cache.current_table.clone();
     state.query.current_result = cache.query_result.clone();
     state.query.result_history = cache.result_history.clone();
+    state.query.history_index = None;
     state.ui.explorer_selected = cache.explorer_selected;
     state.ui.inspector_tab = cache.inspector_tab;
     state
@@ -525,6 +526,7 @@ fn reset_connection_state(state: &mut AppState) {
     state.cache.current_table = None;
     state.query.current_result = None;
     state.query.result_history = Default::default();
+    state.query.history_index = None;
     state.ui.set_explorer_selection(None);
     state.ui.result_selection.reset();
     state.ui.result_scroll_offset = 0;

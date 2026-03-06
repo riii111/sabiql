@@ -10,7 +10,7 @@ use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
-    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS,
+    CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::app::state::AppState;
@@ -62,6 +62,14 @@ impl Footer {
 
         match state.ui.input_mode {
             InputMode::Normal => {
+                if state.query.history_index.is_some() {
+                    return vec![
+                        HISTORY_KEYS[idx::history::NAV].as_hint(),
+                        GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                        HISTORY_KEYS[idx::history::EXIT].as_hint(),
+                    ];
+                }
+
                 let result_navigation =
                     state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
                 let nav_mode = state.ui.result_selection.mode();
@@ -147,7 +155,6 @@ impl Footer {
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::PANE_SWITCH].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());

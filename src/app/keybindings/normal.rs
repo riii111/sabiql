@@ -343,6 +343,36 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     },
 ];
 
+pub const HISTORY_KEYS: &[KeyBinding] = &[
+    // idx 0: OPEN
+    KeyBinding {
+        key_short: "^H",
+        key: "Ctrl+H",
+        desc_short: "History",
+        description: "Toggle Result History",
+        action: Action::OpenResultHistory,
+        combos: &[KeyCombo::ctrl(Key::Char('h'))],
+    },
+    // idx 1: NAV (display-only)
+    KeyBinding {
+        key_short: "]/[",
+        key: "] / [",
+        desc_short: "History",
+        description: "Navigate history newer/older",
+        action: Action::None,
+        combos: &[],
+    },
+    // idx 2: EXIT (display-only)
+    KeyBinding {
+        key_short: "^H",
+        key: "Ctrl+H",
+        desc_short: "Back",
+        description: "Exit history (back to latest)",
+        action: Action::None,
+        combos: &[],
+    },
+];
+
 pub const INSPECTOR_DDL_KEYS: &[KeyBinding] = &[
     // idx 0: YANK
     KeyBinding {

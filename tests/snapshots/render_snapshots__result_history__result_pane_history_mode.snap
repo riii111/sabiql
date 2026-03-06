@@ -14,14 +14,14 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  │└──────────────────────────────────────────────────────────┘
-│                  │┌ [3] Result (2 rows, 15ms) ───────────────────────────────┐
-│                  ││id   name    email                                        │
-│                  ││1    Alice   alice@example.com                            │
-│                  ││2    Bob     bob@example.com                              │
+│                  │┌ [3] Result Query (1 row, 5ms) ───────────────────────────┐
+│                  ││count                                                     │
+│                  ││42                                                        │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
+│                  ││◀ 2/3 ▶                                                   │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  ^P:Tables  ^K:Palette  f:Focus  Enter:Select  j/k
+]/[:History  ?:Help  ^H:Back

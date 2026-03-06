@@ -14,10 +14,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │                  │└──────────────────────────────────────────────────────────┘
-│                  │┌ [3] Result (2 rows, 15ms) ───────────────────────────────┐
-│                  ││id   name    email                                        │
-│                  ││1    Alice   alice@example.com                            │
-│                  ││2    Bob     bob@example.com                              │
+│                  │┌ [3] Result Query (1 row, 5ms) (history: ^H) ─────────────┐
+│                  ││count                                                     │
+│                  ││42                                                        │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

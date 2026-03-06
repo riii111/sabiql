@@ -34,6 +34,14 @@ impl ResultHistory {
     pub fn get(&self, index: usize) -> Option<&QueryResult> {
         self.entries.get(index).map(|arc| &**arc)
     }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -61,6 +69,35 @@ mod tests {
         assert_eq!(history.get(0).unwrap().query, "SELECT 1");
         assert_eq!(history.get(1).unwrap().query, "SELECT 2");
         assert!(history.get(2).is_none());
+    }
+
+    #[test]
+    fn len_returns_entry_count() {
+        let mut history = ResultHistory::new(5);
+
+        assert_eq!(history.len(), 0);
+
+        history.push(Arc::new(make_result("SELECT 1")));
+        assert_eq!(history.len(), 1);
+
+        history.push(Arc::new(make_result("SELECT 2")));
+        assert_eq!(history.len(), 2);
+    }
+
+    #[test]
+    fn is_empty_returns_true_when_no_entries() {
+        let history = ResultHistory::new(5);
+
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn is_empty_returns_false_after_push() {
+        let mut history = ResultHistory::new(5);
+
+        history.push(Arc::new(make_result("SELECT 1")));
+
+        assert!(!history.is_empty());
     }
 
     #[test]
