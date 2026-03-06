@@ -14,7 +14,9 @@
 //! ```
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -120,6 +122,45 @@ impl EffectRunnerBuilder {
             action_tx: self.action_tx.expect("action_tx is required"),
         }
     }
+}
+
+/// Convert days since Unix epoch to (year, month, day) in UTC.
+fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
+    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn resolve_export_path(file_name: &str) -> PathBuf {
+    let now_sys = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now_sys.as_secs();
+    let millis = now_sys.subsec_millis();
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+    let (y, m, d) = epoch_days_to_ymd(days as i64);
+    let timestamp = format!(
+        "{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}",
+        y, m, d, hours, minutes, seconds, millis
+    );
+    let file_stem = format!("sabiql_export_{}_{}.csv", file_name, timestamp);
+    let dir = dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."));
+    dir.join(file_stem)
 }
 
 impl EffectRunner {
@@ -582,9 +623,14 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::ExportCsv { dsn, query, path } => {
+            Effect::ExportCsv {
+                dsn,
+                query,
+                file_name,
+            } => {
                 let executor = Arc::clone(&self.query_executor);
                 let tx = self.action_tx.clone();
+                let path = resolve_export_path(&file_name);
 
                 tokio::spawn(async move {
                     match executor.export_to_csv(&dsn, &query, &path).await {
@@ -1691,6 +1737,29 @@ mod tests {
                 .unwrap();
 
             assert!(rx.try_recv().is_err());
+        }
+    }
+
+    mod export_path {
+        use super::super::{epoch_days_to_ymd, resolve_export_path};
+
+        #[test]
+        fn epoch_days_to_ymd_unix_epoch() {
+            assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_known_date() {
+            // 2024-01-01 = day 19723
+            assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
+        }
+
+        #[test]
+        fn resolve_export_path_contains_file_name() {
+            let path = resolve_export_path("users");
+            let file_name = path.file_name().unwrap().to_str().unwrap();
+            assert!(file_name.starts_with("sabiql_export_users_"));
+            assert!(file_name.ends_with(".csv"));
         }
     }
 }

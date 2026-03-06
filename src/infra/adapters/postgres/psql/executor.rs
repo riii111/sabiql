@@ -1,7 +1,7 @@
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -227,11 +227,19 @@ impl PostgresAdapter {
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            let bytes_copied = if let Some(mut out) = stdout {
-                tokio::io::copy(&mut out, &mut writer).await?
-            } else {
-                0
-            };
+            let mut newline_count: usize = 0;
+            if let Some(mut out) = stdout {
+                let mut buf = [0u8; 8192];
+                loop {
+                    let n = out.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
+                    writer.write_all(&buf[..n]).await?;
+                }
+                writer.flush().await?;
+            }
 
             let stderr = {
                 let mut buf = Vec::new();
@@ -242,24 +250,20 @@ impl PostgresAdapter {
             };
 
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr, bytes_copied))
+            Ok::<_, std::io::Error>((status, stderr, newline_count))
         })
         .await
         .map_err(|_| MetadataError::Timeout)?
         .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
 
-        let (status, stderr, _bytes) = result;
+        let (status, stderr, newline_count) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
             return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
         }
 
-        let content = tokio::fs::read_to_string(path).await.map_err(|e| {
-            MetadataError::QueryFailed(format!("Failed to read exported file: {}", e))
-        })?;
-        let line_count = content.lines().count();
-        let row_count = line_count.saturating_sub(1); // subtract CSV header
-
+        // Subtract 1 for the CSV header line
+        let row_count = newline_count.saturating_sub(1);
         Ok(row_count)
     }
 

@@ -116,7 +116,7 @@ pub enum Effect {
     ExportCsv {
         dsn: String,
         query: String,
-        path: std::path::PathBuf,
+        file_name: String,
     },
 
     /// Triggers completion: fetches missing tables and updates candidates

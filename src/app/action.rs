@@ -343,7 +343,7 @@ pub enum Action {
     },
     ExecuteCsvExport {
         export_query: String,
-        path: std::path::PathBuf,
+        file_name: String,
     },
     CsvExportSucceeded {
         path: String,

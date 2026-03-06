@@ -19,22 +19,6 @@ use crate::domain::{QueryResult, QuerySource};
 use super::helpers::editable_preview_base;
 use super::navigation::build_bulk_delete_preview;
 
-/// Convert days since Unix epoch to (year, month, day) in UTC.
-fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
-    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
-    let z = days + 719468;
-    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
-    let doe = (z - era * 146097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
-}
-
 fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
     if !state.cell_edit.is_active() {
         return Err("No active cell edit session".to_string());
@@ -545,21 +529,11 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 None => return Some(vec![]),
             };
 
-            let (export_query, file_name) = match result.source {
+            let export_query = result.query.clone();
+            let file_name = match result.source {
                 QuerySource::Preview => {
                     let table = &state.query.pagination.table;
-                    let limit: usize = state
-                        .query
-                        .pagination
-                        .total_rows_estimate
-                        .map(|n| n.max(0) as usize)
-                        .unwrap_or(PREVIEW_PAGE_SIZE);
-                    let q = state.sql_dialect.build_export_select(
-                        &state.query.pagination.schema,
-                        table,
-                        limit,
-                    );
-                    let safe_name: String = table
+                    table
                         .chars()
                         .map(|c| {
                             if c.is_ascii_alphanumeric() || c == '_' {
@@ -568,10 +542,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                                 '_'
                             }
                         })
-                        .collect();
-                    (q, safe_name)
+                        .collect()
                 }
-                QuerySource::Adhoc => (result.query.clone(), "adhoc".to_string()),
+                QuerySource::Adhoc => "adhoc".to_string(),
             };
 
             let stripped = export_query.trim_end().trim_end_matches(';').to_string();
@@ -592,29 +565,6 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         } => {
             const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
-            let timestamp = {
-                let now_sys = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default();
-                let secs = now_sys.as_secs();
-                let millis = now_sys.subsec_millis();
-                let days = secs / 86400;
-                let time_of_day = secs % 86400;
-                let hours = time_of_day / 3600;
-                let minutes = (time_of_day % 3600) / 60;
-                let seconds = time_of_day % 60;
-                let (y, m, d) = epoch_days_to_ymd(days as i64);
-                format!(
-                    "{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}",
-                    y, m, d, hours, minutes, seconds, millis
-                )
-            };
-            let file_stem = format!("sabiql_export_{}_{}.csv", file_name, timestamp);
-            let dir = dirs::download_dir()
-                .or_else(dirs::home_dir)
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let path = dir.join(&file_stem);
-
             let needs_confirm = match row_count {
                 Some(n) => *n > LARGE_EXPORT_THRESHOLD,
                 None => true,
@@ -629,7 +579,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.confirm_dialog.message = msg;
                 state.confirm_dialog.on_confirm = Action::ExecuteCsvExport {
                     export_query: export_query.clone(),
-                    path: path.clone(),
+                    file_name: file_name.clone(),
                 };
                 state.confirm_dialog.on_cancel = Action::None;
                 state.confirm_dialog.return_mode = InputMode::Normal;
@@ -643,12 +593,15 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 Some(vec![Effect::ExportCsv {
                     dsn,
                     query: export_query.clone(),
-                    path,
+                    file_name: file_name.clone(),
                 }])
             }
         }
 
-        Action::ExecuteCsvExport { export_query, path } => {
+        Action::ExecuteCsvExport {
+            export_query,
+            file_name,
+        } => {
             let dsn = match &state.runtime.dsn {
                 Some(d) => d.clone(),
                 None => return Some(vec![]),
@@ -656,7 +609,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![Effect::ExportCsv {
                 dsn,
                 query: export_query.clone(),
-                path: path.clone(),
+                file_name: file_name.clone(),
             }])
         }
 
@@ -747,17 +700,6 @@ mod tests {
     use super::*;
     use crate::app::query_execution::PaginationState;
     use crate::domain::{Column, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming};
-
-    #[test]
-    fn epoch_days_to_ymd_unix_epoch() {
-        assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
-    }
-
-    #[test]
-    fn epoch_days_to_ymd_known_date() {
-        // 2024-01-01 = day 19723
-        assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
-    }
 
     fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
@@ -1532,7 +1474,8 @@ mod tests {
                     file_name,
                     ..
                 } => {
-                    assert!(export_query.contains("LIMIT 100"));
+                    // C1 fix: uses result.query directly instead of rebuilding SQL
+                    assert_eq!(export_query, "SELECT * FROM users");
                     assert_eq!(file_name, "users");
                 }
                 other => panic!("expected CountRowsForExport, got {:?}", other),
