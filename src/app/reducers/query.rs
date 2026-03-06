@@ -623,7 +623,11 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 None => format!("Exported → {}", path),
             };
             state.messages.set_success_at(msg, now);
-            Some(vec![])
+            let folder = std::path::Path::new(path)
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            Some(vec![Effect::OpenFolder { path: folder }])
         }
 
         Action::CsvExportFailed(error) => {
@@ -1588,7 +1592,8 @@ mod tests {
             )
             .unwrap();
 
-            assert!(effects.is_empty());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
             assert!(
                 state
                     .messages

@@ -651,6 +651,18 @@ impl EffectRunner {
                 Ok(())
             }
 
+            Effect::OpenFolder { path } => {
+                // Fire-and-forget: open the folder in the system file manager.
+                // Failures are silently ignored — this is best-effort UX only.
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("open").arg(&path).spawn();
+                #[cfg(target_os = "linux")]
+                let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("explorer").arg(&path).spawn();
+                Ok(())
+            }
+
             Effect::CacheTableInCompletionEngine {
                 qualified_name,
                 table,

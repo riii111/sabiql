@@ -119,6 +119,9 @@ pub enum Effect {
         file_name: String,
         row_count: Option<usize>,
     },
+    OpenFolder {
+        path: std::path::PathBuf,
+    },
 
     /// Triggers completion: fetches missing tables and updates candidates
     TriggerCompletion,
