@@ -1261,6 +1261,31 @@ mod result_history {
     }
 
     #[test]
+    fn result_query_with_history_hint() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = MetadataState::Loaded;
+        state.ui.set_explorer_selection(Some(0));
+
+        // Push history but do NOT enter history mode (history_index = None)
+        for i in 1..=2 {
+            state
+                .query
+                .result_history
+                .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+        }
+        state.query.current_result = Some(Arc::new(adhoc_result(now, "SELECT 2")));
+        state.ui.focused_pane = FocusedPane::Result;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn focus_mode_history_mode() {
         let now = test_instant();
         let mut state = create_test_state();

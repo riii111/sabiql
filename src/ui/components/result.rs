@@ -94,19 +94,28 @@ impl ResultPane {
         match result {
             None => " [3] Result ".to_string(),
             Some(r) => {
-                let source_badge = match r.source {
-                    QuerySource::Preview => preview_badge(&state.query.pagination, r.rows.len()),
-                    QuerySource::Adhoc => "QUERY".to_string(),
+                let name = match r.source {
+                    QuerySource::Preview => "Result",
+                    QuerySource::Adhoc => "Result Query",
+                };
+
+                let history_hint = if state.query.history_index.is_none()
+                    && !state.query.result_history.is_empty()
+                {
+                    " (history: ^H)"
+                } else {
+                    ""
                 };
 
                 if r.is_error() {
-                    format!(" [3] Result [{}] ERROR ", source_badge)
+                    format!(" [3] {} ERROR{} ", name, history_hint)
                 } else {
                     format!(
-                        " [3] Result [{}] ({}, {}ms) ",
-                        source_badge,
+                        " [3] {} ({}, {}ms){} ",
+                        name,
                         r.row_count_display(),
-                        r.execution_time_ms
+                        r.execution_time_ms,
+                        history_hint,
                     )
                 }
             }
@@ -414,40 +423,6 @@ fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Li
     };
 
     Line::from(text_cursor_spans(text, cursor, view_start, max_chars))
-}
-
-fn preview_badge(
-    pagination: &crate::app::query_execution::PaginationState,
-    row_len: usize,
-) -> String {
-    use crate::app::query_execution::PREVIEW_PAGE_SIZE;
-
-    let page_num = pagination.current_page + 1;
-    let total_pages = pagination.total_pages_estimate();
-
-    if row_len == 0 {
-        return match total_pages {
-            Some(tp) => format!("PREVIEW p.{}/{}", page_num, tp),
-            None => format!("PREVIEW p.{}", page_num),
-        };
-    }
-
-    let row_start = pagination.current_page * PREVIEW_PAGE_SIZE + 1;
-    let row_end = row_start + row_len - 1;
-
-    match total_pages {
-        Some(tp) => {
-            let total_rows = pagination
-                .total_rows_estimate
-                .map(|t| t.max(0) as usize)
-                .unwrap_or(0);
-            format!(
-                "PREVIEW p.{}/{} (rows {}–{} of ~{})",
-                page_num, tp, row_start, row_end, total_rows
-            )
-        }
-        None => format!("PREVIEW p.{} (rows {}–{})", page_num, row_start, row_end),
-    }
 }
 
 fn truncate_query(s: &str, max_chars: usize) -> String {
