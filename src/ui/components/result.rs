@@ -365,32 +365,52 @@ impl ResultPane {
                 total_items: total_rows,
             },
         );
+        // Split bottom row: history bar on left, h-scroll indicator on right
+        let history_bar_width = if let Some((idx, total, query_text)) = history_bar {
+            let label = format!("\u{25C0} {}/{}  ", idx + 1, total);
+            let label_width = label.chars().count();
+
+            let needs_h_scroll = total_cols > plan.column_count;
+            let half_width = (inner.width as usize) / 2;
+            let bar_max_width = if needs_h_scroll {
+                half_width
+            } else {
+                inner.width as usize
+            };
+
+            let query_budget = bar_max_width.saturating_sub(label_width);
+            let text = format!("{}{}", label, truncate_query(query_text, query_budget));
+
+            let render_width = (text.chars().count() as u16).min(inner.width);
+            let bottom_row = inner.y + inner.height.saturating_sub(1);
+            frame.render_widget(
+                Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
+                    text,
+                    Style::default().fg(Theme::TEXT_SECONDARY),
+                )])),
+                Rect::new(inner.x, bottom_row, render_width, 1),
+            );
+            render_width
+        } else {
+            0
+        };
+
+        // Shift h-scroll indicator right to avoid overlapping the history bar
+        let h_scroll_area = Rect::new(
+            inner.x + history_bar_width,
+            inner.y,
+            inner.width.saturating_sub(history_bar_width),
+            inner.height,
+        );
         render_horizontal_scroll_indicator(
             frame,
-            inner,
+            h_scroll_area,
             HorizontalScrollParams {
                 position: clamped_offset,
-                viewport_size: plan.column_count, // Use fixed count, not actual displayed (may include bonus)
+                viewport_size: plan.column_count,
                 total_items: total_cols,
             },
         );
-
-        // History bar (bottom-left, shares row with horizontal scroll indicator)
-        if let Some((idx, total, query_text)) = history_bar {
-            let bottom_row = inner.y + inner.height.saturating_sub(1);
-            let label = format!("\u{25C0} {}/{}  ", idx + 1, total);
-            let label_width = label.chars().count();
-            let remaining = (inner.width as usize).saturating_sub(label_width);
-            let truncated_query = truncate_query(query_text, remaining);
-            let text = format!("{}{}", label, truncated_query);
-
-            let bar_area = Rect::new(inner.x, bottom_row, inner.width, 1);
-            let bar = Paragraph::new(Line::from(vec![ratatui::text::Span::styled(
-                text,
-                Style::default().fg(Theme::TEXT_SECONDARY),
-            )]));
-            frame.render_widget(bar, bar_area);
-        }
 
         plan
     }
