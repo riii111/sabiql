@@ -3,7 +3,7 @@ source: tests/render_snapshots.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
-┌ [3] Result [QUERY ◀ 3/3 ▶] (1 row, 12ms) ────────────────────────────────────┐
+┌ [3] Result [QUERY] (1 row, 12ms) ────────────────────────────────────────────┐
 │column_1   column_2   column_3   column_4   column_5   column_6   column_7    │
 │value_1    value_2    value_3    value_4    value_5    value_6    value_7     │
 │                                                                              │
@@ -22,6 +22,6 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│◀ 3/3  SELECT 3 col   0% ◀︎═════════════════════════════════════════════════──▶︎│
+│◀ 3/3 ▶  SELECT 3 col   0% ◀︎═══════════════════════════════════════════════──▶︎│
 └──────────────────────────────────────────────────────────────────────────────┘
 ]/[:History  ?:Help  Esc:Back  q:Quit
