@@ -783,6 +783,46 @@ pub fn reduce_navigation(
             }
             Some(vec![])
         }
+        Action::ResultRowYankOperatorPending => {
+            state.ui.yank_op_pending = true;
+            Some(vec![])
+        }
+        Action::ResultRowYank => {
+            if let Some(row_idx) = state.ui.result_selection.row() {
+                let content = state
+                    .query
+                    .current_result
+                    .as_ref()
+                    .and_then(|r| r.rows.get(row_idx))
+                    .map(|row| {
+                        row.iter()
+                            .map(|v| {
+                                v.replace('\\', "\\\\")
+                                    .replace('\t', "\\t")
+                                    .replace('\n', "\\n")
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\t")
+                    });
+                match content {
+                    Some(tsv) => Some(vec![Effect::CopyToClipboard {
+                        content: tsv,
+                        on_success: Some(Action::CellCopied),
+                        on_failure: Some(Action::CopyFailed(
+                            "Clipboard unavailable".into(),
+                        )),
+                    }]),
+                    None => {
+                        state
+                            .messages
+                            .set_error_at("Row index out of bounds".into(), now);
+                        Some(vec![])
+                    }
+                }
+            } else {
+                Some(vec![])
+            }
+        }
         Action::ResultDeleteOperatorPending => {
             state.ui.delete_op_pending = true;
             Some(vec![])
@@ -1732,6 +1772,98 @@ mod tests {
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_none());
+        }
+    }
+
+    mod row_yank {
+        use super::*;
+        use std::sync::Arc;
+
+        fn state_with_row(values: Vec<&str>) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{}", c)).collect();
+            let rows = vec![values.iter().map(|v| v.to_string()).collect()];
+            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns,
+                rows,
+                row_count: 1,
+                execution_time_ms: 1,
+                executed_at: Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+            }));
+            state
+        }
+
+        #[test]
+        fn row_yank_emits_tsv_copy_effect() {
+            let mut state = state_with_row(vec!["v0", "v1", "v2"]);
+            state.ui.result_selection.enter_row(0);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => {
+                    assert_eq!(content, "v0\tv1\tv2");
+                }
+                other => panic!("expected CopyToClipboard, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn row_yank_escapes_tab_and_newline() {
+            let mut state = state_with_row(vec!["a\tb", "c\nd"]);
+            state.ui.result_selection.enter_row(0);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => {
+                    assert_eq!(content, "a\\tb\tc\\nd");
+                }
+                other => panic!("expected CopyToClipboard, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn row_yank_out_of_bounds_sets_error() {
+            let mut state = state_with_row(vec!["val"]);
+            state.ui.result_selection.enter_row(99);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn row_yank_no_selection_is_noop() {
+            let mut state = state_with_row(vec!["val"]);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn yank_op_pending_sets_flag() {
+            let mut state = AppState::new("test".to_string());
+
+            reduce_navigation(
+                &mut state,
+                &Action::ResultRowYankOperatorPending,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.ui.yank_op_pending);
         }
     }
 
