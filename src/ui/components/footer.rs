@@ -67,7 +67,6 @@ impl Footer {
                         HISTORY_KEYS[idx::history::NAV].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
                         HISTORY_KEYS[idx::history::ESC_BACK].as_hint(),
-                        GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                     ];
                 }
 

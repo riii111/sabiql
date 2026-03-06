@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                                                              │
 │◀ 1/3 ▶  SELECT 1                                                             │
 └──────────────────────────────────────────────────────────────────────────────┘
-]/[:History  ?:Help  Esc:Back  q:Quit
+]/[:History  ?:Help  Esc:Back

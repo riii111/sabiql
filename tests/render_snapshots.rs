@@ -1196,6 +1196,29 @@ mod result_history {
     }
 
     #[test]
+    fn preview_with_history_hint() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.state = MetadataState::Loaded;
+        state.ui.set_explorer_selection(Some(0));
+        state.cache.table_detail = Some(fixtures::sample_table_detail());
+        // Current result is Preview, but history has adhoc entries
+        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .result_history
+            .push(Arc::new(adhoc_result(now, "SELECT 1")));
+        state.ui.focused_pane = FocusedPane::Result;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn result_pane_history_mode() {
         let now = test_instant();
         let mut state = create_test_state();

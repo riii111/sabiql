@@ -127,11 +127,12 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
     }
 
-    // History mode: [/] navigate entries (hijacks page-nav, which is irrelevant in history)
+    // History mode: [/] navigate, q suppressed to prevent accidental quit
     if state.query.history_index.is_some() {
         match combo.key {
             Key::Char('[') => return Action::HistoryOlder,
             Key::Char(']') => return Action::HistoryNewer,
+            Key::Char('q') => return Action::None,
             _ => {}
         }
     }
@@ -1540,6 +1541,16 @@ mod tests {
             let result = handle_normal_mode(combo(Key::Enter), &state);
 
             assert!(matches!(result, Action::ResultEnterRowActive));
+        }
+
+        #[test]
+        fn q_is_noop_in_history_mode() {
+            let mut state = AppState::new("test".to_string());
+            state.query.history_index = Some(0);
+
+            let result = handle_normal_mode(combo(Key::Char('q')), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
