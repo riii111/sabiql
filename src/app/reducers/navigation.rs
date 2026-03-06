@@ -1831,6 +1831,23 @@ mod tests {
         }
 
         #[test]
+        fn row_yank_escapes_backslash() {
+            let mut state = state_with_row(vec!["a\\b"]);
+            state.ui.result_selection.enter_row(0);
+
+            let effects =
+                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => {
+                    assert_eq!(content, "a\\\\b");
+                }
+                other => panic!("expected CopyToClipboard, got {:?}", other),
+            }
+        }
+
+        #[test]
         fn row_yank_out_of_bounds_sets_error() {
             let mut state = state_with_row(vec!["val"]);
             state.ui.result_selection.enter_row(99);
