@@ -235,7 +235,7 @@ pub mod idx {
     pub mod history {
         pub const OPEN: usize = 0;
         pub const NAV: usize = 1;
-        pub const ESC_BACK: usize = 2;
+        pub const EXIT: usize = 2;
     }
 }
 
@@ -416,7 +416,7 @@ mod tests {
         // HISTORY_KEYS
         assert!(idx::history::OPEN < HISTORY_KEYS.len());
         assert!(idx::history::NAV < HISTORY_KEYS.len());
-        assert!(idx::history::ESC_BACK < HISTORY_KEYS.len());
+        assert!(idx::history::EXIT < HISTORY_KEYS.len());
 
         // INSPECTOR_DDL_KEYS
         assert!(idx::inspector_ddl::YANK < INSPECTOR_DDL_KEYS.len());

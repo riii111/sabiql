@@ -66,7 +66,7 @@ impl Footer {
                     return vec![
                         HISTORY_KEYS[idx::history::NAV].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                        HISTORY_KEYS[idx::history::ESC_BACK].as_hint(),
+                        HISTORY_KEYS[idx::history::EXIT].as_hint(),
                     ];
                 }
 

@@ -349,7 +349,7 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
         key_short: "^H",
         key: "Ctrl+H",
         desc_short: "History",
-        description: "Open Result History",
+        description: "Toggle Result History",
         action: Action::OpenResultHistory,
         combos: &[KeyCombo::ctrl(Key::Char('h'))],
     },
@@ -362,10 +362,10 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: ESC_BACK (display-only)
+    // idx 2: EXIT (display-only)
     KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
+        key_short: "^H",
+        key: "Ctrl+H",
         desc_short: "Back",
         description: "Exit history (back to latest)",
         action: Action::None,

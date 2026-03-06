@@ -85,7 +85,13 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     if combo.modifiers.ctrl {
         match combo.key {
             Key::Char('p') => return Action::OpenTablePicker,
-            Key::Char('h') => return Action::OpenResultHistory,
+            Key::Char('h') => {
+                return if state.query.history_index.is_some() {
+                    Action::ExitResultHistory
+                } else {
+                    Action::OpenResultHistory
+                };
+            }
             Key::Char('k') => return Action::OpenCommandPalette,
             Key::Char('d') => {
                 return if result_navigation {
@@ -166,16 +172,8 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                         }
                     }
                     ResultNavMode::RowActive => Action::ResultExitToScroll,
-                    ResultNavMode::Scroll => {
-                        if state.query.history_index.is_some() {
-                            Action::ExitResultHistory
-                        } else {
-                            Action::Escape
-                        }
-                    }
+                    ResultNavMode::Scroll => Action::Escape,
                 }
-            } else if state.query.history_index.is_some() {
-                Action::ExitResultHistory
             } else {
                 Action::Escape
             }
@@ -1440,40 +1438,25 @@ mod tests {
         }
 
         #[test]
-        fn esc_exits_history_in_scroll_mode() {
+        fn esc_does_not_exit_history() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
             state.ui.focus_mode = true; // result_navigation = true, Scroll mode
 
             let result = handle_normal_mode(combo(Key::Esc), &state);
 
-            assert!(matches!(result, Action::ExitResultHistory));
-        }
-
-        #[test]
-        fn esc_exits_row_active_not_history() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
-            state.ui.result_selection.enter_row(0);
-
-            let result = handle_normal_mode(combo(Key::Esc), &state);
-
             assert!(
-                matches!(result, Action::ResultExitToScroll),
-                "Esc in RowActive should exit to Scroll, not exit history"
+                matches!(result, Action::Escape),
+                "Esc should not exit history; only ^H toggles"
             );
         }
 
         #[test]
-        fn esc_exits_history_from_non_result_pane() {
-            use crate::app::focused_pane::FocusedPane;
-
+        fn ctrl_h_exits_history_when_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
-            state.ui.focused_pane = FocusedPane::Explorer;
 
-            let result = handle_normal_mode(combo(Key::Esc), &state);
+            let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
 
             assert!(matches!(result, Action::ExitResultHistory));
         }
