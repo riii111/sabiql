@@ -14,7 +14,9 @@
 //! ```
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -120,6 +122,45 @@ impl EffectRunnerBuilder {
             action_tx: self.action_tx.expect("action_tx is required"),
         }
     }
+}
+
+/// Convert days since Unix epoch to (year, month, day) in UTC.
+fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
+    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn resolve_export_path(file_name: &str) -> PathBuf {
+    let now_sys = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now_sys.as_secs();
+    let millis = now_sys.subsec_millis();
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+    let (y, m, d) = epoch_days_to_ymd(days as i64);
+    let timestamp = format!(
+        "{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}",
+        y, m, d, hours, minutes, seconds, millis
+    );
+    let file_stem = format!("sabiql_export_{}_{}.csv", file_name, timestamp);
+    let dir = dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."));
+    dir.join(file_stem)
 }
 
 impl EffectRunner {
@@ -557,6 +598,68 @@ impl EffectRunner {
                         }
                     }
                 });
+                Ok(())
+            }
+
+            Effect::CountRowsForExport {
+                dsn,
+                count_query,
+                export_query,
+                file_name,
+            } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+
+                tokio::spawn(async move {
+                    let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
+                    tx.send(Action::CsvExportRowsCounted {
+                        row_count,
+                        export_query,
+                        file_name,
+                    })
+                    .await
+                    .ok();
+                });
+                Ok(())
+            }
+
+            Effect::ExportCsv {
+                dsn,
+                query,
+                file_name,
+                row_count,
+            } => {
+                let executor = Arc::clone(&self.query_executor);
+                let tx = self.action_tx.clone();
+                let path = resolve_export_path(&file_name);
+
+                tokio::spawn(async move {
+                    match executor.export_to_csv(&dsn, &query, &path).await {
+                        Ok(_) => {
+                            tx.send(Action::CsvExportSucceeded {
+                                path: path.display().to_string(),
+                                row_count,
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(e) => {
+                            tx.send(Action::CsvExportFailed(e.to_string())).await.ok();
+                        }
+                    }
+                });
+                Ok(())
+            }
+
+            Effect::OpenFolder { path } => {
+                // Fire-and-forget: open the folder in the system file manager.
+                // Failures are silently ignored — this is best-effort UX only.
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("open").arg(&path).spawn();
+                #[cfg(target_os = "linux")]
+                let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("explorer").arg(&path).spawn();
                 Ok(())
             }
 
@@ -1647,6 +1750,53 @@ mod tests {
                 .unwrap();
 
             assert!(rx.try_recv().is_err());
+        }
+    }
+
+    mod export_path {
+        use super::super::{epoch_days_to_ymd, resolve_export_path};
+
+        #[test]
+        fn epoch_days_to_ymd_unix_epoch() {
+            assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_known_date() {
+            // 2024-01-01 = day 19723
+            assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_leap_year_feb_29() {
+            // 2024-02-29 = day 19782 (2024 is a leap year)
+            assert_eq!(epoch_days_to_ymd(19782), (2024, 2, 29));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_year_end_dec_31() {
+            // 2023-12-31 = day 19722
+            assert_eq!(epoch_days_to_ymd(19722), (2023, 12, 31));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_century_leap_year() {
+            // 2000-02-29 = day 11016 (century leap year)
+            assert_eq!(epoch_days_to_ymd(11016), (2000, 2, 29));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_non_leap_century() {
+            // 1900-03-01 = day -25508 (1900 is NOT a leap year)
+            assert_eq!(epoch_days_to_ymd(-25508), (1900, 3, 1));
+        }
+
+        #[test]
+        fn resolve_export_path_contains_file_name() {
+            let path = resolve_export_path("users");
+            let file_name = path.file_name().unwrap().to_str().unwrap();
+            assert!(file_name.starts_with("sabiql_export_users_"));
+            assert!(file_name.ends_with(".csv"));
         }
     }
 }

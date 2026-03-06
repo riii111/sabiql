@@ -22,4 +22,11 @@ pub trait QueryExecutor: Send + Sync {
         dsn: &str,
         query: &str,
     ) -> Result<WriteExecutionResult, MetadataError>;
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, MetadataError>;
+    async fn export_to_csv(
+        &self,
+        dsn: &str,
+        query: &str,
+        path: &std::path::Path,
+    ) -> Result<usize, MetadataError>;
 }

@@ -126,9 +126,6 @@ impl Footer {
                     let mut list = vec![
                         RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
                         GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
-                        FOOTER_NAV_KEYS[idx::footer_nav::SCROLL_SHORT].as_hint(),
-                        FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint(),
-                        FOOTER_NAV_KEYS[idx::footer_nav::TOP_BOTTOM].as_hint(),
                     ];
                     if state
                         .query
@@ -137,6 +134,14 @@ impl Footer {
                         .is_some_and(|r| r.source == QuerySource::Preview)
                     {
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                    }
+                    if state
+                        .query
+                        .current_result
+                        .as_ref()
+                        .is_some_and(|r| !r.is_error())
+                    {
+                        list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
@@ -158,8 +163,6 @@ impl Footer {
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
-                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());
-                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::H_SCROLL].as_hint());
                         if state
                             .query
                             .current_result
@@ -168,6 +171,14 @@ impl Footer {
                         {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
+                    }
+                    if state
+                        .query
+                        .current_result
+                        .as_ref()
+                        .is_some_and(|r| !r.is_error())
+                    {
+                        list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
                         use crate::app::inspector_tab::InspectorTab;

@@ -97,6 +97,15 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('k') if state.query.history_index.is_none() => {
                 return Action::OpenCommandPalette;
             }
+            Key::Char('e')
+                if state
+                    .query
+                    .current_result
+                    .as_ref()
+                    .is_some_and(|r| !r.is_error()) =>
+            {
+                return Action::RequestCsvExport;
+            }
             Key::Char('d') => {
                 return if result_navigation {
                     Action::ResultScrollHalfPageDown

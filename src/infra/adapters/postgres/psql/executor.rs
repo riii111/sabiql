@@ -1,7 +1,7 @@
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -178,6 +178,93 @@ impl PostgresAdapter {
             affected_rows,
             execution_time_ms: elapsed,
         })
+    }
+
+    pub(in crate::infra::adapters::postgres) async fn count_rows(
+        &self,
+        dsn: &str,
+        query: &str,
+    ) -> Result<usize, MetadataError> {
+        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
+        if !output.status.success() {
+            return Err(MetadataError::QueryFailed(output.stderr));
+        }
+        output
+            .stdout
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| MetadataError::QueryFailed(format!("Failed to parse COUNT result: {}", e)))
+    }
+
+    pub(in crate::infra::adapters::postgres) async fn export_csv_to_file(
+        &self,
+        dsn: &str,
+        query: &str,
+        path: &std::path::Path,
+    ) -> Result<usize, MetadataError> {
+        let mut cmd = Command::new("psql");
+        cmd.arg(dsn)
+            .arg("-X")
+            .arg("-v")
+            .arg("ON_ERROR_STOP=1")
+            .arg("--csv")
+            .arg("-c")
+            .arg(query);
+
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let stdout = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let file = tokio::fs::File::create(path)
+            .await
+            .map_err(|e| MetadataError::QueryFailed(format!("Failed to create file: {}", e)))?;
+        let mut writer = tokio::io::BufWriter::new(file);
+
+        let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
+            let mut newline_count: usize = 0;
+            if let Some(mut out) = stdout {
+                let mut buf = [0u8; 8192];
+                loop {
+                    let n = out.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
+                    writer.write_all(&buf[..n]).await?;
+                }
+                writer.flush().await?;
+            }
+
+            let stderr = {
+                let mut buf = Vec::new();
+                if let Some(ref mut err) = stderr_handle {
+                    err.read_to_end(&mut buf).await?;
+                }
+                String::from_utf8_lossy(&buf).into_owned()
+            };
+
+            let status = child.wait().await?;
+            Ok::<_, std::io::Error>((status, stderr, newline_count))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let (status, stderr, newline_count) = result;
+        if !status.success() {
+            let _ = tokio::fs::remove_file(path).await;
+            return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
+        }
+
+        // Subtract 1 for the CSV header line
+        let row_count = newline_count.saturating_sub(1);
+        Ok(row_count)
     }
 
     pub(in crate::infra::adapters::postgres) async fn fetch_preview_order_columns(

@@ -19,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │  s                   Open SQL Editor                ││           │
 │           │  e                   Open ER Diagram                ││           │
 │           │  c                   Open Connection Selector       ││           │
+│           │  Ctrl+E              Export result to CSV           ││           │
 │           │                                                     ││           │
-│           │▸ Navigation                                         ││           │
-│           │  j / ↓               Move down / scroll             ▼│           │
-│           │  k / ↑               Move up / scroll        row   0%│           │
+│           │▸ Navigation                                         ▼│           │
+│           │  j / ↓               Move down / scroll      row   0%│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
 j/k / ↑↓:Scroll  ?/Esc:Close

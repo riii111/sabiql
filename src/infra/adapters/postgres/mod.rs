@@ -171,4 +171,17 @@ impl QueryExecutor for PostgresAdapter {
     ) -> Result<WriteExecutionResult, MetadataError> {
         self.execute_write_raw(dsn, query).await
     }
+
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, MetadataError> {
+        self.count_rows(dsn, query).await
+    }
+
+    async fn export_to_csv(
+        &self,
+        dsn: &str,
+        query: &str,
+        path: &std::path::Path,
+    ) -> Result<usize, MetadataError> {
+        self.export_csv_to_file(dsn, query, path).await
+    }
 }

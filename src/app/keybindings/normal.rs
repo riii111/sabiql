@@ -125,6 +125,15 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenConnectionSelector,
         combos: &[KeyCombo::plain(Key::Char('c'))],
     },
+    // idx 13: CSV_EXPORT
+    KeyBinding {
+        key_short: "^E",
+        key: "Ctrl+E",
+        desc_short: "Export",
+        description: "Export result to CSV",
+        action: Action::RequestCsvExport,
+        combos: &[KeyCombo::ctrl(Key::Char('e'))],
+    },
 ];
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[

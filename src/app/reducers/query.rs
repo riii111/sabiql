@@ -518,6 +518,123 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
 
+        // ── CSV Export ──────────────────────────────────────────────
+        Action::RequestCsvExport => {
+            let result = match &state.query.current_result {
+                Some(r) if !r.is_error() => r,
+                _ => return Some(vec![]),
+            };
+            let dsn = match &state.runtime.dsn {
+                Some(d) => d.clone(),
+                None => return Some(vec![]),
+            };
+
+            let export_query = result.query.clone();
+            let file_name = match result.source {
+                QuerySource::Preview => {
+                    let table = &state.query.pagination.table;
+                    table
+                        .chars()
+                        .map(|c| {
+                            if c.is_ascii_alphanumeric() || c == '_' {
+                                c
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect()
+                }
+                QuerySource::Adhoc => "adhoc".to_string(),
+            };
+
+            let stripped = export_query.trim_end().trim_end_matches(';').to_string();
+            let count_query = format!("SELECT COUNT(*) FROM ({}) AS _export_count", stripped);
+
+            Some(vec![Effect::CountRowsForExport {
+                dsn,
+                count_query,
+                export_query,
+                file_name,
+            }])
+        }
+
+        Action::CsvExportRowsCounted {
+            row_count,
+            export_query,
+            file_name,
+        } => {
+            const LARGE_EXPORT_THRESHOLD: usize = 100_000;
+
+            let needs_confirm = match row_count {
+                Some(n) => *n > LARGE_EXPORT_THRESHOLD,
+                None => true,
+            };
+
+            if needs_confirm {
+                let msg = match row_count {
+                    Some(n) => format!("Export {} rows to CSV? This may take a while.", n),
+                    None => "Row count unknown. Export to CSV?".to_string(),
+                };
+                state.confirm_dialog.title = "Confirm CSV Export".to_string();
+                state.confirm_dialog.message = msg;
+                state.confirm_dialog.on_confirm = Action::ExecuteCsvExport {
+                    export_query: export_query.clone(),
+                    file_name: file_name.clone(),
+                    row_count: *row_count,
+                };
+                state.confirm_dialog.on_cancel = Action::None;
+                state.confirm_dialog.return_mode = InputMode::Normal;
+                state.ui.input_mode = InputMode::ConfirmDialog;
+                Some(vec![])
+            } else {
+                let dsn = match &state.runtime.dsn {
+                    Some(d) => d.clone(),
+                    None => return Some(vec![]),
+                };
+                Some(vec![Effect::ExportCsv {
+                    dsn,
+                    query: export_query.clone(),
+                    file_name: file_name.clone(),
+                    row_count: *row_count,
+                }])
+            }
+        }
+
+        Action::ExecuteCsvExport {
+            export_query,
+            file_name,
+            row_count,
+        } => {
+            let dsn = match &state.runtime.dsn {
+                Some(d) => d.clone(),
+                None => return Some(vec![]),
+            };
+            Some(vec![Effect::ExportCsv {
+                dsn,
+                query: export_query.clone(),
+                file_name: file_name.clone(),
+                row_count: *row_count,
+            }])
+        }
+
+        Action::CsvExportSucceeded { path, row_count } => {
+            let msg = match row_count {
+                Some(n) => format!("Exported {} rows → {}", n, path),
+                None => format!("Exported → {}", path),
+            };
+            state.messages.set_success_at(msg, now);
+            let folder = std::path::Path::new(path)
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            Some(vec![Effect::OpenFolder { path: folder }])
+        }
+
+        Action::CsvExportFailed(error) => {
+            state.messages.set_error_at(error.clone(), now);
+            Some(vec![])
+        }
+
         Action::ResultNextPage => {
             let is_preview = state
                 .query
@@ -1298,6 +1415,232 @@ mod tests {
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Keep
             );
+        }
+    }
+
+    mod csv_export {
+        use super::*;
+        use crate::app::ports::{DdlGenerator, SqlDialect};
+        use crate::domain::Table;
+
+        struct FakeDdlGenerator;
+        impl DdlGenerator for FakeDdlGenerator {
+            fn generate_ddl(&self, _table: &Table) -> String {
+                String::new()
+            }
+        }
+
+        struct FakeSqlDialect;
+        impl SqlDialect for FakeSqlDialect {
+            fn build_update_sql(
+                &self,
+                _schema: &str,
+                _table: &str,
+                _column: &str,
+                _new_value: &str,
+                _pk_pairs: &[(String, String)],
+            ) -> String {
+                String::new()
+            }
+            fn build_bulk_delete_sql(
+                &self,
+                _schema: &str,
+                _table: &str,
+                _pk_pairs_per_row: &[Vec<(String, String)>],
+            ) -> String {
+                String::new()
+            }
+        }
+
+        fn export_test_state() -> AppState {
+            let ddl: std::sync::Arc<dyn DdlGenerator> = std::sync::Arc::new(FakeDdlGenerator);
+            let dialect: std::sync::Arc<dyn SqlDialect> = std::sync::Arc::new(FakeSqlDialect);
+            let mut state = AppState::with_ports("test_project".to_string(), ddl, dialect);
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state
+        }
+
+        #[test]
+        fn request_with_preview_result_emits_count_effect() {
+            let mut state = export_test_state();
+            state.query.current_result = Some(preview_result(10));
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.query.pagination.total_rows_estimate = Some(100);
+
+            let effects =
+                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CountRowsForExport {
+                    export_query,
+                    file_name,
+                    ..
+                } => {
+                    // C1 fix: uses result.query directly instead of rebuilding SQL
+                    assert_eq!(export_query, "SELECT * FROM users");
+                    assert_eq!(file_name, "users");
+                }
+                other => panic!("expected CountRowsForExport, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn request_with_adhoc_result_uses_original_query() {
+            let mut state = create_test_state();
+            state.query.current_result = Some(adhoc_result());
+
+            let effects =
+                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::CountRowsForExport {
+                    export_query,
+                    file_name,
+                    ..
+                } => {
+                    assert_eq!(export_query, "SELECT 1");
+                    assert_eq!(file_name, "adhoc");
+                }
+                other => panic!("expected CountRowsForExport, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn request_without_result_is_noop() {
+            let mut state = create_test_state();
+            state.query.current_result = None;
+
+            let effects =
+                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn rows_counted_below_threshold_emits_export_effect() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportRowsCounted {
+                    row_count: Some(500),
+                    export_query: "SELECT 1".to_string(),
+                    file_name: "test".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+        }
+
+        #[test]
+        fn rows_counted_above_threshold_opens_confirm_dialog() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportRowsCounted {
+                    row_count: Some(200_000),
+                    export_query: "SELECT 1".to_string(),
+                    file_name: "test".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert!(state.confirm_dialog.title.contains("CSV Export"));
+        }
+
+        #[test]
+        fn rows_counted_none_opens_confirm_dialog() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportRowsCounted {
+                    row_count: None,
+                    export_query: "SELECT 1".to_string(),
+                    file_name: "test".to_string(),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert!(state.confirm_dialog.message.contains("unknown"));
+        }
+
+        #[test]
+        fn export_succeeded_sets_success_message() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportSucceeded {
+                    path: "/tmp/export.csv".to_string(),
+                    row_count: Some(42),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::OpenFolder { .. }));
+            assert!(
+                state
+                    .messages
+                    .last_success
+                    .as_deref()
+                    .unwrap()
+                    .contains("42")
+            );
+            assert!(
+                state
+                    .messages
+                    .last_success
+                    .as_deref()
+                    .unwrap()
+                    .contains("/tmp/export.csv")
+            );
+        }
+
+        #[test]
+        fn export_failed_sets_error_message() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CsvExportFailed("psql error".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.messages.last_error.as_deref(), Some("psql error"));
+        }
+
+        #[test]
+        fn request_with_error_result_is_noop() {
+            let mut state = create_test_state();
+            state.query.current_result = Some(Arc::new(QueryResult::error(
+                "SELECT 1".to_string(),
+                "error".to_string(),
+                10,
+                QuerySource::Adhoc,
+            )));
+
+            let effects =
+                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
         }
     }
 }
