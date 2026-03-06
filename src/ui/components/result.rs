@@ -45,13 +45,7 @@ impl ResultPane {
             } else {
                 let history_bar = state.query.history_index.map(|idx| {
                     let total = state.query.result_history.len();
-                    let query_text = state
-                        .query
-                        .result_history
-                        .get(idx)
-                        .map(|r| r.query.as_str())
-                        .unwrap_or("");
-                    (idx, total, query_text)
+                    (idx, total)
                 });
                 Self::render_table(
                     frame,
@@ -161,7 +155,7 @@ impl ResultPane {
         selection: &ResultSelection,
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
-        history_bar: Option<(usize, usize, &str)>,
+        history_bar: Option<(usize, usize)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -328,21 +322,8 @@ impl ResultPane {
             },
         );
         // Split bottom row: history bar on left, h-scroll indicator on right
-        let history_bar_width = if let Some((idx, total, query_text)) = history_bar {
-            let label = format!("\u{25C0} {}/{} \u{25B6}  ", idx + 1, total);
-            let label_width = label.chars().count();
-
-            let needs_h_scroll = total_cols > plan.column_count;
-            let half_width = (inner.width as usize) / 2;
-            let bar_max_width = if needs_h_scroll {
-                half_width
-            } else {
-                inner.width as usize
-            };
-
-            let query_budget = bar_max_width.saturating_sub(label_width);
-            let text = format!("{}{}", label, truncate_query(query_text, query_budget));
-
+        let history_bar_width = if let Some((idx, total)) = history_bar {
+            let text = format!("\u{25C0} {}/{} \u{25B6}", idx + 1, total);
             let render_width = (text.chars().count() as u16).min(inner.width);
             let bottom_row = inner.y + inner.height.saturating_sub(1);
             frame.render_widget(
@@ -423,23 +404,6 @@ fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Li
     };
 
     Line::from(text_cursor_spans(text, cursor, view_start, max_chars))
-}
-
-fn truncate_query(s: &str, max_chars: usize) -> String {
-    let single_line: String = s
-        .chars()
-        .map(|c| if c.is_whitespace() { ' ' } else { c })
-        .collect();
-    let trimmed = single_line.trim();
-    let char_count = trimmed.chars().count();
-    if char_count <= max_chars {
-        trimmed.to_string()
-    } else if max_chars <= 3 {
-        trimmed.chars().take(max_chars).collect()
-    } else {
-        let truncated: String = trimmed.chars().take(max_chars.saturating_sub(3)).collect();
-        format!("{}...", truncated)
-    }
 }
 
 fn truncate_cell(s: &str, max_chars: usize) -> String {
@@ -654,47 +618,5 @@ mod tests {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
-    }
-
-    mod truncate_query_tests {
-        use super::*;
-
-        #[test]
-        fn fits_within_budget() {
-            assert_eq!(truncate_query("SELECT 1", 20), "SELECT 1");
-        }
-
-        #[test]
-        fn truncates_with_ellipsis() {
-            assert_eq!(truncate_query("SELECT * FROM users", 12), "SELECT * ...")
-        }
-
-        #[test]
-        fn normalizes_whitespace() {
-            assert_eq!(
-                truncate_query("SELECT\n  *\tFROM\n  users", 30),
-                "SELECT   * FROM   users"
-            );
-        }
-
-        #[test]
-        fn trims_surrounding_whitespace() {
-            assert_eq!(truncate_query("  SELECT 1  ", 20), "SELECT 1");
-        }
-
-        #[rstest]
-        #[case(0, "")]
-        #[case(1, "S")]
-        #[case(2, "SE")]
-        #[case(3, "SEL")]
-        #[case(4, "S...")]
-        fn small_budget_edge_cases(#[case] max: usize, #[case] expected: &str) {
-            assert_eq!(truncate_query("SELECT 1", max), expected);
-        }
-
-        #[test]
-        fn multibyte_characters() {
-            assert_eq!(truncate_query("SELECT 'あいう' FROM t", 10), "SELECT ...");
-        }
     }
 }
