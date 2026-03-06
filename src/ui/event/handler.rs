@@ -133,14 +133,14 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
     }
 
-    // History mode: [/] navigate, q suppressed to prevent accidental quit
+    // History mode: whitelist — only navigation and help allowed
     if state.query.history_index.is_some() {
-        match combo.key {
-            Key::Char('[') => return Action::HistoryOlder,
-            Key::Char(']') => return Action::HistoryNewer,
-            Key::Char('q') => return Action::None,
-            _ => {}
-        }
+        return match combo.key {
+            Key::Char('[') => Action::HistoryOlder,
+            Key::Char(']') => Action::HistoryNewer,
+            Key::Char('?') => Action::OpenHelp,
+            _ => Action::None,
+        };
     }
 
     // Global actions (predicate-based, no modifiers)
@@ -1384,6 +1384,7 @@ mod tests {
     mod result_history {
         use super::*;
         use crate::domain::{QueryResult, QuerySource};
+        use rstest::rstest;
         use std::sync::Arc;
 
         fn make_result(query: &str) -> Arc<QueryResult> {
@@ -1438,20 +1439,6 @@ mod tests {
         }
 
         #[test]
-        fn esc_does_not_exit_history() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true; // result_navigation = true, Scroll mode
-
-            let result = handle_normal_mode(combo(Key::Esc), &state);
-
-            assert!(
-                matches!(result, Action::Escape),
-                "Esc should not exit history; only ^H toggles"
-            );
-        }
-
-        #[test]
         fn ctrl_h_exits_history_when_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
@@ -1462,78 +1449,41 @@ mod tests {
         }
 
         #[test]
-        fn h_still_scrolls_left_in_history_mode() {
+        fn help_allowed_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
 
-            let result = handle_normal_mode(combo(Key::Char('h')), &state);
+            let result = handle_normal_mode(combo(Key::Char('?')), &state);
+
+            assert!(matches!(result, Action::OpenHelp));
+        }
+
+        #[rstest]
+        #[case(Key::Char('q'), "q (quit)")]
+        #[case(Key::Char('s'), "s (sql modal)")]
+        #[case(Key::Char('f'), "f (focus toggle)")]
+        #[case(Key::Char('r'), "r (reload)")]
+        #[case(Key::Char(':'), ": (command line)")]
+        #[case(Key::Char('h'), "h (scroll left)")]
+        #[case(Key::Char('l'), "l (scroll right)")]
+        #[case(Key::Char('j'), "j (scroll down)")]
+        #[case(Key::Char('k'), "k (scroll up)")]
+        #[case(Key::Char('g'), "g (scroll top)")]
+        #[case(Key::Char('G'), "G (scroll bottom)")]
+        #[case(Key::Enter, "Enter")]
+        #[case(Key::Esc, "Esc")]
+        fn blocked_keys_are_noop_in_history_mode(#[case] key: Key, #[case] label: &str) {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+
+            let result = handle_normal_mode(combo(key), &state);
 
             assert!(
-                matches!(result, Action::ResultScrollLeft),
-                "h should horizontal-scroll, not navigate history"
+                matches!(result, Action::None),
+                "{} should be no-op in history mode, got {:?}",
+                label,
+                result
             );
-        }
-
-        #[test]
-        fn l_still_scrolls_right_in_history_mode() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
-
-            let result = handle_normal_mode(combo(Key::Char('l')), &state);
-
-            assert!(
-                matches!(result, Action::ResultScrollRight),
-                "l should horizontal-scroll, not navigate history"
-            );
-        }
-
-        #[test]
-        fn jk_scroll_works_in_history_mode() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
-
-            let down = handle_normal_mode(combo(Key::Char('j')), &state);
-            let up = handle_normal_mode(combo(Key::Char('k')), &state);
-
-            assert!(matches!(down, Action::ResultScrollDown));
-            assert!(matches!(up, Action::ResultScrollUp));
-        }
-
-        #[test]
-        fn g_and_shift_g_work_in_history_mode() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
-
-            let top = handle_normal_mode(combo(Key::Char('g')), &state);
-            let bottom = handle_normal_mode(combo(Key::Char('G')), &state);
-
-            assert!(matches!(top, Action::ResultScrollTop));
-            assert!(matches!(bottom, Action::ResultScrollBottom));
-        }
-
-        #[test]
-        fn enter_works_in_history_mode() {
-            let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
-            state.ui.focus_mode = true;
-
-            let result = handle_normal_mode(combo(Key::Enter), &state);
-
-            assert!(matches!(result, Action::ResultEnterRowActive));
-        }
-
-        #[test]
-        fn q_is_noop_in_history_mode() {
-            let mut state = AppState::new("test".to_string());
-            state.query.history_index = Some(0);
-
-            let result = handle_normal_mode(combo(Key::Char('q')), &state);
-
-            assert!(matches!(result, Action::None));
         }
 
         #[test]

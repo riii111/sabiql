@@ -964,7 +964,7 @@ pub fn reduce_navigation(
                     state.query.history_index = Some(idx + 1);
                     reset_result_view(state);
                 }
-                // At newest: no-op (use Esc to exit history)
+                // At newest: no-op (use ^H to exit history)
             }
             Some(vec![])
         }
