@@ -135,10 +135,6 @@ impl SqlDialect for MySqlAdapter {
     ) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
-
-    fn build_export_select(&self, _schema: &str, _table: &str, _limit: usize) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
-    }
 }
 
 impl DsnBuilder for MySqlAdapter {

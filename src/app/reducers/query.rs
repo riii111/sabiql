@@ -580,6 +580,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 state.confirm_dialog.on_confirm = Action::ExecuteCsvExport {
                     export_query: export_query.clone(),
                     file_name: file_name.clone(),
+                    row_count: *row_count,
                 };
                 state.confirm_dialog.on_cancel = Action::None;
                 state.confirm_dialog.return_mode = InputMode::Normal;
@@ -594,6 +595,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     dsn,
                     query: export_query.clone(),
                     file_name: file_name.clone(),
+                    row_count: *row_count,
                 }])
             }
         }
@@ -601,6 +603,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ExecuteCsvExport {
             export_query,
             file_name,
+            row_count,
         } => {
             let dsn = match &state.runtime.dsn {
                 Some(d) => d.clone(),
@@ -610,13 +613,16 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 dsn,
                 query: export_query.clone(),
                 file_name: file_name.clone(),
+                row_count: *row_count,
             }])
         }
 
         Action::CsvExportSucceeded { path, row_count } => {
-            state
-                .messages
-                .set_success_at(format!("Exported {} rows → {}", row_count, path), now);
+            let msg = match row_count {
+                Some(n) => format!("Exported {} rows → {}", n, path),
+                None => format!("Exported → {}", path),
+            };
+            state.messages.set_success_at(msg, now);
             Some(vec![])
         }
 
@@ -1077,9 +1083,6 @@ mod tests {
             ) -> String {
                 String::new()
             }
-            fn build_export_select(&self, schema: &str, table: &str, limit: usize) -> String {
-                format!("SELECT * FROM \"{}\".\"{}\" LIMIT {}", schema, table, limit)
-            }
         }
 
         fn editable_state() -> AppState {
@@ -1443,9 +1446,6 @@ mod tests {
             ) -> String {
                 String::new()
             }
-            fn build_export_select(&self, schema: &str, table: &str, limit: usize) -> String {
-                format!("SELECT * FROM \"{}\".\"{}\" LIMIT {}", schema, table, limit)
-            }
         }
 
         fn export_test_state() -> AppState {
@@ -1582,7 +1582,7 @@ mod tests {
                 &mut state,
                 &Action::CsvExportSucceeded {
                     path: "/tmp/export.csv".to_string(),
-                    row_count: 42,
+                    row_count: Some(42),
                 },
                 Instant::now(),
             )

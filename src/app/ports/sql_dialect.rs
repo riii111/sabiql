@@ -13,5 +13,4 @@ pub trait SqlDialect: Send + Sync {
         table: &str,
         pk_pairs_per_row: &[Vec<(String, String)>],
     ) -> String;
-    fn build_export_select(&self, schema: &str, table: &str, limit: usize) -> String;
 }

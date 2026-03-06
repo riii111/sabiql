@@ -85,15 +85,6 @@ impl SqlDialect for PostgresAdapter {
             where_clause
         )
     }
-
-    fn build_export_select(&self, schema: &str, table: &str, limit: usize) -> String {
-        format!(
-            "SELECT * FROM {}.{} LIMIT {}",
-            quote_ident(schema),
-            quote_ident(table),
-            limit
-        )
-    }
 }
 
 #[cfg(test)]

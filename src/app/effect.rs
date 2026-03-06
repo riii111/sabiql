@@ -117,6 +117,7 @@ pub enum Effect {
         dsn: String,
         query: String,
         file_name: String,
+        row_count: Option<usize>,
     },
 
     /// Triggers completion: fetches missing tables and updates candidates

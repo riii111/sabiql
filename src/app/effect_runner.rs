@@ -627,6 +627,7 @@ impl EffectRunner {
                 dsn,
                 query,
                 file_name,
+                row_count,
             } => {
                 let executor = Arc::clone(&self.query_executor);
                 let tx = self.action_tx.clone();
@@ -634,7 +635,7 @@ impl EffectRunner {
 
                 tokio::spawn(async move {
                     match executor.export_to_csv(&dsn, &query, &path).await {
-                        Ok(row_count) => {
+                        Ok(_) => {
                             tx.send(Action::CsvExportSucceeded {
                                 path: path.display().to_string(),
                                 row_count,
@@ -1752,6 +1753,30 @@ mod tests {
         fn epoch_days_to_ymd_known_date() {
             // 2024-01-01 = day 19723
             assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_leap_year_feb_29() {
+            // 2024-02-29 = day 19782 (2024 is a leap year)
+            assert_eq!(epoch_days_to_ymd(19782), (2024, 2, 29));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_year_end_dec_31() {
+            // 2023-12-31 = day 19722
+            assert_eq!(epoch_days_to_ymd(19722), (2023, 12, 31));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_century_leap_year() {
+            // 2000-02-29 = day 11016 (century leap year)
+            assert_eq!(epoch_days_to_ymd(11016), (2000, 2, 29));
+        }
+
+        #[test]
+        fn epoch_days_to_ymd_non_leap_century() {
+            // 1900-03-01 = day -25508 (1900 is NOT a leap year)
+            assert_eq!(epoch_days_to_ymd(-25508), (1900, 3, 1));
         }
 
         #[test]

@@ -138,7 +138,12 @@ impl Footer {
                     {
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                     }
-                    if state.query.current_result.is_some() {
+                    if state
+                        .query
+                        .current_result
+                        .as_ref()
+                        .is_some_and(|r| !r.is_error())
+                    {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
@@ -161,7 +166,12 @@ impl Footer {
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
-                        if state.query.current_result.is_some() {
+                        if state
+                            .query
+                            .current_result
+                            .as_ref()
+                            .is_some_and(|r| !r.is_error())
+                        {
                             list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                         }
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::SCROLL].as_hint());

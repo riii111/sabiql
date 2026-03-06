@@ -344,10 +344,11 @@ pub enum Action {
     ExecuteCsvExport {
         export_query: String,
         file_name: String,
+        row_count: Option<usize>,
     },
     CsvExportSucceeded {
         path: String,
-        row_count: usize,
+        row_count: Option<usize>,
     },
     CsvExportFailed(String),
 
