@@ -185,6 +185,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
     let mut in_string = false;
     let mut in_cte = false;
     let mut is_explain = false;
+    let mut has_analyze = false;
     let mut kind: Option<StatementKind> = None;
 
     while i < chars.len() {
@@ -234,9 +235,22 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                 continue;
             }
 
-            if is_explain && kind.is_none() && match_keyword(rest).is_none() {
-                i += 1;
-                continue;
+            if is_explain && kind.is_none() {
+                if is_keyword(rest, "analyze") {
+                    has_analyze = true;
+                    i += 1;
+                    continue;
+                }
+                if match_keyword(rest).is_none() {
+                    // EXPLAIN option keyword (VERBOSE, COSTS, BUFFERS, …)
+                    i += 1;
+                    continue;
+                }
+                if !has_analyze {
+                    // Plain EXPLAIN never executes the inner statement; always read-only.
+                    return StatementKind::Select;
+                }
+                // EXPLAIN ANALYZE executes the inner statement; classify it normally.
             }
 
             // SELECT INTO creates a table; treat as Other to avoid silent execution.
@@ -637,6 +651,12 @@ mod tests {
             StatementKind::Select
         )]
         #[case::explain_costs_off("EXPLAIN COSTS OFF SELECT * FROM users", StatementKind::Select)]
+        #[case::explain_update("EXPLAIN UPDATE users SET x = 1", StatementKind::Select)]
+        #[case::explain_delete("EXPLAIN DELETE FROM users", StatementKind::Select)]
+        #[case::explain_merge(
+            "EXPLAIN MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1",
+            StatementKind::Select
+        )]
         #[case::show("SHOW search_path", StatementKind::Select)]
         #[case::show_all("SHOW ALL", StatementKind::Select)]
         fn select_variants(#[case] sql: &str, #[case] expected: StatementKind) {
