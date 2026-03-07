@@ -57,6 +57,33 @@ Use this skill when releasing a new version of sabiql.
    - User-Facing: new features, behavior changes, bug fixes, dependency upgrades that affect UX
    - Internal: refactoring, test additions, CI/docs changes, rule/skill updates
 
-6. **Verify release**
-   - GitHub Actions automatically builds and publishes binaries to Releases
-   - Check https://github.com/riii111/sabiql/releases for the new release
+6. **Verify release (すべて成功するまで監視する)**
+
+   以下のワークフローを順に監視し、すべて成功することを確認する。
+   失敗した場合は原因を調査し、タグ再作成を含めて対応する。
+
+   | # | ワークフロー | リポジトリ | トリガー | 確認内容 |
+   |---|-------------|-----------|---------|---------|
+   | 1 | **Release** (ビルド + バイナリ公開 + crates.io) | `riii111/sabiql` | タグpush | 全ターゲットのビルド成功、crates.io publish 成功 |
+   | 2 | **update-homebrew-tap** (formula PR作成) | `riii111/sabiql` | Release成功 | `riii111/homebrew-sabiql` にPRが作られること |
+   | 3 | **brew test-bot** (bottle ビルド) | `riii111/homebrew-sabiql` | formula PRに対して自動実行 | `--only-formulae` が実行され bottle artifact がアップロードされること |
+   | 4 | **Publish bottles** | `riii111/homebrew-sabiql` | brew test-bot (PR) 成功後、PRマージで発火 | bottle コミットが main に push されること |
+
+   ```bash
+   # 1. Release ワークフローを監視
+   gh run watch <run-id> --exit-status
+
+   # 2. homebrew-sabiql に PR が作られたことを確認
+   gh pr view <number> --repo riii111/homebrew-sabiql
+
+   # 3. brew test-bot (PR イベント) を監視 — bottle ビルドされることを確認
+   gh run watch <run-id> --repo riii111/homebrew-sabiql --exit-status
+
+   # 4. PR をマージし、Publish bottles を監視
+   gh pr merge <number> --repo riii111/homebrew-sabiql --merge
+   gh run watch <run-id> --repo riii111/homebrew-sabiql --exit-status
+   ```
+
+   **注意:**
+   - homebrew-sabiql の formula 更新は必ず **PR 経由** でマージすること (main への直push では bottle がビルドされない)
+   - brew test-bot で `--only-formulae` がスキップされていたら PR イベントで走っていない可能性がある
