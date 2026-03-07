@@ -29,9 +29,8 @@ pub enum MultiStatementDecision {
 }
 
 pub fn split_statements(sql: &str) -> Vec<String> {
-    // Use sql's own char_indices so byte offsets are valid for slicing sql.
-    // Passing sql (not lowercased) to skip_dollar_quoted_string makes tag matching
-    // case-sensitive, which matches PostgreSQL's actual dollar-quote behavior.
+    // Use sql's own char_indices so byte offsets remain valid for slicing sql.
+    // to_lowercase() can change byte lengths (e.g. İ → i̇), which would corrupt offsets.
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut statements = Vec::new();
     let mut start = 0;
