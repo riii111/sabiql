@@ -164,6 +164,7 @@ mod tests {
             executed_at: Instant::now(),
             source: QuerySource::Preview,
             error: None,
+            command_tag: None,
         };
 
         let cache = ConnectionCache {

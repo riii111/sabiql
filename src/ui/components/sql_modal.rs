@@ -114,7 +114,8 @@ impl SqlModal {
                 (status, Style::default().fg(Theme::TEXT_ACCENT))
             }
             SqlModalStatus::Success => {
-                ("OK".to_string(), Style::default().fg(Theme::STATUS_SUCCESS))
+                let msg = Self::success_status_message(state);
+                (msg, Style::default().fg(Theme::STATUS_SUCCESS))
             }
             SqlModalStatus::Error => (
                 "Error".to_string(),
@@ -127,6 +128,21 @@ impl SqlModal {
         let paragraph = Paragraph::new(line).style(Style::default());
 
         frame.render_widget(paragraph, area);
+    }
+
+    fn success_status_message(state: &AppState) -> String {
+        let result = state.query.current_result.as_ref();
+        let time_secs = result
+            .map(|r| r.execution_time_ms as f64 / 1000.0)
+            .unwrap_or(0.0);
+
+        if let Some(tag) = result.and_then(|r| r.command_tag.as_ref()) {
+            format!("\u{2713} {} ({:.2}s)", tag.display_message(), time_secs)
+        } else {
+            let row_count = result.map(|r| r.row_count).unwrap_or(0);
+            let rows_label = if row_count == 1 { "row" } else { "rows" };
+            format!("\u{2713} {} {} ({:.2}s)", row_count, rows_label, time_secs)
+        }
     }
 
     fn render_completion_popup(
