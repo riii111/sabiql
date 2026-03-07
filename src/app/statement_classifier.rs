@@ -662,6 +662,14 @@ mod tests {
         #[case::plain_select("SELECT * FROM users", StatementKind::Select)]
         #[case::lowercase_select("select id from users", StatementKind::Select)]
         #[case::cte_select("WITH cte AS (SELECT 1) SELECT * FROM cte", StatementKind::Select)]
+        #[case::recursive_cte_select(
+            "WITH RECURSIVE tree AS (SELECT 1) SELECT * FROM tree",
+            StatementKind::Select
+        )]
+        #[case::multiple_ctes_select(
+            "WITH a AS (SELECT 1), b AS (SELECT 2) SELECT * FROM a, b",
+            StatementKind::Select
+        )]
         #[case::explain_select("EXPLAIN SELECT * FROM users", StatementKind::Select)]
         #[case::explain_analyze_select(
             "EXPLAIN ANALYZE SELECT * FROM users",
@@ -781,6 +789,39 @@ mod tests {
             "UPDATE users SET note = 'where is my cat'",
             StatementKind::Update { has_where: false }
         )]
+        #[case::where_in_dollar_quote(
+            "UPDATE users SET note = $$where$$ WHERE id = 1",
+            StatementKind::Update { has_where: true }
+        )]
+        #[case::tagged_dollar_quote_keyword(
+            "SELECT $tag$delete from here$tag$ AS s",
+            StatementKind::Select
+        )]
+        #[case::semicolon_inside_string("SELECT * FROM t WHERE x = ';'", StatementKind::Select)]
+        #[case::semicolon_in_dollar_quote("SELECT $$semi;colon$$ AS label", StatementKind::Select)]
+        #[case::non_ascii_identifier("SELECT * FROM \"ユーザー\"", StatementKind::Select)]
+        #[case::non_ascii_literal(
+            "SELECT name FROM users WHERE name = '日本語'",
+            StatementKind::Select
+        )]
+        #[case::unterminated_dollar_quote("SELECT $$unclosed", StatementKind::Select)]
+        #[case::nested_block_comment(
+            "SELECT /* outer /* inner */ still comment */ 1",
+            StatementKind::Select
+        )]
+        #[case::identifier_contains_keyword("SELECT delete_flag FROM t", StatementKind::Select)]
+        #[case::table_name_contains_keyword("SELECT * FROM users_to_delete", StatementKind::Select)]
+        #[case::double_quoted_escaped("SELECT \"up\"\"date\" FROM t", StatementKind::Select)]
+        #[case::cte_with_update_in_subquery(
+            "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x",
+            StatementKind::Select
+        )]
+        #[case::select_with_parenthesized_expr(
+            "WITH cte AS (SELECT 1) SELECT (1+2)",
+            StatementKind::Select
+        )]
+        #[case::delete_then_select("DELETE FROM users; SELECT 1", StatementKind::Other)]
+        #[case::select_then_select("SELECT 1; SELECT 2", StatementKind::Other)]
         fn edge_cases(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
@@ -881,8 +922,44 @@ mod tests {
         #[case::select("SELECT * FROM users", StatementKind::Select)]
         #[case::insert("INSERT INTO users VALUES (1)", StatementKind::Insert)]
         #[case::create("CREATE TABLE users (id INT)", StatementKind::Create)]
+        #[case::alter("ALTER TABLE users ADD COLUMN x INT", StatementKind::Alter)]
+        #[case::transaction("BEGIN", StatementKind::Transaction)]
+        #[case::other("GRANT SELECT ON users TO role1", StatementKind::Other)]
         fn not_applicable(#[case] sql: &str, #[case] kind: StatementKind) {
             assert_eq!(extract_table_name(sql, &kind), None);
+        }
+
+        #[rstest]
+        #[case::truncate_schema(
+            "TRUNCATE TABLE public.events",
+            StatementKind::Truncate,
+            Some("public.events")
+        )]
+        #[case::truncate_only(
+            "TRUNCATE TABLE ONLY partitioned_table",
+            StatementKind::Truncate,
+            Some("partitioned_table")
+        )]
+        #[case::delete_quoted(
+            "DELETE FROM \"MyTable\"",
+            StatementKind::Delete { has_where: false },
+            Some("MyTable")
+        )]
+        #[case::update_quoted_schema(
+            "UPDATE \"public\".\"MyTable\" SET x = 1",
+            StatementKind::Update { has_where: false },
+            Some("public.MyTable")
+        )]
+        #[case::drop_no_table_keyword("DROP INDEX my_index", StatementKind::Drop, None)]
+        fn additional_extraction(
+            #[case] sql: &str,
+            #[case] kind: StatementKind,
+            #[case] expected: Option<&str>,
+        ) {
+            assert_eq!(
+                extract_table_name(sql, &kind),
+                expected.map(|s| s.to_string())
+            );
         }
     }
 }
