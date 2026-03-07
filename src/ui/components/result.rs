@@ -12,7 +12,7 @@ use super::atoms::{panel_block_highlight, text_cursor_spans};
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
-use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
+use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
@@ -69,6 +69,7 @@ impl ResultPane {
                     },
                     &state.ui.staged_delete_rows,
                     history_bar,
+                    state.ui.yank_flash,
                 )
             }
         } else {
@@ -156,6 +157,7 @@ impl ResultPane {
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
+        yank_flash: Option<YankFlash>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -223,6 +225,9 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
+        let now = Instant::now();
+        let yank_flash_active = yank_flash.map(|f| now < f.until).unwrap_or(false);
+
         let rows: Vec<Row> = result
             .rows
             .iter()
@@ -232,7 +237,14 @@ impl ResultPane {
             .map(|(abs_row_idx, row)| {
                 let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
-                let row_bg = if is_staged_for_delete {
+                // None = no flash; Some(None) = full row; Some(Some(c)) = cell c
+                let flash_scope = yank_flash
+                    .filter(|f| yank_flash_active && f.row == abs_row_idx)
+                    .map(|f| f.col);
+                let is_row_flash = flash_scope == Some(None);
+                let row_bg = if is_row_flash {
+                    Some(Theme::YANK_FLASH_BG)
+                } else if is_staged_for_delete {
                     Some(Theme::STAGED_DELETE_BG)
                 } else if is_active_row {
                     Some(Theme::RESULT_ROW_ACTIVE_BG)
@@ -281,7 +293,13 @@ impl ResultPane {
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
-                            if is_staged_for_delete {
+                            if is_row_flash || flash_scope == Some(Some(orig_idx)) {
+                                cell = cell.style(
+                                    Style::default()
+                                        .fg(Theme::YANK_FLASH_FG)
+                                        .bg(Theme::YANK_FLASH_BG),
+                                );
+                            } else if is_staged_for_delete {
                                 cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
                             } else if is_active_row && active_cell == Some(orig_idx) {
                                 cell =

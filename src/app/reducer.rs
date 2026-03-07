@@ -39,6 +39,10 @@ fn reduce_inner(state: &mut AppState, action: Action, now: Instant) -> Vec<Effec
     if !matches!(action, Action::ResultDeleteOperatorPending) {
         state.ui.delete_op_pending = false;
     }
+    // Reset the yy operator-pending flag on any action other than the first `y` press.
+    if !matches!(action, Action::ResultRowYankOperatorPending) {
+        state.ui.yank_op_pending = false;
+    }
 
     if let Some(effects) = reduce_connection(state, &action, now) {
         return effects;
@@ -1864,6 +1868,37 @@ mod tests {
                 InputMode::CommandPalette,
                 "palette must be closed after confirm"
             );
+        }
+    }
+
+    mod operator_pending {
+        use super::*;
+
+        #[test]
+        fn yank_pending_reset_on_non_yank_action() {
+            let mut state = create_test_state();
+            state.ui.yank_op_pending = true;
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::SelectNext, now);
+
+            assert!(!state.ui.yank_op_pending);
+        }
+
+        #[test]
+        fn y_then_d_cancels_yank_starts_delete() {
+            let mut state = create_test_state();
+            state.ui.focused_pane = FocusedPane::Result;
+            state.ui.result_selection.enter_row(0);
+            let now = Instant::now();
+
+            let _ = reduce(&mut state, Action::ResultRowYankOperatorPending, now);
+            assert!(state.ui.yank_op_pending);
+            assert!(!state.ui.delete_op_pending);
+
+            let _ = reduce(&mut state, Action::ResultDeleteOperatorPending, now);
+            assert!(!state.ui.yank_op_pending);
+            assert!(state.ui.delete_op_pending);
         }
     }
 }

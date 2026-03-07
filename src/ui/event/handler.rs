@@ -320,6 +320,13 @@ fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Tab if inspector_navigation => Action::InspectorNextTab,
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
+        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
+            if state.ui.yank_op_pending {
+                Action::ResultRowYank
+            } else {
+                Action::ResultRowYankOperatorPending
+            }
+        }
         Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
@@ -879,6 +886,47 @@ mod tests {
             let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn y_sets_yank_op_pending_in_row_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::ResultRowYankOperatorPending));
+        }
+
+        #[test]
+        fn yy_triggers_row_yank_in_row_active() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.yank_op_pending = true;
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::ResultRowYank));
+        }
+
+        #[test]
+        fn y_in_scroll_mode_ignored() {
+            let state = result_focused_state();
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn y_in_cell_active_still_cell_yank() {
+            let mut state = result_focused_state();
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(0);
+
+            let result = handle_normal_mode(combo(Key::Char('y')), &state);
+
+            assert!(matches!(result, Action::ResultCellYank));
         }
 
         #[test]

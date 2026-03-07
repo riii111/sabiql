@@ -350,6 +350,15 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultDiscardCellEdit,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
+    // idx 10: ROW_YANK
+    KeyBinding {
+        key_short: "yy",
+        key: "y, y",
+        desc_short: "Yank Row",
+        description: "Copy row values to clipboard (TSV)",
+        action: Action::ResultRowYank,
+        combos: &[],
+    },
 ];
 
 pub const HISTORY_KEYS: &[KeyBinding] = &[
