@@ -1192,6 +1192,7 @@ mod result_history {
             executed_at: now,
             source: QuerySource::Adhoc,
             error: None,
+            command_tag: None,
         }
     }
 
@@ -1254,6 +1255,7 @@ mod result_history {
             executed_at: now,
             source: QuerySource::Adhoc,
             error: None,
+            command_tag: None,
         }
     }
 

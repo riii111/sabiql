@@ -1,6 +1,7 @@
 // Domain models - fields/methods defined to match DB schema
 
 pub mod column;
+pub mod command_tag;
 pub mod connection;
 pub mod er;
 pub mod foreign_key;
@@ -14,6 +15,7 @@ pub mod trigger;
 pub mod write_result;
 
 pub use column::Column;
+pub use command_tag::CommandTag;
 #[cfg(test)]
 pub use er::ErFkInfo;
 pub use er::ErTableInfo;

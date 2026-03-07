@@ -1744,6 +1744,7 @@ mod tests {
                 query: String::new(),
                 executed_at: now,
                 error: None,
+                command_tag: None,
             });
             reduce(
                 &mut state,

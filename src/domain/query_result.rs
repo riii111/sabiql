@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use super::CommandTag;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuerySource {
     Preview,
@@ -16,6 +18,7 @@ pub struct QueryResult {
     pub executed_at: Instant,
     pub source: QuerySource,
     pub error: Option<String>,
+    pub command_tag: Option<CommandTag>,
 }
 
 impl QueryResult {
@@ -36,6 +39,7 @@ impl QueryResult {
             executed_at: Instant::now(),
             source,
             error: None,
+            command_tag: None,
         }
     }
 
@@ -54,7 +58,13 @@ impl QueryResult {
             source,
             executed_at: Instant::now(),
             error: Some(error),
+            command_tag: None,
         }
+    }
+
+    pub fn with_command_tag(mut self, tag: CommandTag) -> Self {
+        self.command_tag = Some(tag);
+        self
     }
 
     pub fn is_error(&self) -> bool {

@@ -124,6 +124,7 @@ pub fn sample_query_result(now: Instant) -> QueryResult {
         executed_at: now,
         source: QuerySource::Preview,
         error: None,
+        command_tag: None,
     }
 }
 
@@ -137,5 +138,6 @@ pub fn empty_query_result(now: Instant) -> QueryResult {
         executed_at: now,
         source: QuerySource::Preview,
         error: None,
+        command_tag: None,
     }
 }

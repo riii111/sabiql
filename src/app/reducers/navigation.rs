@@ -1553,6 +1553,7 @@ mod tests {
                 executed_at: Instant::now(),
                 source: crate::domain::QuerySource::Preview,
                 error: None,
+                command_tag: None,
             }));
             state
         }
@@ -1725,6 +1726,7 @@ mod tests {
                 executed_at: Instant::now(),
                 source: crate::domain::QuerySource::Preview,
                 error: None,
+                command_tag: None,
             }));
             state
         }
@@ -1802,6 +1804,7 @@ mod tests {
                 executed_at: Instant::now(),
                 source: crate::domain::QuerySource::Preview,
                 error: None,
+                command_tag: None,
             }));
             state
         }
@@ -1926,6 +1929,7 @@ mod tests {
                 executed_at: Instant::now(),
                 source: QuerySource::Preview,
                 error: None,
+                command_tag: None,
             }));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
@@ -2023,6 +2027,7 @@ mod tests {
                 executed_at: Instant::now(),
                 source: QuerySource::Preview,
                 error: None,
+                command_tag: None,
             }));
             state.cache.table_detail = Some(Table {
                 schema: "public".to_string(),
