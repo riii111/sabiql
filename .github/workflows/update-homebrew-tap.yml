@@ -123,8 +123,13 @@ jobs:
               print(f"ERROR: expected exactly 1 source sha256 line, found {sha256_updated}", file=sys.stderr)
               sys.exit(1)
 
+          # Collapse 3+ consecutive newlines into 2 (single blank line)
+          content = "".join(updated)
+          while "\n\n\n" in content:
+              content = content.replace("\n\n\n", "\n\n")
+
           with open(formula_path, "w") as f:
-              f.writelines(updated)
+              f.write(content)
 
           print("Formula updated successfully.")
           PYEOF
