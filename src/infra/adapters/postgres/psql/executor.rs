@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::MetadataError;
-use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
@@ -125,6 +125,40 @@ impl PostgresAdapter {
                 elapsed,
                 source,
             ));
+        }
+
+        // psql --csv never appends a command tag to SELECT output, so a single-line
+        // stdout is the only case where DML/DDL detection is safe.
+        let stdout_trimmed = output.stdout.trim();
+        if let Some(tag) = (!stdout_trimmed.contains('\n'))
+            .then(|| Self::parse_command_tag(stdout_trimmed))
+            .flatten()
+        {
+            let is_write = matches!(
+                tag,
+                CommandTag::Insert(_)
+                    | CommandTag::Update(_)
+                    | CommandTag::Delete(_)
+                    | CommandTag::Create(_)
+                    | CommandTag::Drop(_)
+                    | CommandTag::Alter(_)
+                    | CommandTag::Truncate
+                    | CommandTag::Begin
+                    | CommandTag::Commit
+                    | CommandTag::Rollback
+            );
+            if is_write {
+                let row_count = tag.affected_rows().unwrap_or(0) as usize;
+                let mut result = QueryResult::success(
+                    query.to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                    elapsed,
+                    source,
+                );
+                result.row_count = row_count;
+                return Ok(result.with_command_tag(tag));
+            }
         }
 
         let mut reader = csv::ReaderBuilder::new()
@@ -284,20 +318,9 @@ impl PostgresAdapter {
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
-        stdout.lines().rev().find_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            if parts.len() != 2 {
-                return None;
-            }
-            match parts[0] {
-                "UPDATE" | "DELETE" => parts[1].parse::<usize>().ok(),
-                _ => None,
-            }
-        })
+        Self::extract_command_tag(stdout)
+            .and_then(|tag| tag.affected_rows())
+            .map(|n| n as usize)
     }
 }
 
@@ -445,9 +468,9 @@ mod tests {
         }
 
         #[test]
-        fn parse_affected_rows_returns_none_for_unknown_output() {
+        fn parse_affected_rows_returns_count_for_select() {
             let out = "SELECT 1\n";
-            assert_eq!(PostgresAdapter::parse_affected_rows(out), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
         }
 
         #[test]
@@ -468,6 +491,72 @@ mod tests {
             assert_eq!(PostgresAdapter::parse_affected_rows("FOOBAR"), None);
             assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE abc"), None);
             assert_eq!(PostgresAdapter::parse_affected_rows(""), None);
+        }
+    }
+
+    mod execute_query_raw_command_tag {
+        use crate::domain::CommandTag;
+        use crate::infra::adapters::postgres::PostgresAdapter;
+
+        fn dml_stdout_returns_command_tag(
+            stdout: &str,
+            expected_tag: CommandTag,
+            expected_rows: usize,
+        ) {
+            let tag = PostgresAdapter::extract_command_tag(stdout);
+            assert_eq!(tag.as_ref(), Some(&expected_tag));
+            let rows = tag.as_ref().and_then(|t| t.affected_rows()).unwrap_or(0) as usize;
+            assert_eq!(rows, expected_rows);
+        }
+
+        #[test]
+        fn update_stdout_yields_update_tag() {
+            dml_stdout_returns_command_tag("UPDATE 3\n", CommandTag::Update(3), 3);
+        }
+
+        #[test]
+        fn delete_stdout_yields_delete_tag() {
+            dml_stdout_returns_command_tag("DELETE 5\n", CommandTag::Delete(5), 5);
+        }
+
+        #[test]
+        fn insert_stdout_yields_insert_tag() {
+            dml_stdout_returns_command_tag("INSERT 0 7\n", CommandTag::Insert(7), 7);
+        }
+
+        #[test]
+        fn create_table_stdout_yields_create_tag_zero_rows() {
+            let tag = PostgresAdapter::extract_command_tag("CREATE TABLE\n");
+            assert_eq!(tag, Some(CommandTag::Create("TABLE".to_string())));
+            assert_eq!(tag.unwrap().affected_rows(), None);
+        }
+
+        #[test]
+        fn csv_stdout_is_not_mistaken_for_command_tag() {
+            // CSV data: last line "1,Alice" does not match any DML pattern
+            let csv = "id,name\n1,Alice\n2,Bob\n";
+            let tag = PostgresAdapter::extract_command_tag(csv);
+            // Should be Other or None, never a DML/DDL variant
+            let is_dml = matches!(
+                tag,
+                Some(
+                    CommandTag::Insert(_)
+                        | CommandTag::Update(_)
+                        | CommandTag::Delete(_)
+                        | CommandTag::Create(_)
+                        | CommandTag::Drop(_)
+                        | CommandTag::Alter(_)
+                )
+            );
+            assert!(!is_dml, "CSV output should not be parsed as DML tag");
+        }
+
+        #[test]
+        fn select_csv_last_line_is_not_mistaken_for_select_tag() {
+            // psql --csv does NOT append "SELECT N" to output; last line is data
+            let csv = "count\n42\n";
+            let tag = PostgresAdapter::extract_command_tag(csv);
+            assert_ne!(tag, Some(CommandTag::Select(42)));
         }
     }
 
