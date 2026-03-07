@@ -10,7 +10,7 @@ pub struct FailedPrefetchEntry {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
     Editing,

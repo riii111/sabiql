@@ -1,5 +1,7 @@
 use ratatui::style::Color;
 
+use crate::app::write_guardrails::RiskLevel;
+
 /// Base color palette
 pub struct Palette;
 
@@ -108,4 +110,12 @@ impl Theme {
 
     // Placeholder / empty-value text
     pub const PLACEHOLDER_TEXT: Color = Color::DarkGray;
+
+    pub fn risk_color(level: RiskLevel) -> Color {
+        match level {
+            RiskLevel::Low => Self::STATUS_WARNING,
+            RiskLevel::Medium => Self::STATUS_MEDIUM_RISK,
+            RiskLevel::High => Self::STATUS_ERROR,
+        }
+    }
 }

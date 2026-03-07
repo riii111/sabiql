@@ -66,11 +66,11 @@ pub struct WritePreview {
     pub guardrail: GuardrailDecision,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdhocRiskDecision {
     pub risk_level: RiskLevel,
-    /// Short human-readable label shown in the confirmation UI (e.g. "DELETE (no WHERE)").
-    pub label: String,
+    /// All values are string literals, so `&'static str` avoids allocation and keeps `Copy`.
+    pub label: &'static str,
 }
 
 pub fn evaluate_adhoc_risk(kind: &StatementKind) -> AdhocRiskDecision {
@@ -85,14 +85,12 @@ pub fn evaluate_adhoc_risk(kind: &StatementKind) -> AdhocRiskDecision {
         StatementKind::Drop => (RiskLevel::High, "DROP"),
         StatementKind::Truncate => (RiskLevel::High, "TRUNCATE"),
         // Other/Unsupported may contain compound statements or unknown syntax — fail safe to High.
-        StatementKind::Other | StatementKind::Unsupported => (RiskLevel::High, "SQL"),
+        StatementKind::Unsupported => (RiskLevel::High, "UNSUPPORTED SQL"),
+        StatementKind::Other => (RiskLevel::High, "UNKNOWN SQL"),
         // Select/Transaction are immediate; callers should not route them here.
         StatementKind::Select | StatementKind::Transaction => (RiskLevel::Low, "SQL"),
     };
-    AdhocRiskDecision {
-        risk_level,
-        label: label.to_string(),
-    }
+    AdhocRiskDecision { risk_level, label }
 }
 
 pub fn evaluate_guardrails(
@@ -184,8 +182,8 @@ mod tests {
         #[case(StatementKind::Delete { has_where: false }, RiskLevel::High, "DELETE (no WHERE)")]
         #[case(StatementKind::Drop, RiskLevel::High, "DROP")]
         #[case(StatementKind::Truncate, RiskLevel::High, "TRUNCATE")]
-        #[case(StatementKind::Other, RiskLevel::High, "SQL")]
-        #[case(StatementKind::Unsupported, RiskLevel::High, "SQL")]
+        #[case(StatementKind::Other, RiskLevel::High, "UNKNOWN SQL")]
+        #[case(StatementKind::Unsupported, RiskLevel::High, "UNSUPPORTED SQL")]
         fn risk_level_and_label(
             #[case] kind: StatementKind,
             #[case] expected_risk: RiskLevel,

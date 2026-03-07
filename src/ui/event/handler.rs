@@ -411,11 +411,13 @@ fn handle_sql_modal_keys(
 ) -> Action {
     use crate::app::action::CursorMove;
 
-    // In Confirming state only Enter/Esc are meaningful; all other keys are ignored
+    // In Confirming state only plain Enter/Esc are meaningful; all other keys are ignored
     // to prevent accidental edits while the risk warning is displayed.
+    // Alt+Enter (submit shortcut) is intentionally excluded — only explicit plain Enter confirms.
     if matches!(status, SqlModalStatus::Confirming(_)) {
+        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {
-            Key::Enter => Action::SqlModalConfirmExecute,
+            Key::Enter if plain => Action::SqlModalConfirmExecute,
             Key::Esc => Action::SqlModalCancelConfirm,
             _ => Action::None,
         };
@@ -1227,6 +1229,8 @@ mod tests {
             CompletionDismiss,
             CompletionPrev,
             CompletionNext,
+            SqlModalConfirmExecute,
+            SqlModalCancelConfirm,
             None,
         }
 
@@ -1249,8 +1253,51 @@ mod tests {
                 Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
                 Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
                 Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
+                Expected::SqlModalConfirmExecute => {
+                    assert!(matches!(result, Action::SqlModalConfirmExecute))
+                }
+                Expected::SqlModalCancelConfirm => {
+                    assert!(matches!(result, Action::SqlModalCancelConfirm))
+                }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+
+        fn confirming_status() -> SqlModalStatus {
+            use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel};
+            SqlModalStatus::Confirming(AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            })
+        }
+
+        #[rstest]
+        #[case(Key::Enter, Expected::SqlModalConfirmExecute)]
+        #[case(Key::Esc, Expected::SqlModalCancelConfirm)]
+        fn confirming_state_routes_enter_and_esc(#[case] code: Key, #[case] expected: Expected) {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo(code), false, &status);
+
+            assert_action(result, expected);
+        }
+
+        #[rstest]
+        #[case(Key::Char('a'))]
+        #[case(Key::Tab)]
+        #[case(Key::Backspace)]
+        fn confirming_state_ignores_editing_keys(#[case] code: Key) {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo(code), false, &status);
+
+            assert_action(result, Expected::None);
+        }
+
+        #[test]
+        fn confirming_state_ignores_alt_enter() {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo_alt(Key::Enter), false, &status);
+
+            assert_action(result, Expected::None);
         }
 
         // Completion-aware keys: behavior when completion is hidden
