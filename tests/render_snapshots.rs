@@ -18,7 +18,7 @@ use sabiql::app::sql_modal_context::SqlModalStatus;
 use sabiql::app::write_guardrails::{
     ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
-use sabiql::domain::MetadataState;
+use sabiql::domain::{CommandTag, MetadataState, QuerySource};
 
 mod initial_state {
     use super::*;
@@ -194,6 +194,61 @@ mod overlays {
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 8;
         state.sql_modal.status = SqlModalStatus::Editing;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_success_select() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "SELECT * FROM users".to_string();
+        state.sql_modal.status = SqlModalStatus::Success;
+        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
+            query: "SELECT * FROM users".to_string(),
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows: vec![
+                vec!["1".to_string(), "Alice".to_string()],
+                vec!["2".to_string(), "Bob".to_string()],
+            ],
+            row_count: 2,
+            execution_time_ms: 15,
+            executed_at: now,
+            source: QuerySource::Adhoc,
+            error: None,
+            command_tag: None,
+        }));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_success_dml_with_command_tag() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+        state.sql_modal.status = SqlModalStatus::Success;
+        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
+            query: "DELETE FROM users WHERE id = 1".to_string(),
+            columns: vec![],
+            rows: vec![],
+            row_count: 3,
+            execution_time_ms: 12,
+            executed_at: now,
+            source: QuerySource::Adhoc,
+            error: None,
+            command_tag: Some(CommandTag::Delete(3)),
+        }));
 
         let output = render_to_string(&mut terminal, &mut state);
 
