@@ -29,17 +29,18 @@ pub fn classify(sql: &str) -> StatementKind {
 }
 
 /// Extracts the target table name for high-risk confirmation.
-/// Returns `None` on failure (callers should treat as blocked).
+/// Returns `None` when extraction fails or the statement targets multiple tables,
+/// both of which callers must treat as blocked.
 pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
-    let lower = sql.trim().to_lowercase();
     let original_trimmed = sql.trim();
-    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
+    let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
 
     match kind {
-        StatementKind::Drop => extract_drop_table_name(original_trimmed, &lower, &chars),
-        StatementKind::Truncate => extract_truncate_table_name(original_trimmed, &lower, &chars),
-        StatementKind::Delete { .. } => extract_delete_table_name(original_trimmed, &lower, &chars),
-        StatementKind::Update { .. } => extract_update_table_name(original_trimmed, &lower, &chars),
+        StatementKind::Drop => extract_drop_table_name(original_trimmed, &chars),
+        StatementKind::Truncate => extract_truncate_table_name(original_trimmed, &chars),
+        StatementKind::Delete { .. } => extract_delete_table_name(original_trimmed, &chars),
+        StatementKind::Update { .. } => extract_update_table_name(original_trimmed, &chars),
         _ => None,
     }
 }
@@ -231,9 +232,14 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                 continue;
             }
 
-            if is_explain && kind.is_none() && is_keyword(rest, "analyze") {
+            if is_explain && kind.is_none() && match_keyword(rest).is_none() {
                 i += 1;
                 continue;
+            }
+
+            // SELECT INTO creates a table; treat as Other to avoid silent execution.
+            if matches!(kind, Some(StatementKind::Select)) && is_keyword(rest, "into") {
+                return StatementKind::Other;
             }
 
             if kind.is_none() && is_keyword(rest, "with") {
@@ -364,13 +370,8 @@ fn has_non_whitespace_after(lower: &str, byte_pos: usize) -> bool {
         .unwrap_or(false)
 }
 
-/// Collects top-level tokens preserving original case, skipping
-/// comments, strings, and parenthesized subexpressions.
-fn collect_top_level_tokens(
-    original: &str,
-    lower: &str,
-    chars: &[(usize, char)],
-) -> Vec<(usize, String)> {
+/// Collects top-level tokens (original case). Commas are captured as `","` entries.
+fn collect_top_level_tokens(original: &str, chars: &[(usize, char)]) -> Vec<(usize, String)> {
     let mut tokens = Vec::new();
     let mut i = 0;
     let mut depth: i32 = 0;
@@ -413,12 +414,18 @@ fn collect_top_level_tokens(
             }
         }
 
-        if let Some(next_i) = skip_dollar_quoted_string(lower, chars, i, byte_pos, ch) {
+        if let Some(next_i) = skip_dollar_quoted_string(original, chars, i, byte_pos, ch) {
             i = next_i;
             continue;
         }
 
         update_parentheses_depth(ch, &mut depth);
+
+        if depth == 0 && ch == ',' {
+            tokens.push((byte_pos, ",".to_string()));
+            i += 1;
+            continue;
+        }
 
         if depth == 0 && (ch.is_alphanumeric() || ch == '_') && is_word_start(chars, i) {
             let start_byte = byte_pos;
@@ -438,7 +445,6 @@ fn collect_top_level_tokens(
             continue;
         }
 
-        // Dot joins schema.table into a single token
         if depth == 0 && ch == '.' && !tokens.is_empty() {
             let prev = tokens.last_mut().unwrap();
             prev.1.push('.');
@@ -513,8 +519,8 @@ fn unquote_single_ident(s: &str) -> String {
     }
 }
 
-fn extract_drop_table_name(original: &str, lower: &str, chars: &[(usize, char)]) -> Option<String> {
-    let tokens = collect_top_level_tokens(original, lower, chars);
+fn extract_drop_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+    let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
@@ -535,15 +541,14 @@ fn extract_drop_table_name(original: &str, lower: &str, chars: &[(usize, char)])
     }
 
     let raw = tokens.get(name_idx).map(|(_, t)| t.as_str())?;
+    if tokens.get(name_idx + 1).map(|(_, t)| t.as_str()) == Some(",") {
+        return None;
+    }
     Some(unquote_simple(raw))
 }
 
-fn extract_truncate_table_name(
-    original: &str,
-    lower: &str,
-    chars: &[(usize, char)],
-) -> Option<String> {
-    let tokens = collect_top_level_tokens(original, lower, chars);
+fn extract_truncate_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+    let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let trunc_idx = lowers.iter().position(|t| t == "truncate")?;
@@ -558,15 +563,14 @@ fn extract_truncate_table_name(
     }
 
     let raw = tokens.get(name_idx).map(|(_, t)| t.as_str())?;
+    if tokens.get(name_idx + 1).map(|(_, t)| t.as_str()) == Some(",") {
+        return None;
+    }
     Some(unquote_simple(raw))
 }
 
-fn extract_delete_table_name(
-    original: &str,
-    lower: &str,
-    chars: &[(usize, char)],
-) -> Option<String> {
-    let tokens = collect_top_level_tokens(original, lower, chars);
+fn extract_delete_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+    let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let delete_idx = lowers.iter().position(|t| t == "delete")?;
@@ -585,12 +589,8 @@ fn extract_delete_table_name(
     Some(unquote_simple(raw))
 }
 
-fn extract_update_table_name(
-    original: &str,
-    lower: &str,
-    chars: &[(usize, char)],
-) -> Option<String> {
-    let tokens = collect_top_level_tokens(original, lower, chars);
+fn extract_update_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+    let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let update_idx = lowers.iter().position(|t| t == "update")?;
@@ -630,6 +630,11 @@ mod tests {
             "EXPLAIN ANALYZE SELECT * FROM users",
             StatementKind::Select
         )]
+        #[case::explain_verbose_select(
+            "EXPLAIN VERBOSE SELECT * FROM users",
+            StatementKind::Select
+        )]
+        #[case::explain_costs_off("EXPLAIN COSTS OFF SELECT * FROM users", StatementKind::Select)]
         #[case::show("SHOW search_path", StatementKind::Select)]
         #[case::show_all("SHOW ALL", StatementKind::Select)]
         fn select_variants(#[case] sql: &str, #[case] expected: StatementKind) {
@@ -777,6 +782,8 @@ mod tests {
         )]
         #[case::delete_then_select("DELETE FROM users; SELECT 1", StatementKind::Other)]
         #[case::select_then_select("SELECT 1; SELECT 2", StatementKind::Other)]
+        #[case::select_into("SELECT * INTO backup FROM users", StatementKind::Other)]
+        #[case::select_into_columns("SELECT id, name INTO backup FROM users", StatementKind::Other)]
         fn edge_cases(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
@@ -813,7 +820,7 @@ mod tests {
         #[rstest]
         #[case::simple("TRUNCATE users", StatementKind::Truncate, Some("users"))]
         #[case::with_table_keyword("TRUNCATE TABLE users", StatementKind::Truncate, Some("users"))]
-        #[case::multiple("TRUNCATE a, b", StatementKind::Truncate, Some("a"))]
+        #[case::multiple("TRUNCATE a, b", StatementKind::Truncate, None)]
         fn truncate(
             #[case] sql: &str,
             #[case] kind: StatementKind,
@@ -904,6 +911,8 @@ mod tests {
             Some("public.MyTable")
         )]
         #[case::drop_no_table_keyword("DROP INDEX my_index", StatementKind::Drop, None)]
+        #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]
+        #[case::truncate_multiple("TRUNCATE a, b, c", StatementKind::Truncate, None)]
         fn additional_extraction(
             #[case] sql: &str,
             #[case] kind: StatementKind,
