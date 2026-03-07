@@ -6,35 +6,57 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
 use crate::app::state::AppState;
+use crate::app::write_guardrails::RiskLevel;
 use crate::ui::theme::Theme;
 
 use super::atoms::{spinner_char, text_cursor_spans};
-use super::molecules::render_modal;
+use super::molecules::{render_modal, render_modal_with_border_color};
 
 pub struct SqlModal;
 
 impl SqlModal {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let (area, inner) = render_modal(
-            frame,
-            Constraint::Percentage(80),
-            Constraint::Percentage(60),
-            " SQL Editor ",
-            " Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ",
-        );
+        let (area, inner) = if let SqlModalStatus::Confirming(ref decision) = state.sql_modal.status
+        {
+            let border_color = match decision.risk_level {
+                RiskLevel::Low => Theme::STATUS_WARNING,
+                RiskLevel::Medium => Theme::STATUS_MEDIUM_RISK,
+                RiskLevel::High => Theme::STATUS_ERROR,
+            };
+            let title = format!(
+                " SQL \u{2500}\u{2500} \u{26a0} {} ",
+                decision.risk_level.as_str()
+            );
+            render_modal_with_border_color(
+                frame,
+                Constraint::Percentage(80),
+                Constraint::Percentage(60),
+                &title,
+                " Enter: Execute \u{2502} Esc: Back ",
+                border_color,
+            )
+        } else {
+            render_modal(
+                frame,
+                Constraint::Percentage(80),
+                Constraint::Percentage(60),
+                " SQL Editor ",
+                " Alt+Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Esc: Close ",
+            )
+        };
 
-        // Split into editor area and status line
         let [editor_area, status_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
 
-        // Render the SQL editor content with cursor
         Self::render_editor(frame, editor_area, state);
-
-        // Render status line
         Self::render_status(frame, status_area, state);
 
-        // Render completion popup if visible
-        if state.sql_modal.completion.visible && !state.sql_modal.completion.candidates.is_empty() {
+        // Completion popup is suppressed while confirming to keep the risk warning unobstructed.
+        let is_confirming = matches!(state.sql_modal.status, SqlModalStatus::Confirming(_));
+        if !is_confirming
+            && state.sql_modal.completion.visible
+            && !state.sql_modal.completion.candidates.is_empty()
+        {
             Self::render_completion_popup(frame, area, editor_area, state);
         }
     }
@@ -43,17 +65,27 @@ impl SqlModal {
         let content = &state.sql_modal.content;
         let cursor_pos = state.sql_modal.cursor;
 
-        // Convert cursor position to (row, col)
+        let is_confirming = matches!(state.sql_modal.status, SqlModalStatus::Confirming(_));
+
         let (cursor_row, cursor_col) = Self::cursor_to_position(content, cursor_pos);
 
         let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
 
-        // Build lines with cursor visualization and current line highlight
-        let mut lines: Vec<Line> = if content.is_empty() {
-            // Show placeholder with cursor (highlighted)
+        // In Confirming state the SQL is dimmed and the cursor is hidden to signal read-only.
+        let lines: Vec<Line> = if is_confirming {
+            content
+                .lines()
+                .map(|line| {
+                    Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(Theme::TEXT_MUTED),
+                    ))
+                })
+                .collect()
+        } else if content.is_empty() {
             vec![
                 Line::from(vec![
-                    Span::styled("█", Style::default().fg(Theme::CURSOR_FG)),
+                    Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
                     Span::styled(
                         " Enter SQL query...",
                         Style::default().fg(Theme::PLACEHOLDER_TEXT),
@@ -75,18 +107,19 @@ impl SqlModal {
                 .collect()
         };
 
-        // If content ends with newline, add cursor on new line (highlighted)
-        if content.ends_with('\n') && cursor_row == content.lines().count() {
-            lines.push(
+        let mut all_lines = lines;
+
+        if !is_confirming && content.ends_with('\n') && cursor_row == content.lines().count() {
+            all_lines.push(
                 Line::from(vec![Span::styled(
-                    "█",
+                    "\u{2588}",
                     Style::default().fg(Theme::CURSOR_FG),
                 )])
                 .style(current_line_style),
             );
         }
 
-        let paragraph = Paragraph::new(lines)
+        let paragraph = Paragraph::new(all_lines)
             .wrap(Wrap { trim: false })
             .style(Style::default());
 
@@ -98,9 +131,22 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
-        let (status_text, status_style) = match state.sql_modal.status {
+        let (status_text, status_style) = match &state.sql_modal.status {
             SqlModalStatus::Editing => {
                 ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
+            }
+            SqlModalStatus::Confirming(decision) => {
+                let color = match decision.risk_level {
+                    RiskLevel::Low => Theme::STATUS_WARNING,
+                    RiskLevel::Medium => Theme::STATUS_MEDIUM_RISK,
+                    RiskLevel::High => Theme::STATUS_ERROR,
+                };
+                let text = format!(
+                    "\u{26a0} {} RISK  {}",
+                    decision.risk_level.as_str(),
+                    decision.label
+                );
+                (text, Style::default().fg(color))
             }
             SqlModalStatus::Running => {
                 let elapsed = state
@@ -124,10 +170,7 @@ impl SqlModal {
         };
 
         let line = Line::from(vec![Span::styled(status_text, status_style)]);
-
-        let paragraph = Paragraph::new(line).style(Style::default());
-
-        frame.render_widget(paragraph, area);
+        frame.render_widget(Paragraph::new(line).style(Style::default()), area);
     }
 
     fn success_status_message(state: &AppState) -> String {
@@ -156,14 +199,11 @@ impl SqlModal {
         let (cursor_row, cursor_col) =
             Self::cursor_to_position(&state.sql_modal.content, state.sql_modal.cursor);
 
-        // Popup dimensions
         let max_items = 8;
         let visible_count = state.sql_modal.completion.candidates.len().min(max_items);
-        let popup_height = (visible_count as u16) + 2; // +2 for borders
+        let popup_height = (visible_count as u16) + 2;
         let popup_width = 45u16.min(modal_area.width);
 
-        // Position popup below cursor (global coordinates)
-        // Ensure popup fits within modal bounds
         let popup_x = if modal_area.width < popup_width {
             modal_area.x
         } else {
@@ -171,7 +211,6 @@ impl SqlModal {
         };
         let cursor_screen_y = editor_area.y + cursor_row as u16;
 
-        // Show above cursor if not enough space below
         let popup_y = if cursor_screen_y + 1 + popup_height > modal_area.bottom() {
             cursor_screen_y.saturating_sub(popup_height)
         } else {
@@ -182,13 +221,11 @@ impl SqlModal {
 
         frame.render_widget(Clear, popup_area);
 
-        // Calculate scroll window to keep selected item visible
         let selected = state.sql_modal.completion.selected_index;
         let total = state.sql_modal.completion.candidates.len();
         let scroll_offset = if total <= max_items {
             0
         } else {
-            // Keep selected item in middle of window when possible
             let half = max_items / 2;
             if selected < half {
                 0
@@ -199,7 +236,6 @@ impl SqlModal {
             }
         };
 
-        // Calculate max text width for alignment
         let max_text_width = state
             .sql_modal
             .completion
@@ -228,7 +264,6 @@ impl SqlModal {
                     CompletionKind::Column => "column",
                 };
 
-                // Format: "text    kind" with padding for alignment
                 let padding = max_text_width.saturating_sub(candidate.text.len()) + 2;
                 let text = format!(
                     " {}{:padding$}{}",
@@ -260,9 +295,7 @@ impl SqlModal {
         frame.render_widget(list, popup_area);
     }
 
-    /// Convert a character index to (row, col) position
-    /// NOTE: This is O(n) on every render. For long documents, consider caching
-    /// line offsets and only recalculating on content change.
+    /// NOTE: O(n) on every render — acceptable for typical SQL lengths.
     fn cursor_to_position(content: &str, cursor_pos: usize) -> (usize, usize) {
         let mut row = 0;
         let mut col = 0;
@@ -285,7 +318,6 @@ impl SqlModal {
 
 #[cfg(test)]
 impl SqlModal {
-    /// Convert (row, col) position to character index
     pub fn position_to_cursor(content: &str, row: usize, col: usize) -> usize {
         let mut current_row = 0;
         let mut current_col = 0;
@@ -297,7 +329,6 @@ impl SqlModal {
             }
             if ch == '\n' {
                 if current_row == row {
-                    // End of target row, return position at end of line
                     return cursor_pos;
                 }
                 current_row += 1;
@@ -311,7 +342,6 @@ impl SqlModal {
         cursor_pos
     }
 
-    /// Get the line lengths for cursor movement
     pub fn line_lengths(content: &str) -> Vec<usize> {
         content.lines().map(|l| l.chars().count()).collect()
     }

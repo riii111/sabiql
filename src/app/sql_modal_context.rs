@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
+use crate::app::write_guardrails::AdhocRiskDecision;
+
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
@@ -8,10 +10,13 @@ pub struct FailedPrefetchEntry {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
     Editing,
+    /// Awaiting explicit Enter confirmation before executing a write statement.
+    /// Holds the risk assessment so the UI can show an appropriate warning.
+    Confirming(AdhocRiskDecision),
     Running,
     Success,
     Error,

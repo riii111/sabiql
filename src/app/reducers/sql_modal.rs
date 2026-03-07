@@ -8,6 +8,8 @@ use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
+use crate::app::statement_classifier::{self, StatementKind};
+use crate::app::write_guardrails::evaluate_adhoc_risk;
 
 /// Handles SQL modal editing and completion actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -187,7 +189,12 @@ pub fn reduce_sql_modal(
         }
         Action::SqlModalSubmit => {
             let query = state.sql_modal.content.trim().to_string();
-            if !query.is_empty() {
+            if query.is_empty() {
+                return Some(vec![]);
+            }
+            let kind = statement_classifier::classify(&query);
+            // Select and Transaction are read-only or self-contained; execute immediately.
+            if matches!(kind, StatementKind::Select | StatementKind::Transaction) {
                 state.sql_modal.status = SqlModalStatus::Running;
                 state.sql_modal.completion.visible = false;
                 if let Some(dsn) = &state.runtime.dsn {
@@ -199,7 +206,35 @@ pub fn reduce_sql_modal(
                     Some(vec![])
                 }
             } else {
+                let decision = evaluate_adhoc_risk(&kind);
+                state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                // Hide completion popup so the confirmation UI is unobstructed.
+                state.sql_modal.completion.visible = false;
                 Some(vec![])
+            }
+        }
+        Action::SqlModalConfirmExecute => {
+            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+                let query = state.sql_modal.content.trim().to_string();
+                state.sql_modal.status = SqlModalStatus::Running;
+                if let Some(dsn) = &state.runtime.dsn {
+                    Some(vec![Effect::ExecuteAdhoc {
+                        dsn: dsn.clone(),
+                        query,
+                    }])
+                } else {
+                    Some(vec![])
+                }
+            } else {
+                None
+            }
+        }
+        Action::SqlModalCancelConfirm => {
+            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+                state.sql_modal.status = SqlModalStatus::Editing;
+                Some(vec![])
+            } else {
+                None
             }
         }
 

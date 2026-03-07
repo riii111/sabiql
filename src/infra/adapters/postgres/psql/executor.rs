@@ -530,39 +530,4 @@ mod tests {
             assert_ne!(tag, Some(CommandTag::Select(42)));
         }
     }
-
-    mod execute_adhoc_guard {
-        use crate::app::ports::{MetadataError, QueryExecutor};
-        use crate::infra::adapters::postgres::PostgresAdapter;
-
-        #[tokio::test]
-        async fn delete_statement_is_rejected_before_psql_spawn() {
-            let adapter = PostgresAdapter::new();
-            let result = adapter
-                .execute_adhoc("postgres://unused", "DELETE FROM users WHERE id = 1")
-                .await;
-
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            assert!(
-                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
-                "Expected SELECT-only error, got: {err:?}"
-            );
-        }
-
-        #[tokio::test]
-        async fn update_statement_is_rejected_before_psql_spawn() {
-            let adapter = PostgresAdapter::new();
-            let result = adapter
-                .execute_adhoc("postgres://unused", "UPDATE users SET name = 'x'")
-                .await;
-
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            assert!(
-                matches!(err, MetadataError::QueryFailed(ref msg) if msg.contains("Only SELECT")),
-                "Expected SELECT-only error, got: {err:?}"
-            );
-        }
-    }
 }

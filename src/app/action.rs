@@ -248,6 +248,8 @@ pub enum Action {
     SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
     SqlModalClear,
+    SqlModalConfirmExecute,
+    SqlModalCancelConfirm,
 
     // SQL Modal completion
     CompletionTrigger,
