@@ -1,7 +1,7 @@
 use crate::app::ports::MetadataError;
 use crate::domain::{
-    Column, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy, Schema,
-    TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
+    Column, CommandTag, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy,
+    Schema, TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 use super::super::PostgresAdapter;
@@ -418,11 +418,67 @@ impl PostgresAdapter {
 
         Ok((columns, foreign_keys))
     }
+
+    pub(in crate::infra::adapters::postgres) fn parse_command_tag(tag: &str) -> Option<CommandTag> {
+        let trimmed = tag.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        match parts.first().copied()? {
+            "SELECT" => {
+                let n = parts.get(1)?.parse::<u64>().ok()?;
+                Some(CommandTag::Select(n))
+            }
+            "INSERT" => {
+                // INSERT 0 <count>
+                let n = parts.get(2)?.parse::<u64>().ok()?;
+                Some(CommandTag::Insert(n))
+            }
+            "UPDATE" => {
+                let n = parts.get(1)?.parse::<u64>().ok()?;
+                Some(CommandTag::Update(n))
+            }
+            "DELETE" => {
+                let n = parts.get(1)?.parse::<u64>().ok()?;
+                Some(CommandTag::Delete(n))
+            }
+            "CREATE" => {
+                let obj = parts.get(1).unwrap_or(&"");
+                Some(CommandTag::Create(obj.to_string()))
+            }
+            "DROP" => {
+                let obj = parts.get(1).unwrap_or(&"");
+                Some(CommandTag::Drop(obj.to_string()))
+            }
+            "ALTER" => {
+                let obj = parts.get(1).unwrap_or(&"");
+                Some(CommandTag::Alter(obj.to_string()))
+            }
+            "TRUNCATE" => Some(CommandTag::Truncate),
+            "BEGIN" => Some(CommandTag::Begin),
+            "COMMIT" => Some(CommandTag::Commit),
+            "ROLLBACK" => Some(CommandTag::Rollback),
+            _ => Some(CommandTag::Other(trimmed.to_string())),
+        }
+    }
+
+    pub(in crate::infra::adapters::postgres) fn extract_command_tag(
+        stdout: &str,
+    ) -> Option<CommandTag> {
+        stdout
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .and_then(Self::parse_command_tag)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::app::ports::MetadataError;
+    use crate::domain::CommandTag;
     use crate::infra::adapters::postgres::PostgresAdapter;
 
     mod table_signature_parsing {
@@ -1201,6 +1257,93 @@ mod tests {
         fn null_input_returns_error() {
             let result = PostgresAdapter::parse_table_detail_light("null");
             assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+        }
+    }
+
+    mod command_tag_parsing {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case("SELECT 5", CommandTag::Select(5))]
+        #[case("SELECT 0", CommandTag::Select(0))]
+        #[case("INSERT 0 3", CommandTag::Insert(3))]
+        #[case("INSERT 0 0", CommandTag::Insert(0))]
+        #[case("UPDATE 5", CommandTag::Update(5))]
+        #[case("UPDATE 0", CommandTag::Update(0))]
+        #[case("DELETE 10", CommandTag::Delete(10))]
+        #[case("DELETE 0", CommandTag::Delete(0))]
+        #[case("CREATE TABLE", CommandTag::Create("TABLE".to_string()))]
+        #[case("CREATE INDEX", CommandTag::Create("INDEX".to_string()))]
+        #[case("DROP TABLE", CommandTag::Drop("TABLE".to_string()))]
+        #[case("DROP INDEX", CommandTag::Drop("INDEX".to_string()))]
+        #[case("ALTER TABLE", CommandTag::Alter("TABLE".to_string()))]
+        #[case("TRUNCATE TABLE", CommandTag::Truncate)]
+        #[case("BEGIN", CommandTag::Begin)]
+        #[case("COMMIT", CommandTag::Commit)]
+        #[case("ROLLBACK", CommandTag::Rollback)]
+        fn parse_known_tags(#[case] input: &str, #[case] expected: CommandTag) {
+            assert_eq!(PostgresAdapter::parse_command_tag(input), Some(expected));
+        }
+
+        #[rstest]
+        #[case("")]
+        #[case("   ")]
+        fn empty_or_whitespace_returns_none(#[case] input: &str) {
+            assert_eq!(PostgresAdapter::parse_command_tag(input), None);
+        }
+
+        #[rstest]
+        #[case("SELECT abc")]
+        #[case("INSERT 0")]
+        #[case("INSERT 0 abc")]
+        #[case("UPDATE")]
+        #[case("DELETE")]
+        fn malformed_count_returns_none(#[case] input: &str) {
+            assert_eq!(PostgresAdapter::parse_command_tag(input), None);
+        }
+
+        #[test]
+        fn unknown_command_returns_other() {
+            assert_eq!(
+                PostgresAdapter::parse_command_tag("VACUUM"),
+                Some(CommandTag::Other("VACUUM".to_string()))
+            );
+        }
+
+        #[test]
+        fn extract_from_multiline_with_notice() {
+            let stdout = "NOTICE:  table \"foo\" does not exist, skipping\nDROP TABLE\n";
+            assert_eq!(
+                PostgresAdapter::extract_command_tag(stdout),
+                Some(CommandTag::Drop("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn extract_skips_trailing_empty_lines() {
+            let stdout = "INSERT 0 7\n\n  \n";
+            assert_eq!(
+                PostgresAdapter::extract_command_tag(stdout),
+                Some(CommandTag::Insert(7))
+            );
+        }
+
+        #[test]
+        fn extract_from_empty_returns_none() {
+            assert_eq!(PostgresAdapter::extract_command_tag(""), None);
+            assert_eq!(PostgresAdapter::extract_command_tag("  \n  \n"), None);
+        }
+
+        #[test]
+        fn parse_affected_rows_regression() {
+            assert_eq!(PostgresAdapter::parse_affected_rows("UPDATE 3\n"), Some(3));
+            assert_eq!(PostgresAdapter::parse_affected_rows("DELETE 5\n"), Some(5));
+            assert_eq!(
+                PostgresAdapter::parse_affected_rows("INSERT 0 10\n"),
+                Some(10)
+            );
+            assert_eq!(PostgresAdapter::parse_affected_rows("SELECT 1\n"), Some(1));
         }
     }
 }

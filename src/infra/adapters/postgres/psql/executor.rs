@@ -284,20 +284,9 @@ impl PostgresAdapter {
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
-        stdout.lines().rev().find_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            if parts.len() != 2 {
-                return None;
-            }
-            match parts[0] {
-                "UPDATE" | "DELETE" => parts[1].parse::<usize>().ok(),
-                _ => None,
-            }
-        })
+        Self::extract_command_tag(stdout)
+            .and_then(|tag| tag.affected_rows())
+            .map(|n| n as usize)
     }
 }
 
