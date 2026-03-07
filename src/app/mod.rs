@@ -1,4 +1,5 @@
 pub mod action;
+pub mod adhoc_risk;
 pub mod cache;
 pub mod cell_edit_state;
 pub mod command;
