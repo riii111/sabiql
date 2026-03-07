@@ -82,7 +82,6 @@ pub fn split_statements(sql: &str) -> Vec<String> {
         i += 1;
     }
 
-    // Remaining text after last `;`
     if start < sql.len() {
         let fragment = sql[start..].trim();
         if !fragment.is_empty() {
@@ -90,16 +89,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
         }
     }
 
-    // Filter out comment-only fragments (classify returns Other for those)
-    statements.retain(|s| {
-        let kind = classify(s);
-        kind != StatementKind::Other || {
-            // Keep genuinely unknown statements (have non-comment tokens).
-            // Other from classify means either empty/comment-only or truly unrecognized.
-            // Re-check: if trimming comments leaves nothing, drop it.
-            !is_comment_only(s)
-        }
-    });
+    statements.retain(|s| !is_comment_only(s));
 
     statements
 }
@@ -124,7 +114,6 @@ fn is_comment_only(sql: &str) -> bool {
             i = next_i;
             continue;
         }
-        // Found a non-whitespace, non-comment character
         return false;
     }
     true
@@ -157,11 +146,8 @@ pub fn evaluate_adhoc_risk(kind: &StatementKind, sql: &str) -> Option<AdhocRiskD
                 confirmation: ConfirmationType::TableNameInput { target: table },
             })
         }
-        StatementKind::Other => {
-            // Other = unrecognized keyword; treat as HIGH, but table extraction
-            // is not possible, so block.
-            None
-        }
+        // None signals unconditional block; no table name can be extracted for Other.
+        StatementKind::Other => None,
     }
 }
 
@@ -188,7 +174,6 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         }
     }
 
-    // All TCL → Immediate
     if decisions
         .iter()
         .all(|(_, d)| d.confirmation == ConfirmationType::Immediate)
@@ -202,7 +187,6 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         };
     }
 
-    // Count HIGH risk statements
     let high_count = decisions
         .iter()
         .filter(|(_, d)| d.risk_level == RiskLevel::High)
@@ -213,7 +197,6 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         };
     }
 
-    // Find highest risk decision
     let max_decision = decisions.iter().max_by_key(|(_, d)| d.risk_level).unwrap();
 
     let confirmation = match &max_decision.1.confirmation {
@@ -432,7 +415,6 @@ mod tests {
 
         #[test]
         fn table_name_extraction_failure_blocked() {
-            // SELECT INTO classified as Other → evaluate_adhoc_risk returns None
             let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
             match result {
                 MultiStatementDecision::Block { reason } => {
