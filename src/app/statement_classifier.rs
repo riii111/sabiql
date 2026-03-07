@@ -218,6 +218,18 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
 
         update_parentheses_depth(ch, &mut depth);
 
+        // Detect ANALYZE inside EXPLAIN(...) option list, e.g. EXPLAIN (ANALYZE, VERBOSE)
+        if is_explain
+            && kind.is_none()
+            && !has_analyze
+            && depth == 1
+            && (ch.is_alphabetic() || ch == '_')
+            && is_word_start(chars, i)
+            && is_keyword(&lower[byte_pos..], "analyze")
+        {
+            has_analyze = true;
+        }
+
         // Multi-statement is SAB-102 scope; reject here for safety
         if depth == 0 && ch == ';' {
             if has_non_whitespace_after(lower, byte_pos) {
@@ -657,6 +669,10 @@ mod tests {
             "EXPLAIN MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1",
             StatementKind::Select
         )]
+        #[case::explain_paren_analyze_select(
+            "EXPLAIN (ANALYZE) SELECT * FROM users",
+            StatementKind::Select
+        )]
         #[case::show("SHOW search_path", StatementKind::Select)]
         #[case::show_all("SHOW ALL", StatementKind::Select)]
         fn select_variants(#[case] sql: &str, #[case] expected: StatementKind) {
@@ -679,6 +695,14 @@ mod tests {
         #[case::explain_analyze_insert(
             "EXPLAIN ANALYZE INSERT INTO users VALUES (1)",
             StatementKind::Insert
+        )]
+        #[case::explain_paren_analyze_update(
+            "EXPLAIN (ANALYZE) UPDATE users SET x = 1",
+            StatementKind::Update { has_where: false }
+        )]
+        #[case::explain_paren_analyze_verbose_delete(
+            "EXPLAIN (ANALYZE, VERBOSE) DELETE FROM users",
+            StatementKind::Delete { has_where: false }
         )]
         fn explain_analyze_dml(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
