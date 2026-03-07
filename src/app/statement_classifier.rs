@@ -1,36 +1,24 @@
-/// SQL 文の種別を表す enum。
-/// Risk 判定の SSOT は app 層に置く（ADR 決定済み）。
-/// 現在は PostgreSQL の字句規則に基づく。将来 MySQL 対応時は
-/// Port + Adapter パターンに分離する。
+/// SQL statement kind. Currently based on PostgreSQL lexical rules;
+/// will be split into Port + Adapter when adding MySQL support.
 ///
-/// # 安全契約
-/// - `Other` は呼び出し側で HIGH / blocked に倒すこと。
-/// - `extract_table_name()` が `None` を返した場合も blocked 扱い。
+/// Callers must treat `Other` and `extract_table_name() == None`
+/// as HIGH / blocked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
     Insert,
-    Update {
-        has_where: bool,
-    },
-    Delete {
-        has_where: bool,
-    },
+    Update { has_where: bool },
+    Delete { has_where: bool },
     Create,
     Alter,
     Drop,
     Truncate,
-    /// BEGIN, COMMIT, ROLLBACK, SAVEPOINT, START TRANSACTION, RELEASE SAVEPOINT
     Transaction,
     Other,
 }
 
-/// SQL 文を分類する。安全側フォールバック: 判定が曖昧な場合は Other 扱い。
-///
-/// - CTE (`WITH`) の場合: スキャンを続けてトップレベルの最後のキーワードで分類
-/// - `EXPLAIN [ANALYZE]`: 後続キーワードを再分類してその Kind を返す
-/// - `SHOW` 等の読み取り系は Select 扱い
-/// - 複数文（`;` 区切り）は SAB-102 スコープ。現在は Other を返す
+/// Classifies a SQL statement. Falls back to `Other` when ambiguous.
+/// Multi-statement input (`;` separated) returns `Other` (SAB-102 scope).
 pub fn classify(sql: &str) -> StatementKind {
     let lower = sql.trim().to_lowercase();
     if lower.is_empty() {
@@ -40,17 +28,8 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
-/// HIGH RISK 確認用にテーブル名を抽出する。
-/// 抽出失敗時は None を返す（呼び出し側で blocked 扱い）。
-///
-/// 対応パターン:
-/// - `DROP TABLE [IF EXISTS] <name>`
-/// - `TRUNCATE [TABLE] <name>`
-/// - `DELETE FROM [ONLY] <name>`
-/// - `UPDATE [ONLY] <name> SET ...`
-///
-/// スキーマ修飾対応: `public.users` → `"public.users"`
-/// クォート除去: `"Users"` → `Users`（単純識別子のみ）
+/// Extracts the target table name for high-risk confirmation.
+/// Returns `None` on failure (callers should treat as blocked).
 pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let lower = sql.trim().to_lowercase();
     let original_trimmed = sql.trim();
@@ -65,8 +44,8 @@ pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
     }
 }
 
-// ─── Scanner helpers (copied from select_guard.rs; not shared because
-//     select_guard.rs will be deleted in SAB-100) ───
+// Copied from select_guard.rs; intentionally not shared because
+// select_guard.rs will be deleted in SAB-100.
 
 fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
     if ch != '-' || !next_char_is(chars, i, '-') {
@@ -197,8 +176,6 @@ fn is_keyword(s: &str, keyword: &str) -> bool {
         .unwrap_or(true)
 }
 
-// ─── classify implementation ───
-
 fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
     let mut i = 0;
     let mut depth: i32 = 0;
@@ -237,7 +214,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
 
         update_parentheses_depth(ch, &mut depth);
 
-        // Multiple statements → Other (SAB-102 scope)
+        // Multi-statement is SAB-102 scope; reject here for safety
         if depth == 0 && ch == ';' {
             if has_non_whitespace_after(lower, byte_pos) {
                 return StatementKind::Other;
@@ -254,14 +231,10 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                 continue;
             }
 
-            // Skip ANALYZE keyword after EXPLAIN (it's not a statement kind)
             if is_explain && kind.is_none() && is_keyword(rest, "analyze") {
                 i += 1;
                 continue;
             }
-
-            // Skip EXPLAIN options in parentheses: EXPLAIN (ANALYZE, VERBOSE) ...
-            // The parentheses depth tracking handles this automatically.
 
             if kind.is_none() && is_keyword(rest, "with") {
                 in_cte = true;
@@ -269,12 +242,11 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                 continue;
             }
 
-            // For CTE: override kind with each top-level DML/DDL keyword
-            // For non-CTE: only set kind once (first keyword)
+            // CTE: keep overriding with each top-level keyword (last one wins).
+            // Non-CTE: first keyword determines the kind.
             if in_cte || kind.is_none() {
                 if let Some(k) = match_keyword(rest) {
                     kind = Some(k);
-                    // For Update/Delete, scan for WHERE
                     if matches!(
                         kind,
                         Some(StatementKind::Update { .. } | StatementKind::Delete { .. })
@@ -287,7 +259,6 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                         });
                     }
                 } else if !in_cte {
-                    // Unknown top-level keyword (e.g., GRANT, MERGE, COPY) → Other
                     kind = Some(StatementKind::Other);
                 }
             }
@@ -324,7 +295,6 @@ fn match_keyword(rest: &str) -> Option<StatementKind> {
     {
         Some(StatementKind::Transaction)
     } else if is_keyword(rest, "start") {
-        // START TRANSACTION
         if rest.len() > 6 {
             let after_start = rest[6..].trim_start();
             if is_keyword(after_start, "transaction") {
@@ -394,10 +364,8 @@ fn has_non_whitespace_after(lower: &str, byte_pos: usize) -> bool {
         .unwrap_or(false)
 }
 
-// ─── extract_table_name helpers ───
-
-/// Collect top-level tokens from the original SQL, skipping comments/strings/parens.
-/// Returns (byte_offset, token_str) pairs from the *original* (preserving case) text.
+/// Collects top-level tokens preserving original case, skipping
+/// comments, strings, and parenthesized subexpressions.
 fn collect_top_level_tokens(
     original: &str,
     lower: &str,
@@ -428,7 +396,6 @@ fn collect_top_level_tokens(
             continue;
         }
 
-        // Collect double-quoted identifiers as tokens (preserve original case)
         if ch == '"' {
             let start_i = i;
             if let Some(next_i) = skip_double_quoted_identifier(chars, i, ch) {
@@ -471,12 +438,10 @@ fn collect_top_level_tokens(
             continue;
         }
 
-        // Handle dot for schema.table - attach to previous token
+        // Dot joins schema.table into a single token
         if depth == 0 && ch == '.' && !tokens.is_empty() {
             let prev = tokens.last_mut().unwrap();
             prev.1.push('.');
-
-            // Read the next part (could be quoted or unquoted identifier)
             i += 1;
             if i < chars.len() {
                 let (next_byte, next_ch) = chars[i];
@@ -518,7 +483,6 @@ fn collect_top_level_tokens(
 }
 
 fn unquote_simple(name: &str) -> String {
-    // Schema-qualified: check for dot
     if let Some(dot_pos) = find_unquoted_dot(name) {
         let schema = &name[..dot_pos];
         let table = &name[dot_pos + 1..];
@@ -553,7 +517,6 @@ fn extract_drop_table_name(original: &str, lower: &str, chars: &[(usize, char)])
     let tokens = collect_top_level_tokens(original, lower, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
-    // Find "drop" then "table"
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
     let table_idx = lowers.get(drop_idx + 1).and_then(|t| {
         if t == "table" {
@@ -565,7 +528,6 @@ fn extract_drop_table_name(original: &str, lower: &str, chars: &[(usize, char)])
 
     let mut name_idx = table_idx + 1;
 
-    // Skip IF EXISTS
     if lowers.get(name_idx).map(|t| t.as_str()) == Some("if")
         && lowers.get(name_idx + 1).map(|t| t.as_str()) == Some("exists")
     {
@@ -587,12 +549,10 @@ fn extract_truncate_table_name(
     let trunc_idx = lowers.iter().position(|t| t == "truncate")?;
     let mut name_idx = trunc_idx + 1;
 
-    // Skip optional TABLE keyword
     if lowers.get(name_idx).map(|t| t.as_str()) == Some("table") {
         name_idx += 1;
     }
 
-    // Skip ONLY
     if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
         name_idx += 1;
     }
@@ -611,14 +571,12 @@ fn extract_delete_table_name(
 
     let delete_idx = lowers.iter().position(|t| t == "delete")?;
 
-    // Expect FROM after DELETE
     if lowers.get(delete_idx + 1).map(|t| t.as_str()) != Some("from") {
         return None;
     }
 
     let mut name_idx = delete_idx + 2;
 
-    // Skip ONLY
     if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
         name_idx += 1;
     }
@@ -639,7 +597,6 @@ fn extract_update_table_name(
 
     let mut name_idx = update_idx + 1;
 
-    // Skip ONLY
     if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
         name_idx += 1;
     }
@@ -652,8 +609,6 @@ fn extract_update_table_name(
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    // ─── classify() tests ───
 
     mod classify_tests {
         use super::*;
@@ -826,8 +781,6 @@ mod tests {
             assert_eq!(classify(sql), expected);
         }
     }
-
-    // ─── extract_table_name() tests ───
 
     mod extract_table_name_tests {
         use super::*;
