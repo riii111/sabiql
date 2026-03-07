@@ -155,7 +155,7 @@ impl AppState {
         {
             self.query.result_highlight_until = None;
         }
-        if let Some((_, until)) = self.ui.yank_flash
+        if let Some((_, _, until)) = self.ui.yank_flash
             && now >= until
         {
             self.ui.yank_flash = None;

@@ -46,7 +46,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
-    if let Some((_, flash_until)) = state.ui.yank_flash {
+    if let Some((_, _, flash_until)) = state.ui.yank_flash {
         earliest = min_instant(earliest, Some(flash_until));
     }
 

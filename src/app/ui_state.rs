@@ -136,7 +136,7 @@ pub struct UiState {
     pub staged_delete_rows: BTreeSet<usize>,
     pub delete_op_pending: bool,
     pub yank_op_pending: bool,
-    pub yank_flash: Option<(usize, Instant)>,
+    pub yank_flash: Option<(usize, Option<usize>, Instant)>,
 
     pub help_scroll_offset: usize,
 

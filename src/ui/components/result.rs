@@ -157,7 +157,7 @@ impl ResultPane {
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
-        yank_flash: Option<(usize, Instant)>,
+        yank_flash: Option<(usize, Option<usize>, Instant)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -226,7 +226,7 @@ impl ResultPane {
         let active_cell = selection.cell();
 
         let yank_flash_active = yank_flash
-            .map(|(_, until)| Instant::now() < until)
+            .map(|(_, _, until)| Instant::now() < until)
             .unwrap_or(false);
 
         let rows: Vec<Row> = result
@@ -238,9 +238,11 @@ impl ResultPane {
             .map(|(abs_row_idx, row)| {
                 let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
-                let is_yank_flash_row =
-                    yank_flash_active && yank_flash.is_some_and(|(r, _)| r == abs_row_idx);
-                let row_bg = if is_yank_flash_row {
+                let flash_col = yank_flash
+                    .filter(|&(r, _, _)| yank_flash_active && r == abs_row_idx)
+                    .map(|(_, col, _)| col);
+                let is_row_flash = flash_col == Some(None);
+                let row_bg = if is_row_flash {
                     Some(Theme::YANK_FLASH_BG)
                 } else if is_staged_for_delete {
                     Some(Theme::STAGED_DELETE_BG)
@@ -291,7 +293,13 @@ impl ResultPane {
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
-                            if is_yank_flash_row {
+                            if is_row_flash {
+                                cell = cell.style(
+                                    Style::default()
+                                        .fg(Theme::YANK_FLASH_FG)
+                                        .bg(Theme::YANK_FLASH_BG),
+                                );
+                            } else if flash_col == Some(Some(orig_idx)) {
                                 cell = cell.style(
                                     Style::default()
                                         .fg(Theme::YANK_FLASH_FG)
