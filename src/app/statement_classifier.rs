@@ -1,8 +1,9 @@
 /// SQL statement kind. Based on PostgreSQL lexical rules.
 /// May move behind a Port + Adapter boundary if MySQL support is added.
 ///
-/// Callers must treat `Other` and `extract_table_name() == None`
-/// as HIGH / blocked.
+/// - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
+///   (e.g. GRANT, COPY, DO). SAB-100 will assign its risk level.
+/// - `Other`: no statement keyword was found; callers must treat this as HIGH / blocked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -14,6 +15,7 @@ pub enum StatementKind {
     Drop,
     Truncate,
     Transaction,
+    Unsupported,
     Other,
 }
 
@@ -265,7 +267,7 @@ fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
                         });
                     }
                 } else if !in_cte {
-                    kind = Some(StatementKind::Other);
+                    kind = Some(StatementKind::Unsupported);
                 }
             }
         }
@@ -711,16 +713,16 @@ mod tests {
         }
 
         #[rstest]
-        #[case::grant("GRANT SELECT ON users TO role1", StatementKind::Other)]
-        #[case::revoke("REVOKE SELECT ON users FROM role1", StatementKind::Other)]
-        #[case::copy("COPY users FROM '/tmp/data.csv'", StatementKind::Other)]
-        #[case::do_block("DO $$ BEGIN RAISE NOTICE 'hi'; END $$", StatementKind::Other)]
-        #[case::call("CALL my_procedure()", StatementKind::Other)]
+        #[case::grant("GRANT SELECT ON users TO role1", StatementKind::Unsupported)]
+        #[case::revoke("REVOKE SELECT ON users FROM role1", StatementKind::Unsupported)]
+        #[case::copy("COPY users FROM '/tmp/data.csv'", StatementKind::Unsupported)]
+        #[case::do_block("DO $$ BEGIN RAISE NOTICE 'hi'; END $$", StatementKind::Unsupported)]
+        #[case::call("CALL my_procedure()", StatementKind::Unsupported)]
         #[case::merge(
             "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET x = 1",
-            StatementKind::Other
+            StatementKind::Unsupported
         )]
-        fn other(#[case] sql: &str, #[case] expected: StatementKind) {
+        fn unsupported(#[case] sql: &str, #[case] expected: StatementKind) {
             assert_eq!(classify(sql), expected);
         }
 
@@ -729,6 +731,11 @@ mod tests {
         #[case::whitespace_only("   ", StatementKind::Other)]
         #[case::comment_only("-- just a comment", StatementKind::Other)]
         #[case::block_comment_only("/* nothing */", StatementKind::Other)]
+        fn other(#[case] sql: &str, #[case] expected: StatementKind) {
+            assert_eq!(classify(sql), expected);
+        }
+
+        #[rstest]
         #[case::string_literal_keyword(
             "SELECT * FROM t WHERE action = 'delete'",
             StatementKind::Select
