@@ -8,9 +8,15 @@ A fast, driver-less TUI to browse, query, and edit PostgreSQL databases — no d
 
 ## Concept
 
-sabiql wraps your existing `psql` CLI — no Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI with vim-like keybindings.
+> Vim-first · Safe by design · Oil-and-vinegar UI · Fast and lightweight
 
-Built in Rust for minimal memory footprint and near-zero idle CPU — no runtime, no GC pauses.
+sabiql wraps your existing `psql` CLI. No Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI. Your `psql` config, `.pgpass`, SSL setup all just work.
+
+Inspired by [oil.nvim](https://github.com/stevearc/oil.nvim)'s "oil and vinegar" philosophy: UI elements appear only when needed, never occupying your screen permanently. Vim-native keybindings (`j/k`, `dd`, `/`) let you navigate and edit without leaving your muscle memory.
+
+Destructive operations are guarded. Inline edits and row deletions always show a preview modal before touching your data.
+
+Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featured alternative to GUI tools like DBeaver or DataGrip, without ever leaving the terminal.
 
 ## Features
 ![hero-800](https://github.com/user-attachments/assets/b6b853a0-d7b4-486d-955c-aee74e7a2671)
@@ -18,7 +24,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU — no runtime
 
 ### Core
 
-- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords
+- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`
 - **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
 
@@ -27,6 +33,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU — no runtime
 - **Inline Cell Editing** (`e` in Result) — Edit cells in-place with a guarded UPDATE preview before committing
 - **Row Deletion** (`dd` in Result) — DELETE with mandatory preview; risk level color-coded (yellow/orange/red)
 - **Yank** (`y`) — Copy any cell value to clipboard
+- **CSV Export** (`Ctrl+E`) — Export query results to a CSV file
 
 ### Navigation
 
@@ -60,22 +67,6 @@ sabiql
 ```
 
 On first run, enter your connection details — saved to `~/.config/sabiql/connections.toml`. Press `?` for help.
-
-## Keybindings
-
-| Key | Action |
-|-----|--------|
-| `1`/`2`/`3` | Switch pane (Explorer/Inspector/Result) |
-| `j`/`k` | Scroll down/up |
-| `g`/`G` | Jump to top/bottom |
-| `f` | Toggle focus mode |
-| `s` | Open SQL modal |
-| `e` | Open ER diagram / Edit cell (Result pane) |
-| `dd` | Delete row (Result pane, with preview) |
-| `y` | Yank cell value |
-| `Ctrl+K` | Command palette |
-| `?` | Show help |
-| `q` | Quit |
 
 ## Requirements
 
