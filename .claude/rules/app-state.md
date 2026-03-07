@@ -24,6 +24,19 @@ paths:
 
 新しい派生フィールドを追加する場合も同じパターンを適用すること。
 
+## pub フィールドの型設計
+
+- `pub` フィールドに **3 要素以上の匿名タプル** を使わないこと。名前付き構造体を定義する
+- 2 要素でも、destructure した変数名なしでは意味が読み取れない場合は構造体にする
+- 理由: 展開先で位置ベースの destructure（`(_, _, until)`）が必要になり、意味が不透明になる。派生値で `Option<Option<T>>` のような読みづらい型が生まれやすい
+
+| パターン | 可否 |
+|---------|------|
+| `pub flash: Option<(usize, Option<usize>, Instant)>` | **禁止** — 3要素+ネスト、意味不明 |
+| `pub flash: Option<YankFlash>`（named struct） | **推奨** |
+| `pub pos: Option<(usize, usize)>`（row, col） | 許容 — 座標ペアは慣習的に自明 |
+| `pub pair: Option<(String, Instant)>` | 微妙 — フィールド名で補えるなら許容、迷ったら構造体 |
+
 ## State/View 分離（必須）
 
 - カーソル位置をコンテンツ `String` の一部としてエンコードしてはならない（例: テキスト中にカーソル文字を挿入する）
