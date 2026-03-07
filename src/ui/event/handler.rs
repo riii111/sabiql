@@ -2,6 +2,7 @@ use crate::app::action::Action;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::keybindings::{Key, KeyCombo};
+use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 use crate::app::{keybindings, keymap};
@@ -40,7 +41,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion.visible
                 && !state.sql_modal.completion.candidates.is_empty();
-            handle_sql_modal_keys(combo, completion_visible)
+            handle_sql_modal_keys(combo, completion_visible, &state.sql_modal.status)
         }
         InputMode::ConnectionSetup => handle_connection_setup_keys(combo, state),
         InputMode::ConnectionError => handle_connection_error_keys(combo),
@@ -403,23 +404,36 @@ fn handle_help_keys(combo: KeyCombo) -> Action {
     keybindings::HELP.resolve(&combo).unwrap_or(Action::None)
 }
 
-fn handle_sql_modal_keys(combo: KeyCombo, completion_visible: bool) -> Action {
+fn handle_sql_modal_keys(
+    combo: KeyCombo,
+    completion_visible: bool,
+    status: &SqlModalStatus,
+) -> Action {
     use crate::app::action::CursorMove;
+
+    // In Confirming state only plain Enter/Esc are meaningful; all other keys are ignored
+    // to prevent accidental edits while the risk warning is displayed.
+    // Alt+Enter (submit shortcut) is intentionally excluded — only explicit plain Enter confirms.
+    if matches!(status, SqlModalStatus::Confirming(_)) {
+        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
+        return match combo.key {
+            Key::Enter if plain => Action::SqlModalConfirmExecute,
+            Key::Esc => Action::SqlModalCancelConfirm,
+            _ => Action::None,
+        };
+    }
 
     let ctrl = combo.modifiers.ctrl;
     let alt = combo.modifiers.alt;
 
-    // Alt+Enter: submit query
     if alt && combo.key == Key::Enter {
         return Action::SqlModalSubmit;
     }
 
-    // Ctrl+Space: trigger completion
     if ctrl && combo.key == Key::Char(' ') {
         return Action::CompletionTrigger;
     }
 
-    // Ctrl+L: clear
     if ctrl && combo.key == Key::Char('l') {
         return Action::SqlModalClear;
     }
@@ -1197,6 +1211,7 @@ mod tests {
     mod sql_modal {
         use super::*;
         use crate::app::action::CursorMove;
+        use crate::app::sql_modal_context::SqlModalStatus;
         use rstest::rstest;
 
         #[derive(Debug, PartialEq)]
@@ -1214,6 +1229,8 @@ mod tests {
             CompletionDismiss,
             CompletionPrev,
             CompletionNext,
+            SqlModalConfirmExecute,
+            SqlModalCancelConfirm,
             None,
         }
 
@@ -1236,8 +1253,51 @@ mod tests {
                 Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
                 Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
                 Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
+                Expected::SqlModalConfirmExecute => {
+                    assert!(matches!(result, Action::SqlModalConfirmExecute))
+                }
+                Expected::SqlModalCancelConfirm => {
+                    assert!(matches!(result, Action::SqlModalCancelConfirm))
+                }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+
+        fn confirming_status() -> SqlModalStatus {
+            use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel};
+            SqlModalStatus::Confirming(AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            })
+        }
+
+        #[rstest]
+        #[case(Key::Enter, Expected::SqlModalConfirmExecute)]
+        #[case(Key::Esc, Expected::SqlModalCancelConfirm)]
+        fn confirming_state_routes_enter_and_esc(#[case] code: Key, #[case] expected: Expected) {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo(code), false, &status);
+
+            assert_action(result, expected);
+        }
+
+        #[rstest]
+        #[case(Key::Char('a'))]
+        #[case(Key::Tab)]
+        #[case(Key::Backspace)]
+        fn confirming_state_ignores_editing_keys(#[case] code: Key) {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo(code), false, &status);
+
+            assert_action(result, Expected::None);
+        }
+
+        #[test]
+        fn confirming_state_ignores_alt_enter() {
+            let status = confirming_status();
+            let result = handle_sql_modal_keys(combo_alt(Key::Enter), false, &status);
+
+            assert_action(result, Expected::None);
         }
 
         // Completion-aware keys: behavior when completion is hidden
@@ -1248,7 +1308,7 @@ mod tests {
         #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
         #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
         fn completion_hidden_key_behavior(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_sql_modal_keys(combo(code), false);
+            let result = handle_sql_modal_keys(combo(code), false, &SqlModalStatus::Editing);
 
             assert_action(result, expected);
         }
@@ -1261,7 +1321,7 @@ mod tests {
         #[case(Key::Up, Expected::CompletionPrev)]
         #[case(Key::Down, Expected::CompletionNext)]
         fn completion_visible_key_behavior(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_sql_modal_keys(combo(code), true);
+            let result = handle_sql_modal_keys(combo(code), true, &SqlModalStatus::Editing);
 
             assert_action(result, expected);
         }
@@ -1276,42 +1336,44 @@ mod tests {
         #[case(Key::End, Expected::SqlModalMoveCursor(CursorMove::End))]
         #[case(Key::F(1), Expected::None)]
         fn completion_independent_keys(#[case] code: Key, #[case] expected: Expected) {
-            let result = handle_sql_modal_keys(combo(code), false);
+            let result = handle_sql_modal_keys(combo(code), false, &SqlModalStatus::Editing);
 
             assert_action(result, expected);
         }
 
         #[test]
         fn delete_key_returns_delete_action() {
-            let result = handle_sql_modal_keys(combo(Key::Delete), false);
+            let result = handle_sql_modal_keys(combo(Key::Delete), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::SqlModalDelete);
         }
 
         #[test]
         fn enter_without_completion_returns_newline() {
-            let result = handle_sql_modal_keys(combo(Key::Enter), false);
+            let result = handle_sql_modal_keys(combo(Key::Enter), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::SqlModalNewLine);
         }
 
         #[test]
         fn tab_without_completion_returns_tab() {
-            let result = handle_sql_modal_keys(combo(Key::Tab), false);
+            let result = handle_sql_modal_keys(combo(Key::Tab), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::SqlModalTab);
         }
 
         #[test]
         fn alt_enter_submits_query() {
-            let result = handle_sql_modal_keys(combo_alt(Key::Enter), false);
+            let result =
+                handle_sql_modal_keys(combo_alt(Key::Enter), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::SqlModalSubmit);
         }
 
         #[test]
         fn ctrl_space_triggers_completion() {
-            let result = handle_sql_modal_keys(combo_ctrl(Key::Char(' ')), false);
+            let result =
+                handle_sql_modal_keys(combo_ctrl(Key::Char(' ')), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::CompletionTrigger);
         }
@@ -1322,7 +1384,8 @@ mod tests {
         #[case('あ')]
         #[case('日')]
         fn char_input_inserts_character(#[case] c: char) {
-            let result = handle_sql_modal_keys(combo(Key::Char(c)), false);
+            let result =
+                handle_sql_modal_keys(combo(Key::Char(c)), false, &SqlModalStatus::Editing);
 
             assert_action(result, Expected::SqlModalInput(c));
         }

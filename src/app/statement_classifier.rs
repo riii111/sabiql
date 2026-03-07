@@ -2,8 +2,9 @@
 /// May move behind a Port + Adapter boundary if MySQL support is added.
 ///
 /// - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
-///   (e.g. GRANT, COPY, DO). SAB-100 will assign its risk level.
-/// - `Other`: no statement keyword was found; callers must treat this as HIGH / blocked.
+///   (e.g. GRANT, COPY, DO). Treated as High risk in the confirmation flow.
+/// - `Other`: no statement keyword was found (e.g. empty input, comment-only, multi-statement).
+///   Treated as High risk in the confirmation flow; hard-blocking per statement is SAB-102 scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,

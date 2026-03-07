@@ -7,7 +7,6 @@ use crate::domain::{
 
 mod dsn;
 mod psql;
-mod select_guard;
 mod sql;
 
 pub struct PostgresAdapter {
@@ -155,12 +154,6 @@ impl QueryExecutor for PostgresAdapter {
     }
 
     async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
-        if !select_guard::is_select_query(query) {
-            return Err(MetadataError::QueryFailed(
-                "Only SELECT queries are supported in SQL modal. Use psql/mycli for DDL/DML operations.".to_string()
-            ));
-        }
-
         self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
     }
 

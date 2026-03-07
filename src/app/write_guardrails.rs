@@ -1,3 +1,5 @@
+use crate::app::statement_classifier::StatementKind;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOperation {
     Update,
@@ -63,6 +65,33 @@ pub struct WritePreview {
     pub target_summary: TargetSummary,
     pub diff: Vec<ColumnDiff>,
     pub guardrail: GuardrailDecision,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdhocRiskDecision {
+    pub risk_level: RiskLevel,
+    /// All values are string literals, so `&'static str` avoids allocation and keeps `Copy`.
+    pub label: &'static str,
+}
+
+pub fn evaluate_adhoc_risk(kind: &StatementKind) -> AdhocRiskDecision {
+    let (risk_level, label) = match kind {
+        StatementKind::Insert => (RiskLevel::Low, "INSERT"),
+        StatementKind::Create => (RiskLevel::Low, "CREATE"),
+        StatementKind::Update { has_where: true } => (RiskLevel::Medium, "UPDATE"),
+        StatementKind::Delete { has_where: true } => (RiskLevel::Medium, "DELETE"),
+        StatementKind::Alter => (RiskLevel::Medium, "ALTER"),
+        StatementKind::Update { has_where: false } => (RiskLevel::High, "UPDATE (no WHERE)"),
+        StatementKind::Delete { has_where: false } => (RiskLevel::High, "DELETE (no WHERE)"),
+        StatementKind::Drop => (RiskLevel::High, "DROP"),
+        StatementKind::Truncate => (RiskLevel::High, "TRUNCATE"),
+        // Other/Unsupported may contain compound statements or unknown syntax — fail safe to High.
+        StatementKind::Unsupported => (RiskLevel::High, "UNSUPPORTED SQL"),
+        StatementKind::Other => (RiskLevel::High, "UNKNOWN SQL"),
+        // Select/Transaction are immediate; callers should not route them here.
+        StatementKind::Select | StatementKind::Transaction => (RiskLevel::Low, "SQL"),
+    };
+    AdhocRiskDecision { risk_level, label }
 }
 
 pub fn evaluate_guardrails(
@@ -137,6 +166,33 @@ mod tests {
                 key_values: vec![("id".to_string(), "42".to_string())],
             };
             assert_eq!(target.format_compact(), "public.users (id=42)");
+        }
+    }
+
+    mod adhoc_risk {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(StatementKind::Insert, RiskLevel::Low, "INSERT")]
+        #[case(StatementKind::Create, RiskLevel::Low, "CREATE")]
+        #[case(StatementKind::Update { has_where: true }, RiskLevel::Medium, "UPDATE")]
+        #[case(StatementKind::Delete { has_where: true }, RiskLevel::Medium, "DELETE")]
+        #[case(StatementKind::Alter, RiskLevel::Medium, "ALTER")]
+        #[case(StatementKind::Update { has_where: false }, RiskLevel::High, "UPDATE (no WHERE)")]
+        #[case(StatementKind::Delete { has_where: false }, RiskLevel::High, "DELETE (no WHERE)")]
+        #[case(StatementKind::Drop, RiskLevel::High, "DROP")]
+        #[case(StatementKind::Truncate, RiskLevel::High, "TRUNCATE")]
+        #[case(StatementKind::Other, RiskLevel::High, "UNKNOWN SQL")]
+        #[case(StatementKind::Unsupported, RiskLevel::High, "UNSUPPORTED SQL")]
+        fn risk_level_and_label(
+            #[case] kind: StatementKind,
+            #[case] expected_risk: RiskLevel,
+            #[case] expected_label: &str,
+        ) {
+            let decision = evaluate_adhoc_risk(&kind);
+            assert_eq!(decision.risk_level, expected_risk);
+            assert_eq!(decision.label, expected_label);
         }
     }
 }

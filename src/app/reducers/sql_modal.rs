@@ -8,6 +8,8 @@ use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
+use crate::app::statement_classifier::{self, StatementKind};
+use crate::app::write_guardrails::evaluate_adhoc_risk;
 
 /// Handles SQL modal editing and completion actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -187,19 +189,38 @@ pub fn reduce_sql_modal(
         }
         Action::SqlModalSubmit => {
             let query = state.sql_modal.content.trim().to_string();
-            if !query.is_empty() {
+            if query.is_empty() {
+                return Some(vec![]);
+            }
+            let kind = statement_classifier::classify(&query);
+            // Select and Transaction are read-only or self-contained; execute immediately.
+            if matches!(kind, StatementKind::Select | StatementKind::Transaction) {
                 state.sql_modal.status = SqlModalStatus::Running;
                 state.sql_modal.completion.visible = false;
-                if let Some(dsn) = &state.runtime.dsn {
-                    Some(vec![Effect::ExecuteAdhoc {
-                        dsn: dsn.clone(),
-                        query,
-                    }])
-                } else {
-                    Some(vec![])
-                }
+                Some(adhoc_effects(state, query))
             } else {
+                let decision = evaluate_adhoc_risk(&kind);
+                state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                // Hide completion popup so the confirmation UI is unobstructed.
+                state.sql_modal.completion.visible = false;
                 Some(vec![])
+            }
+        }
+        Action::SqlModalConfirmExecute => {
+            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+                let query = state.sql_modal.content.trim().to_string();
+                state.sql_modal.status = SqlModalStatus::Running;
+                Some(adhoc_effects(state, query))
+            } else {
+                None
+            }
+        }
+        Action::SqlModalCancelConfirm => {
+            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+                state.sql_modal.status = SqlModalStatus::Editing;
+                Some(vec![])
+            } else {
+                None
             }
         }
 
@@ -244,6 +265,16 @@ pub fn reduce_sql_modal(
         }
 
         _ => None,
+    }
+}
+
+fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
+    match &state.runtime.dsn {
+        Some(dsn) => vec![Effect::ExecuteAdhoc {
+            dsn: dsn.clone(),
+            query,
+        }],
+        None => vec![],
     }
 }
 
@@ -337,6 +368,97 @@ mod tests {
 
             assert_eq!(state.sql_modal.content, "a日本語b");
             assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
+        }
+    }
+
+    mod confirmation_flow {
+        use super::*;
+        use crate::app::write_guardrails::RiskLevel;
+
+        fn modal_state_with_query(query: &str) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.content = query.to_string();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state
+        }
+
+        #[test]
+        fn submit_select_executes_immediately() {
+            let mut state = modal_state_with_query("SELECT 1");
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
+            );
+        }
+
+        #[test]
+        fn submit_insert_enters_confirming_low_risk() {
+            let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::Low
+            ));
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn submit_delete_without_where_enters_confirming_high_risk() {
+            let mut state = modal_state_with_query("DELETE FROM users");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
+            ));
+        }
+
+        #[test]
+        fn confirm_execute_transitions_to_running_and_emits_effect() {
+            let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
+                    .unwrap();
+
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
+            );
+        }
+
+        #[test]
+        fn cancel_confirm_returns_to_editing() {
+            let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
+
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Editing);
+        }
+
+        #[test]
+        fn confirm_execute_in_editing_state_is_noop() {
+            let mut state = modal_state_with_query("SELECT 1");
+
+            let result =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
+
+            assert!(result.is_none());
         }
     }
 }

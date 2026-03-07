@@ -73,11 +73,7 @@ impl ConfirmDialog {
     }
 
     fn render_write_preview(frame: &mut Frame, state: &AppState, preview: &WritePreview) {
-        let border_color = match preview.guardrail.risk_level {
-            RiskLevel::Low => Theme::STATUS_WARNING,
-            RiskLevel::Medium => Theme::STATUS_MEDIUM_RISK,
-            RiskLevel::High => Theme::STATUS_ERROR,
-        };
+        let border_color = Theme::risk_color(preview.guardrail.risk_level);
         let hint = if preview.guardrail.blocked {
             " Esc: Cancel "
         } else {
