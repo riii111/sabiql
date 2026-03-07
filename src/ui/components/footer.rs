@@ -11,8 +11,10 @@ use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
-    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
+    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS,
+    SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
+use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 use crate::domain::QuerySource;
@@ -222,11 +224,22 @@ impl Footer {
                 HELP_ROWS[idx::help::SCROLL].as_hint(),
                 HELP_ROWS[idx::help::CLOSE].as_hint(),
             ],
-            InputMode::SqlModal => vec![
-                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
-                SQL_MODAL_KEYS[idx::sql_modal::ESC_CLOSE].as_hint(),
-            ],
+            InputMode::SqlModal => {
+                if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+                    vec![
+                        SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CONFIRM_EXECUTE]
+                            .as_hint(),
+                        SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]
+                            .as_hint(),
+                    ]
+                } else {
+                    vec![
+                        SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
+                        SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
+                        SQL_MODAL_KEYS[idx::sql_modal::ESC_CLOSE].as_hint(),
+                    ]
+                }
+            }
             InputMode::ConnectionSetup => vec![
                 CONNECTION_SETUP_KEYS[idx::conn_setup::SAVE].as_hint(),
                 CONNECTION_SETUP_KEYS[idx::conn_setup::TAB_NEXT].as_hint(),

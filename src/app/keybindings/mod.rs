@@ -136,6 +136,11 @@ pub mod idx {
         pub const CLEAR: usize = 6;
     }
 
+    pub mod sql_modal_confirming {
+        pub const CONFIRM_EXECUTE: usize = 0;
+        pub const CANCEL_CONFIRM: usize = 1;
+    }
+
     pub mod overlay {
         pub const ESC_CANCEL: usize = 0;
         pub const ESC_CLOSE: usize = 1;
@@ -247,9 +252,9 @@ pub mod idx {
 
 /// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
-    // 17 sections × 1 header each = 17
-    // 16 blank-line separators between sections = 16
-    17 + 16
+    // 18 sections × 1 header each = 18
+    // 17 blank-line separators between sections = 17
+    18 + 17
         + GLOBAL_KEYS.len()
         + NAVIGATION_KEYS.len()
         + HISTORY_KEYS.len()
@@ -257,6 +262,7 @@ pub const fn help_content_line_count() -> usize {
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
         + SQL_MODAL_KEYS.len()
+        + SQL_MODAL_CONFIRMING_KEYS.len()
         + OVERLAY_KEYS.len()
         + COMMAND_LINE_KEYS.len()
         + CONNECTION_SETUP_KEYS.len()
@@ -354,6 +360,10 @@ mod tests {
         assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
+
+        // SQL_MODAL_CONFIRMING_KEYS
+        assert!(idx::sql_modal_confirming::CONFIRM_EXECUTE < SQL_MODAL_CONFIRMING_KEYS.len());
+        assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
 
         // OVERLAY_KEYS
         assert!(idx::overlay::ESC_CANCEL < OVERLAY_KEYS.len());
@@ -456,6 +466,7 @@ mod tests {
             INSPECTOR_DDL_KEYS.len(),
             CELL_EDIT_KEYS.len(),
             SQL_MODAL_KEYS.len(),
+            SQL_MODAL_CONFIRMING_KEYS.len(),
             OVERLAY_KEYS.len(),
             COMMAND_LINE_KEYS.len(),
             CONNECTION_SETUP_KEYS.len(),
@@ -773,6 +784,10 @@ mod tests {
             check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
             check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
             check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
+            check_none_action_entries_have_no_combos(
+                SQL_MODAL_CONFIRMING_KEYS,
+                "SQL_MODAL_CONFIRMING_KEYS",
+            );
             check_none_action_entries_have_no_combos(OVERLAY_KEYS, "OVERLAY_KEYS");
             check_none_action_entries_have_no_combos(
                 CONNECTION_SETUP_KEYS,
