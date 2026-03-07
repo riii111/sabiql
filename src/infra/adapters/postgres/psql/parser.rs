@@ -445,15 +445,15 @@ impl PostgresAdapter {
                 Some(CommandTag::Delete(n))
             }
             "CREATE" => {
-                let obj = parts.get(1).unwrap_or(&"");
+                let obj = parts.get(1)?;
                 Some(CommandTag::Create(obj.to_string()))
             }
             "DROP" => {
-                let obj = parts.get(1).unwrap_or(&"");
+                let obj = parts.get(1)?;
                 Some(CommandTag::Drop(obj.to_string()))
             }
             "ALTER" => {
-                let obj = parts.get(1).unwrap_or(&"");
+                let obj = parts.get(1)?;
                 Some(CommandTag::Alter(obj.to_string()))
             }
             "TRUNCATE" => Some(CommandTag::Truncate),

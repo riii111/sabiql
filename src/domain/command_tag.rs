@@ -15,6 +15,10 @@ pub enum CommandTag {
 }
 
 impl CommandTag {
+    pub fn is_data_modifying(&self) -> bool {
+        !matches!(self, Self::Select(_) | Self::Other(_))
+    }
+
     pub fn affected_rows(&self) -> Option<u64> {
         match self {
             Self::Select(n) | Self::Insert(n) | Self::Update(n) | Self::Delete(n) => Some(*n),

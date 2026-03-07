@@ -131,17 +131,19 @@ impl SqlModal {
     }
 
     fn success_status_message(state: &AppState) -> String {
-        let result = state.query.current_result.as_ref();
-        let time_secs = result
-            .map(|r| r.execution_time_ms as f64 / 1000.0)
-            .unwrap_or(0.0);
+        let Some(result) = state.query.current_result.as_ref() else {
+            return "\u{2713} OK".to_string();
+        };
+        let time_secs = result.execution_time_ms as f64 / 1000.0;
 
-        if let Some(tag) = result.and_then(|r| r.command_tag.as_ref()) {
+        if let Some(tag) = result.command_tag.as_ref() {
             format!("\u{2713} {} ({:.2}s)", tag.display_message(), time_secs)
         } else {
-            let row_count = result.map(|r| r.row_count).unwrap_or(0);
-            let rows_label = if row_count == 1 { "row" } else { "rows" };
-            format!("\u{2713} {} {} ({:.2}s)", row_count, rows_label, time_secs)
+            let rows_label = if result.row_count == 1 { "row" } else { "rows" };
+            format!(
+                "\u{2713} {} {} ({:.2}s)",
+                result.row_count, rows_label, time_secs
+            )
         }
     }
 

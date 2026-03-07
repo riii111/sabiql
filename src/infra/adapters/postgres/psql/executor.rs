@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::MetadataError;
-use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
@@ -133,32 +133,13 @@ impl PostgresAdapter {
         if let Some(tag) = (!stdout_trimmed.contains('\n'))
             .then(|| Self::parse_command_tag(stdout_trimmed))
             .flatten()
+            .filter(|t| t.is_data_modifying())
         {
-            let is_write = matches!(
-                tag,
-                CommandTag::Insert(_)
-                    | CommandTag::Update(_)
-                    | CommandTag::Delete(_)
-                    | CommandTag::Create(_)
-                    | CommandTag::Drop(_)
-                    | CommandTag::Alter(_)
-                    | CommandTag::Truncate
-                    | CommandTag::Begin
-                    | CommandTag::Commit
-                    | CommandTag::Rollback
-            );
-            if is_write {
-                let row_count = tag.affected_rows().unwrap_or(0) as usize;
-                let mut result = QueryResult::success(
-                    query.to_string(),
-                    Vec::new(),
-                    Vec::new(),
-                    elapsed,
-                    source,
-                );
-                result.row_count = row_count;
-                return Ok(result.with_command_tag(tag));
-            }
+            let row_count = tag.affected_rows().unwrap_or(0) as usize;
+            let mut result =
+                QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
+            result.row_count = row_count;
+            return Ok(result.with_command_tag(tag));
         }
 
         let mut reader = csv::ReaderBuilder::new()
@@ -537,17 +518,7 @@ mod tests {
             let csv = "id,name\n1,Alice\n2,Bob\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
             // Should be Other or None, never a DML/DDL variant
-            let is_dml = matches!(
-                tag,
-                Some(
-                    CommandTag::Insert(_)
-                        | CommandTag::Update(_)
-                        | CommandTag::Delete(_)
-                        | CommandTag::Create(_)
-                        | CommandTag::Drop(_)
-                        | CommandTag::Alter(_)
-                )
-            );
+            let is_dml = tag.as_ref().is_some_and(|t| t.is_data_modifying());
             assert!(!is_dml, "CSV output should not be parsed as DML tag");
         }
 
