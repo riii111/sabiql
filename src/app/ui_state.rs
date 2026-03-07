@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
 use super::input_mode::InputMode;
@@ -17,6 +18,14 @@ pub enum ResultNavMode {
     Scroll,
     RowActive,
     CellActive,
+}
+
+/// Flash target for yank feedback. `col: None` = whole row, `col: Some(c)` = single cell.
+#[derive(Debug, Clone, Copy)]
+pub struct YankFlash {
+    pub row: usize,
+    pub col: Option<usize>,
+    pub until: Instant,
 }
 
 /// Invariant: `cell` is `Some` only when `row` is `Some`.
@@ -134,6 +143,8 @@ pub struct UiState {
     pub result_selection: ResultSelection,
     pub staged_delete_rows: BTreeSet<usize>,
     pub delete_op_pending: bool,
+    pub yank_op_pending: bool,
+    pub yank_flash: Option<YankFlash>,
 
     pub help_scroll_offset: usize,
 

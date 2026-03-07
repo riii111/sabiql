@@ -209,6 +209,7 @@ pub mod idx {
         pub const ESC_BACK: usize = 7;
         pub const EDIT: usize = 8;
         pub const DRAFT_DISCARD: usize = 9;
+        pub const ROW_YANK: usize = 10;
     }
 
     pub mod cell_edit {
@@ -418,6 +419,7 @@ mod tests {
         assert!(idx::result_active::ESC_BACK < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::EDIT < RESULT_ACTIVE_KEYS.len());
         assert!(idx::result_active::DRAFT_DISCARD < RESULT_ACTIVE_KEYS.len());
+        assert!(idx::result_active::ROW_YANK < RESULT_ACTIVE_KEYS.len());
 
         // HISTORY_KEYS
         assert!(idx::history::OPEN < HISTORY_KEYS.len());

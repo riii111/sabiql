@@ -84,6 +84,10 @@ impl Theme {
     pub const STAGED_DELETE_BG: Color = Color::Rgb(0x3d, 0x22, 0x22);
     pub const STAGED_DELETE_FG: Color = Color::Rgb(0xee, 0x77, 0x77);
 
+    // Yank flash
+    pub const YANK_FLASH_BG: Color = Color::Rgb(0xF4, 0x9E, 0x4C);
+    pub const YANK_FLASH_FG: Color = Color::Rgb(0x11, 0x14, 0x19);
+
     // SQL syntax highlighting
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
