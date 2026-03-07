@@ -34,9 +34,9 @@ Use this skill when releasing a new version of sabiql.
    git push origin vX.Y.Z
    ```
 
-5. **Create GitHub Release with release notes**
+5. **Create draft GitHub Release with release notes**
    ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
+   gh release create vX.Y.Z --title "vX.Y.Z" --draft --notes "$(cat <<'EOF'
    ## What's Changed in vX.Y.Z
 
    ### 🎯 User-Facing Changes
@@ -46,13 +46,14 @@ Use this skill when releasing a new version of sabiql.
    - **Fix B**: description
 
    ### 🔧 Internal Improvements
-   > Refactoring and tests — no behavior change for end users.
+   > Refactoring and tests -- no behavior change for end users.
 
    - **Refactor C**: description
    - **Test D**: description
    EOF
    )"
    ```
+   - `--draft` で作成する。CI がビルド成功後にドラフトを解除してバイナリを添付する
    - Categorize commits into **User-Facing Changes** vs **Internal Improvements**
    - User-Facing: new features, behavior changes, bug fixes, dependency upgrades that affect UX
    - Internal: refactoring, test additions, CI/docs changes, rule/skill updates
@@ -110,6 +111,3 @@ Use this skill when releasing a new version of sabiql.
    git push origin vX.Y.Z
    ```
 
-## Known issue
-
-- Step 5 で `gh release create` するとビルド完了前にリリースが公開される。将来的にはリリース作成を CI に一本化することを検討する。

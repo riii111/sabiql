@@ -111,14 +111,14 @@ jobs:
         with:
           path: artifacts
 
-      - name: Create Release
+      - name: Upload assets and publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             artifacts/**/*.sha256
-          generate_release_notes: true
+          draft: false
 
   publish-crate:
     name: Publish to crates.io
