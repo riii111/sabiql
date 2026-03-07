@@ -47,10 +47,7 @@ pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
     }
 }
 
-// Copied from select_guard.rs; intentionally not shared because
-// select_guard.rs will be deleted in SAB-100.
-
-fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+pub(crate) fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
     if ch != '-' || !next_char_is(chars, i, '-') {
         return None;
     }
@@ -61,7 +58,7 @@ fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usiz
     Some(cursor)
 }
 
-fn skip_block_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+pub(crate) fn skip_block_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
     if ch != '/' || !next_char_is(chars, i, '*') {
         return None;
     }
@@ -72,7 +69,7 @@ fn skip_block_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usi
     Some(cursor + 2)
 }
 
-fn advance_single_quote(
+pub(crate) fn advance_single_quote(
     chars: &[(usize, char)],
     i: usize,
     ch: char,
@@ -92,7 +89,11 @@ fn advance_single_quote(
     Some(i + 1)
 }
 
-fn skip_double_quoted_identifier(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
+pub(crate) fn skip_double_quoted_identifier(
+    chars: &[(usize, char)],
+    i: usize,
+    ch: char,
+) -> Option<usize> {
     if ch != '"' {
         return None;
     }
@@ -112,7 +113,7 @@ fn skip_double_quoted_identifier(chars: &[(usize, char)], i: usize, ch: char) ->
     Some(cursor)
 }
 
-fn skip_dollar_quoted_string(
+pub(crate) fn skip_dollar_quoted_string(
     lower: &str,
     chars: &[(usize, char)],
     i: usize,
@@ -148,7 +149,7 @@ fn skip_dollar_quoted_string(
     Some(cursor)
 }
 
-fn update_parentheses_depth(ch: char, depth: &mut i32) {
+pub(crate) fn update_parentheses_depth(ch: char, depth: &mut i32) {
     if ch == '(' {
         *depth += 1;
     } else if ch == ')' {
@@ -156,7 +157,7 @@ fn update_parentheses_depth(ch: char, depth: &mut i32) {
     }
 }
 
-fn next_char_is(chars: &[(usize, char)], i: usize, expected: char) -> bool {
+pub(crate) fn next_char_is(chars: &[(usize, char)], i: usize, expected: char) -> bool {
     i + 1 < chars.len() && chars[i + 1].1 == expected
 }
 
