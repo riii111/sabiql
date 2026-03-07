@@ -844,7 +844,6 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::CellCopied => {
-            state.messages.set_success_at("Copied!".into(), now);
             if let Some(row) = state.ui.result_selection.row() {
                 let col = state.ui.result_selection.cell();
                 state.ui.yank_flash = Some((row, col, now + Duration::from_millis(200)));
