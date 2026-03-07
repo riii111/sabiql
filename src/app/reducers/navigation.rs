@@ -1,6 +1,6 @@
 //! Navigation sub-reducer: focus, scroll, selection, filter, command line.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, ConnectionsLoadedPayload};
 use crate::app::effect::Effect;
@@ -808,9 +808,7 @@ pub fn reduce_navigation(
                     Some(tsv) => Some(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(
-                            "Clipboard unavailable".into(),
-                        )),
+                        on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
                     }]),
                     None => {
                         state
@@ -847,6 +845,9 @@ pub fn reduce_navigation(
         }
         Action::CellCopied => {
             state.messages.set_success_at("Copied!".into(), now);
+            if let Some(row) = state.ui.result_selection.row() {
+                state.ui.yank_flash = Some((row, now + Duration::from_millis(200)));
+            }
             Some(vec![])
         }
         Action::ResultEnterCellEdit => match editable_cell_context(state) {

@@ -69,6 +69,7 @@ impl ResultPane {
                     },
                     &state.ui.staged_delete_rows,
                     history_bar,
+                    state.ui.yank_flash,
                 )
             }
         } else {
@@ -156,6 +157,7 @@ impl ResultPane {
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
+        yank_flash: Option<(usize, Instant)>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -223,6 +225,10 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
+        let yank_flash_active = yank_flash
+            .map(|(_, until)| Instant::now() < until)
+            .unwrap_or(false);
+
         let rows: Vec<Row> = result
             .rows
             .iter()
@@ -232,7 +238,11 @@ impl ResultPane {
             .map(|(abs_row_idx, row)| {
                 let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
-                let row_bg = if is_staged_for_delete {
+                let is_yank_flash_row =
+                    yank_flash_active && yank_flash.is_some_and(|(r, _)| r == abs_row_idx);
+                let row_bg = if is_yank_flash_row {
+                    Some(Theme::YANK_FLASH_BG)
+                } else if is_staged_for_delete {
                     Some(Theme::STAGED_DELETE_BG)
                 } else if is_active_row {
                     Some(Theme::RESULT_ROW_ACTIVE_BG)
@@ -281,7 +291,13 @@ impl ResultPane {
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
-                            if is_staged_for_delete {
+                            if is_yank_flash_row {
+                                cell = cell.style(
+                                    Style::default()
+                                        .fg(Theme::YANK_FLASH_FG)
+                                        .bg(Theme::YANK_FLASH_BG),
+                                );
+                            } else if is_staged_for_delete {
                                 cell = cell.style(Style::default().fg(Theme::STAGED_DELETE_FG));
                             } else if is_active_row && active_cell == Some(orig_idx) {
                                 cell =

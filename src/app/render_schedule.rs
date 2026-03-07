@@ -46,6 +46,10 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
+    if let Some((_, flash_until)) = state.ui.yank_flash {
+        earliest = min_instant(earliest, Some(flash_until));
+    }
+
     // Cursor blink is the slowest; skip if faster timers are active
     if has_blinking_cursor(state) && earliest.is_none() {
         earliest = Some(now + CURSOR_BLINK_INTERVAL);
