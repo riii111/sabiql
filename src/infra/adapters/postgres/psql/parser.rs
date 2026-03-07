@@ -432,7 +432,7 @@ impl PostgresAdapter {
                 Some(CommandTag::Select(n))
             }
             "INSERT" => {
-                // INSERT 0 <count>
+                // INSERT oid count — count is at index 2
                 let n = parts.get(2)?.parse::<u64>().ok()?;
                 Some(CommandTag::Insert(n))
             }

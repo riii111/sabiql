@@ -127,9 +127,13 @@ impl PostgresAdapter {
             ));
         }
 
-        // DML/DDL output is just a command tag (e.g. "UPDATE 3", "CREATE TABLE").
-        // Detect it before attempting CSV parsing to avoid treating the tag as a CSV header.
-        if let Some(tag) = Self::extract_command_tag(&output.stdout) {
+        // psql --csv never appends a command tag to SELECT output, so a single-line
+        // stdout is the only case where DML/DDL detection is safe.
+        let stdout_trimmed = output.stdout.trim();
+        if let Some(tag) = (!stdout_trimmed.contains('\n'))
+            .then(|| Self::parse_command_tag(stdout_trimmed))
+            .flatten()
+        {
             let is_write = matches!(
                 tag,
                 CommandTag::Insert(_)
