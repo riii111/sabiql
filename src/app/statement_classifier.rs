@@ -1,5 +1,5 @@
-/// SQL statement kind. Currently based on PostgreSQL lexical rules;
-/// will be split into Port + Adapter when adding MySQL support.
+/// SQL statement kind. Based on PostgreSQL lexical rules.
+/// May move behind a Port + Adapter boundary if MySQL support is added.
 ///
 /// Callers must treat `Other` and `extract_table_name() == None`
 /// as HIGH / blocked.
