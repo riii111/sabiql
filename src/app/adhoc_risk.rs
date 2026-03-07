@@ -29,8 +29,10 @@ pub enum MultiStatementDecision {
 }
 
 pub fn split_statements(sql: &str) -> Vec<String> {
-    let lower = sql.to_lowercase();
-    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    // Use sql's own char_indices so byte offsets are valid for slicing sql.
+    // Passing sql (not lowercased) to skip_dollar_quoted_string makes tag matching
+    // case-sensitive, which matches PostgreSQL's actual dollar-quote behavior.
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut statements = Vec::new();
     let mut start = 0;
     let mut i = 0;
@@ -60,7 +62,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
             i = next_i;
             continue;
         }
-        if let Some(next_i) = skip_dollar_quoted_string(&lower, &chars, i, byte_pos, ch) {
+        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
             i = next_i;
             continue;
         }
@@ -95,8 +97,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
 }
 
 fn is_comment_only(sql: &str) -> bool {
-    let lower = sql.to_lowercase();
-    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut i = 0;
 
     while i < chars.len() {
@@ -174,19 +175,6 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         }
     }
 
-    if decisions
-        .iter()
-        .all(|(_, d)| d.confirmation == ConfirmationType::Immediate)
-    {
-        return MultiStatementDecision::Allow {
-            statements,
-            risk: AdhocRiskDecision {
-                risk_level: RiskLevel::Low,
-                confirmation: ConfirmationType::Immediate,
-            },
-        };
-    }
-
     let high_count = decisions
         .iter()
         .filter(|(_, d)| d.risk_level == RiskLevel::High)
@@ -197,20 +185,29 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         };
     }
 
-    let max_decision = decisions.iter().max_by_key(|(_, d)| d.risk_level).unwrap();
-
-    let confirmation = match &max_decision.1.confirmation {
-        ConfirmationType::Immediate => ConfirmationType::Immediate,
-        ConfirmationType::Enter => ConfirmationType::Enter,
-        ConfirmationType::TableNameInput { target } => ConfirmationType::TableNameInput {
-            target: target.clone(),
-        },
+    // Aggregate risk_level and confirmation independently so that a mix like
+    // INSERT+SELECT (both Low) yields Enter, not Immediate.
+    let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
+    let confirmation = if max_risk == RiskLevel::High {
+        // Exactly one HIGH statement (2+ were blocked above); carry its target.
+        decisions
+            .iter()
+            .find(|(_, d)| d.risk_level == RiskLevel::High)
+            .map(|(_, d)| d.confirmation.clone())
+            .unwrap()
+    } else if decisions
+        .iter()
+        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Enter))
+    {
+        ConfirmationType::Enter
+    } else {
+        ConfirmationType::Immediate
     };
 
     MultiStatementDecision::Allow {
         statements,
         risk: AdhocRiskDecision {
-            risk_level: max_decision.1.risk_level,
+            risk_level: max_risk,
             confirmation,
         },
     }
@@ -285,6 +282,15 @@ mod tests {
             let sql = "SELECT 'unclosed";
             let result = split_statements(sql);
             assert_eq!(result, vec!["SELECT 'unclosed"]);
+        }
+
+        #[test]
+        fn non_ascii_before_semicolon() {
+            // Case-folding of İ (U+0130) changes byte length in lowercase.
+            // Byte offsets must come from the original sql, not the lowercased copy.
+            let sql = "SELECT 'İ'; SELECT 2";
+            let result = split_statements(sql);
+            assert_eq!(result, vec!["SELECT 'İ'", "SELECT 2"]);
         }
     }
 
@@ -471,6 +477,20 @@ mod tests {
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Medium);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn insert_then_select_requires_enter_not_immediate() {
+            // Both are Low risk, but INSERT needs Enter. The confirmation must be
+            // aggregated independently of risk_level to avoid a guard bypass.
+            let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Enter));
                 }
                 _ => panic!("expected Allow"),
