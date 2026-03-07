@@ -754,11 +754,15 @@ pub fn reduce_navigation(
                     .and_then(|row| row.get(col_idx))
                     .cloned();
                 match content {
-                    Some(value) => Some(vec![Effect::CopyToClipboard {
-                        content: value,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
-                    }]),
+                    Some(value) => {
+                        state.ui.yank_flash =
+                            Some((row_idx, Some(col_idx), now + Duration::from_millis(200)));
+                        Some(vec![Effect::CopyToClipboard {
+                            content: value,
+                            on_success: Some(Action::CellCopied),
+                            on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                        }])
+                    }
                     None => {
                         state
                             .messages
@@ -805,11 +809,15 @@ pub fn reduce_navigation(
                             .join("\t")
                     });
                 match content {
-                    Some(tsv) => Some(vec![Effect::CopyToClipboard {
-                        content: tsv,
-                        on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
-                    }]),
+                    Some(tsv) => {
+                        state.ui.yank_flash =
+                            Some((row_idx, None, now + Duration::from_millis(200)));
+                        Some(vec![Effect::CopyToClipboard {
+                            content: tsv,
+                            on_success: Some(Action::CellCopied),
+                            on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                        }])
+                    }
                     None => {
                         state
                             .messages
@@ -843,13 +851,7 @@ pub fn reduce_navigation(
             state.ui.staged_delete_rows.clear();
             Some(vec![])
         }
-        Action::CellCopied => {
-            if let Some(row) = state.ui.result_selection.row() {
-                let col = state.ui.result_selection.cell();
-                state.ui.yank_flash = Some((row, col, now + Duration::from_millis(200)));
-            }
-            Some(vec![])
-        }
+        Action::CellCopied => Some(vec![]),
         Action::ResultEnterCellEdit => match editable_cell_context(state) {
             Ok((row_idx, col_idx, value)) => {
                 if state.cell_edit.row != Some(row_idx) || state.cell_edit.col != Some(col_idx) {
