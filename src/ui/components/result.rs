@@ -12,7 +12,7 @@ use super::atoms::{panel_block_highlight, text_cursor_spans};
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
-use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection};
+use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
@@ -157,7 +157,7 @@ impl ResultPane {
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
-        yank_flash: Option<(usize, Option<usize>, Instant)>,
+        yank_flash: Option<YankFlash>,
     ) -> ViewportPlan {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -226,7 +226,7 @@ impl ResultPane {
         let active_cell = selection.cell();
 
         let now = Instant::now();
-        let yank_flash_active = yank_flash.map(|(_, _, until)| now < until).unwrap_or(false);
+        let yank_flash_active = yank_flash.map(|f| now < f.until).unwrap_or(false);
 
         let rows: Vec<Row> = result
             .rows
@@ -239,8 +239,8 @@ impl ResultPane {
                 let is_active_row = active_row == Some(abs_row_idx);
                 // None = no flash; Some(None) = full row; Some(Some(c)) = cell c
                 let flash_scope = yank_flash
-                    .filter(|&(r, _, _)| yank_flash_active && r == abs_row_idx)
-                    .map(|(_, col, _)| col);
+                    .filter(|f| yank_flash_active && f.row == abs_row_idx)
+                    .map(|f| f.col);
                 let is_row_flash = flash_scope == Some(None);
                 let row_bg = if is_row_flash {
                     Some(Theme::YANK_FLASH_BG)

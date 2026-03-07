@@ -9,6 +9,7 @@ use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
+use crate::app::ui_state::YankFlash;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::app::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
@@ -755,8 +756,11 @@ pub fn reduce_navigation(
                     .cloned();
                 match content {
                     Some(value) => {
-                        state.ui.yank_flash =
-                            Some((row_idx, Some(col_idx), now + Duration::from_millis(200)));
+                        state.ui.yank_flash = Some(YankFlash {
+                            row: row_idx,
+                            col: Some(col_idx),
+                            until: now + Duration::from_millis(200),
+                        });
                         Some(vec![Effect::CopyToClipboard {
                             content: value,
                             on_success: Some(Action::CellCopied),
@@ -810,8 +814,11 @@ pub fn reduce_navigation(
                     });
                 match content {
                     Some(tsv) => {
-                        state.ui.yank_flash =
-                            Some((row_idx, None, now + Duration::from_millis(200)));
+                        state.ui.yank_flash = Some(YankFlash {
+                            row: row_idx,
+                            col: None,
+                            until: now + Duration::from_millis(200),
+                        });
                         Some(vec![Effect::CopyToClipboard {
                             content: tsv,
                             on_success: Some(Action::CellCopied),
