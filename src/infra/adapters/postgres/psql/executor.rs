@@ -434,9 +434,9 @@ mod tests {
         }
 
         #[test]
-        fn parse_affected_rows_returns_none_for_unknown_output() {
+        fn parse_affected_rows_returns_count_for_select() {
             let out = "SELECT 1\n";
-            assert_eq!(PostgresAdapter::parse_affected_rows(out), None);
+            assert_eq!(PostgresAdapter::parse_affected_rows(out), Some(1));
         }
 
         #[test]
