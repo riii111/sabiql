@@ -278,6 +278,8 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalHighRiskConfirmExecute => {
+            // `matches!` + flag instead of `if let` because the immutable borrow
+            // from pattern matching must end before we can mutate `state.sql_modal.status`.
             let matched = matches!(
                 state.sql_modal.status,
                 SqlModalStatus::ConfirmingHigh {

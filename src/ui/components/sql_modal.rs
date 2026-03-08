@@ -71,7 +71,7 @@ impl SqlModal {
             state.sql_modal.status,
             SqlModalStatus::ConfirmingHigh { .. }
         ) {
-            3
+            3 // warning line + input prompt line + bottom margin
         } else {
             1
         };
@@ -230,18 +230,15 @@ impl SqlModal {
         match target_name {
             Some(name) => {
                 let is_match = input.content() == name;
-                let mut line1_spans = vec![Span::styled(
-                    format!("\u{26a0} HIGH RISK  {}", decision.label),
-                    error_style,
-                )];
+                let warning_text = format!("\u{26a0} HIGH RISK  {}", decision.label);
+                let blocked_label = "Enter blocked";
+                let mut line1_spans = vec![Span::styled(warning_text.clone(), error_style)];
                 if !is_match {
-                    let padding = area
-                        .width
-                        .saturating_sub((16 + decision.label.len() + 13) as u16)
-                        .max(2);
+                    let used = (warning_text.len() + blocked_label.len()) as u16;
+                    let padding = area.width.saturating_sub(used).max(2);
                     line1_spans.push(Span::raw(" ".repeat(padding as usize)));
                     line1_spans.push(Span::styled(
-                        "Enter blocked",
+                        blocked_label,
                         Style::default().fg(Theme::TEXT_MUTED),
                     ));
                 }
