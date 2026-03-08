@@ -6,6 +6,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
+use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
 use sabiql::ui::components::layout::MainLayout;
 
@@ -33,7 +34,8 @@ const FIXED_TIME_MS: u128 = 0;
 pub fn render_and_get_buffer(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> Buffer {
     terminal
         .draw(|frame| {
-            let output = MainLayout::render(frame, state, Some(FIXED_TIME_MS));
+            let output =
+                MainLayout::render(frame, state, Some(FIXED_TIME_MS), &AppServices::stub());
             state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
             state.ui.result_viewport_plan = output.result_viewport_plan;
             state.ui.inspector_pane_height = output.inspector_pane_height;

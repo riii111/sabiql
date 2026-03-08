@@ -18,6 +18,7 @@ use sabiql::app::ports::{
 };
 use sabiql::app::reducer::reduce;
 use sabiql::app::render_schedule::next_animation_deadline;
+use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{
@@ -92,11 +93,12 @@ async fn main() -> Result<()> {
         .action_tx(action_tx.clone())
         .build();
 
-    let mut state = AppState::with_ports(
-        project_name,
-        Arc::clone(&adapter) as _,
-        Arc::clone(&adapter) as _,
-    );
+    let services = AppServices {
+        ddl_generator: Arc::clone(&adapter) as _,
+        sql_dialect: Arc::clone(&adapter) as _,
+    };
+
+    let mut state = AppState::new(project_name);
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
@@ -137,8 +139,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    state.action_tx = Some(action_tx.clone());
-
     let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
             }
             Some(action) = action_rx.recv() => {
                 let now = Instant::now();
-                let mut effects = reduce(&mut state, action, now);
+                let mut effects = reduce(&mut state, action, now, &services);
 
                 if state.render_dirty {
                     state.clear_expired_timers(now);
@@ -174,7 +174,7 @@ async fn main() -> Result<()> {
                 }
 
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
-                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine, &services).await?;
                 state.clear_dirty();
             }
             // Animation deadline reached (spinner, cursor blink, message timeout)
@@ -186,9 +186,9 @@ async fn main() -> Result<()> {
             } => {
                 let now = Instant::now();
                 state.clear_expired_timers(now);
-                let effects = reduce(&mut state, Action::Render, now);
+                let effects = reduce(&mut state, Action::Render, now, &services);
                 let mut tui_adapter = TuiAdapter::new(&mut tui);
-                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine).await?;
+                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine, &services).await?;
                 state.clear_dirty();
             }
         }
