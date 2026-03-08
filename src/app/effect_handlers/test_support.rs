@@ -87,7 +87,6 @@ pub(crate) fn make_runner(
         .build()
 }
 
-#[allow(dead_code)]
 pub(crate) fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "testdb".to_string(),
@@ -97,7 +96,6 @@ pub(crate) fn sample_metadata() -> DatabaseMetadata {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn sample_query_result() -> QueryResult {
     QueryResult {
         query: "SELECT 1".to_string(),
