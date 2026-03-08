@@ -2005,17 +2005,23 @@ mod tests {
                     .any(|e| matches!(e, Effect::FetchMetadata { .. }))
             );
 
-            // Step 2: MetadataLoaded with "users" still present → selection preserved
+            // Step 2: MetadataLoaded with "users" still present → selection preserved + preview refreshed
             let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
-            reduce_metadata(
+            let meta_effects = reduce_metadata(
                 &mut state,
                 &Action::MetadataLoaded(metadata),
                 Instant::now(),
-            );
+            )
+            .unwrap();
 
             // "users" is at index 1 (alphabetical: orders=0, users=1)
             assert_eq!(state.ui.explorer_selected, 1);
             assert_eq!(state.query.pagination.table, "users");
+            assert!(
+                meta_effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { table, .. } if table == "users"))
+            );
         }
 
         #[test]
