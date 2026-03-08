@@ -2,6 +2,7 @@
 paths:
   - "**/src/app/state.rs"
   - "**/src/app/services.rs"
+  - "**/src/app/reducer.rs"
   - "**/src/app/reducers/**/*.rs"
 ---
 
