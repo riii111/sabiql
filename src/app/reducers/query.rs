@@ -8,7 +8,7 @@ use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
-use crate::app::sql_modal_context::SqlModalStatus;
+use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
@@ -142,6 +142,11 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         state.sql_modal.status = SqlModalStatus::Error;
                     } else {
                         state.sql_modal.status = SqlModalStatus::Success;
+                        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+                            command_tag: result.command_tag.clone(),
+                            row_count: result.row_count,
+                            execution_time_ms: result.execution_time_ms,
+                        });
                     }
                 }
 

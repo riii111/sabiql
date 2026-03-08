@@ -2,12 +2,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use crate::app::write_guardrails::AdhocRiskDecision;
+use crate::domain::CommandTag;
 
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
     pub error: String,
     pub retry_count: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdhocSuccessSnapshot {
+    pub command_tag: Option<CommandTag>,
+    pub row_count: usize,
+    pub execution_time_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,6 +64,7 @@ pub struct SqlModalContext {
     pub content: String,
     pub cursor: usize,
     pub status: SqlModalStatus,
+    pub last_adhoc_success: Option<AdhocSuccessSnapshot>,
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,
