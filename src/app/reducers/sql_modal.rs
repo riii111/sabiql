@@ -6,10 +6,11 @@ use crate::app::action::{Action, CursorMove};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
-use crate::app::sql_modal_context::SqlModalStatus;
+use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::app::statement_classifier::{self, StatementKind};
-use crate::app::write_guardrails::evaluate_adhoc_risk;
+use crate::app::text_input::TextInputState;
+use crate::app::write_guardrails::{RiskLevel, evaluate_adhoc_risk};
 
 /// Handles SQL modal editing and completion actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -52,6 +53,12 @@ pub fn reduce_sql_modal(
 
         // Clipboard paste
         Action::Paste(text) if state.ui.input_mode == InputMode::SqlModal => {
+            if matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh { .. }
+            ) {
+                return Some(vec![]);
+            }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert_str(byte_idx, &normalized);
@@ -200,9 +207,30 @@ pub fn reduce_sql_modal(
                 Some(adhoc_effects(state, query))
             } else {
                 let decision = evaluate_adhoc_risk(&kind);
-                state.sql_modal.status = SqlModalStatus::Confirming(decision);
-                // Hide completion popup so the confirmation UI is unobstructed.
                 state.sql_modal.completion.visible = false;
+                if decision.risk_level == RiskLevel::High {
+                    match kind {
+                        StatementKind::Drop
+                        | StatementKind::Truncate
+                        | StatementKind::Update { has_where: false }
+                        | StatementKind::Delete { has_where: false } => {
+                            let target_name =
+                                statement_classifier::extract_table_name(&query, &kind);
+                            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+                                decision,
+                                input: TextInputState::default(),
+                                target_name,
+                            };
+                        }
+                        _ => {
+                            // No table name to extract → typed gate impossible; fall back
+                            // to single-Enter confirm without downgrading risk level.
+                            state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                        }
+                    }
+                } else {
+                    state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                }
                 Some(vec![])
             }
         }
@@ -216,12 +244,61 @@ pub fn reduce_sql_modal(
             }
         }
         Action::SqlModalCancelConfirm => {
-            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+            if matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+            ) {
                 state.sql_modal.status = SqlModalStatus::Editing;
                 Some(vec![])
             } else {
                 None
             }
+        }
+
+        // HIGH risk confirmation input
+        Action::SqlModalHighRiskInput(c) => {
+            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+                input.insert_char(*c);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+        Action::SqlModalHighRiskBackspace => {
+            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+                input.backspace();
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+        Action::SqlModalHighRiskMoveCursor(movement) => {
+            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+                input.move_cursor(*movement);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+        Action::SqlModalHighRiskConfirmExecute => {
+            // `matches!` + flag instead of `if let` because the immutable borrow
+            // from pattern matching must end before we can mutate `state.sql_modal.status`.
+            let matched = matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    ref target_name,
+                    ref input,
+                    ..
+                } if target_name.as_ref().is_some_and(|n| input.content() == n)
+            );
+            if matched {
+                let query = state.sql_modal.content.trim().to_string();
+                state.sql_modal.status = SqlModalStatus::Running;
+                if let Some(dsn) = &state.runtime.dsn {
+                    return Some(vec![Effect::ExecuteAdhoc {
+                        dsn: dsn.clone(),
+                        query,
+                    }]);
+                }
+            }
+            Some(vec![])
         }
 
         // Completion accept
@@ -369,6 +446,342 @@ mod tests {
             assert_eq!(state.sql_modal.content, "a日本語b");
             assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
         }
+
+        #[test]
+        fn paste_in_confirming_high_is_ignored() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DROP TABLE users".to_string();
+            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+                decision: crate::app::write_guardrails::AdhocRiskDecision {
+                    risk_level: RiskLevel::High,
+                    label: "DROP",
+                },
+                input: TextInputState::default(),
+                target_name: Some("users".to_string()),
+            };
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("injected".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.content, "DROP TABLE users");
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh { .. }
+            ));
+        }
+    }
+
+    mod confirming_high {
+        use super::*;
+        use crate::app::write_guardrails::AdhocRiskDecision;
+
+        fn sql_modal_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state
+        }
+
+        fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = content.to_string();
+            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+                decision: AdhocRiskDecision {
+                    risk_level: RiskLevel::High,
+                    label: "DROP",
+                },
+                input: TextInputState::default(),
+                target_name: target.map(|s| s.to_string()),
+            };
+            state
+        }
+
+        #[test]
+        fn submit_high_risk_drop_enters_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DROP TABLE users".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "users"
+            ));
+        }
+
+        #[test]
+        fn submit_other_falls_back_to_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "GRANT ALL ON users TO role1".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
+            ));
+        }
+
+        #[test]
+        fn submit_unsupported_falls_back_to_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "COPY users FROM '/tmp/data.csv'".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
+            ));
+        }
+
+        #[test]
+        fn submit_medium_risk_stays_confirming() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "UPDATE users SET x=1 WHERE id=1".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::Medium
+            ));
+        }
+
+        #[test]
+        fn high_risk_input_appends_char() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskInput('u'),
+                Instant::now(),
+            );
+
+            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+                assert_eq!(input.content(), "u");
+            } else {
+                panic!("expected ConfirmingHigh");
+            }
+        }
+
+        #[test]
+        fn high_risk_backspace_removes_char() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskInput('a'),
+                Instant::now(),
+            );
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskInput('b'),
+                Instant::now(),
+            );
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskBackspace,
+                Instant::now(),
+            );
+
+            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+                assert_eq!(input.content(), "a");
+            } else {
+                panic!("expected ConfirmingHigh");
+            }
+        }
+
+        #[test]
+        fn high_risk_confirm_executes_on_match() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            state.runtime.dsn = Some("postgres://test".to_string());
+            for c in "users".chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::SqlModalHighRiskInput(c),
+                    Instant::now(),
+                );
+            }
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(state.sql_modal.status, SqlModalStatus::Running));
+            assert!(
+                effects
+                    .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
+            );
+        }
+
+        #[test]
+        fn high_risk_confirm_blocked_on_mismatch() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskInput('x'),
+                Instant::now(),
+            );
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh { .. }
+            ));
+        }
+
+        #[test]
+        fn high_risk_confirm_blocked_when_no_target() {
+            let mut state = confirming_high_state("DROP TABLE users", None);
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh { .. }
+            ));
+        }
+
+        #[test]
+        fn cancel_from_confirming_high_returns_to_editing() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+
+            reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
+
+            assert!(matches!(state.sql_modal.status, SqlModalStatus::Editing));
+        }
+
+        #[test]
+        fn high_risk_move_cursor_works() {
+            let mut state = confirming_high_state("DROP TABLE users", Some("users"));
+            for c in "ab".chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::SqlModalHighRiskInput(c),
+                    Instant::now(),
+                );
+            }
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskMoveCursor(CursorMove::Left),
+                Instant::now(),
+            );
+
+            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+                assert_eq!(input.cursor(), 1);
+            } else {
+                panic!("expected ConfirmingHigh");
+            }
+        }
+
+        #[test]
+        fn submit_delete_no_where_enters_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DELETE FROM users".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "users"
+            ));
+        }
+
+        #[test]
+        fn submit_update_no_where_enters_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "UPDATE users SET x=1".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "users"
+            ));
+        }
+
+        #[test]
+        fn submit_truncate_enters_confirming_high() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "TRUNCATE users".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "users"
+            ));
+        }
+
+        #[test]
+        fn submit_drop_schema_qualified_preserves_full_name() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DROP TABLE my_schema.very_long_table_name".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "my_schema.very_long_table_name"
+            ));
+        }
+
+        #[test]
+        fn high_risk_confirm_matches_full_name_not_truncated() {
+            let full_name = "my_schema.very_long_table_name";
+            let mut state =
+                confirming_high_state(&format!("DROP TABLE {}", full_name), Some(full_name));
+            state.runtime.dsn = Some("postgres://test".to_string());
+            for c in full_name.chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::SqlModalHighRiskInput(c),
+                    Instant::now(),
+                );
+            }
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(state.sql_modal.status, SqlModalStatus::Running));
+            assert!(
+                effects
+                    .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
+            );
+        }
     }
 
     mod confirmation_flow {
@@ -413,14 +826,15 @@ mod tests {
         }
 
         #[test]
-        fn submit_delete_without_where_enters_confirming_high_risk() {
+        fn submit_delete_without_where_enters_confirming_high() {
             let mut state = modal_state_with_query("DELETE FROM users");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status,
-                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
+                SqlModalStatus::ConfirmingHigh { ref decision, .. }
+                    if decision.risk_level == RiskLevel::High
             ));
         }
 

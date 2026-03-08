@@ -250,6 +250,10 @@ pub enum Action {
     SqlModalClear,
     SqlModalConfirmExecute,
     SqlModalCancelConfirm,
+    SqlModalHighRiskInput(char),
+    SqlModalHighRiskBackspace,
+    SqlModalHighRiskMoveCursor(CursorMove),
+    SqlModalHighRiskConfirmExecute,
 
     // SQL Modal completion
     CompletionTrigger,
