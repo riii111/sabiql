@@ -1,0 +1,28 @@
+---
+source: tests/render_snapshots.rs
+assertion_line: 281
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
+│       │CREATE TABLE backup AS SELECT * FROM users                    │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │───────┘
+│       │                                                              │───────┐
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │✓ table created (0.04s)                                       │       │
+│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+⌥Enter:Run  ↑↓←→:Move  Esc:Close
