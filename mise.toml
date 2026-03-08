@@ -18,23 +18,23 @@ run = "cargo fmt"
 
 [tasks.clippy]
 description = "Run lints"
-run = "cargo clippy -q --all-targets -- -D warnings"
+run = "cargo clippy -q --all-targets --features test-support -- -D warnings"
 
 [tasks."clippy:fix"]
 description = "Auto-fix clippy warnings"
-run = "cargo clippy --all-targets --fix --allow-dirty --allow-staged"
+run = "cargo clippy --all-targets --features test-support --fix --allow-dirty --allow-staged"
 
 [tasks.test]
 description = "Run tests"
-run = "cargo test -q"
+run = "cargo test -q --features test-support"
 
 [tasks."test:debug"]
 description = "Run specific test with output (e.g., mise run test:debug test_name)"
-run = "cargo test $1 -- --nocapture"
+run = "cargo test $1 --features test-support -- --nocapture"
 
 [tasks."test:ignored"]
 description = "Run #[ignore] integration tests (requires PostgreSQL)"
-run = "cargo test -- --ignored"
+run = "cargo test --features test-support -- --ignored"
 
 [tasks.run]
 description = "Run application"
