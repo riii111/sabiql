@@ -8,6 +8,7 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::palette::palette_command_count;
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::app::ui_state::YankFlash;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
@@ -83,7 +84,7 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-fn inspector_total_items(state: &AppState) -> usize {
+fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     state
         .cache
         .table_detail
@@ -107,17 +108,17 @@ fn inspector_total_items(state: &AppState) -> usize {
                 lines
             }),
             InspectorTab::Triggers => t.triggers.len(),
-            InspectorTab::Ddl => state.ddl_generator.ddl_line_count(t),
+            InspectorTab::Ddl => services.ddl_generator.ddl_line_count(t),
         })
         .unwrap_or(0)
 }
 
-fn inspector_max_scroll(state: &AppState) -> usize {
+fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
     let visible = match state.ui.inspector_tab {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
         _ => state.inspector_visible_rows(),
     };
-    inspector_total_items(state).saturating_sub(visible)
+    inspector_total_items(state, services).saturating_sub(visible)
 }
 
 fn explorer_item_count(state: &AppState) -> usize {
@@ -127,6 +128,7 @@ fn explorer_item_count(state: &AppState) -> usize {
 /// Builds a WritePreview for bulk-deleting all staged rows via a single DELETE statement.
 pub fn build_bulk_delete_preview(
     state: &AppState,
+    services: &AppServices,
 ) -> Result<(WritePreview, usize, Option<usize>), String> {
     if state.ui.staged_delete_rows.is_empty() {
         return Err("No rows staged for deletion".to_string());
@@ -157,7 +159,7 @@ pub fn build_bulk_delete_preview(
         pk_pairs_per_row.push(pairs);
     }
 
-    let sql = state.sql_dialect.build_bulk_delete_sql(
+    let sql = services.sql_dialect.build_bulk_delete_sql(
         &state.query.pagination.schema,
         &state.query.pagination.table,
         &pk_pairs_per_row,
@@ -235,6 +237,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
 pub fn reduce_navigation(
     state: &mut AppState,
     action: &Action,
+    services: &AppServices,
     now: Instant,
 ) -> Option<Vec<Effect>> {
     match action {
@@ -603,7 +606,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::InspectorScrollDown => {
-            let max_offset = inspector_max_scroll(state);
+            let max_offset = inspector_max_scroll(state, services);
             if state.ui.inspector_scroll_offset < max_offset {
                 state.ui.inspector_scroll_offset += 1;
             }
@@ -614,7 +617,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::InspectorScrollBottom => {
-            state.ui.inspector_scroll_offset = inspector_max_scroll(state);
+            state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
         Action::InspectorScrollHalfPageDown => {
@@ -623,7 +626,7 @@ pub fn reduce_navigation(
                 _ => state.inspector_visible_rows(),
             };
             let delta = (visible / 2).max(1);
-            let max = inspector_max_scroll(state);
+            let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
             Some(vec![])
         }
@@ -643,7 +646,7 @@ pub fn reduce_navigation(
                 _ => state.inspector_visible_rows(),
             };
             let delta = visible.max(1);
-            let max = inspector_max_scroll(state);
+            let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
             Some(vec![])
         }
@@ -782,7 +785,7 @@ pub fn reduce_navigation(
             if state.ui.inspector_tab == InspectorTab::Ddl
                 && let Some(table) = state.cache.table_detail.as_ref()
             {
-                let ddl = state.ddl_generator.generate_ddl(table);
+                let ddl = services.ddl_generator.generate_ddl(table);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
@@ -1041,6 +1044,7 @@ fn reset_result_view(state: &mut AppState) {
 mod tests {
     use super::*;
     use crate::app::effect::Effect;
+    use crate::app::services::AppServices;
     use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
     use std::time::Instant;
 
@@ -1068,6 +1072,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::Paste("hello".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1083,6 +1088,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::Paste("hel\nlo\r\n".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1095,7 +1101,12 @@ mod tests {
             state.ui.input_mode = InputMode::TablePicker;
             state.ui.picker_selected = 5;
 
-            reduce_navigation(&mut state, &Action::Paste("x".to_string()), Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("x".to_string()),
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.picker_selected, 0);
         }
@@ -1108,6 +1119,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::Paste("quit".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1122,6 +1134,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::Paste("qu\nit".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1136,6 +1149,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::Paste("text".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1150,6 +1164,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::Paste("public.users".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1166,6 +1181,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::Paste("public\n.users\r\n".to_string()),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1191,6 +1207,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ConnectionListSelectNext,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1206,6 +1223,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ConnectionListSelectNext,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1221,6 +1239,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ConnectionListSelectPrevious,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1236,6 +1255,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ConnectionListSelectPrevious,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1263,6 +1283,7 @@ mod tests {
                     service_file_path: None,
                     service_load_warning: None,
                 }),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1284,6 +1305,7 @@ mod tests {
                     service_file_path: None,
                     service_load_warning: None,
                 }),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1303,6 +1325,7 @@ mod tests {
                     service_file_path: Some(path.clone()),
                     service_load_warning: None,
                 }),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1321,6 +1344,7 @@ mod tests {
                     service_file_path: None,
                     service_load_warning: Some("parse error at line 5".to_string()),
                 }),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1361,6 +1385,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1385,6 +1410,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1399,6 +1425,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1423,6 +1450,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1450,6 +1478,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ConfirmConnectionSelection,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1501,8 +1530,12 @@ mod tests {
             let mut state = state_with_table_detail(20);
             state.ui.inspector_scroll_offset = 10;
 
-            let effects =
-                reduce_navigation(&mut state, &Action::InspectorScrollTop, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::InspectorScrollTop,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(effects.is_some());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -1515,8 +1548,12 @@ mod tests {
             let visible = state.inspector_visible_rows(); // 10 - 5 = 5
             let expected_max = 20_usize.saturating_sub(visible);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::InspectorScrollBottom, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::InspectorScrollBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(effects.is_some());
             assert_eq!(state.ui.inspector_scroll_offset, expected_max);
@@ -1527,8 +1564,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_pane_height = 10;
 
-            let effects =
-                reduce_navigation(&mut state, &Action::InspectorScrollBottom, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::InspectorScrollBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(effects.is_some());
             assert_eq!(state.ui.inspector_scroll_offset, 0);
@@ -1565,6 +1606,7 @@ mod tests {
             let effects = reduce_navigation(
                 &mut state,
                 &Action::ResultScrollHalfPageDown,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1577,7 +1619,12 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.ui.result_scroll_offset = 50;
 
-            reduce_navigation(&mut state, &Action::ResultScrollHalfPageUp, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ResultScrollHalfPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.result_scroll_offset, 40);
         }
@@ -1591,6 +1638,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultScrollFullPageDown,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1603,7 +1651,12 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.ui.result_scroll_offset = 5;
 
-            reduce_navigation(&mut state, &Action::ResultScrollFullPageUp, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ResultScrollFullPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             // delta=20, saturating_sub(5,20) = 0
             assert_eq!(state.ui.result_scroll_offset, 0);
@@ -1616,6 +1669,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultScrollHalfPageDown,
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -1650,7 +1704,12 @@ mod tests {
         fn half_page_down_jumps_by_correct_delta() {
             let mut state = state_with_tables(50, 23);
             // explorer_visible_items = 23-3 = 20, half = 10
-            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.explorer_selected, 10);
         }
@@ -1660,7 +1719,12 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(45));
 
-            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.explorer_selected, 49);
         }
@@ -1670,7 +1734,12 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.set_explorer_selection(Some(3));
 
-            reduce_navigation(&mut state, &Action::SelectHalfPageUp, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.explorer_selected, 0);
         }
@@ -1679,7 +1748,12 @@ mod tests {
         fn full_page_down_jumps_by_visible() {
             let mut state = state_with_tables(50, 23);
             // delta = 20
-            reduce_navigation(&mut state, &Action::SelectFullPageDown, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::SelectFullPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.explorer_selected, 20);
         }
@@ -1689,8 +1763,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.explorer_pane_height = 23;
 
-            let effects =
-                reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(effects.is_some());
             assert_eq!(state.ui.explorer_selected, 0);
@@ -1700,7 +1778,12 @@ mod tests {
         fn zero_height_pane_scrolls_by_one() {
             let mut state = state_with_tables(50, 0);
             // explorer_visible_items = 0, delta = max(0/2,1) = 1
-            reduce_navigation(&mut state, &Action::SelectHalfPageDown, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.explorer_selected, 1);
         }
@@ -1737,8 +1820,13 @@ mod tests {
             state.ui.result_selection.enter_row(10);
             state.ui.result_selection.enter_cell(0);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -1750,8 +1838,13 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.result_selection.enter_cell(10);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -1763,8 +1856,13 @@ mod tests {
             state.ui.result_selection.enter_row(1);
             state.ui.result_selection.enter_cell(2);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1779,8 +1877,13 @@ mod tests {
         fn no_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultCellYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_none());
@@ -1814,8 +1917,13 @@ mod tests {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.ui.result_selection.enter_row(0);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1831,8 +1939,13 @@ mod tests {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
             state.ui.result_selection.enter_row(0);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1848,8 +1961,13 @@ mod tests {
             let mut state = state_with_row(vec!["a\\b"]);
             state.ui.result_selection.enter_row(0);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1865,8 +1983,13 @@ mod tests {
             let mut state = state_with_row(vec!["val"]);
             state.ui.result_selection.enter_row(99);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
             assert!(state.messages.last_error.is_some());
@@ -1876,8 +1999,13 @@ mod tests {
         fn row_yank_no_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultRowYank, Instant::now()).unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1889,6 +2017,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultRowYankOperatorPending,
+                &AppServices::stub(),
                 Instant::now(),
             )
             .unwrap();
@@ -1946,7 +2075,13 @@ mod tests {
             state.cell_edit.input.set_content("modified".to_string());
             state.ui.input_mode = InputMode::Normal;
 
-            reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce_navigation(
+                &mut state,
+                &Action::ResultEnterCellEdit,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert_eq!(state.cell_edit.draft_value(), "modified");
@@ -1962,7 +2097,13 @@ mod tests {
                 .input
                 .set_content("stale-modified".to_string());
 
-            reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+            reduce_navigation(
+                &mut state,
+                &Action::ResultEnterCellEdit,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert_eq!(state.cell_edit.col, Some(1));
@@ -1986,9 +2127,13 @@ mod tests {
                 comment: None,
             });
 
-            let effects =
-                reduce_navigation(&mut state, &Action::ResultEnterCellEdit, Instant::now())
-                    .unwrap();
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::ResultEnterCellEdit,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(state.ui.input_mode, InputMode::Normal);
@@ -2059,7 +2204,12 @@ mod tests {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.ui.result_selection.enter_row(0);
 
-            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::StageRowForDelete,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(state.ui.staged_delete_rows.contains(&0));
         }
@@ -2070,7 +2220,12 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.staged_delete_rows.insert(0);
 
-            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::StageRowForDelete,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.staged_delete_rows.len(), 1);
         }
@@ -2079,7 +2234,12 @@ mod tests {
         fn staging_requires_row_active_mode() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
-            reduce_navigation(&mut state, &Action::StageRowForDelete, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::StageRowForDelete,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(state.ui.staged_delete_rows.is_empty());
         }
@@ -2094,7 +2254,12 @@ mod tests {
             state.ui.staged_delete_rows.insert(0);
             state.ui.staged_delete_rows.insert(1);
 
-            reduce_navigation(&mut state, &Action::UnstageLastStagedRow, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::UnstageLastStagedRow,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.staged_delete_rows.len(), 1);
             assert!(state.ui.staged_delete_rows.contains(&0));
@@ -2110,7 +2275,12 @@ mod tests {
             state.ui.staged_delete_rows.insert(0);
             state.ui.staged_delete_rows.insert(1);
 
-            reduce_navigation(&mut state, &Action::ClearStagedDeletes, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ClearStagedDeletes,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert!(state.ui.staged_delete_rows.is_empty());
         }
@@ -2129,9 +2299,14 @@ mod tests {
             }
         }
 
+        fn fake_services() -> AppServices {
+            let mut services = AppServices::stub();
+            services.ddl_generator = Arc::new(FakeDdlGenerator);
+            services
+        }
+
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ddl_generator = Arc::new(FakeDdlGenerator);
             state.ui.inspector_tab = InspectorTab::Ddl;
             state.cache.table_detail = Some(Table {
                 schema: "public".to_string(),
@@ -2162,7 +2337,12 @@ mod tests {
         fn ddl_yank_with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
-            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::DdlYank,
+                &fake_services(),
+                Instant::now(),
+            );
 
             let effects = effects.expect("should return Some");
             assert_eq!(effects.len(), 1);
@@ -2177,7 +2357,12 @@ mod tests {
             state.ui.inspector_tab = InspectorTab::Ddl;
             // table_detail is None
 
-            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::DdlYank,
+                &fake_services(),
+                Instant::now(),
+            );
 
             let effects = effects.expect("should return Some");
             assert!(effects.is_empty());
@@ -2188,7 +2373,12 @@ mod tests {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 
-            let effects = reduce_navigation(&mut state, &Action::DdlYank, Instant::now());
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::DdlYank,
+                &fake_services(),
+                Instant::now(),
+            );
 
             let effects = effects.expect("should return Some");
             assert!(effects.is_empty());
@@ -2211,7 +2401,12 @@ mod tests {
         fn delete_removes_char_at_cursor() {
             let mut state = state_in_cell_edit("abcd", 1);
 
-            reduce_navigation(&mut state, &Action::ResultCellEditDelete, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditDelete,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.cell_edit.draft_value(), "acd");
             assert_eq!(state.cell_edit.input.cursor(), 1);
@@ -2221,7 +2416,12 @@ mod tests {
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce_navigation(&mut state, &Action::ResultCellEditDelete, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditDelete,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.cell_edit.draft_value(), "abc");
         }
@@ -2233,6 +2433,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultCellEditMoveCursor(CursorMove::Left),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -2246,6 +2447,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultCellEditMoveCursor(CursorMove::Right),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -2259,6 +2461,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultCellEditMoveCursor(CursorMove::Home),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -2272,6 +2475,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultCellEditMoveCursor(CursorMove::End),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -2285,6 +2489,7 @@ mod tests {
             reduce_navigation(
                 &mut state,
                 &Action::ResultCellEditInput('b'),
+                &AppServices::stub(),
                 Instant::now(),
             );
 
@@ -2296,7 +2501,12 @@ mod tests {
         fn backspace_removes_char_before_cursor() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce_navigation(&mut state, &Action::ResultCellEditBackspace, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ResultCellEditBackspace,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.cell_edit.draft_value(), "ac");
             assert_eq!(state.cell_edit.input.cursor(), 1);
@@ -2334,7 +2544,12 @@ mod tests {
         fn open_sets_index_to_newest() {
             let mut state = state_with_history(3);
 
-            reduce_navigation(&mut state, &Action::OpenResultHistory, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::OpenResultHistory,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, Some(2));
         }
@@ -2343,7 +2558,12 @@ mod tests {
         fn open_is_noop_when_history_empty() {
             let mut state = AppState::new("test".to_string());
 
-            reduce_navigation(&mut state, &Action::OpenResultHistory, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::OpenResultHistory,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, None);
         }
@@ -2353,7 +2573,12 @@ mod tests {
             let mut state = state_with_history(3);
             state.query.history_index = Some(2);
 
-            reduce_navigation(&mut state, &Action::HistoryOlder, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::HistoryOlder,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, Some(1));
         }
@@ -2363,7 +2588,12 @@ mod tests {
             let mut state = state_with_history(3);
             state.query.history_index = Some(0);
 
-            reduce_navigation(&mut state, &Action::HistoryOlder, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::HistoryOlder,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, Some(0));
         }
@@ -2373,7 +2603,12 @@ mod tests {
             let mut state = state_with_history(3);
             state.query.history_index = Some(0);
 
-            reduce_navigation(&mut state, &Action::HistoryNewer, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::HistoryNewer,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, Some(1));
         }
@@ -2383,7 +2618,12 @@ mod tests {
             let mut state = state_with_history(3);
             state.query.history_index = Some(2);
 
-            reduce_navigation(&mut state, &Action::HistoryNewer, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::HistoryNewer,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, Some(2));
         }
@@ -2393,7 +2633,12 @@ mod tests {
             let mut state = state_with_history(3);
             state.query.history_index = Some(1);
 
-            reduce_navigation(&mut state, &Action::ExitResultHistory, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::ExitResultHistory,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.query.history_index, None);
         }
@@ -2404,7 +2649,12 @@ mod tests {
             state.ui.result_scroll_offset = 10;
             state.ui.result_horizontal_offset = 5;
 
-            reduce_navigation(&mut state, &Action::OpenResultHistory, Instant::now());
+            reduce_navigation(
+                &mut state,
+                &Action::OpenResultHistory,
+                &AppServices::stub(),
+                Instant::now(),
+            );
 
             assert_eq!(state.ui.result_scroll_offset, 0);
             assert_eq!(state.ui.result_horizontal_offset, 0);

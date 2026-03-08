@@ -1,5 +1,6 @@
 use color_eyre::eyre::Result;
 
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::app::viewport::ViewportPlan;
 
@@ -13,5 +14,5 @@ pub struct RenderOutput {
 }
 
 pub trait Renderer {
-    fn draw(&mut self, state: &mut AppState) -> Result<RenderOutput>;
+    fn draw(&mut self, state: &mut AppState, services: &AppServices) -> Result<RenderOutput>;
 }

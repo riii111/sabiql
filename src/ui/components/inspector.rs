@@ -9,6 +9,8 @@ use super::atoms::panel_block;
 use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
+use crate::app::ports::DdlGenerator;
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
@@ -19,13 +21,18 @@ use crate::ui::theme::Theme;
 pub struct Inspector;
 
 impl Inspector {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> ViewportPlan {
+    pub fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+        services: &AppServices,
+    ) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state, is_focused)
+        Self::render_content(frame, content_area, state, is_focused, services)
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -61,6 +68,7 @@ impl Inspector {
         area: Rect,
         state: &AppState,
         is_focused: bool,
+        services: &AppServices,
     ) -> ViewportPlan {
         let block = panel_block(" [2] Inspector ", is_focused);
 
@@ -103,7 +111,13 @@ impl Inspector {
                     ViewportPlan::default()
                 }
                 InspectorTab::Ddl => {
-                    Self::render_ddl(frame, inner, table, state.ui.inspector_scroll_offset, state);
+                    Self::render_ddl(
+                        frame,
+                        inner,
+                        table,
+                        state.ui.inspector_scroll_offset,
+                        &*services.ddl_generator,
+                    );
                     ViewportPlan::default()
                 }
             }
@@ -707,9 +721,9 @@ impl Inspector {
         area: Rect,
         table: &TableDetail,
         scroll_offset: usize,
-        state: &AppState,
+        ddl_gen: &dyn DdlGenerator,
     ) {
-        let ddl = state.ddl_generator.generate_ddl(table);
+        let ddl = ddl_gen.generate_ddl(table);
 
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
