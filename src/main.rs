@@ -27,7 +27,7 @@ use sabiql::infra::adapters::{
 use sabiql::infra::config::project_root::{find_project_root, get_project_name};
 use sabiql::infra::export::DotExporter;
 use sabiql::ui::adapters::TuiAdapter;
-use sabiql::ui::event::handler::handle_event;
+use sabiql::ui::event::handlers::handle_event;
 use sabiql::ui::tui::TuiRunner;
 
 #[derive(Parser, Debug)]
