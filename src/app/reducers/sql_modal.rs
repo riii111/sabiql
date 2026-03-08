@@ -413,7 +413,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_delete_without_where_enters_confirming_high_risk() {
+        fn submit_delete_without_where_shows_high_risk_warning() {
             let mut state = modal_state_with_query("DELETE FROM users");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
