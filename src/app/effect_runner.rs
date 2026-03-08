@@ -199,7 +199,6 @@ impl EffectRunner {
         let ctx = self.effect_context();
 
         match effect {
-            // ── Rendering (inline) ──
             Effect::Render => {
                 let output = tui.draw(state, _services)?;
                 if !state.ui.focus_mode {
@@ -212,7 +211,6 @@ impl EffectRunner {
                 Ok(())
             }
 
-            // ── Orchestration (inline) ──
             Effect::Sequence(_) => {
                 // Handled in run()
                 Ok(())
@@ -224,7 +222,6 @@ impl EffectRunner {
                 Ok(())
             }
 
-            // ── System (inline) ──
             Effect::CopyToClipboard {
                 content,
                 on_success,
@@ -259,7 +256,6 @@ impl EffectRunner {
                 Ok(())
             }
 
-            // ── Connection ──
             e @ (Effect::SaveAndConnect { .. }
             | Effect::LoadConnectionForEdit { .. }
             | Effect::LoadConnections
@@ -269,7 +265,6 @@ impl EffectRunner {
                 effect_handlers::connection::run(e, &ctx, state).await
             }
 
-            // ── Metadata ──
             e @ (Effect::FetchMetadata { .. }
             | Effect::FetchTableDetail { .. }
             | Effect::PrefetchTableDetail { .. }
@@ -279,14 +274,12 @@ impl EffectRunner {
                 effect_handlers::metadata::run(e, &ctx, state, completion_engine).await
             }
 
-            // ── Query & Export ──
             e @ (Effect::ExecutePreview { .. }
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }) => effect_handlers::query::run(e, &ctx, state).await,
 
-            // ── ER Diagram ──
             e @ (Effect::GenerateErDiagramFromCache { .. }
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
@@ -294,7 +287,6 @@ impl EffectRunner {
                 effect_handlers::er::run(e, &ctx, state, completion_engine).await
             }
 
-            // ── Completion Engine ──
             e @ (Effect::CacheTableInCompletionEngine { .. }
             | Effect::EvictTablesFromCompletionCache { .. }
             | Effect::ClearCompletionEngineCache
