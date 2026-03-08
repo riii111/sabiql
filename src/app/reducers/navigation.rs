@@ -936,6 +936,7 @@ pub fn reduce_navigation(
             profiles,
             services,
             service_file_path,
+            profile_load_warning,
             service_load_warning,
         }) => {
             let mut sorted = profiles.clone();
@@ -947,6 +948,9 @@ pub fn reduce_navigation(
             state.set_connections_and_services(sorted, services.clone());
             state.runtime.service_file_path = service_file_path.clone();
 
+            if let Some(warning) = profile_load_warning {
+                state.messages.set_error_at(warning.clone(), now);
+            }
             if let Some(warning) = service_load_warning {
                 state.messages.set_error_at(warning.clone(), now);
             }
@@ -1281,6 +1285,7 @@ mod tests {
                     profiles,
                     services: vec![],
                     service_file_path: None,
+                    profile_load_warning: None,
                     service_load_warning: None,
                 }),
                 &AppServices::stub(),
@@ -1303,6 +1308,7 @@ mod tests {
                     profiles,
                     services: vec![],
                     service_file_path: None,
+                    profile_load_warning: None,
                     service_load_warning: None,
                 }),
                 &AppServices::stub(),
@@ -1323,6 +1329,7 @@ mod tests {
                     profiles: vec![],
                     services: vec![],
                     service_file_path: Some(path.clone()),
+                    profile_load_warning: None,
                     service_load_warning: None,
                 }),
                 &AppServices::stub(),
@@ -1342,6 +1349,7 @@ mod tests {
                     profiles: vec![],
                     services: vec![],
                     service_file_path: None,
+                    profile_load_warning: None,
                     service_load_warning: Some("parse error at line 5".to_string()),
                 }),
                 &AppServices::stub(),

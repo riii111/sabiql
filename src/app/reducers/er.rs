@@ -30,6 +30,10 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.set_error(error.clone());
             Some(vec![])
         }
+        Action::ErLogWriteFailed(error) => {
+            state.set_error(error.clone());
+            Some(vec![])
+        }
         Action::ErOpenDiagram => {
             if matches!(
                 state.er_preparation.status,

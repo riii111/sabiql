@@ -49,6 +49,7 @@ pub struct ConnectionsLoadedPayload {
     pub profiles: Vec<ConnectionProfile>,
     pub services: Vec<ServiceEntry>,
     pub service_file_path: Option<std::path::PathBuf>,
+    pub profile_load_warning: Option<String>,
     pub service_load_warning: Option<String>,
 }
 
@@ -367,6 +368,7 @@ pub enum Action {
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
     ErDiagramFailed(String),
+    ErLogWriteFailed(String),
 }
 
 impl Action {

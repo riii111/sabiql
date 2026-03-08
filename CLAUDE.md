@@ -60,6 +60,7 @@ Skills（`.claude/skills/`）は手動で `/skill-name` で呼び出す。
 | **rstest-patterns** | `domain/**`, `infra/**/parser*`, `infra/**/sql/**` | rstest凝集度、境界値パターン |
 | **test-organization** | `app/**`, `ui/event/**` | mod構造、フィクスチャ抽出 |
 | **visual-regression** | `tests/render_snapshots.rs`, `tests/snapshots/**` | instaスナップショット、モードカバレッジ |
+| **effect-runner** | `app/effect_runner.rs`, `app/effect_handlers/**`, `app/effect.rs` | Dispatcher パターン、EffectContext、新 Effect 追加手順 |
 
 ### Available Skills
 

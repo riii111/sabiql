@@ -18,13 +18,10 @@ pub enum Effect {
         password: String,
         ssl_mode: SslMode,
     },
-
     LoadConnectionForEdit {
         id: ConnectionId,
     },
-
     LoadConnections,
-
     DeleteConnection {
         id: ConnectionId,
     },
@@ -32,11 +29,9 @@ pub enum Effect {
     CacheInvalidate {
         dsn: String,
     },
-
     FetchMetadata {
         dsn: String,
     },
-
     /// Updates state.table_detail on completion
     FetchTableDetail {
         dsn: String,
@@ -72,41 +67,6 @@ pub enum Effect {
         dsn: String,
         query: String,
     },
-
-    CacheTableInCompletionEngine {
-        qualified_name: String,
-        table: Box<Table>,
-    },
-    SmartErRefresh {
-        dsn: String,
-        run_id: u64,
-    },
-    EvictTablesFromCompletionCache {
-        tables: Vec<String>,
-    },
-    ClearCompletionEngineCache,
-    ResizeCompletionCache {
-        capacity: usize,
-    },
-
-    CopyToClipboard {
-        content: String,
-        on_success: Option<Action>,
-        on_failure: Option<Action>,
-    },
-
-    GenerateErDiagramFromCache {
-        total_tables: usize,
-        project_name: String,
-        target_tables: Vec<String>,
-    },
-    WriteErFailureLog {
-        failed_tables: Vec<(String, String)>,
-    },
-    ExtractFkNeighbors {
-        seed_tables: Vec<String>,
-    },
-
     CountRowsForExport {
         dsn: String,
         count_query: String,
@@ -119,24 +79,54 @@ pub enum Effect {
         file_name: String,
         row_count: Option<usize>,
     },
+
+    CacheTableInCompletionEngine {
+        qualified_name: String,
+        table: Box<Table>,
+    },
+    EvictTablesFromCompletionCache {
+        tables: Vec<String>,
+    },
+    ClearCompletionEngineCache,
+    ResizeCompletionCache {
+        capacity: usize,
+    },
+    /// Triggers completion: fetches missing tables and updates candidates
+    TriggerCompletion,
+
+    GenerateErDiagramFromCache {
+        total_tables: usize,
+        project_name: String,
+        target_tables: Vec<String>,
+    },
+    WriteErFailureLog {
+        failed_tables: Vec<(String, String)>,
+    },
+    ExtractFkNeighbors {
+        seed_tables: Vec<String>,
+    },
+    SmartErRefresh {
+        dsn: String,
+        run_id: u64,
+    },
+
+    CopyToClipboard {
+        content: String,
+        on_success: Option<Action>,
+        on_failure: Option<Action>,
+    },
     OpenFolder {
         path: std::path::PathBuf,
     },
 
-    /// Triggers completion: fetches missing tables and updates candidates
-    TriggerCompletion,
-
     /// Executes effects in order. Each effect awaits before starting the next,
     /// but spawned async tasks (e.g., FetchMetadata) may complete out of order.
     Sequence(Vec<Effect>),
-
     /// Dispatch actions to be processed by the reducer
     DispatchActions(Vec<Action>),
-
     SwitchConnection {
         connection_index: usize,
     },
-
     SwitchToService {
         service_index: usize,
     },

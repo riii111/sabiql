@@ -12,6 +12,7 @@ pub mod connection_list;
 pub mod connection_setup_state;
 pub mod connection_state;
 pub mod effect;
+pub(crate) mod effect_handlers;
 pub mod effect_runner;
 pub mod er_state;
 pub mod er_task;
