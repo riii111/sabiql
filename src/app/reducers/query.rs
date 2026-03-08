@@ -178,6 +178,44 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     }
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                 }
+
+                if result.source == QuerySource::Adhoc && !result.is_error() {
+                    if let Some(tag) = &result.command_tag {
+                        if tag.needs_refresh() {
+                            if let Some(dsn) = &state.runtime.dsn {
+                                let mut effects = vec![];
+
+                                if tag.is_schema_modifying() {
+                                    // Skip ExecutePreview here: the selected table may have been
+                                    // dropped. MetadataLoaded handles preview refresh after
+                                    // metadata arrives.
+                                    state.sql_modal.prefetch_started = false;
+                                    state.sql_modal.prefetch_queue.clear();
+                                    state.sql_modal.prefetching_tables.clear();
+                                    state.sql_modal.failed_prefetch_tables.clear();
+                                    state.cache.table_detail = None;
+
+                                    effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
+                                    effects.push(Effect::ClearCompletionEngineCache);
+                                    effects.push(Effect::FetchMetadata { dsn: dsn.clone() });
+                                } else if !state.query.pagination.table.is_empty() {
+                                    let page = state.query.pagination.current_page;
+                                    effects.push(Effect::ExecutePreview {
+                                        dsn: dsn.clone(),
+                                        schema: state.query.pagination.schema.clone(),
+                                        table: state.query.pagination.table.clone(),
+                                        generation: state.cache.selection_generation,
+                                        limit: PREVIEW_PAGE_SIZE,
+                                        offset: page * PREVIEW_PAGE_SIZE,
+                                        target_page: page,
+                                    });
+                                }
+
+                                return Some(effects);
+                            }
+                        }
+                    }
+                }
             }
             Some(vec![])
         }
@@ -1644,6 +1682,404 @@ mod tests {
                 reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+        }
+    }
+
+    mod adhoc_refresh {
+        use super::*;
+        use crate::domain::CommandTag;
+
+        fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
+            Arc::new(QueryResult {
+                query: "UPDATE users SET name = 'x' WHERE id = 1".to_string(),
+                columns: vec![],
+                rows: vec![],
+                row_count: 0,
+                execution_time_ms: 5,
+                executed_at: Instant::now(),
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: Some(tag),
+            })
+        }
+
+        fn adhoc_error_result() -> Arc<QueryResult> {
+            Arc::new(QueryResult::error(
+                "BAD SQL".to_string(),
+                "syntax error".to_string(),
+                5,
+                QuerySource::Adhoc,
+            ))
+        }
+
+        fn state_with_table_selected() -> AppState {
+            let mut state = create_test_state();
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state
+        }
+
+        #[test]
+        fn dml_with_table_selected_emits_execute_preview() {
+            let mut state = state_with_table_selected();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Update(3)),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::ExecutePreview { table, .. } if table == "users")
+            );
+        }
+
+        #[test]
+        fn dml_without_table_selected_emits_no_effects() {
+            let mut state = create_test_state();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Insert(1)),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn ddl_emits_cache_invalidate_and_fetch_metadata() {
+            let mut state = state_with_table_selected();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::CacheInvalidate { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
+            );
+        }
+
+        #[test]
+        fn ddl_resets_prefetch_state_and_clears_table_detail() {
+            let mut state = state_with_table_selected();
+            state.sql_modal.prefetch_started = true;
+            state
+                .sql_modal
+                .prefetch_queue
+                .push_back("public.users".to_string());
+            state.cache.table_detail = Some(users_table_detail());
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            );
+
+            assert!(!state.sql_modal.prefetch_started);
+            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(state.cache.table_detail.is_none());
+        }
+
+        #[test]
+        fn tcl_emits_no_effects() {
+            for tag in [CommandTag::Begin, CommandTag::Commit, CommandTag::Rollback] {
+                let mut state = state_with_table_selected();
+
+                let effects = reduce_query(
+                    &mut state,
+                    &Action::QueryCompleted {
+                        result: adhoc_result_with_tag(tag),
+                        generation: 0,
+                        target_page: None,
+                    },
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty());
+            }
+        }
+
+        #[test]
+        fn select_emits_no_effects() {
+            let mut state = state_with_table_selected();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Select(5)),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn adhoc_error_emits_no_effects() {
+            let mut state = state_with_table_selected();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_error_result(),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn no_command_tag_emits_no_effects() {
+            let mut state = state_with_table_selected();
+            let result = Arc::new(QueryResult {
+                query: "SELECT 1".to_string(),
+                columns: vec!["?column?".to_string()],
+                rows: vec![vec!["1".to_string()]],
+                row_count: 1,
+                execution_time_ms: 5,
+                executed_at: Instant::now(),
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: None,
+            });
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result,
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+    }
+
+    mod adhoc_refresh_integration {
+        use super::*;
+        use crate::app::reducers::metadata::reduce_metadata;
+        use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
+        use std::sync::Arc;
+
+        fn make_metadata(tables: Vec<(&str, &str)>) -> Box<DatabaseMetadata> {
+            Box::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: tables
+                    .into_iter()
+                    .map(|(schema, name)| {
+                        TableSummary::new(schema.to_string(), name.to_string(), None, false)
+                    })
+                    .collect(),
+                fetched_at: Instant::now(),
+            })
+        }
+
+        fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
+            Arc::new(QueryResult {
+                query: String::new(),
+                columns: vec![],
+                rows: vec![],
+                row_count: 0,
+                execution_time_ms: 5,
+                executed_at: Instant::now(),
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: Some(tag),
+            })
+        }
+
+        fn state_with_table(schema: &str, table: &str) -> AppState {
+            let mut state = create_test_state();
+            state.query.pagination.schema = schema.to_string();
+            state.query.pagination.table = table.to_string();
+            state
+        }
+
+        #[test]
+        fn dml_then_preview_updates_current_result() {
+            let mut state = state_with_table("public", "users");
+
+            // Step 1: DML → ExecutePreview effect
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Update(3)),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+
+            // Step 2: simulated preview response → current_result updated
+            let new_preview = preview_result(5);
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: Arc::clone(&new_preview),
+                    generation: 0,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+            );
+
+            let stored = state.query.current_result.as_ref().unwrap();
+            assert_eq!(stored.source, QuerySource::Preview);
+            assert_eq!(stored.row_count, 5);
+        }
+
+        #[test]
+        fn ddl_create_then_metadata_loaded_preserves_explorer_selection() {
+            let mut state = state_with_table("public", "users");
+
+            // Step 1: DDL CREATE → metadata effects
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(!state.sql_modal.prefetch_started);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
+
+            // Step 2: MetadataLoaded with "users" still present → selection preserved
+            let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
+            reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            );
+
+            // "users" is at index 1 (alphabetical: orders=0, users=1)
+            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.query.pagination.table, "users");
+        }
+
+        #[test]
+        fn ddl_drop_then_metadata_loaded_without_table_clears_selection() {
+            let mut state = state_with_table("public", "users");
+            state.query.current_result = Some(preview_result(3));
+
+            // Step 1: DROP TABLE
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchMetadata { .. }))
+            );
+
+            // Step 2: MetadataLoaded without "users" → selection cleared
+            let metadata = make_metadata(vec![("public", "orders")]);
+            reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            );
+
+            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.current_result.is_none());
+            assert!(state.cache.table_detail.is_none());
+            assert_eq!(state.ui.explorer_selected, 0);
+        }
+
+        #[test]
+        fn ddl_does_not_emit_execute_preview_so_modal_status_stays_success() {
+            let mut state = state_with_table("public", "users");
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Drop("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
+            );
+            assert_eq!(
+                state.sql_modal.status,
+                crate::app::sql_modal_context::SqlModalStatus::Success
+            );
         }
     }
 }
