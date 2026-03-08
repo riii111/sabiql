@@ -3,7 +3,7 @@ use color_eyre::eyre::Result;
 use crate::app::ports::renderer::{RenderOutput, Renderer};
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
-use crate::ui::components::layout::MainLayout;
+use crate::ui::shell::layout::MainLayout;
 use crate::ui::tui::TuiRunner;
 
 pub struct TuiAdapter<'a> {

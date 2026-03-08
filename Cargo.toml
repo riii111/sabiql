@@ -44,6 +44,10 @@ tempfile = "3"
 insta = "1"
 mockall = "0.13"
 
+[[test]]
+name = "render_snapshots"
+required-features = ["test-support"]
+
 [profile.release]
 lto = true
 codegen-units = 1

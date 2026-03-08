@@ -8,7 +8,7 @@ use ratatui::buffer::Buffer;
 
 use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
-use sabiql::ui::components::layout::MainLayout;
+use sabiql::ui::shell::layout::MainLayout;
 
 pub const TEST_WIDTH: u16 = 80;
 pub const TEST_HEIGHT: u16 = 24;

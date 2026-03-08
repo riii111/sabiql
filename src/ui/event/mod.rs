@@ -1,4 +1,4 @@
-pub mod handler;
+pub mod handlers;
 pub mod key_translator;
 
 use crate::app::keybindings::KeyCombo;
