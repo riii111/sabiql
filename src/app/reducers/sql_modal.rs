@@ -6,7 +6,7 @@ use crate::app::action::{Action, CursorMove};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
-use crate::app::sql_modal_context::SqlModalStatus;
+use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::app::statement_classifier::{self, StatementKind};
 use crate::app::text_input::TextInputState;
@@ -263,21 +263,21 @@ pub fn reduce_sql_modal(
         Action::SqlModalHighRiskInput(c) => {
             if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
                 input.insert_char(*c);
-                input.update_viewport(40);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::SqlModalHighRiskBackspace => {
             if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
                 input.backspace();
-                input.update_viewport(40);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::SqlModalHighRiskMoveCursor(movement) => {
             if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
                 input.move_cursor(*movement);
-                input.update_viewport(40);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }

@@ -412,14 +412,15 @@ fn handle_sql_modal_keys(
     use crate::app::action::CursorMove;
 
     if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
+        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {
-            Key::Char(c) => Action::SqlModalHighRiskInput(c),
-            Key::Backspace => Action::SqlModalHighRiskBackspace,
+            Key::Char(c) if plain => Action::SqlModalHighRiskInput(c),
+            Key::Backspace if plain => Action::SqlModalHighRiskBackspace,
             Key::Left => Action::SqlModalHighRiskMoveCursor(CursorMove::Left),
             Key::Right => Action::SqlModalHighRiskMoveCursor(CursorMove::Right),
             Key::Home => Action::SqlModalHighRiskMoveCursor(CursorMove::Home),
             Key::End => Action::SqlModalHighRiskMoveCursor(CursorMove::End),
-            Key::Enter => Action::SqlModalHighRiskConfirmExecute,
+            Key::Enter if plain => Action::SqlModalHighRiskConfirmExecute,
             Key::Esc => Action::SqlModalCancelConfirm,
             _ => Action::None,
         };

@@ -4,7 +4,9 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
+use crate::app::sql_modal_context::{
+    CompletionKind, HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus,
+};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -246,7 +248,7 @@ impl SqlModal {
                 let line1 = Line::from(line1_spans);
 
                 let prompt = format!("Type \"{}\" to confirm:  > ", name);
-                let visible_width = area.width.saturating_sub(prompt.len() as u16 + 2) as usize;
+                let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
                 let cursor_spans = text_cursor_spans(
                     input.content(),
                     input.cursor(),
