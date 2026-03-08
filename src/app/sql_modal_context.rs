@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
+use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::AdhocRiskDecision;
 
 #[derive(Debug, Clone)]
@@ -10,13 +11,20 @@ pub struct FailedPrefetchEntry {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
     Editing,
     /// Awaiting explicit Enter confirmation before executing a write statement.
     /// Holds the risk assessment so the UI can show an appropriate warning.
     Confirming(AdhocRiskDecision),
+    /// HIGH risk confirmation requiring the user to type the target table name.
+    /// `target_name: None` means extraction failed — execution is permanently blocked.
+    ConfirmingHigh {
+        decision: AdhocRiskDecision,
+        input: TextInputState,
+        target_name: Option<String>,
+    },
     Running,
     Success,
     Error,
@@ -141,6 +149,50 @@ mod tests {
         assert_eq!(ctx.cursor, 0);
         assert!(!ctx.completion.visible);
         assert!(ctx.completion.candidates.is_empty());
+    }
+
+    #[test]
+    fn confirming_high_with_target_name() {
+        use crate::app::write_guardrails::RiskLevel;
+
+        let status = SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input: TextInputState::default(),
+            target_name: Some("users".to_string()),
+        };
+
+        assert!(matches!(
+            status,
+            SqlModalStatus::ConfirmingHigh {
+                target_name: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn confirming_high_without_target_name() {
+        use crate::app::write_guardrails::RiskLevel;
+
+        let status = SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "SQL",
+            },
+            input: TextInputState::default(),
+            target_name: None,
+        };
+
+        assert!(matches!(
+            status,
+            SqlModalStatus::ConfirmingHigh {
+                target_name: None,
+                ..
+            }
+        ));
     }
 
     #[test]

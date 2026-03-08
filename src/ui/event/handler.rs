@@ -411,6 +411,20 @@ fn handle_sql_modal_keys(
 ) -> Action {
     use crate::app::action::CursorMove;
 
+    if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
+        return match combo.key {
+            Key::Char(c) => Action::SqlModalHighRiskInput(c),
+            Key::Backspace => Action::SqlModalHighRiskBackspace,
+            Key::Left => Action::SqlModalHighRiskMoveCursor(CursorMove::Left),
+            Key::Right => Action::SqlModalHighRiskMoveCursor(CursorMove::Right),
+            Key::Home => Action::SqlModalHighRiskMoveCursor(CursorMove::Home),
+            Key::End => Action::SqlModalHighRiskMoveCursor(CursorMove::End),
+            Key::Enter => Action::SqlModalHighRiskConfirmExecute,
+            Key::Esc => Action::SqlModalCancelConfirm,
+            _ => Action::None,
+        };
+    }
+
     // In Confirming state only plain Enter/Esc are meaningful; all other keys are ignored
     // to prevent accidental edits while the risk warning is displayed.
     // Alt+Enter (submit shortcut) is intentionally excluded — only explicit plain Enter confirms.
