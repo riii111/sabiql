@@ -527,6 +527,7 @@ fn reset_connection_state(state: &mut AppState) {
     state.query.current_result = None;
     state.query.result_history = Default::default();
     state.query.history_index = None;
+    state.query.pagination.reset();
     state.ui.set_explorer_selection(None);
     state.ui.result_selection.reset();
     state.ui.result_scroll_offset = 0;
