@@ -179,42 +179,41 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                 }
 
-                if result.source == QuerySource::Adhoc && !result.is_error() {
-                    if let Some(tag) = &result.command_tag {
-                        if tag.needs_refresh() {
-                            if let Some(dsn) = &state.runtime.dsn {
-                                let mut effects = vec![];
+                if result.source == QuerySource::Adhoc
+                    && !result.is_error()
+                    && let Some(tag) = &result.command_tag
+                    && tag.needs_refresh()
+                    && let Some(dsn) = &state.runtime.dsn
+                {
+                    let mut effects = vec![];
 
-                                if tag.is_schema_modifying() {
-                                    // Skip ExecutePreview here: the selected table may have been
-                                    // dropped. MetadataLoaded handles preview refresh after
-                                    // metadata arrives.
-                                    state.sql_modal.prefetch_started = false;
-                                    state.sql_modal.prefetch_queue.clear();
-                                    state.sql_modal.prefetching_tables.clear();
-                                    state.sql_modal.failed_prefetch_tables.clear();
-                                    state.cache.table_detail = None;
+                    if tag.is_schema_modifying() {
+                        // Skip ExecutePreview here: the selected table may have been
+                        // dropped. MetadataLoaded handles preview refresh after
+                        // metadata arrives.
+                        state.sql_modal.prefetch_started = false;
+                        state.sql_modal.prefetch_queue.clear();
+                        state.sql_modal.prefetching_tables.clear();
+                        state.sql_modal.failed_prefetch_tables.clear();
+                        state.cache.table_detail = None;
 
-                                    effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
-                                    effects.push(Effect::ClearCompletionEngineCache);
-                                    effects.push(Effect::FetchMetadata { dsn: dsn.clone() });
-                                } else if !state.query.pagination.table.is_empty() {
-                                    let page = state.query.pagination.current_page;
-                                    effects.push(Effect::ExecutePreview {
-                                        dsn: dsn.clone(),
-                                        schema: state.query.pagination.schema.clone(),
-                                        table: state.query.pagination.table.clone(),
-                                        generation: state.cache.selection_generation,
-                                        limit: PREVIEW_PAGE_SIZE,
-                                        offset: page * PREVIEW_PAGE_SIZE,
-                                        target_page: page,
-                                    });
-                                }
-
-                                return Some(effects);
-                            }
-                        }
+                        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
+                        effects.push(Effect::ClearCompletionEngineCache);
+                        effects.push(Effect::FetchMetadata { dsn: dsn.clone() });
+                    } else if !state.query.pagination.table.is_empty() {
+                        let page = state.query.pagination.current_page;
+                        effects.push(Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema: state.query.pagination.schema.clone(),
+                            table: state.query.pagination.table.clone(),
+                            generation: state.cache.selection_generation,
+                            limit: PREVIEW_PAGE_SIZE,
+                            offset: page * PREVIEW_PAGE_SIZE,
+                            target_page: page,
+                        });
                     }
+
+                    return Some(effects);
                 }
             }
             Some(vec![])
