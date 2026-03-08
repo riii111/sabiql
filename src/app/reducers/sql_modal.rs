@@ -739,6 +739,49 @@ mod tests {
                 } if name == "users"
             ));
         }
+
+        #[test]
+        fn submit_drop_schema_qualified_preserves_full_name() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DROP TABLE my_schema.very_long_table_name".to_string();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status,
+                SqlModalStatus::ConfirmingHigh {
+                    target_name: Some(ref name),
+                    ..
+                } if name == "my_schema.very_long_table_name"
+            ));
+        }
+
+        #[test]
+        fn high_risk_confirm_matches_full_name_not_truncated() {
+            let full_name = "my_schema.very_long_table_name";
+            let mut state =
+                confirming_high_state(&format!("DROP TABLE {}", full_name), Some(full_name));
+            state.runtime.dsn = Some("postgres://test".to_string());
+            for c in full_name.chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::SqlModalHighRiskInput(c),
+                    Instant::now(),
+                );
+            }
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::SqlModalHighRiskConfirmExecute,
+                Instant::now(),
+            );
+
+            assert!(matches!(state.sql_modal.status, SqlModalStatus::Running));
+            assert!(
+                effects
+                    .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
+            );
+        }
     }
 
     mod confirmation_flow {
