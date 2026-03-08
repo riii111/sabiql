@@ -255,7 +255,7 @@ mod tests {
             state.ui.explorer_selected = 0;
             let now = Instant::now();
 
-            let _ = reduce(&mut state, action, now, &AppServices::stub());
+            reduce(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.ui.explorer_selected, 0);
         }
@@ -420,7 +420,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::SqlModalInput('x'),
                 now,
@@ -498,7 +498,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataLoaded(Box::new(metadata)),
                 now,
@@ -526,7 +526,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataLoaded(Box::new(metadata)),
                 now,
@@ -757,7 +757,7 @@ mod tests {
             state.ui.focused_pane = FocusedPane::Explorer;
             state.ui.set_explorer_selection(Some(0));
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmSelection,
                 now,
@@ -776,7 +776,7 @@ mod tests {
             state.ui.input_mode = InputMode::TablePicker;
             state.ui.picker_selected = 0;
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmSelection,
                 now,
@@ -845,7 +845,7 @@ mod tests {
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ReloadMetadata,
                 now,
@@ -862,7 +862,7 @@ mod tests {
             let now = Instant::now();
 
             // Trigger reload
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ReloadMetadata,
                 now,
@@ -877,7 +877,7 @@ mod tests {
                 tables: vec![],
                 fetched_at: now,
             };
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataLoaded(Box::new(metadata)),
                 now,
@@ -1318,7 +1318,7 @@ mod tests {
             state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmDialogConfirm,
                 now,
@@ -1338,7 +1338,7 @@ mod tests {
             state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmDialogCancel,
                 now,
@@ -1440,7 +1440,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataLoaded(Box::new(metadata)),
                 now,
@@ -1457,7 +1457,7 @@ mod tests {
             state.runtime.connection_state = ConnectionState::Connecting;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataFailed("connection refused".to_string()),
                 now,
@@ -1477,7 +1477,7 @@ mod tests {
             state.cache.state = MetadataState::Loaded;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::MetadataFailed("permission denied".to_string()),
                 now,
@@ -1498,7 +1498,7 @@ mod tests {
             state.ui.input_mode = InputMode::ConnectionError;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ReenterConnectionSetup,
                 now,
@@ -1521,7 +1521,7 @@ mod tests {
             state.runtime.connection_state = ConnectionState::Failed;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ReenterConnectionSetup,
                 now,
@@ -2087,7 +2087,7 @@ mod tests {
             state.ui.picker_selected = entry_index;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmSelection,
                 now,
@@ -2128,7 +2128,7 @@ mod tests {
             state.ui.picker_selected = entry_index;
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ConfirmSelection,
                 now,
@@ -2152,7 +2152,7 @@ mod tests {
             state.ui.yank_op_pending = true;
             let now = Instant::now();
 
-            let _ = reduce(&mut state, Action::SelectNext, now, &AppServices::stub());
+            reduce(&mut state, Action::SelectNext, now, &AppServices::stub());
 
             assert!(!state.ui.yank_op_pending);
         }
@@ -2164,7 +2164,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             let now = Instant::now();
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ResultRowYankOperatorPending,
                 now,
@@ -2173,7 +2173,7 @@ mod tests {
             assert!(state.ui.yank_op_pending);
             assert!(!state.ui.delete_op_pending);
 
-            let _ = reduce(
+            reduce(
                 &mut state,
                 Action::ResultDeleteOperatorPending,
                 now,

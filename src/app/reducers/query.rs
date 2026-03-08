@@ -1065,7 +1065,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
@@ -1093,7 +1093,7 @@ mod tests {
             let result = preview_result(100); // Less than PAGE_SIZE
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1115,7 +1115,7 @@ mod tests {
             let result = preview_result(PREVIEW_PAGE_SIZE);
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1137,7 +1137,7 @@ mod tests {
             let result = adhoc_result();
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1166,7 +1166,7 @@ mod tests {
             state.ui.result_scroll_offset = 10;
             state.ui.result_horizontal_offset = 3;
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryFailed("error".to_string(), 1),
                 Instant::now(),
@@ -1338,7 +1338,7 @@ mod tests {
             };
             let expected_sql = preview.sql.clone();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::OpenWritePreviewConfirm(preview),
                 Instant::now(),
@@ -1540,7 +1540,7 @@ mod tests {
             state.cache.selection_generation = 1;
             state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result: preview_result(3),
@@ -1565,7 +1565,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result: preview_result(2),
