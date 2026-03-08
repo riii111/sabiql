@@ -223,13 +223,9 @@ pub fn reduce_sql_modal(
                             };
                         }
                         _ => {
-                            // Other/Unsupported: fall back to Medium Confirming to avoid
-                            // permanent block (no table name to extract).
-                            let fallback = crate::app::write_guardrails::AdhocRiskDecision {
-                                risk_level: RiskLevel::Medium,
-                                ..decision
-                            };
-                            state.sql_modal.status = SqlModalStatus::Confirming(fallback);
+                            // No table name to extract → typed gate impossible; fall back
+                            // to single-Enter confirm without downgrading risk level.
+                            state.sql_modal.status = SqlModalStatus::Confirming(decision);
                         }
                     }
                 } else {
@@ -517,7 +513,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_other_falls_back_to_confirming() {
+        fn submit_other_falls_back_to_confirming_high() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "GRANT ALL ON users TO role1".to_string();
 
@@ -525,12 +521,12 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status,
-                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::Medium
+                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
             ));
         }
 
         #[test]
-        fn submit_unsupported_falls_back_to_confirming() {
+        fn submit_unsupported_falls_back_to_confirming_high() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "COPY users FROM '/tmp/data.csv'".to_string();
 
@@ -538,7 +534,7 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status,
-                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::Medium
+                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
             ));
         }
 

@@ -227,8 +227,15 @@ impl Footer {
             InputMode::SqlModal => {
                 if matches!(
                     state.sql_modal.status,
-                    SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+                    SqlModalStatus::ConfirmingHigh { .. }
                 ) {
+                    // Modal footer already provides the authoritative hint;
+                    // global footer shows only Esc.
+                    vec![
+                        SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]
+                            .as_hint(),
+                    ]
+                } else if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
                     vec![
                         SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CONFIRM_EXECUTE]
                             .as_hint(),

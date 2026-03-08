@@ -4,10 +4,8 @@ use std::time::Instant;
 use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::AdhocRiskDecision;
 
-/// Fixed visible width for the HIGH risk confirmation text input.
-/// Shared between reducer (viewport scrolling) and render (cursor drawing)
-/// so they never diverge.
-pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 36;
+/// Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
+pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
 
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {

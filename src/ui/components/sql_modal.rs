@@ -247,7 +247,7 @@ impl SqlModal {
                 }
                 let line1 = Line::from(line1_spans);
 
-                let prompt = format!("Type \"{}\" to confirm:  > ", name);
+                let prompt = format!("Confirm \"{}\": > ", name);
                 let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
                 let cursor_spans = text_cursor_spans(
                     input.content(),
