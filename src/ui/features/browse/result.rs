@@ -7,9 +7,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
-use super::atoms::{panel_block_highlight, text_cursor_spans};
+use crate::ui::shared::atoms::{panel_block_highlight, text_cursor_spans};
 
-use super::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::state::AppState;
 use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
@@ -17,6 +16,7 @@ use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::domain::{QueryResult, QuerySource};
+use crate::ui::shared::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
 use crate::ui::theme::Theme;
 
 pub struct ResultPane;
@@ -326,7 +326,7 @@ impl ResultPane {
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
 
-        use super::scroll_indicator::{
+        use crate::ui::shared::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };

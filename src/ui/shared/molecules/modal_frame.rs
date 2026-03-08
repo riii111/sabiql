@@ -3,7 +3,7 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Color;
 use ratatui::widgets::Clear;
 
-use crate::ui::components::overlay::{
+use crate::ui::shared::molecules::overlay::{
     centered_rect, modal_block_with_hint, modal_block_with_hint_color, render_scrim,
 };
 

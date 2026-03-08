@@ -2,13 +2,13 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use super::atoms::text_cursor_spans;
-use super::molecules::render_modal;
 use crate::app::connection_setup_state::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::app::state::AppState;
 use crate::domain::connection::SslMode;
+use crate::ui::shared::atoms::text_cursor_spans;
+use crate::ui::shared::molecules::render_modal;
 use crate::ui::theme::Theme;
 
 const LABEL_WIDTH: u16 = 12;

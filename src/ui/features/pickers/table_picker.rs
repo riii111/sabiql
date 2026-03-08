@@ -7,7 +7,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use super::molecules::render_modal;
+use crate::ui::shared::molecules::render_modal;
 
 pub struct TablePicker;
 

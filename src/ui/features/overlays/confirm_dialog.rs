@@ -2,10 +2,10 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use super::molecules::{render_modal, render_modal_with_border_color};
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
 use crate::app::write_update::escape_preview_value;
+use crate::ui::shared::molecules::{render_modal, render_modal_with_border_color};
 use crate::ui::theme::Theme;
 
 pub struct ConfirmDialog;

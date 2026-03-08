@@ -7,9 +7,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::theme::Theme;
 
-use super::atoms::key_chip;
-use super::molecules::render_modal;
 use crate::app::state::AppState;
+use crate::ui::shared::atoms::key_chip;
+use crate::ui::shared::molecules::render_modal;
 
 pub struct ConnectionError;
 

@@ -4,8 +4,6 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::atoms::spinner_char;
-use super::status_message::{MessageType, StatusMessage};
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
@@ -18,6 +16,8 @@ use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 use crate::domain::QuerySource;
+use crate::ui::shared::atoms::spinner_char;
+use crate::ui::shared::atoms::status_message::{MessageType, StatusMessage};
 use crate::ui::theme::Theme;
 
 pub struct Footer;

@@ -1,7 +1,7 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::ui::components::atoms::{key_chip, key_text};
+use crate::ui::shared::atoms::{key_chip, key_text};
 use crate::ui::theme::Theme;
 
 /// Creates a hint line for footer display.

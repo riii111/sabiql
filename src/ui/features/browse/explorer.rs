@@ -8,7 +8,7 @@ use crate::app::state::AppState;
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
 
-use super::atoms::panel_block;
+use crate::ui::shared::atoms::panel_block;
 
 pub struct Explorer;
 
@@ -99,7 +99,7 @@ impl Explorer {
             if total_items > viewport_size {
                 let scroll_offset = state.ui.explorer_scroll_offset;
 
-                use super::scroll_indicator::{
+                use crate::ui::shared::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
                 };
                 render_vertical_scroll_indicator_bar(
@@ -115,7 +115,7 @@ impl Explorer {
 
             // Render horizontal scrollbar
             if max_name_width > content_width {
-                use super::scroll_indicator::{
+                use crate::ui::shared::atoms::scroll_indicator::{
                     HorizontalScrollParams, render_horizontal_scroll_indicator,
                 };
                 render_horizontal_scroll_indicator(

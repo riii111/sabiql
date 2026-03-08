@@ -1,6 +1,8 @@
 mod key_chip;
 mod panel_border;
+pub mod scroll_indicator;
 mod spinner;
+pub mod status_message;
 mod text_cursor;
 
 pub use key_chip::{key_chip, key_text};

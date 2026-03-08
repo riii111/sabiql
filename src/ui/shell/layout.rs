@@ -1,25 +1,25 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
-use super::command_line::CommandLine;
-use super::command_palette::CommandPalette;
-use super::confirm_dialog::ConfirmDialog;
-use super::connection_error::ConnectionError;
-use super::connection_selector::ConnectionSelector;
-use super::connection_setup::ConnectionSetup;
-use super::er_table_picker::ErTablePicker;
-use super::explorer::Explorer;
-use super::footer::Footer;
-use super::header::Header;
-use super::help_overlay::HelpOverlay;
-use super::inspector::Inspector;
-use super::result::ResultPane;
-use super::sql_modal::SqlModal;
-use super::table_picker::TablePicker;
 use crate::app::input_mode::InputMode;
 use crate::app::ports::RenderOutput;
 use crate::app::state::AppState;
 use crate::app::viewport::ViewportPlan;
+use crate::ui::features::browse::explorer::Explorer;
+use crate::ui::features::browse::inspector::Inspector;
+use crate::ui::features::browse::result::ResultPane;
+use crate::ui::features::connections::error::ConnectionError;
+use crate::ui::features::connections::selector::ConnectionSelector;
+use crate::ui::features::connections::setup::ConnectionSetup;
+use crate::ui::features::overlays::confirm_dialog::ConfirmDialog;
+use crate::ui::features::overlays::help::HelpOverlay;
+use crate::ui::features::pickers::command_palette::CommandPalette;
+use crate::ui::features::pickers::er_table_picker::ErTablePicker;
+use crate::ui::features::pickers::table_picker::TablePicker;
+use crate::ui::features::sql_modal::SqlModal;
+use crate::ui::shell::command_line::CommandLine;
+use crate::ui::shell::footer::Footer;
+use crate::ui::shell::header::Header;
 
 pub struct MainLayout;
 

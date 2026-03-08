@@ -14,8 +14,10 @@ use crate::app::keybindings::{
 };
 use crate::app::state::AppState;
 
-use super::molecules::render_modal;
-use super::scroll_indicator::{VerticalScrollParams, render_vertical_scroll_indicator_bar};
+use crate::ui::shared::atoms::scroll_indicator::{
+    VerticalScrollParams, render_vertical_scroll_indicator_bar,
+};
+use crate::ui::shared::molecules::render_modal;
 
 pub struct HelpOverlay;
 
