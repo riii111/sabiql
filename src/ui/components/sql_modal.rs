@@ -4,7 +4,9 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::sql_modal_context::{CompletionKind, SqlModalStatus};
+use crate::app::sql_modal_context::{
+    CompletionKind, HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus,
+};
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
@@ -15,37 +17,75 @@ pub struct SqlModal;
 
 impl SqlModal {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let (area, inner) = if let SqlModalStatus::Confirming(decision) = state.sql_modal.status {
-            let title = format!(
-                " SQL \u{2500}\u{2500} \u{26a0} {} ",
-                decision.risk_level.as_str()
-            );
-            render_modal_with_border_color(
-                frame,
-                Constraint::Percentage(80),
-                Constraint::Percentage(60),
-                &title,
-                " Enter: Execute \u{2502} Esc: Back ",
-                Theme::risk_color(decision.risk_level),
-            )
-        } else {
-            render_modal(
+        let (area, inner) = match &state.sql_modal.status {
+            SqlModalStatus::Confirming(decision) => {
+                let title = format!(
+                    " SQL \u{2500}\u{2500} \u{26a0} {} ",
+                    decision.risk_level.as_str()
+                );
+                render_modal_with_border_color(
+                    frame,
+                    Constraint::Percentage(80),
+                    Constraint::Percentage(60),
+                    &title,
+                    " Enter: Execute \u{2502} Esc: Back ",
+                    Theme::risk_color(decision.risk_level),
+                )
+            }
+            SqlModalStatus::ConfirmingHigh {
+                decision,
+                input,
+                target_name,
+            } => {
+                let title = format!(
+                    " SQL \u{2500}\u{2500} \u{26a0} {} ",
+                    decision.risk_level.as_str()
+                );
+                let is_match = target_name
+                    .as_ref()
+                    .is_some_and(|name| input.content() == name);
+                let footer = if is_match {
+                    " Enter: Execute \u{2502} Esc: Back "
+                } else {
+                    " Esc: Back "
+                };
+                render_modal_with_border_color(
+                    frame,
+                    Constraint::Percentage(80),
+                    Constraint::Percentage(60),
+                    &title,
+                    footer,
+                    Theme::STATUS_ERROR,
+                )
+            }
+            _ => render_modal(
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
                 " SQL Editor ",
                 " Alt+Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Esc: Close ",
-            )
+            ),
+        };
+
+        let status_height = if matches!(
+            state.sql_modal.status,
+            SqlModalStatus::ConfirmingHigh { .. }
+        ) {
+            3 // warning line + input prompt line + bottom margin
+        } else {
+            1
         };
 
         let [editor_area, status_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            Layout::vertical([Constraint::Min(1), Constraint::Length(status_height)]).areas(inner);
 
         Self::render_editor(frame, editor_area, state);
         Self::render_status(frame, status_area, state);
 
-        // Completion popup is suppressed while confirming to keep the risk warning unobstructed.
-        let is_confirming = matches!(state.sql_modal.status, SqlModalStatus::Confirming(_));
+        let is_confirming = matches!(
+            state.sql_modal.status,
+            SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+        );
         if !is_confirming
             && state.sql_modal.completion.visible
             && !state.sql_modal.completion.candidates.is_empty()
@@ -58,7 +98,10 @@ impl SqlModal {
         let content = &state.sql_modal.content;
 
         // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
-        if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+        if matches!(
+            state.sql_modal.status,
+            SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+        ) {
             let lines: Vec<Line> = content
                 .lines()
                 .map(|line| {
@@ -124,6 +167,16 @@ impl SqlModal {
     }
 
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
+        if let SqlModalStatus::ConfirmingHigh {
+            decision,
+            input,
+            target_name,
+        } = &state.sql_modal.status
+        {
+            Self::render_confirming_high_status(frame, area, decision, input, target_name);
+            return;
+        }
+
         let (status_text, status_style) = match state.sql_modal.status {
             SqlModalStatus::Editing => {
                 ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
@@ -158,10 +211,92 @@ impl SqlModal {
                 "Error".to_string(),
                 Style::default().fg(Theme::STATUS_ERROR),
             ),
+            SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
         };
 
         let line = Line::from(vec![Span::styled(status_text, status_style)]);
         frame.render_widget(Paragraph::new(line).style(Style::default()), area);
+    }
+
+    fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return "\u{2026}".to_string();
+        }
+        let char_count = s.chars().count();
+        if char_count <= max_chars {
+            return s.to_string();
+        }
+        let truncated: String = s.chars().take(max_chars.saturating_sub(1)).collect();
+        format!("{}\u{2026}", truncated)
+    }
+
+    fn render_confirming_high_status(
+        frame: &mut Frame,
+        area: Rect,
+        decision: &crate::app::write_guardrails::AdhocRiskDecision,
+        input: &crate::app::text_input::TextInputState,
+        target_name: &Option<String>,
+    ) {
+        let error_style = Style::default().fg(Theme::STATUS_ERROR);
+
+        match target_name {
+            Some(name) => {
+                let is_match = input.content() == name;
+                let warning_text = format!("\u{26a0} HIGH RISK  {}", decision.label);
+                let blocked_label = "Enter blocked";
+                let mut line1_spans = vec![Span::styled(warning_text.clone(), error_style)];
+                if !is_match {
+                    let used = (warning_text.len() + blocked_label.len()) as u16;
+                    let padding = area.width.saturating_sub(used).max(2);
+                    line1_spans.push(Span::raw(" ".repeat(padding as usize)));
+                    line1_spans.push(Span::styled(
+                        blocked_label,
+                        Style::default().fg(Theme::TEXT_MUTED),
+                    ));
+                }
+                let line1 = Line::from(line1_spans);
+
+                let prompt_fixed_len = "Confirm \"\": > ".len();
+                let max_name_display = (area.width as usize)
+                    .saturating_sub(prompt_fixed_len + HIGH_RISK_INPUT_VISIBLE_WIDTH + 2);
+                let display_name = Self::truncate_with_ellipsis(name, max_name_display);
+                let prompt = format!("Confirm \"{}\": > ", display_name);
+                let visible_width = HIGH_RISK_INPUT_VISIBLE_WIDTH;
+                let cursor_spans = text_cursor_spans(
+                    input.content(),
+                    input.cursor(),
+                    input.viewport_offset(),
+                    visible_width,
+                );
+                let mut line2_spans = vec![Span::styled(
+                    prompt,
+                    Style::default().fg(Theme::TEXT_SECONDARY),
+                )];
+                line2_spans.extend(cursor_spans);
+                if is_match {
+                    line2_spans.push(Span::styled(
+                        " \u{2713}",
+                        Style::default().fg(Theme::STATUS_SUCCESS),
+                    ));
+                }
+                let line2 = Line::from(line2_spans);
+
+                let paragraph = Paragraph::new(vec![line1, line2]);
+                frame.render_widget(paragraph, area);
+            }
+            None => {
+                let line1 = Line::from(Span::styled(
+                    format!("\u{26a0} HIGH RISK  {}", decision.label),
+                    error_style,
+                ));
+                let line2 = Line::from(Span::styled(
+                    "Cannot execute: unable to identify target table.  Esc: Back",
+                    Style::default().fg(Theme::TEXT_MUTED),
+                ));
+                let paragraph = Paragraph::new(vec![line1, line2]);
+                frame.render_widget(paragraph, area);
+            }
+        }
     }
 
     fn success_status_message(state: &AppState) -> String {
@@ -439,5 +574,32 @@ mod tests {
         let result = SqlModal::line_lengths(input);
 
         assert_eq!(result, expected);
+    }
+
+    mod truncate_with_ellipsis {
+        use super::*;
+
+        #[rstest]
+        #[case("users", 16, "users")]
+        #[case("user_sessions", 16, "user_sessions")]
+        #[case("exactly_16_chars", 16, "exactly_16_chars")]
+        #[case("public.user_sessions", 16, "public.user_ses\u{2026}")]
+        #[case("my_schema.very_long_table_name", 16, "my_schema.very_\u{2026}")]
+        #[case("ab", 1, "\u{2026}")]
+        fn truncates_long_names(#[case] input: &str, #[case] max: usize, #[case] expected: &str) {
+            assert_eq!(SqlModal::truncate_with_ellipsis(input, max), expected);
+        }
+
+        #[test]
+        fn zero_max_returns_ellipsis() {
+            assert_eq!(SqlModal::truncate_with_ellipsis("anything", 0), "\u{2026}");
+        }
+
+        #[test]
+        fn multibyte_truncates_by_char_count() {
+            let result = SqlModal::truncate_with_ellipsis("テーブル名前", 4);
+
+            assert_eq!(result, "テーブ\u{2026}");
+        }
     }
 }
