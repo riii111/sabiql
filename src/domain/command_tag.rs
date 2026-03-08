@@ -19,6 +19,23 @@ impl CommandTag {
         !matches!(self, Self::Select(_) | Self::Other(_))
     }
 
+    pub fn is_schema_modifying(&self) -> bool {
+        matches!(self, Self::Create(_) | Self::Drop(_) | Self::Alter(_))
+    }
+
+    pub fn needs_refresh(&self) -> bool {
+        matches!(
+            self,
+            Self::Insert(_)
+                | Self::Update(_)
+                | Self::Delete(_)
+                | Self::Create(_)
+                | Self::Drop(_)
+                | Self::Alter(_)
+                | Self::Truncate
+        )
+    }
+
     pub fn affected_rows(&self) -> Option<u64> {
         match self {
             Self::Select(n) | Self::Insert(n) | Self::Update(n) | Self::Delete(n) => Some(*n),
@@ -125,5 +142,45 @@ mod tests {
             CommandTag::Other("VACUUM".to_string()).display_message(),
             "vacuum"
         );
+    }
+
+    #[test]
+    fn is_schema_modifying_true_for_ddl() {
+        assert!(CommandTag::Create("TABLE".to_string()).is_schema_modifying());
+        assert!(CommandTag::Drop("TABLE".to_string()).is_schema_modifying());
+        assert!(CommandTag::Alter("TABLE".to_string()).is_schema_modifying());
+    }
+
+    #[test]
+    fn is_schema_modifying_false_for_non_ddl() {
+        assert!(!CommandTag::Select(0).is_schema_modifying());
+        assert!(!CommandTag::Insert(1).is_schema_modifying());
+        assert!(!CommandTag::Update(1).is_schema_modifying());
+        assert!(!CommandTag::Delete(1).is_schema_modifying());
+        assert!(!CommandTag::Truncate.is_schema_modifying());
+        assert!(!CommandTag::Begin.is_schema_modifying());
+        assert!(!CommandTag::Commit.is_schema_modifying());
+        assert!(!CommandTag::Rollback.is_schema_modifying());
+        assert!(!CommandTag::Other("VACUUM".to_string()).is_schema_modifying());
+    }
+
+    #[test]
+    fn needs_refresh_true_for_dml_and_ddl() {
+        assert!(CommandTag::Insert(1).needs_refresh());
+        assert!(CommandTag::Update(1).needs_refresh());
+        assert!(CommandTag::Delete(1).needs_refresh());
+        assert!(CommandTag::Create("TABLE".to_string()).needs_refresh());
+        assert!(CommandTag::Drop("TABLE".to_string()).needs_refresh());
+        assert!(CommandTag::Alter("TABLE".to_string()).needs_refresh());
+        assert!(CommandTag::Truncate.needs_refresh());
+    }
+
+    #[test]
+    fn needs_refresh_false_for_read_only_and_tcl() {
+        assert!(!CommandTag::Select(5).needs_refresh());
+        assert!(!CommandTag::Begin.needs_refresh());
+        assert!(!CommandTag::Commit.needs_refresh());
+        assert!(!CommandTag::Rollback.needs_refresh());
+        assert!(!CommandTag::Other("VACUUM".to_string()).needs_refresh());
     }
 }

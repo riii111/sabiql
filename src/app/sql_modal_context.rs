@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::AdhocRiskDecision;
+use crate::domain::CommandTag;
 
 /// Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
 pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
@@ -12,6 +13,13 @@ pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
     pub error: String,
     pub retry_count: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdhocSuccessSnapshot {
+    pub command_tag: Option<CommandTag>,
+    pub row_count: usize,
+    pub execution_time_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -67,6 +75,7 @@ pub struct SqlModalContext {
     pub content: String,
     pub cursor: usize,
     pub status: SqlModalStatus,
+    pub last_adhoc_success: Option<AdhocSuccessSnapshot>,
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,

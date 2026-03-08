@@ -14,7 +14,7 @@ use sabiql::app::connection_setup_state::ConnectionField;
 use sabiql::app::er_state::ErStatus;
 use sabiql::app::focused_pane::FocusedPane;
 use sabiql::app::input_mode::InputMode;
-use sabiql::app::sql_modal_context::SqlModalStatus;
+use sabiql::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use sabiql::app::write_guardrails::{
     ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
@@ -209,6 +209,11 @@ mod overlays {
         state.ui.input_mode = InputMode::SqlModal;
         state.sql_modal.content = "SELECT * FROM users".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
+        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+            command_tag: None,
+            row_count: 2,
+            execution_time_ms: 15,
+        });
         state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
             query: "SELECT * FROM users".to_string(),
             columns: vec!["id".to_string(), "name".to_string()],
@@ -238,6 +243,11 @@ mod overlays {
         state.ui.input_mode = InputMode::SqlModal;
         state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
+        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+            command_tag: Some(CommandTag::Delete(3)),
+            row_count: 3,
+            execution_time_ms: 12,
+        });
         state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
             query: "DELETE FROM users WHERE id = 1".to_string(),
             columns: vec![],
@@ -264,6 +274,11 @@ mod overlays {
         state.ui.input_mode = InputMode::SqlModal;
         state.sql_modal.content = "CREATE TABLE backup AS SELECT * FROM users".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
+        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+            command_tag: Some(CommandTag::Create("TABLE".to_string())),
+            row_count: 0,
+            execution_time_ms: 45,
+        });
         state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
             query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
             columns: vec![],

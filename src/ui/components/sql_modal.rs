@@ -310,18 +310,22 @@ impl SqlModal {
     }
 
     fn success_status_message(state: &AppState) -> String {
-        let Some(result) = state.query.current_result.as_ref() else {
+        let Some(snapshot) = state.sql_modal.last_adhoc_success.as_ref() else {
             return "\u{2713} OK".to_string();
         };
-        let time_secs = result.execution_time_ms as f64 / 1000.0;
+        let time_secs = snapshot.execution_time_ms as f64 / 1000.0;
 
-        if let Some(tag) = result.command_tag.as_ref() {
+        if let Some(tag) = snapshot.command_tag.as_ref() {
             format!("\u{2713} {} ({:.2}s)", tag.display_message(), time_secs)
         } else {
-            let rows_label = if result.row_count == 1 { "row" } else { "rows" };
+            let rows_label = if snapshot.row_count == 1 {
+                "row"
+            } else {
+                "rows"
+            };
             format!(
                 "\u{2713} {} {} ({:.2}s)",
-                result.row_count, rows_label, time_secs
+                snapshot.row_count, rows_label, time_secs
             )
         }
     }

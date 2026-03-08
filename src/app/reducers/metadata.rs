@@ -8,6 +8,7 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
+use crate::app::query_execution::PREVIEW_PAGE_SIZE;
 use crate::app::sql_modal_context::FailedPrefetchEntry;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
@@ -57,11 +58,58 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             state.cache.metadata = Some(*metadata.clone());
             state.cache.state = MetadataState::Loaded;
             state.runtime.connection_state = ConnectionState::Connected;
-            state
-                .ui
-                .set_explorer_selection(if has_tables { Some(0) } else { None });
 
             let mut effects = vec![];
+
+            if !state.query.pagination.table.is_empty() {
+                let prev_schema = &state.query.pagination.schema;
+                let prev_table = &state.query.pagination.table;
+                let found_index = metadata
+                    .tables
+                    .iter()
+                    .position(|t| &t.schema == prev_schema && &t.name == prev_table);
+                match found_index {
+                    Some(idx) => {
+                        state.ui.set_explorer_selection(Some(idx));
+                        // Refresh preview and detail: DDL or reload may have changed
+                        // data/schema even though the table still exists.
+                        if let Some(dsn) = &state.runtime.dsn {
+                            let page = state.query.pagination.current_page;
+                            let generation = state.cache.selection_generation;
+                            effects.push(Effect::ExecutePreview {
+                                dsn: dsn.clone(),
+                                schema: state.query.pagination.schema.clone(),
+                                table: state.query.pagination.table.clone(),
+                                generation,
+                                limit: PREVIEW_PAGE_SIZE,
+                                offset: page * PREVIEW_PAGE_SIZE,
+                                target_page: page,
+                            });
+                            effects.push(Effect::FetchTableDetail {
+                                dsn: dsn.clone(),
+                                schema: state.query.pagination.schema.clone(),
+                                table: state.query.pagination.table.clone(),
+                                generation,
+                            });
+                        }
+                    }
+                    None => {
+                        // The previously selected table was removed (e.g. via DROP TABLE).
+                        // Clear all selection state to avoid stale references.
+                        state
+                            .ui
+                            .set_explorer_selection(if has_tables { Some(0) } else { None });
+                        state.query.pagination.reset();
+                        state.query.current_result = None;
+                        state.cache.table_detail = None;
+                        state.cache.current_table = None;
+                    }
+                }
+            } else {
+                state
+                    .ui
+                    .set_explorer_selection(if has_tables { Some(0) } else { None });
+            }
 
             state.connection_error.clear();
 
@@ -694,6 +742,117 @@ mod tests {
             assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(2)).min(MAX_BACKOFF_SECS), 4);
             // retry_count 3 → 4s (capped)
             assert_eq!((BASE_BACKOFF_SECS * 2u64.pow(3)).min(MAX_BACKOFF_SECS), 4);
+        }
+    }
+
+    mod metadata_loaded {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(tables: Vec<(&str, &str)>) -> Box<DatabaseMetadata> {
+            Box::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                tables: tables
+                    .into_iter()
+                    .map(|(schema, name)| {
+                        TableSummary::new(schema.to_string(), name.to_string(), None, false)
+                    })
+                    .collect(),
+                fetched_at: Instant::now(),
+            })
+        }
+
+        #[test]
+        fn table_disappeared_clears_pagination_and_result() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.cache.current_table = Some("public.users".to_string());
+
+            let metadata = make_metadata(vec![("public", "orders")]);
+            reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            );
+
+            assert!(state.query.pagination.table.is_empty());
+            assert!(state.query.current_result.is_none());
+            assert!(state.cache.table_detail.is_none());
+            assert!(state.cache.current_table.is_none());
+            assert_eq!(state.ui.explorer_selected, 0);
+        }
+
+        #[test]
+        fn table_still_exists_preserves_pagination_and_emits_refresh_effects() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+
+            // "orders" comes before "users" alphabetically, so "users" → index 1
+            let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.query.pagination.table, "users");
+            assert_eq!(state.ui.explorer_selected, 1);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { table, .. } if table == "users"))
+            );
+            assert!(
+                effects.iter().any(
+                    |e| matches!(e, Effect::FetchTableDetail { table, .. } if table == "users")
+                )
+            );
+        }
+
+        #[test]
+        fn no_table_selected_defaults_to_first() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+
+            let metadata = make_metadata(vec![("public", "orders"), ("public", "users")]);
+            reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 0);
+        }
+
+        #[test]
+        fn after_connection_switch_pagination_reset_suppresses_auto_preview() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            // Simulate fresh connection: pagination is reset (as reset_connection_state does)
+            state.query.pagination.reset();
+
+            // New DB happens to have a table named "users" too
+            let metadata = make_metadata(vec![("public", "users")]);
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            )
+            .unwrap();
+
+            // No table was selected on this connection, so no auto-preview should fire
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchTableDetail { .. }))
+            );
         }
     }
 
