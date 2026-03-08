@@ -751,7 +751,9 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 mod tests {
     use super::*;
     use crate::app::query_execution::PaginationState;
-    use crate::domain::{Column, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming};
+    use crate::domain::{
+        Column, CommandTag, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming,
+    };
 
     fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
@@ -850,6 +852,36 @@ mod tests {
             row_count_estimate: None,
             comment: None,
         }
+    }
+
+    fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
+        Arc::new(QueryResult {
+            query: String::new(),
+            columns: vec![],
+            rows: vec![],
+            row_count: 0,
+            execution_time_ms: 5,
+            executed_at: Instant::now(),
+            source: QuerySource::Adhoc,
+            error: None,
+            command_tag: Some(tag),
+        })
+    }
+
+    fn adhoc_error_result() -> Arc<QueryResult> {
+        Arc::new(QueryResult::error(
+            "BAD SQL".to_string(),
+            "syntax error".to_string(),
+            5,
+            QuerySource::Adhoc,
+        ))
+    }
+
+    fn state_with_table(schema: &str, table: &str) -> AppState {
+        let mut state = create_test_state();
+        state.query.pagination.schema = schema.to_string();
+        state.query.pagination.table = table.to_string();
+        state
     }
 
     mod next_page {
@@ -1691,41 +1723,10 @@ mod tests {
 
     mod adhoc_refresh {
         use super::*;
-        use crate::domain::CommandTag;
-
-        fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
-            Arc::new(QueryResult {
-                query: "UPDATE users SET name = 'x' WHERE id = 1".to_string(),
-                columns: vec![],
-                rows: vec![],
-                row_count: 0,
-                execution_time_ms: 5,
-                executed_at: Instant::now(),
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: Some(tag),
-            })
-        }
-
-        fn adhoc_error_result() -> Arc<QueryResult> {
-            Arc::new(QueryResult::error(
-                "BAD SQL".to_string(),
-                "syntax error".to_string(),
-                5,
-                QuerySource::Adhoc,
-            ))
-        }
-
-        fn state_with_table_selected() -> AppState {
-            let mut state = create_test_state();
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state
-        }
 
         #[test]
         fn dml_with_table_selected_emits_execute_preview() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
 
             let effects = reduce_query(
                 &mut state,
@@ -1764,7 +1765,7 @@ mod tests {
 
         #[test]
         fn ddl_emits_cache_invalidate_and_fetch_metadata() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
 
             let effects = reduce_query(
                 &mut state,
@@ -1801,7 +1802,7 @@ mod tests {
 
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
             state.sql_modal.prefetch_started = true;
             state
                 .sql_modal
@@ -1827,7 +1828,7 @@ mod tests {
         #[test]
         fn tcl_emits_no_effects() {
             for tag in [CommandTag::Begin, CommandTag::Commit, CommandTag::Rollback] {
-                let mut state = state_with_table_selected();
+                let mut state = state_with_table("public", "users");
 
                 let effects = reduce_query(
                     &mut state,
@@ -1846,7 +1847,7 @@ mod tests {
 
         #[test]
         fn select_emits_no_effects() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
 
             let effects = reduce_query(
                 &mut state,
@@ -1864,7 +1865,7 @@ mod tests {
 
         #[test]
         fn adhoc_error_emits_no_effects() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
 
             let effects = reduce_query(
                 &mut state,
@@ -1882,7 +1883,7 @@ mod tests {
 
         #[test]
         fn no_command_tag_emits_no_effects() {
-            let mut state = state_with_table_selected();
+            let mut state = state_with_table("public", "users");
             let result = Arc::new(QueryResult {
                 query: "SELECT 1".to_string(),
                 columns: vec!["?column?".to_string()],
@@ -1913,8 +1914,7 @@ mod tests {
     mod adhoc_refresh_integration {
         use super::*;
         use crate::app::reducers::metadata::reduce_metadata;
-        use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
-        use std::sync::Arc;
+        use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Box<DatabaseMetadata> {
             Box::new(DatabaseMetadata {
@@ -1928,27 +1928,6 @@ mod tests {
                     .collect(),
                 fetched_at: Instant::now(),
             })
-        }
-
-        fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
-            Arc::new(QueryResult {
-                query: String::new(),
-                columns: vec![],
-                rows: vec![],
-                row_count: 0,
-                execution_time_ms: 5,
-                executed_at: Instant::now(),
-                source: QuerySource::Adhoc,
-                error: None,
-                command_tag: Some(tag),
-            })
-        }
-
-        fn state_with_table(schema: &str, table: &str) -> AppState {
-            let mut state = create_test_state();
-            state.query.pagination.schema = schema.to_string();
-            state.query.pagination.table = table.to_string();
-            state
         }
 
         #[test]
