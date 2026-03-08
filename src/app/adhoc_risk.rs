@@ -202,6 +202,10 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Enter))
     {
         ConfirmationType::Enter
+    } else if statements.len() >= 2 {
+        // Multi-statement: require explicit confirmation even for read-only batches,
+        // because the executor produces a single merged result set.
+        ConfirmationType::Enter
     } else {
         ConfirmationType::Immediate
     };
@@ -410,11 +414,11 @@ mod tests {
         }
 
         #[test]
-        fn tcl_only_immediate() {
+        fn tcl_only_multi_requires_enter() {
             let result = evaluate_multi_statement("BEGIN; COMMIT");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+                    assert_eq!(risk.confirmation, ConfirmationType::Enter);
                 }
                 _ => panic!("expected Allow"),
             }
