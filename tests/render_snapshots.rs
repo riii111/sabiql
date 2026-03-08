@@ -274,6 +274,11 @@ mod overlays {
         state.ui.input_mode = InputMode::SqlModal;
         state.sql_modal.content = "CREATE TABLE backup AS SELECT * FROM users".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
+        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+            command_tag: Some(CommandTag::Create("TABLE".to_string())),
+            row_count: 0,
+            execution_time_ms: 45,
+        });
         state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
             query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
             columns: vec![],
