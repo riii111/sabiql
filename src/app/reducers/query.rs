@@ -8,6 +8,7 @@ use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
+use crate::app::services::AppServices;
 use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{
@@ -19,7 +20,7 @@ use crate::domain::{QueryResult, QuerySource};
 use super::helpers::editable_preview_base;
 use super::navigation::build_bulk_delete_preview;
 
-fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
+fn build_update_preview(state: &AppState, services: &AppServices) -> Result<WritePreview, String> {
     if !state.cell_edit.is_active() {
         return Err("No active cell edit session".to_string());
     }
@@ -66,7 +67,7 @@ fn build_update_preview(state: &AppState) -> Result<WritePreview, String> {
         return Err(reason);
     }
 
-    let sql = state.sql_dialect.build_update_sql(
+    let sql = services.sql_dialect.build_update_sql(
         &target.schema,
         &target.table,
         &column_name,
@@ -164,7 +165,12 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     effects
 }
 
-pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_query(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    services: &AppServices,
+) -> Option<Vec<Effect>> {
     match action {
         Action::QueryCompleted {
             result,
@@ -355,7 +361,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
 
         Action::SubmitCellEditWrite => {
             if !state.ui.staged_delete_rows.is_empty() {
-                match build_bulk_delete_preview(state) {
+                match build_bulk_delete_preview(state, services) {
                     Ok((preview, target_page, target_row)) => {
                         let staged_count = state.ui.staged_delete_rows.len();
                         state.query.pending_delete_refresh_target =
@@ -385,7 +391,7 @@ pub fn reduce_query(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 return Some(vec![]);
             }
 
-            match build_update_preview(state) {
+            match build_update_preview(state, services) {
                 Ok(preview) => Some(vec![Effect::DispatchActions(vec![
                     Action::OpenWritePreviewConfirm(Box::new(preview)),
                 ])]),
@@ -911,7 +917,13 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -934,7 +946,13 @@ mod tests {
             state.query.pagination.reached_end = true;
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -945,7 +963,13 @@ mod tests {
             state.query.current_result = Some(adhoc_result());
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -957,7 +981,13 @@ mod tests {
             state.query.status = QueryStatus::Running;
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultNextPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -979,7 +1009,13 @@ mod tests {
             };
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultPrevPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1002,7 +1038,13 @@ mod tests {
             state.query.pagination.current_page = 0;
             let now = Instant::now();
 
-            let effects = reduce_query(&mut state, &Action::ResultPrevPage, now).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                now,
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1023,7 +1065,7 @@ mod tests {
             };
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::ExecutePreview(TableTarget {
                     schema: "public".to_string(),
@@ -1031,6 +1073,7 @@ mod tests {
                     generation: 1,
                 }),
                 now,
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page, 0);
@@ -1050,7 +1093,7 @@ mod tests {
             let result = preview_result(100); // Less than PAGE_SIZE
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1058,6 +1101,7 @@ mod tests {
                     target_page: Some(2),
                 },
                 now,
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page, 2);
@@ -1071,7 +1115,7 @@ mod tests {
             let result = preview_result(PREVIEW_PAGE_SIZE);
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1079,6 +1123,7 @@ mod tests {
                     target_page: Some(0),
                 },
                 now,
+                &AppServices::stub(),
             );
 
             assert_eq!(state.query.pagination.current_page, 0);
@@ -1092,7 +1137,7 @@ mod tests {
             let result = adhoc_result();
             let now = Instant::now();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result,
@@ -1100,6 +1145,7 @@ mod tests {
                     target_page: None,
                 },
                 now,
+                &AppServices::stub(),
             );
 
             // Pagination unchanged for adhoc
@@ -1120,10 +1166,11 @@ mod tests {
             state.ui.result_scroll_offset = 10;
             state.ui.result_horizontal_offset = 3;
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryFailed("error".to_string(), 1),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.result_selection.mode(), ResultNavMode::Scroll);
@@ -1134,15 +1181,7 @@ mod tests {
 
     mod write_flow {
         use super::*;
-        use crate::app::ports::{DdlGenerator, SqlDialect};
-        use crate::domain::Table;
-
-        struct FakeDdlGenerator;
-        impl DdlGenerator for FakeDdlGenerator {
-            fn generate_ddl(&self, _table: &Table) -> String {
-                String::new()
-            }
-        }
+        use crate::app::ports::SqlDialect;
 
         struct FakeSqlDialect;
         impl SqlDialect for FakeSqlDialect {
@@ -1177,10 +1216,15 @@ mod tests {
             }
         }
 
+        fn fake_services() -> AppServices {
+            AppServices {
+                ddl_generator: AppServices::stub().ddl_generator,
+                sql_dialect: std::sync::Arc::new(FakeSqlDialect),
+            }
+        }
+
         fn editable_state() -> AppState {
-            let ddl: std::sync::Arc<dyn DdlGenerator> = std::sync::Arc::new(FakeDdlGenerator);
-            let dialect: std::sync::Arc<dyn SqlDialect> = std::sync::Arc::new(FakeSqlDialect);
-            let mut state = AppState::with_ports("test_project".to_string(), ddl, dialect);
+            let mut state = AppState::new("test_project".to_string());
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.query.current_result = Some(editable_preview_result());
             state.cache.table_detail = Some(users_table_detail());
@@ -1198,7 +1242,12 @@ mod tests {
             state.ui.input_mode = InputMode::Normal;
             // No cell_edit active
 
-            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -1211,7 +1260,12 @@ mod tests {
             let mut state = editable_state();
             state.query.status = QueryStatus::Running;
 
-            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -1226,7 +1280,12 @@ mod tests {
                 detail.name = "posts".to_string();
             }
 
-            let effects = reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now());
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
             assert!(effects.unwrap().is_empty());
             assert_eq!(
                 state.messages.last_error.as_deref(),
@@ -1238,8 +1297,13 @@ mod tests {
         fn submit_write_opens_confirm_dialog() {
             let mut state = editable_state();
 
-            let effects =
-                reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &fake_services(),
+            )
+            .unwrap();
             assert_eq!(effects.len(), 1);
 
             let dispatched = match &effects[0] {
@@ -1258,8 +1322,13 @@ mod tests {
         fn confirm_dialog_displays_and_executes_same_sql() {
             let mut state = editable_state();
 
-            let effects =
-                reduce_query(&mut state, &Action::SubmitCellEditWrite, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &fake_services(),
+            )
+            .unwrap();
             let preview = match &effects[0] {
                 Effect::DispatchActions(actions) => match actions.first().expect("action") {
                     Action::OpenWritePreviewConfirm(preview) => preview.clone(),
@@ -1269,10 +1338,11 @@ mod tests {
             };
             let expected_sql = preview.sql.clone();
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::OpenWritePreviewConfirm(preview),
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(
@@ -1294,6 +1364,7 @@ mod tests {
                 &mut state,
                 &Action::ExecuteWriteSucceeded { affected_rows: 1 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1322,6 +1393,7 @@ mod tests {
                 &mut state,
                 &Action::ExecuteWriteSucceeded { affected_rows: 0 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1369,6 +1441,7 @@ mod tests {
                 &mut state,
                 &Action::OpenWritePreviewConfirm(Box::new(preview)),
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1393,6 +1466,7 @@ mod tests {
                 &mut state,
                 &Action::ExecuteWriteSucceeded { affected_rows: 1 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1430,6 +1504,7 @@ mod tests {
                 &mut state,
                 &Action::ExecuteWriteSucceeded { affected_rows: 0 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1450,6 +1525,7 @@ mod tests {
                 &mut state,
                 &Action::ExecuteWriteFailed("boom".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1464,7 +1540,7 @@ mod tests {
             state.cache.selection_generation = 1;
             state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result: preview_result(3),
@@ -1472,6 +1548,7 @@ mod tests {
                     target_page: Some(0),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.result_selection.row(), Some(2));
@@ -1488,7 +1565,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
 
-            let _ = reduce_query(
+            reduce_query(
                 &mut state,
                 &Action::QueryCompleted {
                     result: preview_result(2),
@@ -1496,6 +1573,7 @@ mod tests {
                     target_page: Some(0),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert_eq!(state.ui.result_selection.row(), None);
@@ -1508,42 +1586,9 @@ mod tests {
 
     mod csv_export {
         use super::*;
-        use crate::app::ports::{DdlGenerator, SqlDialect};
-        use crate::domain::Table;
-
-        struct FakeDdlGenerator;
-        impl DdlGenerator for FakeDdlGenerator {
-            fn generate_ddl(&self, _table: &Table) -> String {
-                String::new()
-            }
-        }
-
-        struct FakeSqlDialect;
-        impl SqlDialect for FakeSqlDialect {
-            fn build_update_sql(
-                &self,
-                _schema: &str,
-                _table: &str,
-                _column: &str,
-                _new_value: &str,
-                _pk_pairs: &[(String, String)],
-            ) -> String {
-                String::new()
-            }
-            fn build_bulk_delete_sql(
-                &self,
-                _schema: &str,
-                _table: &str,
-                _pk_pairs_per_row: &[Vec<(String, String)>],
-            ) -> String {
-                String::new()
-            }
-        }
 
         fn export_test_state() -> AppState {
-            let ddl: std::sync::Arc<dyn DdlGenerator> = std::sync::Arc::new(FakeDdlGenerator);
-            let dialect: std::sync::Arc<dyn SqlDialect> = std::sync::Arc::new(FakeSqlDialect);
-            let mut state = AppState::with_ports("test_project".to_string(), ddl, dialect);
+            let mut state = AppState::new("test_project".to_string());
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state
         }
@@ -1556,8 +1601,13 @@ mod tests {
             state.query.pagination.table = "users".to_string();
             state.query.pagination.total_rows_estimate = Some(100);
 
-            let effects =
-                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1579,8 +1629,13 @@ mod tests {
             let mut state = create_test_state();
             state.query.current_result = Some(adhoc_result());
 
-            let effects =
-                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1601,8 +1656,13 @@ mod tests {
             let mut state = create_test_state();
             state.query.current_result = None;
 
-            let effects =
-                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1619,6 +1679,7 @@ mod tests {
                     file_name: "test".to_string(),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1638,6 +1699,7 @@ mod tests {
                     file_name: "test".to_string(),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1658,6 +1720,7 @@ mod tests {
                     file_name: "test".to_string(),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1677,6 +1740,7 @@ mod tests {
                     row_count: Some(42),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1708,6 +1772,7 @@ mod tests {
                 &mut state,
                 &Action::CsvExportFailed("psql error".to_string()),
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1725,8 +1790,13 @@ mod tests {
                 QuerySource::Adhoc,
             )));
 
-            let effects =
-                reduce_query(&mut state, &Action::RequestCsvExport, Instant::now()).unwrap();
+            let effects = reduce_query(
+                &mut state,
+                &Action::RequestCsvExport,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
 
             assert!(effects.is_empty());
         }
@@ -1747,6 +1817,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1768,6 +1839,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1786,6 +1858,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1829,6 +1902,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             assert!(!state.sql_modal.prefetch_started);
@@ -1849,6 +1923,7 @@ mod tests {
                         target_page: None,
                     },
                     Instant::now(),
+                    &AppServices::stub(),
                 )
                 .unwrap();
 
@@ -1868,6 +1943,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1886,6 +1962,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1915,6 +1992,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1954,6 +2032,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -1970,6 +2049,7 @@ mod tests {
                     target_page: Some(0),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             let stored = state.query.current_result.as_ref().unwrap();
@@ -1990,6 +2070,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -2033,6 +2114,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -2068,6 +2150,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             )
             .unwrap();
 
@@ -2095,6 +2178,7 @@ mod tests {
                     target_page: None,
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             let saved_tag = state
@@ -2113,6 +2197,7 @@ mod tests {
                     target_page: Some(0),
                 },
                 Instant::now(),
+                &AppServices::stub(),
             );
 
             // last_adhoc_success must still hold the DDL result — not cleared by preview

@@ -6,11 +6,17 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducer::reduce;
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 
 /// Handles modal/overlay toggles and confirm dialog actions.
 /// Returns Some(effects) if action was handled, None otherwise.
-pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce_modal(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    services: &AppServices,
+) -> Option<Vec<Effect>> {
     match action {
         Action::OpenTablePicker => {
             state.ui.input_mode = InputMode::TablePicker;
@@ -143,7 +149,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
             state.ui.input_mode = return_mode;
-            Some(reduce(state, action, now))
+            Some(reduce(state, action, now, services))
         }
         Action::ConfirmDialogCancel => {
             let action = std::mem::replace(&mut state.confirm_dialog.on_cancel, Action::None);
@@ -153,7 +159,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
             state.ui.input_mode = return_mode;
-            Some(reduce(state, action, now))
+            Some(reduce(state, action, now, services))
         }
 
         _ => None,

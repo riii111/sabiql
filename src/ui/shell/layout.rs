@@ -3,6 +3,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 use crate::app::input_mode::InputMode;
 use crate::app::ports::RenderOutput;
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::app::viewport::ViewportPlan;
 use crate::ui::features::browse::explorer::Explorer;
@@ -24,7 +25,12 @@ use crate::ui::shell::header::Header;
 pub struct MainLayout;
 
 impl MainLayout {
-    pub fn render(frame: &mut Frame, state: &mut AppState, time_ms: Option<u128>) -> RenderOutput {
+    pub fn render(
+        frame: &mut Frame,
+        state: &mut AppState,
+        time_ms: Option<u128>,
+        services: &AppServices,
+    ) -> RenderOutput {
         let area = frame.area();
 
         let [header_area, main_area, footer_area, cmdline_area] = Layout::vertical([
@@ -36,7 +42,7 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state);
-        let output = Self::render_browse_mode(frame, main_area, state);
+        let output = Self::render_browse_mode(frame, main_area, state, services);
 
         Footer::render(frame, footer_area, state, time_ms);
         CommandLine::render(frame, cmdline_area, state);
@@ -61,6 +67,7 @@ impl MainLayout {
         frame: &mut Frame,
         main_area: Rect,
         state: &mut AppState,
+        services: &AppServices,
     ) -> RenderOutput {
         if state.ui.focus_mode {
             let result_plan = ResultPane::render(frame, main_area, state);
@@ -82,7 +89,7 @@ impl MainLayout {
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .areas(right_area);
 
-            let inspector_plan = Inspector::render(frame, inspector_area, state);
+            let inspector_plan = Inspector::render(frame, inspector_area, state, services);
             let result_plan = ResultPane::render(frame, result_area, state);
 
             RenderOutput {
