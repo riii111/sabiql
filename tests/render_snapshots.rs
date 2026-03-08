@@ -266,6 +266,58 @@ mod overlays {
     }
 
     #[test]
+    fn sql_modal_success_ddl_create_table() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "CREATE TABLE backup AS SELECT * FROM users".to_string();
+        state.sql_modal.status = SqlModalStatus::Success;
+        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
+            query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
+            columns: vec![],
+            rows: vec![],
+            row_count: 0,
+            execution_time_ms: 45,
+            executed_at: now,
+            source: QuerySource::Adhoc,
+            error: None,
+            command_tag: Some(CommandTag::Create("TABLE".to_string())),
+        }));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_error_with_message() {
+        let now = test_instant();
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::SqlModal;
+        state.sql_modal.content = "SELECT * FORM users".to_string();
+        state.sql_modal.status = SqlModalStatus::Error;
+        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
+            query: "SELECT * FORM users".to_string(),
+            columns: vec![],
+            rows: vec![],
+            row_count: 0,
+            execution_time_ms: 5,
+            executed_at: now,
+            source: QuerySource::Adhoc,
+            error: Some("ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^".to_string()),
+            command_tag: None,
+        }));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn help_overlay() {
         let now = test_instant();
         let mut state = create_test_state();
