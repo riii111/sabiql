@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc::Sender;
-
-use super::action::Action;
 use super::cell_edit_state::CellEditState;
 use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
@@ -24,7 +21,6 @@ use super::connection_list::ConnectionListItem;
 pub struct AppState {
     pub should_quit: bool,
     pub command_line_input: String,
-    pub action_tx: Option<Sender<Action>>,
 
     /// When true, a render is needed on the next event loop iteration.
     pub render_dirty: bool,
@@ -99,7 +95,6 @@ impl AppState {
         Self {
             should_quit: false,
             command_line_input: String::new(),
-            action_tx: None,
             render_dirty: true,
             runtime: RuntimeState::new(project_name),
             ui: UiState::new(),
