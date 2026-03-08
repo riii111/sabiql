@@ -131,9 +131,12 @@ pub fn evaluate_adhoc_risk(kind: &StatementKind, sql: &str) -> Option<AdhocRiskD
         }),
         StatementKind::Update { has_where: true }
         | StatementKind::Delete { has_where: true }
-        | StatementKind::Alter
-        | StatementKind::Unsupported => Some(AdhocRiskDecision {
+        | StatementKind::Alter => Some(AdhocRiskDecision {
             risk_level: RiskLevel::Medium,
+            confirmation: ConfirmationType::Enter,
+        }),
+        StatementKind::Unsupported => Some(AdhocRiskDecision {
+            risk_level: RiskLevel::High,
             confirmation: ConfirmationType::Enter,
         }),
         StatementKind::Update { has_where: false }
@@ -198,6 +201,10 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         .iter()
         .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Enter))
     {
+        ConfirmationType::Enter
+    } else if statements.len() >= 2 {
+        // Multi-statement: require explicit confirmation even for read-only batches,
+        // because the executor produces a single merged result set.
         ConfirmationType::Enter
     } else {
         ConfirmationType::Immediate
@@ -326,10 +333,20 @@ mod tests {
         #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
         #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
         #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
-        #[case::unsupported(StatementKind::Unsupported, "GRANT SELECT ON users TO role1")]
         fn medium_enter(#[case] kind: StatementKind, #[case] sql: &str) {
             let result = evaluate_adhoc_risk(&kind, sql).unwrap();
             assert_eq!(result.risk_level, RiskLevel::Medium);
+            assert!(matches!(result.confirmation, ConfirmationType::Enter));
+        }
+
+        #[test]
+        fn unsupported_is_high_enter() {
+            let result = evaluate_adhoc_risk(
+                &StatementKind::Unsupported,
+                "GRANT SELECT ON users TO role1",
+            )
+            .unwrap();
+            assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(result.confirmation, ConfirmationType::Enter));
         }
 
@@ -397,11 +414,11 @@ mod tests {
         }
 
         #[test]
-        fn tcl_only_immediate() {
+        fn tcl_only_multi_requires_enter() {
             let result = evaluate_multi_statement("BEGIN; COMMIT");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+                    assert_eq!(risk.confirmation, ConfirmationType::Enter);
                 }
                 _ => panic!("expected Allow"),
             }
@@ -459,11 +476,11 @@ mod tests {
         }
 
         #[test]
-        fn do_block_unsupported_medium() {
+        fn do_block_unsupported_high() {
             let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Medium);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
                     assert!(matches!(risk.confirmation, ConfirmationType::Enter));
                 }
                 _ => panic!("expected Allow"),
@@ -471,11 +488,11 @@ mod tests {
         }
 
         #[test]
-        fn copy_unsupported_medium() {
+        fn copy_unsupported_high() {
             let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Medium);
+                    assert_eq!(risk.risk_level, RiskLevel::High);
                     assert!(matches!(risk.confirmation, ConfirmationType::Enter));
                 }
                 _ => panic!("expected Allow"),
