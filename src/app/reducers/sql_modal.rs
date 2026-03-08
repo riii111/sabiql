@@ -3,14 +3,15 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
+use crate::app::adhoc_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::state::AppState;
-use crate::app::statement_classifier::{self, StatementKind};
+use crate::app::statement_classifier;
 use crate::app::text_input::TextInputState;
-use crate::app::write_guardrails::{RiskLevel, evaluate_adhoc_risk};
+use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_adhoc_risk};
 
 /// Handles SQL modal editing and completion actions.
 /// Returns Some(effects) if action was handled, None otherwise.
@@ -199,39 +200,45 @@ pub fn reduce_sql_modal(
             if query.is_empty() {
                 return Some(vec![]);
             }
-            let kind = statement_classifier::classify(&query);
-            // Select and Transaction are read-only or self-contained; execute immediately.
-            if matches!(kind, StatementKind::Select | StatementKind::Transaction) {
-                state.sql_modal.status = SqlModalStatus::Running;
-                state.sql_modal.completion.visible = false;
-                Some(adhoc_effects(state, query))
-            } else {
-                let decision = evaluate_adhoc_risk(&kind);
-                state.sql_modal.completion.visible = false;
-                if decision.risk_level == RiskLevel::High {
-                    match kind {
-                        StatementKind::Drop
-                        | StatementKind::Truncate
-                        | StatementKind::Update { has_where: false }
-                        | StatementKind::Delete { has_where: false } => {
-                            let target_name =
-                                statement_classifier::extract_table_name(&query, &kind);
+            state.sql_modal.completion.visible = false;
+
+            match evaluate_multi_statement(&query) {
+                MultiStatementDecision::Block { reason } => {
+                    state.sql_modal.status = SqlModalStatus::Error;
+                    state.query.current_result =
+                        Some(std::sync::Arc::new(crate::domain::QueryResult::error(
+                            query,
+                            reason,
+                            0,
+                            crate::domain::QuerySource::Adhoc,
+                        )));
+                    Some(vec![])
+                }
+                MultiStatementDecision::Allow { risk, .. } => {
+                    let label = multi_statement_label(&query);
+                    let decision = AdhocRiskDecision {
+                        risk_level: risk.risk_level,
+                        label,
+                    };
+                    match risk.confirmation {
+                        ConfirmationType::Immediate => {
+                            state.sql_modal.status = SqlModalStatus::Running;
+                            Some(adhoc_effects(state, query))
+                        }
+                        ConfirmationType::Enter => {
+                            state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                            Some(vec![])
+                        }
+                        ConfirmationType::TableNameInput { target } => {
                             state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
                                 decision,
                                 input: TextInputState::default(),
-                                target_name,
+                                target_name: Some(target),
                             };
-                        }
-                        _ => {
-                            // No table name to extract → typed gate impossible; fall back
-                            // to single-Enter confirm without downgrading risk level.
-                            state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                            Some(vec![])
                         }
                     }
-                } else {
-                    state.sql_modal.status = SqlModalStatus::Confirming(decision);
                 }
-                Some(vec![])
             }
         }
         Action::SqlModalConfirmExecute => {
@@ -343,6 +350,22 @@ pub fn reduce_sql_modal(
 
         _ => None,
     }
+}
+
+/// Pick the label from the highest-risk individual statement for the confirmation UI.
+fn multi_statement_label(sql: &str) -> &'static str {
+    use crate::app::adhoc_risk::split_statements;
+    let mut worst_level = RiskLevel::Low;
+    let mut worst_label = "SQL";
+    for stmt in split_statements(sql) {
+        let kind = statement_classifier::classify(&stmt);
+        let d = evaluate_adhoc_risk(&kind);
+        if d.risk_level > worst_level || (d.risk_level == worst_level && d.label != "SQL") {
+            worst_level = d.risk_level;
+            worst_label = d.label;
+        }
+    }
+    worst_label
 }
 
 fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
