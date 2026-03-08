@@ -1,6 +1,8 @@
 ---
 paths:
   - "**/src/app/state.rs"
+  - "**/src/app/services.rs"
+  - "**/src/app/reducer.rs"
   - "**/src/app/reducers/**/*.rs"
 ---
 
@@ -41,3 +43,17 @@ paths:
 
 - カーソル位置をコンテンツ `String` の一部としてエンコードしてはならない（例: テキスト中にカーソル文字を挿入する）
 - カーソル位置は View 層の関心事であり、State 内では独立した数値インデックスとして保持すること
+
+## 状態と依存の分離
+
+`AppState` は純粋な状態のみを保持する。Port trait 実装やチャネルなどの依存オブジェクトは `AppServices` に格納し、reducer / renderer には引数で注入する。
+
+| 分類 | 配置先 | 例 |
+|------|--------|-----|
+| 純粋な状態 | `AppState` | `ui`, `cache`, `query`, `connections` |
+| Port trait 実装 | `AppServices` | `DdlGenerator`, `SqlDialect` |
+| I/O 用 Port | `EffectRunner` | `MetadataProvider`, `QueryExecutor` |
+
+- `AppState` に `Arc<dyn Trait>`, `Sender`, `Rc<RefCell<...>>` 等の依存を追加してはならない
+- Reducer sig: `reduce(state: &mut AppState, action, now, services: &AppServices)`
+- Renderer sig: `draw(state: &mut AppState, services: &AppServices)`

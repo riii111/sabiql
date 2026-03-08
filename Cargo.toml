@@ -35,6 +35,7 @@ self_update = { version = "0.42", default-features = false, features = ["archive
 [features]
 default = []
 self-update = ["dep:self_update"]
+test-support = []
 
 [dev-dependencies]
 pretty_assertions = "1"
