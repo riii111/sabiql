@@ -104,11 +104,23 @@ pub(crate) async fn run(
         }
 
         Effect::WriteErFailureLog { failed_tables } => {
-            if let Ok(cache_dir) = ctx.config_writer.get_cache_dir(&state.runtime.project_name) {
-                let writer = Arc::clone(ctx.er_log_writer);
-                tokio::task::spawn_blocking(move || {
-                    writer.write_er_failure_log(failed_tables, cache_dir).ok();
-                });
+            match ctx.config_writer.get_cache_dir(&state.runtime.project_name) {
+                Ok(cache_dir) => {
+                    let writer = Arc::clone(ctx.er_log_writer);
+                    let tx = ctx.action_tx.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
+                            tx.blocking_send(Action::ErLogWriteFailed(e.to_string()))
+                                .ok();
+                        }
+                    });
+                }
+                Err(e) => {
+                    ctx.action_tx
+                        .send(Action::ErLogWriteFailed(e.to_string()))
+                        .await
+                        .ok();
+                }
             }
             Ok(())
         }

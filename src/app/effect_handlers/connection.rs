@@ -127,7 +127,10 @@ pub(crate) async fn run(
             let tx = ctx.action_tx.clone();
 
             tokio::task::spawn_blocking(move || {
-                let profiles = store.load_all().unwrap_or_default();
+                let (profiles, profile_load_warning) = match store.load_all() {
+                    Ok(p) => (p, None),
+                    Err(e) => (vec![], Some(e.to_string())),
+                };
                 let (services, service_file_path, service_load_warning) =
                     match reader.read_services() {
                         Ok((s, p)) => (s, Some(p), None),
@@ -139,6 +142,7 @@ pub(crate) async fn run(
                     profiles,
                     services,
                     service_file_path,
+                    profile_load_warning,
                     service_load_warning,
                 }))
                 .ok();
