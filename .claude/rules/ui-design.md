@@ -5,7 +5,7 @@ paths:
 
 # UI設計ルール
 
-## コンポーネント構造（Atomic Design）
+## コンポーネント構造
 
 UIコンポーネントは Atomic Design パターンに従う:
 

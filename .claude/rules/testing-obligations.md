@@ -18,7 +18,7 @@ paths:
 | **UI (components)** | 描画の境界条件 | 空テーブル、オーバーフロー、エラー状態 |
 | **Integration** | レイヤ横断のラウンドトリップ | `tests/render_snapshots.rs` |
 
-## `#[ignore]` トラッキングルール（必須）
+## `#[ignore]` トラッキングルール
 
 - すべての `#[ignore]` テストにトラッキング Issue へのリンクコメントが必要
 - 形式: `#[ignore] // tracked: #<issue番号> — <理由>`
@@ -35,7 +35,7 @@ fn mysql_query_parsing() { ... }
 - 新しい `InputMode` バリアントには `tests/render_snapshots.rs` に最低1つのスナップショットが必要
 - 詳細なカバレッジ基準は `visual-regression.md` を参照
 
-## PR セルフチェック（Claude 向け）
+## PR セルフチェック
 
 PR を ready にする前に:
 - [ ] 新しい public 関数にユニットテストがある

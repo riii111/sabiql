@@ -6,7 +6,7 @@ paths:
 
 # AppState 不変条件
 
-## 派生状態パターン（必須）
+## 派生状態パターン
 
 `AppState` のフィールドが他フィールドから派生する場合（例: `connection_list_items` は `connections` + `service_entries` から派生）、**ソースフィールドはすべて private** にし、派生フィールドを自動再構築する setter 経由でのみ変更すること。
 
@@ -37,7 +37,7 @@ paths:
 | `pub pos: Option<(usize, usize)>`（row, col） | 許容 — 座標ペアは慣習的に自明 |
 | `pub pair: Option<(String, Instant)>` | 微妙 — フィールド名で補えるなら許容、迷ったら構造体 |
 
-## State/View 分離（必須）
+## State/View 分離
 
 - カーソル位置をコンテンツ `String` の一部としてエンコードしてはならない（例: テキスト中にカーソル文字を挿入する）
 - カーソル位置は View 層の関心事であり、State 内では独立した数値インデックスとして保持すること

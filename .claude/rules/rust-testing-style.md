@@ -43,6 +43,7 @@ fn register_with_valid_input_returns_registered_user() {
     assert!(result.is_ok());
 }
 ```
+（実際にgiven, when, thenをコメントで書くのではなく、行間で表現する)
 
 ## まとめ
 

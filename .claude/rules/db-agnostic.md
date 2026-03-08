@@ -6,13 +6,13 @@ paths:
 
 # DB 非依存ルール
 
-## Port レベルの中立性（必須）
+## Port レベルの中立性
 
 - `app/ports/` の port trait は RDBMS 非依存の汎用型・構文のみ使用する
 - port メソッドのシグネチャは汎用型を使うこと（`PgType` や PG 固有 enum は不可）
 - port のドキュメントは RDBMS 非依存の振る舞いとして記述する
 
-## Adapter の分離（必須）
+## Adapter の分離
 
 - DB 固有の SQL、クォート、接続文字列ロジックはすべて `infra/adapters/{postgres,mysql}/` に配置すること
 - Adapter は方言固有の型を port の戻り値型に漏洩させてはならない
