@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 
 use crate::app::ports::renderer::{RenderOutput, Renderer};
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::ui::components::layout::MainLayout;
 use crate::ui::tui::TuiRunner;
@@ -16,10 +17,10 @@ impl<'a> TuiAdapter<'a> {
 }
 
 impl Renderer for TuiAdapter<'_> {
-    fn draw(&mut self, state: &mut AppState) -> Result<RenderOutput> {
+    fn draw(&mut self, state: &mut AppState, services: &AppServices) -> Result<RenderOutput> {
         let mut output = RenderOutput::default();
         self.tui.terminal().draw(|frame| {
-            output = MainLayout::render(frame, state, None);
+            output = MainLayout::render(frame, state, None, services);
         })?;
         Ok(output)
     }

@@ -32,6 +32,7 @@ use crate::app::ports::{
     ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
     QueryExecutor, Renderer, ServiceFileError, ServiceFileReader,
 };
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
 use crate::domain::connection::ConnectionProfile;
@@ -186,17 +187,18 @@ impl EffectRunner {
         tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
+        services: &AppServices,
     ) -> Result<()> {
         for effect in effects {
             match effect {
                 Effect::Sequence(seq_effects) => {
                     for seq_effect in seq_effects {
-                        self.run_single(seq_effect, tui, state, completion_engine)
+                        self.run_single(seq_effect, tui, state, completion_engine, services)
                             .await?;
                     }
                 }
                 single_effect => {
-                    self.run_single(single_effect, tui, state, completion_engine)
+                    self.run_single(single_effect, tui, state, completion_engine, services)
                         .await?;
                 }
             }
@@ -210,8 +212,10 @@ impl EffectRunner {
         tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
+        services: &AppServices,
     ) -> Result<()> {
-        self.run_normal(effect, tui, state, completion_engine).await
+        self.run_normal(effect, tui, state, completion_engine, services)
+            .await
     }
 
     async fn run_normal<T: Renderer>(
@@ -220,10 +224,11 @@ impl EffectRunner {
         tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
+        services: &AppServices,
     ) -> Result<()> {
         match effect {
             Effect::Render => {
-                let output = tui.draw(state)?;
+                let output = tui.draw(state, services)?;
                 if !state.ui.focus_mode {
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                 }
@@ -1007,6 +1012,7 @@ mod tests {
     use crate::app::ports::{
         ConfigWriter, ErDiagramExporter, ErExportResult, ErLogWriter, RenderOutput, Renderer,
     };
+    use crate::app::services::AppServices;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
     use color_eyre::eyre::Result;
@@ -1016,7 +1022,7 @@ mod tests {
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
-        fn draw(&mut self, _state: &mut AppState) -> Result<RenderOutput> {
+        fn draw(&mut self, _state: &mut AppState, _services: &AppServices) -> Result<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }
@@ -1149,6 +1155,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1194,6 +1201,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1240,6 +1248,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1295,6 +1304,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1350,6 +1360,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1395,6 +1406,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1440,6 +1452,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1483,7 +1496,13 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(vec![Effect::LoadConnections], &mut renderer, state, &ce)
+                .run(
+                    vec![Effect::LoadConnections],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
                 .await
                 .unwrap();
 
@@ -1532,6 +1551,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1594,6 +1614,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1642,6 +1663,7 @@ mod tests {
                     &mut renderer,
                     state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1717,6 +1739,7 @@ mod tests {
                     &mut renderer,
                     &mut state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
@@ -1751,6 +1774,7 @@ mod tests {
                     &mut renderer,
                     &mut state,
                     &ce,
+                    &AppServices::stub(),
                 )
                 .await
                 .unwrap();
