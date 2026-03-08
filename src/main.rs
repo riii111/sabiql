@@ -137,8 +137,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    state.action_tx = Some(action_tx.clone());
-
     let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
