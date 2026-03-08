@@ -2081,5 +2081,47 @@ mod tests {
                 crate::app::sql_modal_context::SqlModalStatus::Success
             );
         }
+
+        #[test]
+        fn success_snapshot_not_overwritten_by_subsequent_preview_result() {
+            let mut state = state_with_table("public", "users");
+
+            // Step 1: DDL → last_adhoc_success is set
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: adhoc_result_with_tag(CommandTag::Alter("TABLE".to_string())),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+            );
+
+            let saved_tag = state
+                .sql_modal
+                .last_adhoc_success
+                .as_ref()
+                .and_then(|s| s.command_tag.clone());
+            assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
+
+            // Step 2: preview result arrives (simulating MetadataLoaded → ExecutePreview)
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(5),
+                    generation: 0,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+            );
+
+            // last_adhoc_success must still hold the DDL result — not cleared by preview
+            let tag_after = state
+                .sql_modal
+                .last_adhoc_success
+                .as_ref()
+                .and_then(|s| s.command_tag.clone());
+            assert!(matches!(tag_after, Some(CommandTag::Alter(_))));
+        }
     }
 }

@@ -826,6 +826,34 @@ mod tests {
 
             assert_eq!(state.ui.explorer_selected, 0);
         }
+
+        #[test]
+        fn after_connection_switch_pagination_reset_suppresses_auto_preview() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            // Simulate fresh connection: pagination is reset (as reset_connection_state does)
+            state.query.pagination.reset();
+
+            // New DB happens to have a table named "users" too
+            let metadata = make_metadata(vec![("public", "users")]);
+            let effects = reduce_metadata(
+                &mut state,
+                &Action::MetadataLoaded(metadata),
+                Instant::now(),
+            )
+            .unwrap();
+
+            // No table was selected on this connection, so no auto-preview should fire
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecutePreview { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::FetchTableDetail { .. }))
+            );
+        }
     }
 
     mod start_prefetch_all {
