@@ -40,6 +40,7 @@ impl SqlDialect for StubSqlDialect {
 }
 
 impl AppServices {
+    #[doc(hidden)]
     pub fn stub() -> Self {
         Self {
             ddl_generator: Arc::new(StubDdlGenerator),
