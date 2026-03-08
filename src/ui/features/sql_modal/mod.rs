@@ -10,8 +10,8 @@ use crate::app::sql_modal_context::{
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use crate::ui::shared::atoms::{spinner_char, text_cursor_spans};
-use crate::ui::shared::molecules::{render_modal, render_modal_with_border_color};
+use crate::ui::primitives::atoms::{spinner_char, text_cursor_spans};
+use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
 
 pub struct SqlModal;
 

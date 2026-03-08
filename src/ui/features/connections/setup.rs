@@ -7,8 +7,8 @@ use crate::app::connection_setup_state::{
 };
 use crate::app::state::AppState;
 use crate::domain::connection::SslMode;
-use crate::ui::shared::atoms::text_cursor_spans;
-use crate::ui::shared::molecules::render_modal;
+use crate::ui::primitives::atoms::text_cursor_spans;
+use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
 const LABEL_WIDTH: u16 = 12;

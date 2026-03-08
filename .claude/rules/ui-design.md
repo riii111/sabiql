@@ -7,7 +7,7 @@ paths:
 
 ## コンポーネント構造
 
-UIは shell / features / shared の3層構成に従う:
+UIは shell / features / primitives の3層構成に従う:
 
 ```
 src/ui/
@@ -18,9 +18,9 @@ src/ui/
 │   ├── sql_modal/      # SQL編集モーダル
 │   ├── pickers/        # テーブル/コマンドピッカー
 │   └── overlays/       # オーバーレイ（help, confirm_dialog）
-└── shared/       # 2+ features で再利用するプリミティブ
-    ├── atoms/    # 単一目的プリミティブ（spinner, key_chip, panel_block, scroll_indicator 等）
-    ├── molecules/# atoms の組み合わせ（render_modal, hint_line, overlay helpers）
+└── primitives/   # feature 文脈を持たない UI 基礎部品
+    ├── atoms/    # それ以上分解できない単一目的部品（spinner, key_chip, panel_block 等）
+    ├── molecules/# atoms の組み合わせパターン（render_modal, overlay helpers 等）
     └── utils/    # 描画なし計算ユーティリティ（text_utils）
 ```
 
@@ -28,29 +28,35 @@ src/ui/
 |--------|------|-----|
 | shell | 画面骨格。常時描画 | `MainLayout`, `Header`, `Footer`, `CommandLine` |
 | features | feature/mode 単位の画面セクション | `Explorer`, `SqlModal`, `HelpOverlay` |
-| shared/atoms | 単一目的のプリミティブ（ステートレス） | `spinner_char()`, `key_chip()`, `panel_block()`, `text_cursor_spans()` |
-| shared/molecules | atoms を組み合わせた再利用パターン | `render_modal()`, `hint_line()` |
-| shared/utils | 描画なし計算ユーティリティ | `calculate_header_min_widths()` |
+| primitives/atoms | それ以上分解できない単一目的部品 | `spinner_char()`, `key_chip()`, `panel_block()`, `text_cursor_spans()` |
+| primitives/molecules | atoms を組み合わせた描画パターン | `render_modal()`, `hint_line()` |
+| primitives/utils | 描画なし計算ユーティリティ | `calculate_header_min_widths()` |
 
-### shared 抽出基準
+### primitives 配置基準
 
-| 条件 | 分類先 |
-|------|--------|
-| 2+ features（または 1 feature + shell）で使用 & 単一目的 & ステートレス | `shared/atoms/` |
-| 2+ features（または 1 feature + shell）で使用 & atoms を組み合わせたパターン | `shared/molecules/` |
-| 2+ features で使用 & 計算ユーティリティ（描画なし） | `shared/utils/` |
-| 1 feature でのみ使用 | feature 内に留める |
+分類軸は**使用数ではなく責務と文脈依存性**なのだ。
+
+**primitives に置く条件（すべて満たすこと）:**
+- `AppState` や feature 固有の状態を直接受け取らない
+- mode 分岐を持たない
+- feature 名・画面名を含む語彙を持たない
+- ステートレス（呼び出し側が状態を渡す）
+
+**primitives に置かない条件（いずれか該当）:**
+- feature 固有の文脈がないと意味をなさない
+- 近い将来その feature 都合で変わりそう
+- feature 内に置いたほうが意味が明瞭
 
 UIコンポーネント追加時:
-- 繰り返し出現するビジュアルパターンは shared/atoms または shared/molecules に切り出す
+- 繰り返し出現するビジュアルパターンは primitives/atoms または primitives/molecules に切り出す
 - `Color::*` 直指定ではなく `Theme::*` トークンを使う
-- features/ コンポーネントは shared/ を合成し、ロジックを複製しない
+- features/ コンポーネントは primitives/ を合成し、ロジックを複製しない
 
 ## 単一行テキスト入力
 
 - **新規の**単一行テキスト入力フィールドはすべて `TextInputState`（`app/text_input.rs`）で状態管理すること
   - 既知の例外: `ConnectionSetupState` は現在独自に `cursor_position` / `viewport_offset` を管理している（マイグレーションは別途追跡）
-- カーソル描画は `text_cursor_spans()`（`ui/shared/atoms/text_cursor.rs`）を使うこと。インラインでカーソル描画ロジックを複製してはならない
+- カーソル描画は `text_cursor_spans()`（`ui/primitives/atoms/text_cursor.rs`）を使うこと。インラインでカーソル描画ロジックを複製してはならない
 
 ## フッターヒント順序
 

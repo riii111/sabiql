@@ -8,7 +8,7 @@ use crate::app::state::AppState;
 use crate::domain::er::er_output_filename;
 use crate::ui::theme::Theme;
 
-use crate::ui::shared::molecules::render_modal;
+use crate::ui::primitives::molecules::render_modal;
 
 pub struct ErTablePicker;
 

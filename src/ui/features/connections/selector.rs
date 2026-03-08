@@ -8,10 +8,10 @@ use crate::app::connection_list::ConnectionListItem;
 use crate::app::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::app::state::AppState;
 use crate::domain::connection::ConnectionId;
-use crate::ui::shared::atoms::scroll_indicator::{
+use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
 };
-use crate::ui::shared::molecules::render_modal;
+use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
 /// Display width of the active/inactive prefix ("● " or "  ").

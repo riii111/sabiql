@@ -11,8 +11,10 @@ use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::domain::Table as TableDetail;
-use crate::ui::shared::atoms::panel_block;
-use crate::ui::shared::utils::text_utils::{MIN_COL_WIDTH, PADDING, calculate_header_min_widths};
+use crate::ui::primitives::atoms::panel_block;
+use crate::ui::primitives::utils::text_utils::{
+    MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
+};
 use crate::ui::theme::Theme;
 
 pub struct Inspector;
@@ -320,7 +322,7 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        use crate::ui::shared::atoms::scroll_indicator::{
+        use crate::ui::primitives::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
             render_vertical_scroll_indicator_bar,
         };
@@ -423,7 +425,7 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         // Vertical scroll indicator
-        use crate::ui::shared::atoms::scroll_indicator::{
+        use crate::ui::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, render_vertical_scroll_indicator_bar,
         };
         render_vertical_scroll_indicator_bar(
@@ -521,7 +523,7 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         // Vertical scroll indicator
-        use crate::ui::shared::atoms::scroll_indicator::{
+        use crate::ui::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, render_vertical_scroll_indicator_bar,
         };
         render_vertical_scroll_indicator_bar(
@@ -603,7 +605,7 @@ impl Inspector {
                 frame.render_widget(paragraph, area);
 
                 // Vertical scroll indicator
-                use crate::ui::shared::atoms::scroll_indicator::{
+                use crate::ui::primitives::atoms::scroll_indicator::{
                     VerticalScrollParams, render_vertical_scroll_indicator_bar,
                 };
                 render_vertical_scroll_indicator_bar(
@@ -693,7 +695,7 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         // Vertical scroll indicator
-        use crate::ui::shared::atoms::scroll_indicator::{
+        use crate::ui::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, render_vertical_scroll_indicator_bar,
         };
         render_vertical_scroll_indicator_bar(
@@ -728,7 +730,7 @@ impl Inspector {
         frame.render_widget(paragraph, area);
 
         // Vertical scroll indicator
-        use crate::ui::shared::atoms::scroll_indicator::{
+        use crate::ui::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, render_vertical_scroll_indicator_bar,
         };
         render_vertical_scroll_indicator_bar(

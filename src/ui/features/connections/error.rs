@@ -8,8 +8,8 @@ use ratatui::widgets::{Paragraph, Wrap};
 use crate::ui::theme::Theme;
 
 use crate::app::state::AppState;
-use crate::ui::shared::atoms::key_chip;
-use crate::ui::shared::molecules::render_modal;
+use crate::ui::primitives::atoms::key_chip;
+use crate::ui::primitives::molecules::render_modal;
 
 pub struct ConnectionError;
 

@@ -7,7 +7,7 @@ use crate::app::palette::palette_commands;
 use crate::app::state::AppState;
 use crate::ui::theme::Theme;
 
-use crate::ui::shared::molecules::render_modal;
+use crate::ui::primitives::molecules::render_modal;
 
 pub struct CommandPalette;
 
