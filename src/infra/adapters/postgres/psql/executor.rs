@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::MetadataError;
-use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
@@ -133,7 +133,7 @@ impl PostgresAdapter {
         if let Some(tag) = (!stdout_trimmed.contains('\n'))
             .then(|| Self::parse_command_tag(stdout_trimmed))
             .flatten()
-            .filter(|t| t.is_data_modifying())
+            .filter(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
         {
             let row_count = tag.affected_rows().unwrap_or(0) as usize;
             let mut result =
@@ -528,6 +528,35 @@ mod tests {
             let csv = "count\n42\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
             assert_ne!(tag, Some(CommandTag::Select(42)));
+        }
+
+        // psql returns "SELECT n" for CREATE TABLE AS SELECT
+        #[test]
+        fn select_tag_captured_for_ctas() {
+            let tag = PostgresAdapter::parse_command_tag("SELECT 5");
+            assert_eq!(tag, Some(CommandTag::Select(5)));
+            let passes = tag
+                .as_ref()
+                .map(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
+                .unwrap_or(false);
+            assert!(passes);
+        }
+
+        // 0-row SELECT header-only CSV parses as Other, which the filter rejects
+        #[test]
+        fn empty_select_header_not_captured_by_filter() {
+            let cases = ["id,name", "id,name,email", "count"];
+            for input in cases {
+                let tag = PostgresAdapter::parse_command_tag(input);
+                let passes = tag
+                    .as_ref()
+                    .map(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
+                    .unwrap_or(false);
+                assert!(
+                    !passes,
+                    "header '{input}' must not pass the command-tag filter"
+                );
+            }
         }
     }
 }

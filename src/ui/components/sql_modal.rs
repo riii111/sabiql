@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
@@ -152,12 +152,22 @@ impl SqlModal {
             }
             SqlModalStatus::Success => {
                 let msg = Self::success_status_message(state);
-                (msg, Style::default().fg(Theme::STATUS_SUCCESS))
+                (
+                    msg,
+                    Style::default()
+                        .fg(Theme::STATUS_SUCCESS)
+                        .add_modifier(Modifier::BOLD),
+                )
             }
-            SqlModalStatus::Error => (
-                "Error".to_string(),
-                Style::default().fg(Theme::STATUS_ERROR),
-            ),
+            SqlModalStatus::Error => {
+                let msg = Self::error_status_message(state);
+                (
+                    msg,
+                    Style::default()
+                        .fg(Theme::STATUS_ERROR)
+                        .add_modifier(Modifier::BOLD),
+                )
+            }
         };
 
         let line = Line::from(vec![Span::styled(status_text, status_style)]);
@@ -179,6 +189,17 @@ impl SqlModal {
                 result.row_count, rows_label, time_secs
             )
         }
+    }
+
+    fn error_status_message(state: &AppState) -> String {
+        state
+            .query
+            .current_result
+            .as_ref()
+            .and_then(|r| r.error.as_ref())
+            .and_then(|e| e.lines().next())
+            .map(|line| format!("\u{2717} {}", line))
+            .unwrap_or_else(|| "\u{2717} Error".to_string())
     }
 
     fn render_completion_popup(

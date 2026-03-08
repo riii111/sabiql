@@ -33,6 +33,7 @@ use crate::app::ports::{
     QueryExecutor, Renderer, ServiceFileError, ServiceFileReader,
 };
 use crate::app::state::AppState;
+use crate::app::statement_classifier;
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, ErTableInfo};
 
@@ -561,7 +562,11 @@ impl EffectRunner {
 
                 tokio::spawn(async move {
                     match executor.execute_adhoc(&dsn, &query).await {
-                        Ok(result) => {
+                        Ok(mut result) => {
+                            if let Some(tag) = result.command_tag.take() {
+                                result.command_tag =
+                                    Some(statement_classifier::correct_command_tag(&query, tag));
+                            }
                             tx.send(Action::QueryCompleted {
                                 result: Arc::new(result),
                                 generation: 0,

@@ -635,6 +635,30 @@ fn extract_update_table_name(original: &str, chars: &[(usize, char)]) -> Option<
     Some(unquote_simple(raw))
 }
 
+use crate::domain::CommandTag;
+
+/// psql returns "SELECT n" for both plain SELECT and CREATE TABLE AS SELECT / SELECT INTO.
+/// This function corrects the tag using the original query text.
+pub fn correct_command_tag(query: &str, tag: CommandTag) -> CommandTag {
+    if let CommandTag::Select(_) = &tag {
+        let kind = classify(query);
+        match kind {
+            StatementKind::Create => return CommandTag::Create("TABLE".to_string()),
+            // SELECT INTO is classified as Other by the classifier
+            StatementKind::Other if is_select_into(query) => {
+                return CommandTag::Create("TABLE".to_string());
+            }
+            _ => {}
+        }
+    }
+    tag
+}
+
+fn is_select_into(sql: &str) -> bool {
+    let lower = sql.trim().to_lowercase();
+    lower.starts_with("select") && lower.contains(" into ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -975,6 +999,35 @@ mod tests {
                 extract_table_name(sql, &kind),
                 expected.map(|s| s.to_string())
             );
+        }
+    }
+
+    mod correct_command_tag_tests {
+        use super::*;
+
+        #[rstest]
+        #[case::normal_select("SELECT * FROM users", CommandTag::Select(5), CommandTag::Select(5))]
+        #[case::create_table_as_select(
+            "CREATE TABLE backup AS SELECT * FROM users",
+            CommandTag::Select(5),
+            CommandTag::Create("TABLE".to_string())
+        )]
+        #[case::select_into(
+            "SELECT * INTO backup FROM users",
+            CommandTag::Select(5),
+            CommandTag::Create("TABLE".to_string())
+        )]
+        #[case::non_select_tag(
+            "INSERT INTO users VALUES (1)",
+            CommandTag::Insert(1),
+            CommandTag::Insert(1)
+        )]
+        fn corrects_tag(
+            #[case] query: &str,
+            #[case] input_tag: CommandTag,
+            #[case] expected: CommandTag,
+        ) {
+            assert_eq!(correct_command_tag(query, input_tag), expected);
         }
     }
 }
