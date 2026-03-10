@@ -20,17 +20,20 @@ src/app/
     ├── query.rs           # ExecutePreview, ExecuteAdhoc, ExecuteWrite, CountRowsForExport, ExportCsv
     ├── er.rs              # GenerateErDiagramFromCache, WriteErFailureLog, ExtractFkNeighbors, SmartErRefresh
     ├── completion.rs      # CacheTableInCompletionEngine, EvictTablesFromCompletionCache, ClearCompletionEngineCache, ResizeCompletionCache, TriggerCompletion
+    ├── utility.rs         # CopyToClipboard, OpenFolder（EffectContext を使わず port を直接受け取る）
     └── test_support.rs    # Noop* stubs, make_runner(), sample helpers (#[cfg(test)])
 ```
 
 ## Dispatcher パターン
 
 `effect_runner.rs` は **dispatcher のみ**。Effect のビジネスロジックは `effect_handlers/<feature>.rs` に配置する。
-`effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、CopyToClipboard、OpenFolder、Sequence、DispatchActions のみ。
+`effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、Sequence、DispatchActions のみ。
 
 ## EffectContext
 
 ポートの借用バンドル。新しい port を追加する場合は `EffectRunner` struct と `EffectContext` 両方にフィールドを追加し、`effect_context()` メソッドも更新する。
+
+全 handler が EffectContext を使うわけではない。I/O 固有の handler は必要な port のみ引数で受け取るパターンも可（例: `utility.rs` は `ClipboardWriter` と `FolderOpener` を直接受け取る）。
 
 ## RefCell borrow 安全ルール
 
@@ -52,6 +55,7 @@ some_async_op(engine.data()).await; // panic at runtime
 
 ## 新 Effect 追加チェックリスト
 
+0. **I/O を伴う場合は `app/ports/` に port trait を定義し、`infra/adapters/` で実装すること（app 層の I/O 禁止ルール）**
 1. `effect.rs` に variant 追加
 2. 対応する `effect_handlers/<feature>.rs` の match arm に追加
 3. `effect_runner.rs` の dispatcher match arm に追加（既存の `e @` パターンに追記）
