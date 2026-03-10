@@ -75,7 +75,9 @@ impl crate::app::ports::ClipboardWriter for NoopClipboardWriter {
 
 pub(crate) struct NoopFolderOpener;
 impl crate::app::ports::FolderOpener for NoopFolderOpener {
-    fn open(&self, _path: &Path) {}
+    fn open(&self, _path: &Path) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub(crate) fn make_runner(

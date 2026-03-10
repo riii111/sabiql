@@ -5,18 +5,14 @@ use crate::app::ports::FolderOpener;
 pub struct NativeFolderOpener;
 
 impl FolderOpener for NativeFolderOpener {
-    fn open(&self, path: &Path) {
+    fn open(&self, path: &Path) -> Result<(), String> {
         #[cfg(target_os = "macos")]
-        std::process::Command::new("open").arg(path).spawn().ok();
+        let result = std::process::Command::new("open").arg(path).spawn();
         #[cfg(target_os = "linux")]
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .ok();
+        let result = std::process::Command::new("xdg-open").arg(path).spawn();
         #[cfg(target_os = "windows")]
-        std::process::Command::new("explorer")
-            .arg(path)
-            .spawn()
-            .ok();
+        let result = std::process::Command::new("explorer").arg(path).spawn();
+
+        result.map(|_| ()).map_err(|e| e.to_string())
     }
 }

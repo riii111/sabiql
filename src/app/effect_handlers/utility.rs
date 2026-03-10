@@ -36,7 +36,9 @@ pub(crate) async fn run(
             });
         }
         Effect::OpenFolder { path } => {
-            folder_opener.open(&path);
+            if let Err(e) = folder_opener.open(&path) {
+                action_tx.send(Action::OpenFolderFailed(e)).await.ok();
+            }
         }
         _ => {}
     }
@@ -60,19 +62,29 @@ mod tests {
 
     struct MockFolderOpener {
         opened: Mutex<Vec<PathBuf>>,
+        result: Result<(), String>,
     }
 
     impl MockFolderOpener {
         fn new() -> Self {
             Self {
                 opened: Mutex::new(vec![]),
+                result: Ok(()),
+            }
+        }
+
+        fn failing(error: &str) -> Self {
+            Self {
+                opened: Mutex::new(vec![]),
+                result: Err(error.to_string()),
             }
         }
     }
 
     impl FolderOpener for MockFolderOpener {
-        fn open(&self, path: &Path) {
+        fn open(&self, path: &Path) -> Result<(), String> {
             self.opened.lock().unwrap().push(path.to_path_buf());
+            self.result.clone()
         }
     }
 
@@ -185,6 +197,35 @@ mod tests {
             let opened = opener.opened.lock().unwrap();
             assert_eq!(opened.len(), 1);
             assert_eq!(opened[0], PathBuf::from("/tmp/export"));
+        }
+
+        #[tokio::test]
+        async fn failure_dispatches_open_folder_failed() {
+            let (tx, mut rx) = mpsc::channel(8);
+            let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
+            let opener = Arc::new(MockFolderOpener::failing("No such file or directory"));
+            let folder_opener: Arc<dyn FolderOpener> = Arc::clone(&opener) as _;
+
+            run(
+                Effect::OpenFolder {
+                    path: PathBuf::from("/nonexistent"),
+                },
+                &clipboard,
+                &folder_opener,
+                &tx,
+            )
+            .await;
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            match action {
+                Action::OpenFolderFailed(msg) => {
+                    assert_eq!(msg, "No such file or directory")
+                }
+                other => panic!("expected OpenFolderFailed, got {:?}", other),
+            }
         }
     }
 }
