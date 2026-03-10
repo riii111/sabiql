@@ -430,17 +430,12 @@ pub fn reduce_connection(
         Action::DeleteConnection(id) => Some(vec![Effect::DeleteConnection { id: id.clone() }]),
         Action::ConnectionDeleted(id) => {
             if state.runtime.active_connection_id.as_ref() == Some(id) {
+                reset_connection_state(state);
                 state.runtime.active_connection_id = None;
                 state.runtime.dsn = None;
                 state.runtime.active_connection_name = None;
                 state.runtime.connection_state = ConnectionState::NotConnected;
                 state.cache.state = MetadataState::NotLoaded;
-                state.cache.metadata = None;
-                state.cache.table_detail = None;
-                state.cache.current_table = None;
-                state.query.current_result = None;
-                state.query.result_history = Default::default();
-                state.ui.set_explorer_selection(None);
             }
 
             let id_clone = id.clone();
@@ -937,6 +932,42 @@ mod tests {
             );
 
             assert_eq!(state.connection_list_items(), build_connection_list(1, 0));
+        }
+
+        #[test]
+        fn resets_full_state_when_active_deleted() {
+            let mut state = AppState::new("test".to_string());
+            let profile = create_profile("Production");
+            let profile_id = profile.id.clone();
+            state.set_connections(vec![profile]);
+            state.runtime.active_connection_id = Some(profile_id.clone());
+            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+            state.runtime.connection_state = ConnectionState::Connected;
+
+            // Set state that was previously not reset by ConnectionDeleted
+            state.query.history_index = Some(2);
+            state.query.pagination.current_page = 3;
+            state.ui.result_selection.enter_row(5);
+            state.ui.result_scroll_offset = 10;
+            state.ui.result_horizontal_offset = 20;
+            state.ui.staged_delete_rows.insert(0);
+
+            reduce_connection(
+                &mut state,
+                &Action::ConnectionDeleted(profile_id),
+                Instant::now(),
+            );
+
+            assert!(state.query.history_index.is_none());
+            assert_eq!(state.query.pagination.current_page, 0);
+            assert_eq!(
+                state.ui.result_selection.mode(),
+                crate::app::ui_state::ResultNavMode::Scroll
+            );
+            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.ui.result_horizontal_offset, 0);
+            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.pending_write_preview.is_none());
         }
 
         #[test]
