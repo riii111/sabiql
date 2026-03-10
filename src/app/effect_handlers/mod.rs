@@ -3,6 +3,7 @@ pub(crate) mod connection;
 pub(crate) mod er;
 pub(crate) mod metadata;
 pub(crate) mod query;
+pub(crate) mod utility;
 
 use std::sync::Arc;
 

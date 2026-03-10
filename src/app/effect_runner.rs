@@ -25,8 +25,8 @@ use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::effect_handlers::{self, EffectContext};
 use crate::app::ports::{
-    ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter, MetadataProvider,
-    QueryExecutor, Renderer, ServiceFileReader,
+    ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
+    FolderOpener, MetadataProvider, QueryExecutor, Renderer, ServiceFileReader,
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
@@ -41,6 +41,8 @@ pub struct EffectRunner {
     er_log_writer: Arc<dyn ErLogWriter>,
     connection_store: Arc<dyn ConnectionStore>,
     service_file_reader: Arc<dyn ServiceFileReader>,
+    clipboard: Arc<dyn ClipboardWriter>,
+    folder_opener: Arc<dyn FolderOpener>,
     metadata_cache: TtlCache<String, DatabaseMetadata>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -54,6 +56,8 @@ pub struct EffectRunnerBuilder {
     er_log_writer: Option<Arc<dyn ErLogWriter>>,
     connection_store: Option<Arc<dyn ConnectionStore>>,
     service_file_reader: Option<Arc<dyn ServiceFileReader>>,
+    clipboard: Option<Arc<dyn ClipboardWriter>>,
+    folder_opener: Option<Arc<dyn FolderOpener>>,
     metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
@@ -91,6 +95,14 @@ impl EffectRunnerBuilder {
         self.service_file_reader = Some(v);
         self
     }
+    pub fn clipboard(mut self, v: Arc<dyn ClipboardWriter>) -> Self {
+        self.clipboard = Some(v);
+        self
+    }
+    pub fn folder_opener(mut self, v: Arc<dyn FolderOpener>) -> Self {
+        self.folder_opener = Some(v);
+        self
+    }
     pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
         self.metadata_cache = Some(v);
         self
@@ -114,6 +126,8 @@ impl EffectRunnerBuilder {
             service_file_reader: self
                 .service_file_reader
                 .expect("service_file_reader is required"),
+            clipboard: self.clipboard.expect("clipboard is required"),
+            folder_opener: self.folder_opener.expect("folder_opener is required"),
             metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
             action_tx: self.action_tx.expect("action_tx is required"),
         }
@@ -131,6 +145,8 @@ impl EffectRunner {
             er_log_writer: None,
             connection_store: None,
             service_file_reader: None,
+            clipboard: None,
+            folder_opener: None,
             metadata_cache: None,
             action_tx: None,
         }
@@ -222,37 +238,14 @@ impl EffectRunner {
                 Ok(())
             }
 
-            Effect::CopyToClipboard {
-                content,
-                on_success,
-                on_failure,
-            } => {
-                let tx = self.action_tx.clone();
-                tokio::task::spawn_blocking(move || {
-                    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&content)) {
-                        Ok(()) => {
-                            if let Some(action) = on_success {
-                                tx.blocking_send(action).ok();
-                            }
-                        }
-                        Err(e) => {
-                            if let Some(action) = on_failure {
-                                tx.blocking_send(action).ok();
-                            } else {
-                                tx.blocking_send(Action::CopyFailed(e.to_string())).ok();
-                            }
-                        }
-                    }
-                });
-                Ok(())
-            }
-            Effect::OpenFolder { path } => {
-                #[cfg(target_os = "macos")]
-                let _ = std::process::Command::new("open").arg(&path).spawn();
-                #[cfg(target_os = "linux")]
-                let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
-                #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("explorer").arg(&path).spawn();
+            e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
+                effect_handlers::utility::run(
+                    e,
+                    &self.clipboard,
+                    &self.folder_opener,
+                    &self.action_tx,
+                )
+                .await;
                 Ok(())
             }
 

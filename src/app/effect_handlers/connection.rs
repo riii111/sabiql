@@ -390,6 +390,8 @@ mod tests {
                 .er_log_writer(Arc::new(NoopErLogWriter))
                 .connection_store(Arc::new(MockConnectionStore::new()))
                 .service_file_reader(Arc::new(NoopServiceFileReader))
+                .clipboard(Arc::new(NoopClipboardWriter))
+                .folder_opener(Arc::new(NoopFolderOpener))
                 .metadata_cache(TtlCache::new(60))
                 .action_tx(action_tx)
                 .build()
