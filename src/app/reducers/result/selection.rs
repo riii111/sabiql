@@ -111,7 +111,7 @@ mod tests {
     mod row_delete {
         use super::*;
 
-        fn base_state(
+        pub(super) fn base_state(
             pk: Option<Vec<&str>>,
             rows: Vec<Vec<&str>>,
             current_page: usize,
@@ -220,6 +220,69 @@ mod tests {
             reduce(&mut state, &Action::ClearStagedDeletes);
 
             assert!(state.ui.staged_delete_rows.is_empty());
+        }
+    }
+
+    mod page_passthrough {
+        use super::*;
+        use crate::app::write_guardrails::{
+            GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+        };
+
+        fn dirty_state() -> AppState {
+            let mut state = row_delete::base_state(
+                Some(vec!["id"]),
+                vec![vec!["1", "alice"], vec!["2", "bob"]],
+                0,
+            );
+            state.ui.result_selection.enter_row(0);
+            state.ui.result_selection.enter_cell(1);
+            state.cell_edit.begin(0, 1, "alice".to_string());
+            state.ui.staged_delete_rows.insert(1);
+            state.pending_write_preview = Some(WritePreview {
+                operation: WriteOperation::Update,
+                sql: String::new(),
+                target_summary: TargetSummary {
+                    schema: "public".into(),
+                    table: "users".into(),
+                    key_values: vec![],
+                },
+                diff: vec![],
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
+            });
+            state
+        }
+
+        #[test]
+        fn next_page_resets_all_view_state_and_returns_none() {
+            let mut state = dirty_state();
+
+            let result = reduce(&mut state, &Action::ResultNextPage);
+
+            assert!(result.is_none());
+            assert!(state.ui.result_selection.row().is_none());
+            assert!(state.ui.result_selection.cell().is_none());
+            assert!(!state.cell_edit.is_active());
+            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.pending_write_preview.is_none());
+        }
+
+        #[test]
+        fn prev_page_resets_all_view_state_and_returns_none() {
+            let mut state = dirty_state();
+
+            let result = reduce(&mut state, &Action::ResultPrevPage);
+
+            assert!(result.is_none());
+            assert!(state.ui.result_selection.row().is_none());
+            assert!(!state.cell_edit.is_active());
+            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.pending_write_preview.is_none());
         }
     }
 }
