@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::app::action::Action;
@@ -8,10 +9,10 @@ use crate::app::ports::{ClipboardWriter, FolderOpener};
 
 pub(crate) async fn run(
     effect: Effect,
+    action_tx: &mpsc::Sender<Action>,
     clipboard: &Arc<dyn ClipboardWriter>,
     folder_opener: &Arc<dyn FolderOpener>,
-    action_tx: &mpsc::Sender<Action>,
-) {
+) -> Result<()> {
     match effect {
         Effect::CopyToClipboard {
             content,
@@ -40,8 +41,9 @@ pub(crate) async fn run(
                 action_tx.send(Action::OpenFolderFailed(e)).await.ok();
             }
         }
-        _ => {}
+        _ => unreachable!("utility::run called with non-utility effect"),
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -103,11 +105,12 @@ mod tests {
                     on_success: Some(Action::Render),
                     on_failure: None,
                 },
+                &tx,
                 &clipboard,
                 &folder_opener,
-                &tx,
             )
-            .await;
+            .await
+            .unwrap();
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -130,11 +133,12 @@ mod tests {
                     on_success: None,
                     on_failure: Some(Action::Render),
                 },
+                &tx,
                 &clipboard,
                 &folder_opener,
-                &tx,
             )
-            .await;
+            .await
+            .unwrap();
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -157,11 +161,12 @@ mod tests {
                     on_success: None,
                     on_failure: None,
                 },
+                &tx,
                 &clipboard,
                 &folder_opener,
-                &tx,
             )
-            .await;
+            .await
+            .unwrap();
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -188,11 +193,12 @@ mod tests {
                 Effect::OpenFolder {
                     path: PathBuf::from("/tmp/export"),
                 },
+                &tx,
                 &clipboard,
                 &folder_opener,
-                &tx,
             )
-            .await;
+            .await
+            .unwrap();
 
             let opened = opener.opened.lock().unwrap();
             assert_eq!(opened.len(), 1);
@@ -210,11 +216,12 @@ mod tests {
                 Effect::OpenFolder {
                     path: PathBuf::from("/nonexistent"),
                 },
+                &tx,
                 &clipboard,
                 &folder_opener,
-                &tx,
             )
-            .await;
+            .await
+            .unwrap();
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await

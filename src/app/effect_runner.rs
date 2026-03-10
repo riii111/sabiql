@@ -224,12 +224,11 @@ impl EffectRunner {
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
                 effect_handlers::utility::run(
                     e,
+                    &self.action_tx,
                     &self.clipboard,
                     &self.folder_opener,
-                    &self.action_tx,
                 )
-                .await;
-                Ok(())
+                .await
             }
 
             e @ (Effect::SaveAndConnect { .. }

@@ -35,11 +35,23 @@ src/app/
 
 - `action_tx` は全 handler 共通。シグネチャ先頭に置く
 - その後に handler 固有の port を並べ、最後に `state` / `completion_engine`
+- 返り値は `Result<()>` に統一
 - 新しい port を追加する場合は `EffectRunner` struct にフィールドを追加し、dispatcher で該当 handler にだけ渡す
+
+```rust
+// handler シグネチャテンプレート
+pub(crate) async fn run(
+    effect: Effect,
+    action_tx: &mpsc::Sender<Action>,
+    // handler 固有の port をここに並べる
+    state: &mut AppState,              // 必要な handler のみ
+    completion_engine: &RefCell<...>,   // 必要な handler のみ
+) -> Result<()>
+```
 
 ## RefCell borrow 安全ルール
 
-`completion_engine` は `RefCell` なので EffectContext に含めない。必要な handler のみ引数で受ける。
+`completion_engine` は `RefCell` なので共通引数にバンドルせず、必要な handler のみ引数で受ける。
 **borrow は必ず await の前に drop すること**（ブロックスコープで囲む）。
 
 ```rust

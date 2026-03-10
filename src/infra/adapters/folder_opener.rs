@@ -12,6 +12,8 @@ impl FolderOpener for NativeFolderOpener {
         let result = std::process::Command::new("xdg-open").arg(path).spawn();
         #[cfg(target_os = "windows")]
         let result = std::process::Command::new("explorer").arg(path).spawn();
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        compile_error!("FolderOpener: unsupported target OS");
 
         result.map(|_| ()).map_err(|e| e.to_string())
     }
