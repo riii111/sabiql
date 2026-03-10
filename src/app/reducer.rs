@@ -55,30 +55,17 @@ fn reduce_inner(
         state.ui.yank_op_pending = false;
     }
 
-    if let Some(effects) = reduce_connection(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_modal(state, &action, now, services) {
-        return effects;
-    }
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
     // reset view state here and return None, relying on reduce_query for the actual page change.
-    if let Some(effects) = reduce_result(state, &action, services, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_navigation(state, &action, services, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_sql_modal(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_metadata(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_er(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_query(state, &action, now, services) {
+    if let Some(effects) = reduce_connection(state, &action, now)
+        .or_else(|| reduce_modal(state, &action, now, services))
+        .or_else(|| reduce_result(state, &action, services, now))
+        .or_else(|| reduce_navigation(state, &action, services, now))
+        .or_else(|| reduce_sql_modal(state, &action, now))
+        .or_else(|| reduce_metadata(state, &action, now))
+        .or_else(|| reduce_er(state, &action, now))
+        .or_else(|| reduce_query(state, &action, now, services))
+    {
         return effects;
     }
 
