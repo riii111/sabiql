@@ -693,6 +693,13 @@ pub fn reduce_query(
             Some(vec![])
         }
 
+        Action::OpenFolderFailed(error) => {
+            state
+                .messages
+                .set_error_at(format!("Failed to open folder: {}", error), now);
+            Some(vec![])
+        }
+
         Action::ResultNextPage => {
             let is_preview = state
                 .query

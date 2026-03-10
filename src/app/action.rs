@@ -324,6 +324,7 @@ pub enum Action {
     OpenWritePreviewConfirm(Box<WritePreview>),
     CellCopied,
     CopyFailed(String),
+    OpenFolderFailed(String),
 
     // Result history navigation
     OpenResultHistory,

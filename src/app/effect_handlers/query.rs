@@ -3,10 +3,11 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
 
-use super::EffectContext;
 use crate::app::action::Action;
 use crate::app::effect::Effect;
+use crate::app::ports::QueryExecutor;
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
 
@@ -51,7 +52,8 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
 
 pub(crate) async fn run(
     effect: Effect,
-    ctx: &EffectContext<'_>,
+    action_tx: &mpsc::Sender<Action>,
+    query_executor: &Arc<dyn QueryExecutor>,
     _state: &mut AppState,
 ) -> Result<()> {
     match effect {
@@ -64,8 +66,8 @@ pub(crate) async fn run(
             offset,
             target_page,
         } => {
-            let executor = Arc::clone(ctx.query_executor);
-            let tx = ctx.action_tx.clone();
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match executor
@@ -92,8 +94,8 @@ pub(crate) async fn run(
         }
 
         Effect::ExecuteAdhoc { dsn, query } => {
-            let executor = Arc::clone(ctx.query_executor);
-            let tx = ctx.action_tx.clone();
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match executor.execute_adhoc(&dsn, &query).await {
@@ -119,8 +121,8 @@ pub(crate) async fn run(
         }
 
         Effect::ExecuteWrite { dsn, query } => {
-            let executor = Arc::clone(ctx.query_executor);
-            let tx = ctx.action_tx.clone();
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match executor.execute_write(&dsn, &query).await {
@@ -147,8 +149,8 @@ pub(crate) async fn run(
             export_query,
             file_name,
         } => {
-            let executor = Arc::clone(ctx.query_executor);
-            let tx = ctx.action_tx.clone();
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
@@ -169,8 +171,8 @@ pub(crate) async fn run(
             file_name,
             row_count,
         } => {
-            let executor = Arc::clone(ctx.query_executor);
-            let tx = ctx.action_tx.clone();
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
