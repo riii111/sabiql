@@ -20,37 +20,6 @@ use super::helpers::{
     deletion_refresh_target_bulk, editable_preview_base,
 };
 
-fn result_row_count(state: &AppState) -> usize {
-    state
-        .query
-        .current_result
-        .as_ref()
-        .map(|r| r.rows.len())
-        .unwrap_or(0)
-}
-
-fn result_col_count(state: &AppState) -> usize {
-    state
-        .query
-        .current_result
-        .as_ref()
-        .map(|r| r.columns.len())
-        .unwrap_or(0)
-}
-
-fn ensure_cell_visible(state: &mut AppState) {
-    if let Some(col) = state.ui.result_selection.cell() {
-        let plan = &state.ui.result_viewport_plan;
-        let h_offset = state.ui.result_horizontal_offset;
-        if col < h_offset {
-            state.ui.result_horizontal_offset = col;
-        } else if col >= h_offset + plan.column_count {
-            state.ui.result_horizontal_offset =
-                col.saturating_sub(plan.column_count.saturating_sub(1));
-        }
-    }
-}
-
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     state
         .cache
@@ -545,56 +514,6 @@ pub fn reduce_navigation(
             Some(vec![])
         }
 
-        // Result pane selection
-        Action::ResultEnterRowActive => {
-            let rows = result_row_count(state);
-            if rows > 0 {
-                let clamped = state.ui.result_scroll_offset.min(rows - 1);
-                state.ui.result_selection.enter_row(clamped);
-            }
-            Some(vec![])
-        }
-        Action::ResultEnterCellActive => {
-            if state.ui.result_selection.row().is_some() {
-                state
-                    .ui
-                    .result_selection
-                    .enter_cell(state.ui.result_horizontal_offset);
-            }
-            Some(vec![])
-        }
-        Action::ResultExitToRowActive => {
-            state.ui.result_selection.exit_to_row();
-            state.cell_edit.clear();
-            state.pending_write_preview = None;
-            Some(vec![])
-        }
-        Action::ResultExitToScroll => {
-            state.ui.result_selection.reset();
-            state.cell_edit.clear();
-            state.ui.staged_delete_rows.clear();
-            state.pending_write_preview = None;
-            Some(vec![])
-        }
-        Action::ResultCellLeft => {
-            if let Some(c) = state.ui.result_selection.cell()
-                && c > 0
-            {
-                state.ui.result_selection.enter_cell(c - 1);
-                ensure_cell_visible(state);
-            }
-            Some(vec![])
-        }
-        Action::ResultCellRight => {
-            if let Some(c) = state.ui.result_selection.cell() {
-                let max_col = result_col_count(state).saturating_sub(1);
-                if c < max_col {
-                    state.ui.result_selection.enter_cell(c + 1);
-                    ensure_cell_visible(state);
-                }
-            }
-            Some(vec![])
-        }
         Action::ResultCellYank => {
             if let (Some(row_idx), Some(col_idx)) = (
                 state.ui.result_selection.row(),
@@ -689,28 +608,6 @@ pub fn reduce_navigation(
                 Some(vec![])
             }
         }
-        Action::ResultDeleteOperatorPending => {
-            state.ui.delete_op_pending = true;
-            Some(vec![])
-        }
-        Action::StageRowForDelete => {
-            if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
-                && let Some(row_idx) = state.ui.result_selection.row()
-            {
-                state.ui.staged_delete_rows.insert(row_idx);
-            }
-            Some(vec![])
-        }
-        Action::UnstageLastStagedRow => {
-            if let Some(&last) = state.ui.staged_delete_rows.iter().next_back() {
-                state.ui.staged_delete_rows.remove(&last);
-            }
-            Some(vec![])
-        }
-        Action::ClearStagedDeletes => {
-            state.ui.staged_delete_rows.clear();
-            Some(vec![])
-        }
         Action::CellCopied => Some(vec![]),
         Action::ResultEnterCellEdit => match editable_cell_context(state) {
             Ok((row_idx, col_idx, value)) => {
@@ -756,14 +653,6 @@ pub fn reduce_navigation(
         Action::CopyFailed(msg) => {
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
-        }
-
-        Action::ResultNextPage | Action::ResultPrevPage => {
-            state.ui.result_selection.reset();
-            state.cell_edit.clear();
-            state.ui.staged_delete_rows.clear();
-            state.pending_write_preview = None;
-            None // Let the query reducer handle the actual page change
         }
 
         Action::ConnectionListSelectNext => {
@@ -1898,148 +1787,6 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
             );
-        }
-    }
-
-    mod row_delete {
-        use super::*;
-        use crate::domain::{Column, QueryResult, QuerySource, Table};
-        use std::sync::Arc;
-
-        fn base_state(
-            pk: Option<Vec<&str>>,
-            rows: Vec<Vec<&str>>,
-            current_page: usize,
-        ) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.cache.selection_generation = 7;
-            state.query.pagination.current_page = current_page;
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state.query.current_result = Some(Arc::new(QueryResult {
-                query: "SELECT * FROM public.users".to_string(),
-                columns: vec!["id".to_string(), "name".to_string()],
-                row_count: rows.len(),
-                rows: rows
-                    .into_iter()
-                    .map(|r| r.into_iter().map(|v| v.to_string()).collect())
-                    .collect(),
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
-            state.cache.table_detail = Some(Table {
-                schema: "public".to_string(),
-                name: "users".to_string(),
-                owner: None,
-                columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    nullable: false,
-                    default: None,
-                    is_primary_key: true,
-                    is_unique: true,
-                    comment: None,
-                    ordinal_position: 1,
-                }],
-                primary_key: pk.map(|cols| cols.into_iter().map(|c| c.to_string()).collect()),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
-            });
-            state
-        }
-
-        #[test]
-        fn dd_stages_active_row() {
-            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-
-            reduce_navigation(
-                &mut state,
-                &Action::StageRowForDelete,
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(state.ui.staged_delete_rows.contains(&0));
-        }
-
-        #[test]
-        fn dd_on_already_staged_row_is_noop() {
-            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-            state.ui.staged_delete_rows.insert(0);
-
-            reduce_navigation(
-                &mut state,
-                &Action::StageRowForDelete,
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert_eq!(state.ui.staged_delete_rows.len(), 1);
-        }
-
-        #[test]
-        fn staging_requires_row_active_mode() {
-            let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-
-            reduce_navigation(
-                &mut state,
-                &Action::StageRowForDelete,
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(state.ui.staged_delete_rows.is_empty());
-        }
-
-        #[test]
-        fn u_unstages_last_staged_row() {
-            let mut state = base_state(
-                Some(vec!["id"]),
-                vec![vec!["1", "alice"], vec!["2", "bob"]],
-                0,
-            );
-            state.ui.staged_delete_rows.insert(0);
-            state.ui.staged_delete_rows.insert(1);
-
-            reduce_navigation(
-                &mut state,
-                &Action::UnstageLastStagedRow,
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert_eq!(state.ui.staged_delete_rows.len(), 1);
-            assert!(state.ui.staged_delete_rows.contains(&0));
-        }
-
-        #[test]
-        fn clear_staged_deletes_removes_all() {
-            let mut state = base_state(
-                Some(vec!["id"]),
-                vec![vec!["1", "alice"], vec!["2", "bob"]],
-                0,
-            );
-            state.ui.staged_delete_rows.insert(0);
-            state.ui.staged_delete_rows.insert(1);
-
-            reduce_navigation(
-                &mut state,
-                &Action::ClearStagedDeletes,
-                &AppServices::stub(),
-                Instant::now(),
-            );
-
-            assert!(state.ui.staged_delete_rows.is_empty());
         }
     }
 

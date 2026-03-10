@@ -12,7 +12,6 @@ pub(super) fn result_row_count(state: &AppState) -> usize {
         .unwrap_or(0)
 }
 
-#[expect(dead_code, reason = "will be used by selection sub-reducer in Phase 2")]
 pub(super) fn result_col_count(state: &AppState) -> usize {
     state
         .query

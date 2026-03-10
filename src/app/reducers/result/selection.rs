@@ -104,7 +104,6 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::services::AppServices;
     use crate::domain::{Column, QueryResult, QuerySource, Table};
     use std::sync::Arc;
     use std::time::Instant;
