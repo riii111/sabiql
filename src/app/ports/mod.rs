@@ -1,9 +1,11 @@
+pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
 pub mod ddl_generator;
 pub mod dsn_builder;
 pub mod er_exporter;
 pub mod er_log_writer;
+pub mod folder_opener;
 pub mod graphviz;
 pub mod metadata;
 pub mod query_executor;
@@ -11,12 +13,14 @@ pub mod renderer;
 pub mod service_file;
 pub mod sql_dialect;
 
+pub use clipboard::ClipboardWriter;
 pub use config_writer::ConfigWriter;
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportResult};
 pub use er_log_writer::ErLogWriter;
+pub use folder_opener::FolderOpener;
 pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::{MetadataError, MetadataProvider};
 pub use query_executor::QueryExecutor;
