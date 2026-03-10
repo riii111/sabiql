@@ -17,8 +17,7 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::{build_pk_pairs, escape_preview_value};
 use crate::domain::{QueryResult, QuerySource};
 
-use super::helpers::editable_preview_base;
-use super::navigation::build_bulk_delete_preview;
+use super::helpers::{build_bulk_delete_preview, editable_preview_base};
 
 fn build_update_preview(state: &AppState, services: &AppServices) -> Result<WritePreview, String> {
     if !state.cell_edit.is_active() {
