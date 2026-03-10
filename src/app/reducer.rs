@@ -21,6 +21,7 @@ use crate::app::reducers::{
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
+use crate::domain::TableSummary;
 
 pub fn reduce(
     state: &mut AppState,
@@ -84,94 +85,78 @@ fn reduce_inner(
         }
 
         Action::ConfirmSelection => {
-            let mut effects = Vec::new();
-
             if state.ui.input_mode == InputMode::TablePicker {
-                let filtered = state.filtered_tables();
-                if let Some(table) = filtered.get(state.ui.picker_selected).cloned() {
-                    let schema = table.schema.clone();
-                    let table_name = table.name.clone();
-                    state.cache.current_table = Some(table.qualified_name());
-                    state.cache.table_detail = None;
+                let table = state
+                    .filtered_tables()
+                    .get(state.ui.picker_selected)
+                    .cloned()
+                    .cloned();
+                if let Some(table) = table {
                     state.ui.input_mode = InputMode::Normal;
-                    state.cell_edit.clear();
-                    state.ui.staged_delete_rows.clear();
-                    state.pending_write_preview = None;
-
-                    state.cache.selection_generation += 1;
-                    let current_gen = state.cache.selection_generation;
-
-                    if let Some(dsn) = &state.runtime.dsn {
-                        effects.push(Effect::FetchTableDetail {
-                            dsn: dsn.clone(),
-                            schema: schema.clone(),
-                            table: table_name.clone(),
-                            generation: current_gen,
-                        });
-                    }
-                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
-                        TableTarget {
-                            schema,
-                            table: table_name,
-                            generation: current_gen,
-                        },
-                    )]));
+                    return select_table(state, &table);
                 }
             } else if state.ui.input_mode == InputMode::Normal {
-                // Open error modal if connection error exists (from any pane)
                 if state.connection_error.error_info.is_some() {
                     state.ui.input_mode = InputMode::ConnectionError;
-                    return effects;
+                    return vec![];
                 }
-
                 if state.ui.focused_pane != FocusedPane::Explorer {
-                    return effects;
+                    return vec![];
                 }
-
-                let tables = state.tables();
-                if let Some(table) = tables.get(state.ui.explorer_selected).cloned() {
-                    let schema = table.schema.clone();
-                    let table_name = table.name.clone();
-                    state.cache.current_table = Some(table.qualified_name());
-                    state.cache.table_detail = None;
-                    state.cell_edit.clear();
-                    state.ui.staged_delete_rows.clear();
-                    state.pending_write_preview = None;
-
-                    state.cache.selection_generation += 1;
-                    let current_gen = state.cache.selection_generation;
-
-                    if let Some(dsn) = &state.runtime.dsn {
-                        effects.push(Effect::FetchTableDetail {
-                            dsn: dsn.clone(),
-                            schema: schema.clone(),
-                            table: table_name.clone(),
-                            generation: current_gen,
-                        });
-                    }
-                    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
-                        TableTarget {
-                            schema,
-                            table: table_name,
-                            generation: current_gen,
-                        },
-                    )]));
+                let table = state
+                    .tables()
+                    .get(state.ui.explorer_selected)
+                    .cloned()
+                    .cloned();
+                if let Some(table) = table {
+                    return select_table(state, &table);
                 }
             } else if state.ui.input_mode == InputMode::CommandPalette {
                 use crate::app::palette::palette_action_for_index;
 
                 let cmd_action = palette_action_for_index(state.ui.picker_selected);
                 state.ui.input_mode = InputMode::Normal;
-                let mut sub_effects = reduce(state, cmd_action, now, services);
-                effects.append(&mut sub_effects);
+                return reduce(state, cmd_action, now, services);
             }
 
-            effects
+            vec![]
         }
 
         // Handled by sub-reducers
         _ => vec![],
     }
+}
+
+/// Reset view state and emit effects to load the selected table.
+fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
+    state.cache.current_table = Some(table.qualified_name());
+    state.cache.table_detail = None;
+    state.cell_edit.clear();
+    state.ui.staged_delete_rows.clear();
+    state.pending_write_preview = None;
+
+    state.cache.selection_generation += 1;
+    let generation = state.cache.selection_generation;
+    let schema = table.schema.clone();
+    let table_name = table.name.clone();
+
+    let mut effects = Vec::new();
+    if let Some(dsn) = &state.runtime.dsn {
+        effects.push(Effect::FetchTableDetail {
+            dsn: dsn.clone(),
+            schema: schema.clone(),
+            table: table_name.clone(),
+            generation,
+        });
+    }
+    effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
+        TableTarget {
+            schema,
+            table: table_name,
+            generation,
+        },
+    )]));
+    effects
 }
 
 #[cfg(test)]
