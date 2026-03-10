@@ -3,18 +3,24 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
 
-use super::EffectContext;
 use crate::app::action::{Action, SmartErRefreshError, SmartErRefreshResult};
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
+use crate::app::ports::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::app::state::AppState;
 use crate::domain::ErTableInfo;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     effect: Effect,
-    ctx: &EffectContext<'_>,
+    action_tx: &mpsc::Sender<Action>,
+    metadata_provider: &Arc<dyn MetadataProvider>,
+    er_exporter: &Arc<dyn ErDiagramExporter>,
+    config_writer: &Arc<dyn ConfigWriter>,
+    er_log_writer: &Arc<dyn ErLogWriter>,
     state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
@@ -35,7 +41,7 @@ pub(crate) async fn run(
             };
 
             if all_tables.is_empty() {
-                ctx.action_tx
+                action_tx
                     .send(Action::ErDiagramFailed(
                         "No table data loaded yet".to_string(),
                     ))
@@ -53,7 +59,7 @@ pub(crate) async fn run(
             };
 
             if tables.is_empty() {
-                ctx.action_tx
+                action_tx
                     .send(Action::ErDiagramFailed(
                         "Selected tables not found in cached data".to_string(),
                     ))
@@ -62,14 +68,14 @@ pub(crate) async fn run(
                 return Ok(());
             }
 
-            let cache_dir = ctx.config_writer.get_cache_dir(&project_name)?;
-            let exporter = Arc::clone(ctx.er_exporter);
+            let cache_dir = config_writer.get_cache_dir(&project_name)?;
+            let exporter = Arc::clone(er_exporter);
             spawn_er_diagram_task(
                 exporter,
                 tables,
                 total_tables,
                 cache_dir,
-                ctx.action_tx.clone(),
+                action_tx.clone(),
                 filename,
             );
             Ok(())
@@ -96,7 +102,7 @@ pub(crate) async fn run(
 
             let neighbors = fk_neighbors_of_seeds(&cached_seeds, &seed_set, &cached_names);
 
-            ctx.action_tx
+            action_tx
                 .send(Action::FkNeighborsDiscovered { tables: neighbors })
                 .await
                 .ok();
@@ -104,10 +110,10 @@ pub(crate) async fn run(
         }
 
         Effect::WriteErFailureLog { failed_tables } => {
-            match ctx.config_writer.get_cache_dir(&state.runtime.project_name) {
+            match config_writer.get_cache_dir(&state.runtime.project_name) {
                 Ok(cache_dir) => {
-                    let writer = Arc::clone(ctx.er_log_writer);
-                    let tx = ctx.action_tx.clone();
+                    let writer = Arc::clone(er_log_writer);
+                    let tx = action_tx.clone();
                     tokio::task::spawn_blocking(move || {
                         if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
                             tx.blocking_send(Action::ErLogWriteFailed(e.to_string()))
@@ -116,7 +122,7 @@ pub(crate) async fn run(
                     });
                 }
                 Err(e) => {
-                    ctx.action_tx
+                    action_tx
                         .send(Action::ErLogWriteFailed(e.to_string()))
                         .await
                         .ok();
@@ -126,8 +132,8 @@ pub(crate) async fn run(
         }
 
         Effect::SmartErRefresh { dsn, run_id } => {
-            let provider = Arc::clone(ctx.metadata_provider);
-            let tx = ctx.action_tx.clone();
+            let provider = Arc::clone(metadata_provider);
+            let tx = action_tx.clone();
 
             let old_signatures = state.er_preparation.last_signatures.clone();
             let cached_tables: HashSet<String> = {

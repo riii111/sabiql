@@ -14,13 +14,13 @@ src/app/
 ├── effect.rs              # Effect enum 定義
 ├── effect_runner.rs       # Dispatcher（run / run_single / run_normal）+ EffectRunner builder
 └── effect_handlers/
-    ├── mod.rs             # EffectContext 定義 + re-exports
+    ├── mod.rs             # re-exports
     ├── connection.rs      # SaveAndConnect, LoadConnectionForEdit, LoadConnections, DeleteConnection, SwitchConnection, SwitchToService
     ├── metadata.rs        # FetchMetadata, FetchTableDetail, PrefetchTableDetail, ProcessPrefetchQueue, DelayedProcessPrefetchQueue, CacheInvalidate
     ├── query.rs           # ExecutePreview, ExecuteAdhoc, ExecuteWrite, CountRowsForExport, ExportCsv
     ├── er.rs              # GenerateErDiagramFromCache, WriteErFailureLog, ExtractFkNeighbors, SmartErRefresh
     ├── completion.rs      # CacheTableInCompletionEngine, EvictTablesFromCompletionCache, ClearCompletionEngineCache, ResizeCompletionCache, TriggerCompletion
-    ├── utility.rs         # CopyToClipboard, OpenFolder（EffectContext を使わず port を直接受け取る）
+    ├── utility.rs         # CopyToClipboard, OpenFolder
     └── test_support.rs    # Noop* stubs, make_runner(), sample helpers (#[cfg(test)])
 ```
 
@@ -29,11 +29,13 @@ src/app/
 `effect_runner.rs` は **dispatcher のみ**。Effect のビジネスロジックは `effect_handlers/<feature>.rs` に配置する。
 `effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、Sequence、DispatchActions のみ。
 
-## EffectContext
+## 依存注入ルール
 
-ポートの借用バンドル。新しい port を追加する場合は `EffectRunner` struct と `EffectContext` 両方にフィールドを追加し、`effect_context()` メソッドも更新する。
+各 handler は **必要な port のみ引数で受け取る**。全 handler 共通のコンテキスト構造体は使わない。
 
-全 handler が EffectContext を使うわけではない。I/O 固有の handler は必要な port のみ引数で受け取るパターンも可（例: `utility.rs` は `ClipboardWriter` と `FolderOpener` を直接受け取る）。
+- `action_tx` は全 handler 共通。シグネチャ先頭に置く
+- その後に handler 固有の port を並べ、最後に `state` / `completion_engine`
+- 新しい port を追加する場合は `EffectRunner` struct にフィールドを追加し、dispatcher で該当 handler にだけ渡す
 
 ## RefCell borrow 安全ルール
 

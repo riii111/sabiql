@@ -23,7 +23,7 @@ use crate::app::action::Action;
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
-use crate::app::effect_handlers::{self, EffectContext};
+use crate::app::effect_handlers;
 use crate::app::ports::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, QueryExecutor, Renderer, ServiceFileReader,
@@ -189,21 +189,6 @@ impl EffectRunner {
             .await
     }
 
-    fn effect_context(&self) -> EffectContext<'_> {
-        EffectContext {
-            metadata_provider: &self.metadata_provider,
-            query_executor: &self.query_executor,
-            dsn_builder: &self.dsn_builder,
-            er_exporter: &self.er_exporter,
-            config_writer: &self.config_writer,
-            er_log_writer: &self.er_log_writer,
-            connection_store: &self.connection_store,
-            service_file_reader: &self.service_file_reader,
-            metadata_cache: &self.metadata_cache,
-            action_tx: &self.action_tx,
-        }
-    }
-
     async fn run_normal<T: Renderer>(
         &self,
         effect: Effect,
@@ -212,8 +197,6 @@ impl EffectRunner {
         completion_engine: &RefCell<CompletionEngine>,
         _services: &AppServices,
     ) -> Result<()> {
-        let ctx = self.effect_context();
-
         match effect {
             Effect::Render => {
                 let output = tui.draw(state, _services)?;
@@ -255,7 +238,17 @@ impl EffectRunner {
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
-                effect_handlers::connection::run(e, &ctx, state).await
+                effect_handlers::connection::run(
+                    e,
+                    &self.action_tx,
+                    &self.dsn_builder,
+                    &self.metadata_provider,
+                    &self.metadata_cache,
+                    &self.connection_store,
+                    &self.service_file_reader,
+                    state,
+                )
+                .await
             }
 
             e @ (Effect::FetchMetadata { .. }
@@ -264,20 +257,40 @@ impl EffectRunner {
             | Effect::ProcessPrefetchQueue
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
-                effect_handlers::metadata::run(e, &ctx, state, completion_engine).await
+                effect_handlers::metadata::run(
+                    e,
+                    &self.action_tx,
+                    &self.metadata_provider,
+                    &self.metadata_cache,
+                    state,
+                    completion_engine,
+                )
+                .await
             }
 
             e @ (Effect::ExecutePreview { .. }
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
-            | Effect::ExportCsv { .. }) => effect_handlers::query::run(e, &ctx, state).await,
+            | Effect::ExportCsv { .. }) => {
+                effect_handlers::query::run(e, &self.action_tx, &self.query_executor, state).await
+            }
 
             e @ (Effect::GenerateErDiagramFromCache { .. }
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
             | Effect::SmartErRefresh { .. }) => {
-                effect_handlers::er::run(e, &ctx, state, completion_engine).await
+                effect_handlers::er::run(
+                    e,
+                    &self.action_tx,
+                    &self.metadata_provider,
+                    &self.er_exporter,
+                    &self.config_writer,
+                    &self.er_log_writer,
+                    state,
+                    completion_engine,
+                )
+                .await
             }
 
             e @ (Effect::CacheTableInCompletionEngine { .. }
@@ -285,7 +298,7 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                effect_handlers::completion::run(e, &ctx, state, completion_engine).await
+                effect_handlers::completion::run(e, &self.action_tx, state, completion_engine).await
             }
         }
     }

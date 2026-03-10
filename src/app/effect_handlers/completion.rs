@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 
 use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
 
-use super::EffectContext;
 use crate::app::action::Action;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
@@ -10,7 +10,7 @@ use crate::app::state::AppState;
 
 pub(crate) async fn run(
     effect: Effect,
-    ctx: &EffectContext<'_>,
+    action_tx: &mpsc::Sender<Action>,
     state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
@@ -64,7 +64,7 @@ pub(crate) async fn run(
                 .collect();
 
             for action in prefetch_actions {
-                ctx.action_tx.try_send(action).ok();
+                action_tx.try_send(action).ok();
             }
 
             let (candidates, token_len, visible) = {
@@ -83,7 +83,7 @@ pub(crate) async fn run(
                 (candidates, token_len, visible)
             };
 
-            ctx.action_tx
+            action_tx
                 .send(Action::CompletionUpdated {
                     candidates,
                     trigger_position: cursor.saturating_sub(token_len),
