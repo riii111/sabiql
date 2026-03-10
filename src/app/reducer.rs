@@ -17,7 +17,7 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
     reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation, reduce_query,
-    reduce_sql_modal,
+    reduce_result, reduce_sql_modal,
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
@@ -59,6 +59,11 @@ fn reduce_inner(
         return effects;
     }
     if let Some(effects) = reduce_modal(state, &action, now, services) {
+        return effects;
+    }
+    // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
+    // reset view state here and return None, relying on reduce_query for the actual page change.
+    if let Some(effects) = reduce_result(state, &action, services, now) {
         return effects;
     }
     if let Some(effects) = reduce_navigation(state, &action, services, now) {
