@@ -61,6 +61,8 @@ fn reduce_inner(
     if let Some(effects) = reduce_modal(state, &action, now, services) {
         return effects;
     }
+    // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
+    // reset view state here and return None, relying on reduce_query for the actual page change.
     if let Some(effects) = reduce_result(state, &action, services, now) {
         return effects;
     }

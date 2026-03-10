@@ -26,7 +26,7 @@ pub(super) fn result_max_scroll(state: &AppState) -> usize {
     result_row_count(state).saturating_sub(visible)
 }
 
-pub(super) fn ensure_row_visible(state: &mut AppState) {
+fn ensure_row_visible(state: &mut AppState) {
     if let Some(row) = state.ui.result_selection.row() {
         let visible = state.result_visible_rows();
         if visible == 0 {
@@ -40,11 +40,7 @@ pub(super) fn ensure_row_visible(state: &mut AppState) {
     }
 }
 
-pub(super) fn move_row_or_scroll(
-    state: &mut AppState,
-    new_row: usize,
-    scroll_fn: impl FnOnce(&mut AppState),
-) {
+fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOnce(&mut AppState)) {
     if state.ui.result_selection.row().is_some() {
         state.ui.result_selection.move_row(new_row);
         ensure_row_visible(state);
