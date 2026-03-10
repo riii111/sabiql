@@ -66,6 +66,20 @@ impl ServiceFileReader for NoopServiceFileReader {
     }
 }
 
+pub(crate) struct NoopClipboardWriter;
+impl crate::app::ports::ClipboardWriter for NoopClipboardWriter {
+    fn copy_text(&self, _content: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+pub(crate) struct NoopFolderOpener;
+impl crate::app::ports::FolderOpener for NoopFolderOpener {
+    fn open(&self, _path: &Path) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 pub(crate) fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -82,6 +96,8 @@ pub(crate) fn make_runner(
         .er_log_writer(Arc::new(NoopErLogWriter))
         .connection_store(connection_store)
         .service_file_reader(Arc::new(NoopServiceFileReader))
+        .clipboard(Arc::new(NoopClipboardWriter))
+        .folder_opener(Arc::new(NoopFolderOpener))
         .metadata_cache(cache)
         .action_tx(action_tx)
         .build()

@@ -2,30 +2,35 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
 
-use super::EffectContext;
 use crate::app::action::Action;
+use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
+use crate::app::ports::MetadataProvider;
 use crate::app::state::AppState;
+use crate::domain::DatabaseMetadata;
 
 pub(crate) async fn run(
     effect: Effect,
-    ctx: &EffectContext<'_>,
+    action_tx: &mpsc::Sender<Action>,
+    metadata_provider: &Arc<dyn MetadataProvider>,
+    metadata_cache: &TtlCache<String, DatabaseMetadata>,
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
         Effect::FetchMetadata { dsn } => {
-            if let Some(cached) = ctx.metadata_cache.get(&dsn).await {
-                ctx.action_tx
+            if let Some(cached) = metadata_cache.get(&dsn).await {
+                action_tx
                     .send(Action::MetadataLoaded(Box::new(cached)))
                     .await
                     .ok();
             } else {
-                let provider = Arc::clone(ctx.metadata_provider);
-                let cache = ctx.metadata_cache.clone();
-                let tx = ctx.action_tx.clone();
+                let provider = Arc::clone(metadata_provider);
+                let cache = metadata_cache.clone();
+                let tx = action_tx.clone();
 
                 tokio::spawn(async move {
                     match provider.fetch_metadata(&dsn).await {
@@ -50,8 +55,8 @@ pub(crate) async fn run(
             table,
             generation,
         } => {
-            let provider = Arc::clone(ctx.metadata_provider);
-            let tx = ctx.action_tx.clone();
+            let provider = Arc::clone(metadata_provider);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match provider.fetch_table_detail(&dsn, &schema, &table).await {
@@ -75,15 +80,15 @@ pub(crate) async fn run(
 
             let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
             if already_cached {
-                ctx.action_tx
+                action_tx
                     .send(Action::TableDetailAlreadyCached { schema, table })
                     .await
                     .ok();
                 return Ok(());
             }
 
-            let provider = Arc::clone(ctx.metadata_provider);
-            let tx = ctx.action_tx.clone();
+            let provider = Arc::clone(metadata_provider);
+            let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 let result = tokio::time::timeout(
@@ -125,12 +130,12 @@ pub(crate) async fn run(
         }
 
         Effect::ProcessPrefetchQueue => {
-            ctx.action_tx.send(Action::ProcessPrefetchQueue).await.ok();
+            action_tx.send(Action::ProcessPrefetchQueue).await.ok();
             Ok(())
         }
 
         Effect::DelayedProcessPrefetchQueue { delay_secs } => {
-            let tx = ctx.action_tx.clone();
+            let tx = action_tx.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
                 tx.send(Action::ProcessPrefetchQueue).await.ok();
@@ -139,7 +144,7 @@ pub(crate) async fn run(
         }
 
         Effect::CacheInvalidate { dsn } => {
-            ctx.metadata_cache.invalidate(&dsn).await;
+            metadata_cache.invalidate(&dsn).await;
             Ok(())
         }
 

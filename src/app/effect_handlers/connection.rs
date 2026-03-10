@@ -1,17 +1,27 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::Result;
+use tokio::sync::mpsc;
 
-use super::EffectContext;
 use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
+use crate::app::cache::TtlCache;
 use crate::app::effect::Effect;
-use crate::app::ports::ServiceFileError;
+use crate::app::ports::{
+    ConnectionStore, DsnBuilder, MetadataProvider, ServiceFileError, ServiceFileReader,
+};
 use crate::app::state::AppState;
+use crate::domain::DatabaseMetadata;
 use crate::domain::connection::ConnectionProfile;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     effect: Effect,
-    ctx: &EffectContext<'_>,
+    action_tx: &mpsc::Sender<Action>,
+    dsn_builder: &Arc<dyn DsnBuilder>,
+    metadata_provider: &Arc<dyn MetadataProvider>,
+    metadata_cache: &TtlCache<String, DatabaseMetadata>,
+    connection_store: &Arc<dyn ConnectionStore>,
+    service_file_reader: &Arc<dyn ServiceFileReader>,
     state: &mut AppState,
 ) -> Result<()> {
     match effect {
@@ -39,7 +49,7 @@ pub(crate) async fn run(
                     ) {
                         Ok(p) => p,
                         Err(e) => {
-                            ctx.action_tx
+                            action_tx
                                 .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
                                 .ok();
                             return Ok(());
@@ -52,7 +62,7 @@ pub(crate) async fn run(
                     ) {
                         Ok(p) => p,
                         Err(e) => {
-                            ctx.action_tx
+                            action_tx
                                 .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
                                 .ok();
                             return Ok(());
@@ -61,13 +71,13 @@ pub(crate) async fn run(
                 }
             };
             let id = profile.id.clone();
-            let dsn = ctx.dsn_builder.build_dsn(&profile);
+            let dsn = dsn_builder.build_dsn(&profile);
             let name = profile.name.as_str().to_string();
-            let store = Arc::clone(ctx.connection_store);
-            let tx = ctx.action_tx.clone();
+            let store = Arc::clone(connection_store);
+            let tx = action_tx.clone();
 
-            let provider = Arc::clone(ctx.metadata_provider);
-            let cache = ctx.metadata_cache.clone();
+            let provider = Arc::clone(metadata_provider);
+            let cache = metadata_cache.clone();
             tokio::spawn(async move {
                 match provider.fetch_metadata(&dsn).await {
                     Ok(metadata) => {
@@ -99,8 +109,8 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnectionForEdit { id } => {
-            let store = Arc::clone(ctx.connection_store);
-            let tx = ctx.action_tx.clone();
+            let store = Arc::clone(connection_store);
+            let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.find_by_id(&id) {
                 Ok(Some(profile)) => {
@@ -122,9 +132,9 @@ pub(crate) async fn run(
         }
 
         Effect::LoadConnections => {
-            let store = Arc::clone(ctx.connection_store);
-            let reader = Arc::clone(ctx.service_file_reader);
-            let tx = ctx.action_tx.clone();
+            let store = Arc::clone(connection_store);
+            let reader = Arc::clone(service_file_reader);
+            let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || {
                 let (profiles, profile_load_warning) = match store.load_all() {
@@ -151,8 +161,8 @@ pub(crate) async fn run(
         }
 
         Effect::DeleteConnection { id } => {
-            let store = Arc::clone(ctx.connection_store);
-            let tx = ctx.action_tx.clone();
+            let store = Arc::clone(connection_store);
+            let tx = action_tx.clone();
 
             tokio::task::spawn_blocking(move || match store.delete(&id) {
                 Ok(()) => {
@@ -168,10 +178,10 @@ pub(crate) async fn run(
 
         Effect::SwitchConnection { connection_index } => {
             if let Some(profile) = state.connections().get(connection_index) {
-                let dsn = ctx.dsn_builder.build_dsn(profile);
+                let dsn = dsn_builder.build_dsn(profile);
                 let name = profile.display_name().to_string();
                 let id = profile.id.clone();
-                ctx.action_tx
+                action_tx
                     .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                     .await
                     .ok();
@@ -184,7 +194,7 @@ pub(crate) async fn run(
                 let id = entry.connection_id();
                 let dsn = entry.to_dsn();
                 let name = entry.display_name().to_owned();
-                ctx.action_tx
+                action_tx
                     .send(Action::SwitchConnection(ConnectionTarget { id, dsn, name }))
                     .await
                     .ok();
@@ -390,6 +400,8 @@ mod tests {
                 .er_log_writer(Arc::new(NoopErLogWriter))
                 .connection_store(Arc::new(MockConnectionStore::new()))
                 .service_file_reader(Arc::new(NoopServiceFileReader))
+                .clipboard(Arc::new(NoopClipboardWriter))
+                .folder_opener(Arc::new(NoopFolderOpener))
                 .metadata_cache(TtlCache::new(60))
                 .action_tx(action_tx)
                 .build()

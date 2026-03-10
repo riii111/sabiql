@@ -14,27 +14,44 @@ src/app/
 ├── effect.rs              # Effect enum 定義
 ├── effect_runner.rs       # Dispatcher（run / run_single / run_normal）+ EffectRunner builder
 └── effect_handlers/
-    ├── mod.rs             # EffectContext 定義 + re-exports
+    ├── mod.rs             # re-exports
     ├── connection.rs      # SaveAndConnect, LoadConnectionForEdit, LoadConnections, DeleteConnection, SwitchConnection, SwitchToService
     ├── metadata.rs        # FetchMetadata, FetchTableDetail, PrefetchTableDetail, ProcessPrefetchQueue, DelayedProcessPrefetchQueue, CacheInvalidate
     ├── query.rs           # ExecutePreview, ExecuteAdhoc, ExecuteWrite, CountRowsForExport, ExportCsv
     ├── er.rs              # GenerateErDiagramFromCache, WriteErFailureLog, ExtractFkNeighbors, SmartErRefresh
     ├── completion.rs      # CacheTableInCompletionEngine, EvictTablesFromCompletionCache, ClearCompletionEngineCache, ResizeCompletionCache, TriggerCompletion
+    ├── utility.rs         # CopyToClipboard, OpenFolder
     └── test_support.rs    # Noop* stubs, make_runner(), sample helpers (#[cfg(test)])
 ```
 
 ## Dispatcher パターン
 
 `effect_runner.rs` は **dispatcher のみ**。Effect のビジネスロジックは `effect_handlers/<feature>.rs` に配置する。
-`effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、CopyToClipboard、OpenFolder、Sequence、DispatchActions のみ。
+`effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、Sequence、DispatchActions のみ。
 
-## EffectContext
+## 依存注入ルール
 
-ポートの借用バンドル。新しい port を追加する場合は `EffectRunner` struct と `EffectContext` 両方にフィールドを追加し、`effect_context()` メソッドも更新する。
+各 handler は **必要な port のみ引数で受け取る**。全 handler 共通のコンテキスト構造体は使わない。
+
+- `action_tx` は全 handler 共通。シグネチャ先頭に置く
+- その後に handler 固有の port を並べ、最後に `state` / `completion_engine`
+- 返り値は `Result<()>` に統一
+- 新しい port を追加する場合は `EffectRunner` struct にフィールドを追加し、dispatcher で該当 handler にだけ渡す
+
+```rust
+// handler シグネチャテンプレート
+pub(crate) async fn run(
+    effect: Effect,
+    action_tx: &mpsc::Sender<Action>,
+    // handler 固有の port をここに並べる
+    state: &mut AppState,              // 必要な handler のみ
+    completion_engine: &RefCell<...>,   // 必要な handler のみ
+) -> Result<()>
+```
 
 ## RefCell borrow 安全ルール
 
-`completion_engine` は `RefCell` なので EffectContext に含めない。必要な handler のみ引数で受ける。
+`completion_engine` は `RefCell` なので共通引数にバンドルせず、必要な handler のみ引数で受ける。
 **borrow は必ず await の前に drop すること**（ブロックスコープで囲む）。
 
 ```rust
@@ -52,6 +69,7 @@ some_async_op(engine.data()).await; // panic at runtime
 
 ## 新 Effect 追加チェックリスト
 
+0. **I/O を伴う場合は `app/ports/` に port trait を定義し、`infra/adapters/` で実装すること（app 層の I/O 禁止ルール）**
 1. `effect.rs` に variant 追加
 2. 対応する `effect_handlers/<feature>.rs` の match arm に追加
 3. `effect_runner.rs` の dispatcher match arm に追加（既存の `e @` パターンに追記）
