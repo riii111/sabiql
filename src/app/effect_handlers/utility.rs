@@ -97,11 +97,10 @@ mod tests {
             )
             .await;
 
-            // Wait for spawn_blocking to complete
-            tokio::task::yield_now().await;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-            let action = rx.try_recv().unwrap();
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
             assert!(matches!(action, Action::Render));
         }
 
@@ -125,10 +124,10 @@ mod tests {
             )
             .await;
 
-            tokio::task::yield_now().await;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-            let action = rx.try_recv().unwrap();
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
             assert!(matches!(action, Action::Render));
         }
 
@@ -152,10 +151,10 @@ mod tests {
             )
             .await;
 
-            tokio::task::yield_now().await;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-            let action = rx.try_recv().unwrap();
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
             match action {
                 Action::CopyFailed(msg) => assert_eq!(msg, "clipboard error"),
                 other => panic!("expected CopyFailed, got {:?}", other),
