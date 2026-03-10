@@ -5,6 +5,7 @@ mod metadata;
 mod modal;
 mod navigation;
 mod query;
+mod result;
 mod sql_modal;
 
 pub use connection::reduce_connection;
@@ -17,4 +18,5 @@ pub use metadata::reduce_metadata;
 pub use modal::reduce_modal;
 pub use navigation::reduce_navigation;
 pub use query::reduce_query;
+pub use result::reduce_result;
 pub use sql_modal::reduce_sql_modal;
