@@ -61,7 +61,7 @@ fn reduce_inner(
     if let Some(effects) = reduce_modal(state, &action, now, services) {
         return effects;
     }
-    if let Some(effects) = reduce_result(state, &action, now) {
+    if let Some(effects) = reduce_result(state, &action, services, now) {
         return effects;
     }
     if let Some(effects) = reduce_navigation(state, &action, services, now) {
