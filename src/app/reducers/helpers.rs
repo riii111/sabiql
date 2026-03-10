@@ -1,7 +1,10 @@
-//! Shared helper functions for sub-reducers.
-
 use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
+use crate::app::services::AppServices;
 use crate::app::state::AppState;
+use crate::app::write_guardrails::{
+    TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
+};
+use crate::app::write_update::build_pk_pairs;
 use crate::domain::{QueryResult, QuerySource};
 
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
@@ -51,6 +54,74 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
 
     Ok((result, pk_cols))
+}
+
+pub fn build_bulk_delete_preview(
+    state: &AppState,
+    services: &AppServices,
+) -> Result<(WritePreview, usize, Option<usize>), String> {
+    if state.ui.staged_delete_rows.is_empty() {
+        return Err("No rows staged for deletion".to_string());
+    }
+    if state.runtime.dsn.is_none() {
+        return Err("No active connection".to_string());
+    }
+    if state.query.status != crate::app::query_execution::QueryStatus::Idle {
+        return Err("Write is unavailable while query is running".to_string());
+    }
+
+    let (result, pk_cols) = editable_preview_base(state).map_err(|msg| {
+        if msg == ERR_EDITING_REQUIRES_PRIMARY_KEY {
+            ERR_DELETION_REQUIRES_PRIMARY_KEY.to_string()
+        } else {
+            msg
+        }
+    })?;
+
+    let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
+    for &row_idx in &state.ui.staged_delete_rows {
+        let row = result
+            .rows
+            .get(row_idx)
+            .ok_or_else(|| format!("Staged row index {} out of bounds", row_idx))?;
+        let pairs = build_pk_pairs(&result.columns, row, pk_cols)
+            .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
+        pk_pairs_per_row.push(pairs);
+    }
+
+    let sql = services.sql_dialect.build_bulk_delete_sql(
+        &state.query.pagination.schema,
+        &state.query.pagination.table,
+        &pk_pairs_per_row,
+    );
+
+    let staged_count = state.ui.staged_delete_rows.len();
+    let first_deleted_idx = *state.ui.staged_delete_rows.iter().next().unwrap();
+    let (target_page, target_row) = deletion_refresh_target_bulk(
+        result.rows.len(),
+        staged_count,
+        first_deleted_idx,
+        state.query.pagination.current_page,
+    );
+
+    let target = TargetSummary {
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
+        key_values: pk_pairs_per_row.first().cloned().unwrap_or_default(),
+    };
+    let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
+
+    Ok((
+        WritePreview {
+            operation: WriteOperation::Delete,
+            sql,
+            target_summary: target,
+            diff: vec![],
+            guardrail,
+        },
+        target_page,
+        target_row,
+    ))
 }
 
 /// Computes the cursor target after bulk-deleting rows from a page.

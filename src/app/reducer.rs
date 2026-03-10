@@ -17,7 +17,7 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{
     reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation, reduce_query,
-    reduce_sql_modal,
+    reduce_result, reduce_sql_modal,
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
@@ -55,25 +55,17 @@ fn reduce_inner(
         state.ui.yank_op_pending = false;
     }
 
-    if let Some(effects) = reduce_connection(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_modal(state, &action, now, services) {
-        return effects;
-    }
-    if let Some(effects) = reduce_navigation(state, &action, services, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_sql_modal(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_metadata(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_er(state, &action, now) {
-        return effects;
-    }
-    if let Some(effects) = reduce_query(state, &action, now, services) {
+    // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
+    // reset view state here and return None, relying on reduce_query for the actual page change.
+    if let Some(effects) = reduce_connection(state, &action, now)
+        .or_else(|| reduce_modal(state, &action, now, services))
+        .or_else(|| reduce_result(state, &action, services, now))
+        .or_else(|| reduce_navigation(state, &action, services, now))
+        .or_else(|| reduce_sql_modal(state, &action, now))
+        .or_else(|| reduce_metadata(state, &action, now))
+        .or_else(|| reduce_er(state, &action, now))
+        .or_else(|| reduce_query(state, &action, now, services))
+    {
         return effects;
     }
 
