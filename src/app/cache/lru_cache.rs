@@ -112,7 +112,7 @@ mod tests {
         cache.insert("b", 2);
 
         // Access "a" so "b" becomes LRU
-        let _ = cache.get(&"a");
+        cache.get(&"a");
         cache.insert("c", 3);
 
         assert!(cache.contains(&"a"));

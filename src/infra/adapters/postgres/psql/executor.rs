@@ -396,7 +396,7 @@ mod tests {
                 .flexible(false)
                 .from_reader(csv_data.as_bytes());
 
-            let _ = reader.headers().unwrap();
+            reader.headers().unwrap();
             let results: Vec<_> = reader.records().collect();
 
             assert!(results[1].is_err());
