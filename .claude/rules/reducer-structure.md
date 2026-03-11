@@ -70,3 +70,12 @@ Result 系ロジックを navigation.rs に追加してはならない。
 
 Result 系 Action は `result/<feature>.rs` に追加する。`navigation.rs` には置かない。
 Connection 系 Action は `connection/<feature>.rs` に追加する。完了通知 action は操作文脈（開始画面）のモジュールに置く。
+
+## 新 ConfirmIntent 追加時
+
+Confirm dialog は `ConfirmIntent` enum（`confirm_dialog_state.rs`）で workflow を型付けする。任意の `Action` を dialog state に保持してはならない。
+
+1. `confirm_dialog_state.rs` の `ConfirmIntent` に variant 追加
+2. dialog を開く reducer で `state.confirm_dialog.intent = Some(...)` を設定
+3. `modal.rs` の `ConfirmDialogConfirm` / `ConfirmDialogCancel` に match arm 追加
+4. confirm 後に async effect を発行する場合、その完了ハンドラが参照する state（例: `pending_write_preview`）を confirm 時点でクリアしないこと
