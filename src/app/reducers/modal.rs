@@ -11,12 +11,7 @@ use crate::app::state::AppState;
 
 /// Handles modal/overlay toggles and confirm dialog actions.
 /// Returns Some(effects) if action was handled, None otherwise.
-pub fn reduce_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    _services: &crate::app::services::AppServices,
-) -> Option<Vec<Effect>> {
+pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenTablePicker => {
             state.ui.input_mode = InputMode::TablePicker;
@@ -225,7 +220,7 @@ pub fn reduce_modal(
 mod tests {
     use super::*;
     use crate::app::confirm_dialog_state::ConfirmIntent;
-    use crate::app::services::AppServices;
+
     use std::time::Instant;
 
     fn create_test_state() -> AppState {
@@ -241,13 +236,8 @@ mod tests {
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent.is_none());
@@ -262,13 +252,8 @@ mod tests {
             state.confirm_dialog.intent = Some(ConfirmIntent::DeleteConnection(id.clone()));
             state.confirm_dialog.return_mode = InputMode::ConnectionSelector;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
             assert_eq!(effects.len(), 1);
@@ -287,13 +272,7 @@ mod tests {
             state.confirm_dialog.return_mode = InputMode::CellEdit;
 
             let now = Instant::now();
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                now,
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = reduce_modal(&mut state, &Action::ConfirmDialogConfirm, now).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert!(matches!(state.query.status, QueryStatus::Running));
@@ -312,13 +291,8 @@ mod tests {
                 blocked: false,
             });
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
             assert_eq!(
@@ -337,13 +311,8 @@ mod tests {
             });
             state.confirm_dialog.return_mode = InputMode::Normal;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::Normal);
             assert!(effects.is_empty());
@@ -375,13 +344,7 @@ mod tests {
                 blocked: true,
             });
 
-            reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(state.pending_write_preview.is_none());
             assert!(state.query.pending_delete_refresh_target.is_none());
@@ -398,13 +361,8 @@ mod tests {
                 row_count: Some(200_000),
             });
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
@@ -416,13 +374,8 @@ mod tests {
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = None;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogConfirm,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }
@@ -437,13 +390,8 @@ mod tests {
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogCancel,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
             assert!(effects.is_empty());
@@ -459,13 +407,8 @@ mod tests {
             });
             state.confirm_dialog.return_mode = InputMode::CellEdit;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogCancel,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
 
             assert_eq!(state.ui.input_mode, InputMode::CellEdit);
             assert!(effects.is_empty());
@@ -478,13 +421,8 @@ mod tests {
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = None;
 
-            let effects = reduce_modal(
-                &mut state,
-                &Action::ConfirmDialogCancel,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
         }

@@ -59,7 +59,7 @@ fn reduce_inner(
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
     // reset view state here and return None, relying on reduce_query for the actual page change.
     if let Some(effects) = reduce_connection(state, &action, now)
-        .or_else(|| reduce_modal(state, &action, now, services))
+        .or_else(|| reduce_modal(state, &action, now))
         .or_else(|| reduce_result(state, &action, services, now))
         .or_else(|| reduce_navigation(state, &action, services, now))
         .or_else(|| reduce_sql_modal(state, &action, now))
