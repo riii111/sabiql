@@ -137,8 +137,6 @@ pub fn reduce_modal(
         // Confirm Dialog
         Action::ConfirmDialogConfirm => {
             let intent = state.confirm_dialog.intent.take();
-            state.pending_write_preview = None;
-            state.query.pending_delete_refresh_target = None;
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
             state.ui.input_mode = return_mode;
@@ -152,7 +150,9 @@ pub fn reduce_modal(
                     Some(vec![Effect::DeleteConnection { id }])
                 }
                 Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
-                    // blocked write: no-op, just return to previous mode
+                    // blocked write: no-op, clean up preview state
+                    state.pending_write_preview = None;
+                    state.query.pending_delete_refresh_target = None;
                     Some(vec![])
                 }
                 Some(ConfirmIntent::ExecuteWrite {
@@ -167,6 +167,8 @@ pub fn reduce_modal(
                             query: sql,
                         }])
                     } else {
+                        state.pending_write_preview = None;
+                        state.query.pending_delete_refresh_target = None;
                         state
                             .messages
                             .set_error_at("No active connection".to_string(), now);
