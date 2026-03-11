@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**sabiql** is a fast, driver-less TUI for browsing PostgreSQL databases.
+**sabiql** is a fast, driver-less TUI for browsing and editing PostgreSQL databases.
 
 - **Tech Stack**: Rust + Ratatui + Tokio
 - **Target DB**: PostgreSQL (MVP), MySQL (future)
