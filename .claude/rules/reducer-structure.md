@@ -15,6 +15,13 @@ src/app/
     ├── mod.rs           # re-exports
     ├── helpers.rs       # crate 全体で使う共有ロジック（build_bulk_delete_preview 等）
     ├── navigation.rs    # Focus/Pane, Inspector, Explorer, Filter, CommandLine, Paste 等
+    ├── connection/
+    │   ├── mod.rs       # Dispatcher のみ（.or_else() チェーン、passthrough なし・順序任意）
+    │   ├── lifecycle.rs # TryConnect, SwitchConnection
+    │   ├── setup.rs     # フォーム入力全般 + Paste(ConnectionSetup) + Save/Cancel
+    │   ├── error.rs     # エラー表示・スクロール・コピー・リトライ
+    │   ├── selector.rs  # OpenConnectionSelector, 削除・編集リクエスト
+    │   └── helpers.rs   # save_current_cache, restore_cache, reset_connection_state (pub(super))
     ├── result/
     │   ├── mod.rs       # Dispatcher のみ（.or_else() チェーン）
     │   ├── scroll.rs    # ResultScroll* + 共有ヘルパー（result_row_count 等）
@@ -22,16 +29,19 @@ src/app/
     │   ├── edit.rs      # ResultCellEdit*
     │   ├── yank.rs      # ResultCellYank, ResultRowYank, DdlYank, CellCopied, CopyFailed
     │   └── history.rs   # OpenResultHistory, History{Older,Newer}, ExitResultHistory
-    └── ...              # connection.rs, query.rs, modal.rs, metadata.rs, er.rs, sql_modal.rs
+    └── ...              # query.rs, modal.rs, metadata.rs, er.rs, sql_modal.rs
 ```
 
 ## Dispatcher パターン
 
-`result/mod.rs` は dispatcher のみ。ロジックは `result/<feature>.rs` に配置する。
+`result/mod.rs` および `connection/mod.rs` は dispatcher のみ。ロジックは各 `<feature>.rs` に配置する。
+
+Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順序は任意）。
 
 ## サブモジュール間共有ヘルパー
 
 - result サブモジュール間: `pub(super)` で公開（例: `scroll.rs` の `result_row_count`）
+- connection サブモジュール間: `pub(super)` で公開（例: `helpers.rs` の `reset_connection_state`）
 - crate 全体: `reducers/helpers.rs` に配置
 
 ## Passthrough パターン
@@ -60,3 +70,4 @@ Result 系ロジックを navigation.rs に追加してはならない。
 3. テスト追加
 
 Result 系 Action は `result/<feature>.rs` に追加する。`navigation.rs` には置かない。
+Connection 系 Action は `connection/<feature>.rs` に追加する。完了通知 action は操作文脈（開始画面）のモジュールに置く。
