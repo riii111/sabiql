@@ -132,8 +132,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.ui.input_mode = InputMode::Normal;
 
-            let effects =
-                reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
+            let effects = reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
 
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
             let effects = effects.unwrap();
