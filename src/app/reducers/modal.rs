@@ -150,7 +150,6 @@ pub fn reduce_modal(
                     Some(vec![Effect::DeleteConnection { id }])
                 }
                 Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
-                    // blocked write: no-op, clean up preview state
                     state.pending_write_preview = None;
                     state.query.pending_delete_refresh_target = None;
                     Some(vec![])
