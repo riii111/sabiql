@@ -434,12 +434,12 @@ pub fn reduce_query(
 
             state.confirm_dialog.title = title;
             state.confirm_dialog.message = build_write_preview_fallback_message(preview);
-            state.confirm_dialog.on_confirm = if preview.guardrail.blocked {
-                Action::None
-            } else {
-                Action::ExecuteWrite(preview.sql.clone())
-            };
-            state.confirm_dialog.on_cancel = Action::None;
+            state.confirm_dialog.intent = Some(
+                crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                    sql: preview.sql.clone(),
+                    blocked: preview.guardrail.blocked,
+                },
+            );
             state.confirm_dialog.return_mode = return_mode;
             state.ui.input_mode = InputMode::ConfirmDialog;
 
@@ -635,12 +635,12 @@ pub fn reduce_query(
                 };
                 state.confirm_dialog.title = "Confirm CSV Export".to_string();
                 state.confirm_dialog.message = msg;
-                state.confirm_dialog.on_confirm = Action::ExecuteCsvExport {
-                    export_query: export_query.clone(),
-                    file_name: file_name.clone(),
-                    row_count: *row_count,
-                };
-                state.confirm_dialog.on_cancel = Action::None;
+                state.confirm_dialog.intent =
+                    Some(crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
+                        export_query: export_query.clone(),
+                        file_name: file_name.clone(),
+                        row_count: *row_count,
+                    });
                 state.confirm_dialog.return_mode = InputMode::Normal;
                 state.ui.input_mode = InputMode::ConfirmDialog;
                 Some(vec![])
@@ -1355,9 +1355,15 @@ mod tests {
                 state.pending_write_preview.as_ref().map(|p| p.sql.as_str()),
                 Some(expected_sql.as_str())
             );
-            match &state.confirm_dialog.on_confirm {
-                Action::ExecuteWrite(sql) => assert_eq!(sql, &expected_sql),
-                other => panic!("expected ExecuteWrite, got {:?}", other),
+            match &state.confirm_dialog.intent {
+                Some(crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                    sql,
+                    blocked,
+                }) => {
+                    assert_eq!(sql, &expected_sql);
+                    assert!(!blocked);
+                }
+                other => panic!("expected ExecuteWrite intent, got {:?}", other),
             }
         }
 

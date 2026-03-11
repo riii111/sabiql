@@ -125,8 +125,6 @@ pub enum Action {
     RetryServiceConnection,
 
     // Confirm Dialog
-    OpenConfirmDialog,
-    CloseConfirmDialog,
     ConfirmDialogConfirm,
     ConfirmDialogCancel,
 

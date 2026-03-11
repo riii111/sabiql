@@ -1256,10 +1256,9 @@ mod tests {
             );
 
             assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
-            assert!(matches!(state.confirm_dialog.on_confirm, Action::Quit));
             assert!(matches!(
-                state.confirm_dialog.on_cancel,
-                Action::OpenConnectionSetup
+                state.confirm_dialog.intent,
+                Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
             ));
             assert!(effects.is_empty());
         }
@@ -1286,13 +1285,13 @@ mod tests {
 
     mod confirm_dialog_transitions {
         use super::*;
+        use crate::app::confirm_dialog_state::ConfirmIntent;
 
         #[test]
-        fn confirm_executes_on_confirm_action() {
+        fn confirm_quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConfirmDialog;
-            state.confirm_dialog.on_confirm = Action::Quit;
-            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
             reduce(
@@ -1303,28 +1302,31 @@ mod tests {
             );
 
             assert!(state.should_quit);
-            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
-            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+            assert!(state.confirm_dialog.intent.is_none());
         }
 
         #[test]
-        fn cancel_executes_on_cancel_action() {
+        fn cancel_quit_no_connection_dispatches_open_connection_setup() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConfirmDialog;
-            state.confirm_dialog.on_confirm = Action::Quit;
-            state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
                 Action::ConfirmDialogCancel,
                 now,
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
-            assert!(matches!(state.confirm_dialog.on_confirm, Action::None));
-            assert!(matches!(state.confirm_dialog.on_cancel, Action::None));
+            assert!(state.confirm_dialog.intent.is_none());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(actions[0], Action::OpenConnectionSetup));
+                }
+                other => panic!("expected DispatchActions, got {:?}", other),
+            }
         }
     }
 

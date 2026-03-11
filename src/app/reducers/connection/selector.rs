@@ -42,8 +42,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         format!("Delete \"{}\"?\n\nThis action cannot be undone.", name);
                 }
 
-                state.confirm_dialog.on_confirm = Action::DeleteConnection(id);
-                state.confirm_dialog.on_cancel = Action::None;
+                state.confirm_dialog.intent =
+                    Some(crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id));
                 state.confirm_dialog.return_mode = state.ui.input_mode;
                 state.ui.input_mode = InputMode::ConfirmDialog;
             }
