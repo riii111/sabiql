@@ -8,7 +8,6 @@ use harness::{
 use std::sync::Arc;
 use std::time::Duration;
 
-use sabiql::app::action::Action;
 use sabiql::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql::app::connection_setup_state::ConnectionField;
 use sabiql::app::er_state::ErStatus;
