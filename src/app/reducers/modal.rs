@@ -137,6 +137,8 @@ pub fn reduce_modal(
         // Confirm Dialog
         Action::ConfirmDialogConfirm => {
             let intent = state.confirm_dialog.intent.take();
+            state.pending_write_preview = None;
+            state.query.pending_delete_refresh_target = None;
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
             state.ui.input_mode = return_mode;
@@ -196,13 +198,21 @@ pub fn reduce_modal(
             state.query.pending_delete_refresh_target = None;
             let return_mode =
                 std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
-            state.ui.input_mode = return_mode;
 
             match intent {
-                Some(ConfirmIntent::QuitNoConnection) => Some(vec![Effect::DispatchActions(vec![
-                    Action::OpenConnectionSetup,
-                ])]),
-                _ => Some(vec![]),
+                Some(ConfirmIntent::QuitNoConnection) => {
+                    // Restore ConnectionSetup synchronously to avoid 1-tick flicker
+                    state.connection_setup.reset();
+                    if !state.connections().is_empty() || state.runtime.dsn.is_some() {
+                        state.connection_setup.is_first_run = false;
+                    }
+                    state.ui.input_mode = InputMode::ConnectionSetup;
+                    Some(vec![])
+                }
+                _ => {
+                    state.ui.input_mode = return_mode;
+                    Some(vec![])
+                }
             }
         }
 
@@ -339,6 +349,44 @@ mod tests {
         }
 
         #[test]
+        fn execute_write_blocked_confirm_clears_preview_state() {
+            let mut state = create_test_state();
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.pending_write_preview = Some(crate::app::write_guardrails::WritePreview {
+                operation: crate::app::write_guardrails::WriteOperation::Update,
+                sql: "UPDATE t SET x=1".to_string(),
+                target_summary: crate::app::write_guardrails::TargetSummary {
+                    schema: "public".to_string(),
+                    table: "t".to_string(),
+                    key_values: vec![],
+                },
+                diff: vec![],
+                guardrail: crate::app::write_guardrails::GuardrailDecision {
+                    risk_level: crate::app::write_guardrails::RiskLevel::High,
+                    blocked: true,
+                    reason: Some("too risky".to_string()),
+                    target_summary: None,
+                },
+            });
+            state.query.pending_delete_refresh_target = Some((0, None, 1));
+            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
+                sql: "UPDATE t SET x=1".to_string(),
+                blocked: true,
+            });
+
+            reduce_modal(
+                &mut state,
+                &Action::ConfirmDialogConfirm,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(state.pending_write_preview.is_none());
+            assert!(state.query.pending_delete_refresh_target.is_none());
+        }
+
+        #[test]
         fn csv_export_returns_export_effect() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConfirmDialog;
@@ -383,7 +431,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn quit_no_connection_dispatches_open_connection_setup() {
+        fn quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
@@ -396,13 +444,8 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::DispatchActions(actions) => {
-                    assert!(matches!(actions[0], Action::OpenConnectionSetup));
-                }
-                other => panic!("expected DispatchActions, got {:?}", other),
-            }
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(effects.is_empty());
         }
 
         #[test]

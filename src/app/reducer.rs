@@ -1306,7 +1306,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_quit_no_connection_dispatches_open_connection_setup() {
+        fn cancel_quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
             state.ui.input_mode = InputMode::ConfirmDialog;
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
@@ -1320,13 +1320,8 @@ mod tests {
             );
 
             assert!(state.confirm_dialog.intent.is_none());
-            assert_eq!(effects.len(), 1);
-            match &effects[0] {
-                Effect::DispatchActions(actions) => {
-                    assert!(matches!(actions[0], Action::OpenConnectionSetup));
-                }
-                other => panic!("expected DispatchActions, got {:?}", other),
-            }
+            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert!(effects.is_empty());
         }
     }
 
