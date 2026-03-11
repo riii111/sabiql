@@ -1323,6 +1323,128 @@ mod tests {
             assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn confirm_delete_write_then_success_preserves_delete_context() {
+            use crate::app::write_guardrails::{
+                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+            };
+
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.ui.input_mode = InputMode::ConfirmDialog;
+
+            let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
+            state.pending_write_preview = Some(WritePreview {
+                operation: WriteOperation::Delete,
+                sql: delete_sql.clone(),
+                target_summary: TargetSummary {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    key_values: vec![("id".to_string(), "2".to_string())],
+                },
+                diff: vec![],
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
+            });
+            state.query.pending_delete_refresh_target = Some((0, Some(499), 1));
+            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
+                sql: delete_sql,
+                blocked: false,
+            });
+            state.confirm_dialog.return_mode = InputMode::Normal;
+
+            let now = Instant::now();
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmDialogConfirm,
+                now,
+                &AppServices::stub(),
+            );
+
+            // Preview must survive confirm for ExecuteWriteSucceeded to detect Delete
+            assert!(state.pending_write_preview.is_some());
+            assert!(state.query.pending_delete_refresh_target.is_some());
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
+
+            // Simulate success
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteWriteSucceeded { affected_rows: 1 },
+                now,
+                &AppServices::stub(),
+            );
+
+            // After success, preview is cleaned up and delete message is shown
+            assert!(state.pending_write_preview.is_none());
+            assert!(
+                state
+                    .messages
+                    .last_success
+                    .as_deref()
+                    .unwrap()
+                    .contains("Deleted")
+            );
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+        }
+
+        #[test]
+        fn confirm_delete_write_then_failure_returns_to_normal() {
+            use crate::app::write_guardrails::{
+                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+            };
+
+            let mut state = create_test_state();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.ui.input_mode = InputMode::ConfirmDialog;
+
+            state.pending_write_preview = Some(WritePreview {
+                operation: WriteOperation::Delete,
+                sql: "DELETE FROM t WHERE id='1'".to_string(),
+                target_summary: TargetSummary {
+                    schema: "public".to_string(),
+                    table: "t".to_string(),
+                    key_values: vec![],
+                },
+                diff: vec![],
+                guardrail: GuardrailDecision {
+                    risk_level: RiskLevel::Low,
+                    blocked: false,
+                    reason: None,
+                    target_summary: None,
+                },
+            });
+            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
+                sql: "DELETE FROM t WHERE id='1'".to_string(),
+                blocked: false,
+            });
+            state.confirm_dialog.return_mode = InputMode::Normal;
+
+            let now = Instant::now();
+            reduce(
+                &mut state,
+                Action::ConfirmDialogConfirm,
+                now,
+                &AppServices::stub(),
+            );
+
+            // Simulate failure — must detect Delete and return to Normal (not CellEdit)
+            reduce(
+                &mut state,
+                Action::ExecuteWriteFailed("connection lost".to_string()),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.pending_write_preview.is_none());
+        }
     }
 
     mod connection_state_tests {
