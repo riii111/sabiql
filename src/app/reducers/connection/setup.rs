@@ -249,8 +249,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.confirm_dialog.title = "Confirm".to_string();
                 state.confirm_dialog.message =
                     "No connection configured.\nAre you sure you want to quit?".to_string();
-                state.confirm_dialog.on_confirm = Action::Quit;
-                state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+                state.confirm_dialog.intent =
+                    Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
                 state.ui.input_mode = InputMode::ConfirmDialog;
                 Some(vec![])
             } else {

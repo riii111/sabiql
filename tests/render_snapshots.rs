@@ -8,7 +8,6 @@ use harness::{
 use std::sync::Arc;
 use std::time::Duration;
 
-use sabiql::app::action::Action;
 use sabiql::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql::app::connection_setup_state::ConnectionField;
 use sabiql::app::er_state::ErStatus;
@@ -858,14 +857,13 @@ mod connection_management {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        // ID is for Action payload only; test verifies warning message UI
         let connection_id = ConnectionId::new();
         state.ui.input_mode = InputMode::ConfirmDialog;
         state.confirm_dialog.title = "Delete Connection".to_string();
         state.confirm_dialog.message =
             "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.on_confirm = Action::DeleteConnection(connection_id);
-        state.confirm_dialog.on_cancel = Action::None;
+        state.confirm_dialog.intent =
+            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -882,8 +880,8 @@ mod connection_management {
         state.confirm_dialog.title = "Delete Connection".to_string();
         state.confirm_dialog.message =
             "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.on_confirm = Action::DeleteConnection(target_id);
-        state.confirm_dialog.on_cancel = Action::None;
+        state.confirm_dialog.intent =
+            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -903,8 +901,8 @@ mod confirm_dialogs {
         state.confirm_dialog.title = "Confirm".to_string();
         state.confirm_dialog.message =
             "No connection configured.\nAre you sure you want to quit?".to_string();
-        state.confirm_dialog.on_confirm = Action::Quit;
-        state.confirm_dialog.on_cancel = Action::OpenConnectionSetup;
+        state.confirm_dialog.intent =
+            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -924,11 +922,11 @@ mod confirm_dialogs {
         state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
         state.confirm_dialog.message =
             "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
-        state.confirm_dialog.on_confirm = Action::ExecuteWrite(
-            "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
-                .to_string(),
-        );
-        state.confirm_dialog.on_cancel = Action::None;
+        state.confirm_dialog.intent =
+            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                sql: "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string(),
+                blocked: false,
+            });
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -972,8 +970,12 @@ mod confirm_dialogs {
         state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
         state.confirm_dialog.message =
             "email: \"bob@example.com\" -> \"new@example.com\"".to_string();
-        state.confirm_dialog.on_confirm = Action::ExecuteWrite(sql);
-        state.confirm_dialog.on_cancel = Action::None;
+        state.confirm_dialog.intent = Some(
+            sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                sql,
+                blocked: false,
+            },
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1010,8 +1012,12 @@ mod confirm_dialogs {
         state.ui.input_mode = InputMode::ConfirmDialog;
         state.confirm_dialog.title = "Confirm DELETE: users".to_string();
         state.confirm_dialog.message = String::new();
-        state.confirm_dialog.on_confirm = Action::ExecuteWrite(sql);
-        state.confirm_dialog.on_cancel = Action::None;
+        state.confirm_dialog.intent = Some(
+            sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                sql,
+                blocked: false,
+            },
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
