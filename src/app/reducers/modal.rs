@@ -124,6 +124,119 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.er_selected_tables.clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
         }
+        // Query History Picker
+        Action::OpenQueryHistoryPicker => {
+            // Guard: no-op when not connected, running, confirm dialog, or completion visible
+            if state.runtime.active_connection_id.is_none() {
+                return Some(vec![]);
+            }
+            if matches!(state.query.status, QueryStatus::Running) {
+                return Some(vec![]);
+            }
+            if state.ui.input_mode == InputMode::ConfirmDialog {
+                return Some(vec![]);
+            }
+            if state.sql_modal.completion.visible
+                && !state.sql_modal.completion.candidates.is_empty()
+            {
+                return Some(vec![]);
+            }
+
+            let origin = state.ui.input_mode;
+            state.query_history_picker.reset();
+            state.query_history_picker.origin_mode = Some(origin);
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+
+            if let Some(conn_id) = &state.runtime.active_connection_id {
+                Some(vec![Effect::LoadQueryHistory {
+                    project_name: state.runtime.project_name.clone(),
+                    connection_id: conn_id.clone(),
+                }])
+            } else {
+                Some(vec![])
+            }
+        }
+        Action::CloseQueryHistoryPicker => {
+            let origin = state
+                .query_history_picker
+                .origin_mode
+                .unwrap_or(InputMode::Normal);
+            state.ui.input_mode = origin;
+            state.query_history_picker.reset();
+            Some(vec![])
+        }
+        Action::QueryHistoryLoaded(entries) => {
+            state.query_history_picker.entries = entries.clone();
+            state.query_history_picker.selected = 0;
+            state.query_history_picker.scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::QueryHistoryFilterInput(c) => {
+            state.query_history_picker.filter_input.insert_char(*c);
+            state.query_history_picker.selected = 0;
+            state.query_history_picker.scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::QueryHistoryFilterBackspace => {
+            state.query_history_picker.filter_input.backspace();
+            state.query_history_picker.selected = 0;
+            state.query_history_picker.scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::QueryHistorySelectNext => {
+            let count = state.query_history_picker.filtered_count();
+            if count > 0 && state.query_history_picker.selected < count - 1 {
+                state.query_history_picker.selected += 1;
+            }
+            Some(vec![])
+        }
+        Action::QueryHistorySelectPrevious => {
+            state.query_history_picker.selected =
+                state.query_history_picker.selected.saturating_sub(1);
+            Some(vec![])
+        }
+        Action::QueryHistoryConfirmSelection => {
+            let filtered = state.query_history_picker.filtered_entries();
+            let selected = state.query_history_picker.clamped_selected();
+            let query = filtered.get(selected).map(|f| f.entry.query.clone());
+            let origin = state
+                .query_history_picker
+                .origin_mode
+                .unwrap_or(InputMode::Normal);
+
+            state.query_history_picker.reset();
+
+            let Some(query) = query else {
+                // No entry selected (empty list or no match)
+                state.ui.input_mode = origin;
+                return Some(vec![]);
+            };
+
+            match origin {
+                InputMode::Normal => {
+                    // Open SqlModal and set content
+                    state.ui.input_mode = InputMode::SqlModal;
+                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                    state.sql_modal.content = query;
+                    state.sql_modal.cursor = state.sql_modal.content.len();
+                    state.sql_modal.completion.visible = false;
+                    state.sql_modal.completion.candidates.clear();
+                    state.sql_modal.completion.selected_index = 0;
+                }
+                InputMode::SqlModal => {
+                    // Overwrite existing editor content
+                    state.ui.input_mode = InputMode::SqlModal;
+                    state.sql_modal.content = query;
+                    state.sql_modal.cursor = state.sql_modal.content.len();
+                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                }
+                _ => {
+                    state.ui.input_mode = origin;
+                }
+            }
+            Some(vec![])
+        }
+
         Action::Escape => {
             state.ui.input_mode = InputMode::Normal;
             Some(vec![])
@@ -400,6 +513,226 @@ mod tests {
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+        }
+    }
+
+    mod query_history_picker {
+        use super::*;
+        use crate::domain::ConnectionId;
+        use crate::domain::query_history::QueryHistoryEntry;
+
+        fn connected_state() -> AppState {
+            let mut state = create_test_state();
+            state.runtime.active_connection_id = Some(ConnectionId::from_string("test-conn"));
+            state.runtime.project_name = "test-project".to_string();
+            state.ui.input_mode = InputMode::Normal;
+            state
+        }
+
+        #[test]
+        fn open_when_not_connected_is_noop() {
+            let mut state = create_test_state();
+            state.runtime.active_connection_id = None;
+
+            let effects =
+                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn open_when_running_is_noop() {
+            let mut state = connected_state();
+            state.query.status = QueryStatus::Running;
+
+            let effects =
+                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn open_from_normal_sets_mode_and_emits_load_effect() {
+            let mut state = connected_state();
+
+            let effects =
+                reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::QueryHistoryPicker);
+            assert_eq!(
+                state.query_history_picker.origin_mode,
+                Some(InputMode::Normal)
+            );
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
+        }
+
+        #[test]
+        fn close_restores_origin_mode() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.query_history_picker.origin_mode = Some(InputMode::SqlModal);
+
+            let effects =
+                reduce_modal(&mut state, &Action::CloseQueryHistoryPicker, Instant::now()).unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn loaded_stores_entries() {
+            let mut state = connected_state();
+            let entries = vec![QueryHistoryEntry::new(
+                "SELECT 1".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            )];
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoaded(entries.clone()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.query_history_picker.entries.len(), 1);
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn filter_input_resets_selection() {
+            let mut state = connected_state();
+            state.query_history_picker.selected = 5;
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::QueryHistoryFilterInput('a'),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.query_history_picker.selected, 0);
+            assert_eq!(state.query_history_picker.filter_input.content(), "a");
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn confirm_from_normal_opens_sql_modal_with_query() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
+                "SELECT * FROM users".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            )];
+            state.query_history_picker.selected = 0;
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::QueryHistoryConfirmSelection,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert_eq!(state.sql_modal.content, "SELECT * FROM users");
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn confirm_from_sql_modal_overwrites_editor_content() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.query_history_picker.origin_mode = Some(InputMode::SqlModal);
+            state.sql_modal.content = "old query".to_string();
+            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
+                "new query".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            )];
+            state.query_history_picker.selected = 0;
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryConfirmSelection,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert_eq!(state.sql_modal.content, "new query");
+        }
+
+        #[test]
+        fn confirm_with_empty_entries_is_noop() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryConfirmSelection,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+        }
+
+        #[test]
+        fn select_next_increments() {
+            let mut state = connected_state();
+            state.query_history_picker.entries = vec![
+                QueryHistoryEntry::new(
+                    "SELECT 1".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    ConnectionId::from_string("test-conn"),
+                ),
+                QueryHistoryEntry::new(
+                    "SELECT 2".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    ConnectionId::from_string("test-conn"),
+                ),
+            ];
+            state.query_history_picker.selected = 0;
+
+            reduce_modal(&mut state, &Action::QueryHistorySelectNext, Instant::now()).unwrap();
+
+            assert_eq!(state.query_history_picker.selected, 1);
+        }
+
+        #[test]
+        fn select_next_clamps_at_end() {
+            let mut state = connected_state();
+            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
+                "SELECT 1".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            )];
+            state.query_history_picker.selected = 0;
+
+            reduce_modal(&mut state, &Action::QueryHistorySelectNext, Instant::now()).unwrap();
+
+            assert_eq!(state.query_history_picker.selected, 0);
+        }
+
+        #[test]
+        fn select_previous_decrements() {
+            let mut state = connected_state();
+            state.query_history_picker.selected = 1;
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistorySelectPrevious,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.query_history_picker.selected, 0);
         }
     }
 
