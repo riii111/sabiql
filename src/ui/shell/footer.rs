@@ -159,7 +159,6 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::PALETTE].as_hint());
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }

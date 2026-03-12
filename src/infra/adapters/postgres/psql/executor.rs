@@ -24,10 +24,7 @@ impl PostgresAdapter {
         query: &str,
     ) -> Result<PsqlOutput, MetadataError> {
         let mut cmd = Command::new("psql");
-        cmd.arg(dsn)
-            .arg("-X") // Ignore .psqlrc to avoid unexpected output
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1"); // Exit with non-zero on SQL errors
+        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
 
         for arg in extra_args {
             cmd.arg(arg);
@@ -35,6 +32,13 @@ impl PostgresAdapter {
 
         cmd.arg("-c").arg(query);
 
+        Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    async fn collect_output(
+        cmd: &mut Command,
+        timeout_secs: u64,
+    ) -> Result<PsqlOutput, MetadataError> {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -42,11 +46,10 @@ impl PostgresAdapter {
             .spawn()
             .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
 
-        // Read stdout/stderr BEFORE wait() to prevent pipe buffer deadlock
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+        let result = timeout(Duration::from_secs(timeout_secs), async {
             let (stdout_result, stderr_result) = tokio::join!(
                 async {
                     let mut buf = Vec::new();
@@ -82,19 +85,9 @@ impl PostgresAdapter {
         })
     }
 
-    /// Builds a DSN with `options=-c default_transaction_read_only=on` appended
-    /// so PostgreSQL enforces read-only at the session level without any stdout
-    /// output that would break CSV/count parsers.
-    fn read_only_dsn(dsn: &str) -> String {
-        let opt = "options=-c%20default_transaction_read_only%3Don";
-        if dsn.contains('?') {
-            format!("{}&{}", dsn, opt)
-        } else {
-            format!("{}?{}", dsn, opt)
-        }
-    }
+    const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
-    async fn run_psql_with_read_only(
+    async fn run_psql_read_only(
         &self,
         dsn: &str,
         extra_args: &[&str],
@@ -104,8 +97,18 @@ impl PostgresAdapter {
         if !read_only {
             return self.run_psql(dsn, extra_args, query).await;
         }
-        let ro_dsn = Self::read_only_dsn(dsn);
-        self.run_psql(&ro_dsn, extra_args, query).await
+
+        let mut cmd = Command::new("psql");
+        cmd.env("PGOPTIONS", Self::PGOPTIONS_READ_ONLY);
+        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
+
+        for arg in extra_args {
+            cmd.arg(arg);
+        }
+
+        cmd.arg("-c").arg(query);
+
+        Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 
     pub(in crate::infra::adapters::postgres) async fn execute_query(
@@ -132,7 +135,7 @@ impl PostgresAdapter {
         let start = Instant::now();
 
         let output = self
-            .run_psql_with_read_only(dsn, &["--csv"], query, read_only)
+            .run_psql_read_only(dsn, &["--csv"], query, read_only)
             .await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
@@ -207,9 +210,7 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self
-            .run_psql_with_read_only(dsn, &[], query, read_only)
-            .await?;
+        let output = self.run_psql_read_only(dsn, &[], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -234,7 +235,7 @@ impl PostgresAdapter {
         read_only: bool,
     ) -> Result<usize, MetadataError> {
         let output = self
-            .run_psql_with_read_only(dsn, &["-t", "-A"], query, read_only)
+            .run_psql_read_only(dsn, &["-t", "-A"], query, read_only)
             .await?;
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
@@ -253,16 +254,11 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, MetadataError> {
-        let ro_dsn;
-        let effective_dsn = if read_only {
-            ro_dsn = Self::read_only_dsn(dsn);
-            &ro_dsn
-        } else {
-            dsn
-        };
-
         let mut cmd = Command::new("psql");
-        cmd.arg(effective_dsn)
+        if read_only {
+            cmd.env("PGOPTIONS", Self::PGOPTIONS_READ_ONLY);
+        }
+        cmd.arg(dsn)
             .arg("-X")
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
@@ -352,27 +348,6 @@ impl PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::infra::adapters::postgres::PostgresAdapter;
-
-    mod read_only_dsn {
-        use super::*;
-
-        #[test]
-        fn appends_options_to_plain_dsn() {
-            let dsn = "postgres://localhost/mydb";
-            let result = PostgresAdapter::read_only_dsn(dsn);
-            assert!(result.starts_with(dsn));
-            assert!(result.contains("options=-c%20default_transaction_read_only%3Don"));
-            assert!(result.contains('?'));
-        }
-
-        #[test]
-        fn appends_with_ampersand_when_query_params_exist() {
-            let dsn = "postgres://localhost/mydb?sslmode=require";
-            let result = PostgresAdapter::read_only_dsn(dsn);
-            assert!(result.contains("sslmode=require"));
-            assert!(result.contains('&'));
-        }
-    }
 
     mod csv_parsing {
         #[test]
