@@ -220,6 +220,16 @@ pub fn reduce_sql_modal(
                         risk_level: risk.risk_level,
                         label,
                     };
+                    // In read-only mode, block non-Immediate (write) queries
+                    if state.runtime.read_only
+                        && !matches!(risk.confirmation, ConfirmationType::Immediate)
+                    {
+                        state.messages.set_error_at(
+                            "Read-only mode: write operations are disabled".to_string(),
+                            now,
+                        );
+                        return Some(vec![]);
+                    }
                     match risk.confirmation {
                         ConfirmationType::Immediate => {
                             state.sql_modal.status = SqlModalStatus::Running;
@@ -302,6 +312,7 @@ pub fn reduce_sql_modal(
                     return Some(vec![Effect::ExecuteAdhoc {
                         dsn: dsn.clone(),
                         query,
+                        read_only: state.runtime.read_only,
                     }]);
                 }
             }
@@ -373,6 +384,7 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
         Some(dsn) => vec![Effect::ExecuteAdhoc {
             dsn: dsn.clone(),
             query,
+            read_only: state.runtime.read_only,
         }],
         None => vec![],
     }

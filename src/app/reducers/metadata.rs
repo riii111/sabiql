@@ -84,6 +84,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                                 limit: PREVIEW_PAGE_SIZE,
                                 offset: page * PREVIEW_PAGE_SIZE,
                                 target_page: page,
+                                read_only: state.runtime.read_only,
                             });
                             effects.push(Effect::FetchTableDetail {
                                 dsn: dsn.clone(),

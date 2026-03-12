@@ -82,6 +82,76 @@ impl PostgresAdapter {
         })
     }
 
+    async fn run_psql_with_read_only(
+        &self,
+        dsn: &str,
+        extra_args: &[&str],
+        query: &str,
+        read_only: bool,
+    ) -> Result<PsqlOutput, MetadataError> {
+        if !read_only {
+            return self.run_psql(dsn, extra_args, query).await;
+        }
+
+        let mut cmd = Command::new("psql");
+        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
+
+        for arg in extra_args {
+            cmd.arg(arg);
+        }
+
+        // Multiple -c: SET first, then the actual query
+        cmd.arg("-c")
+            .arg("SET default_transaction_read_only = on")
+            .arg("-c")
+            .arg(query);
+
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+
+        let mut stdout_handle = child.stdout.take();
+        let mut stderr_handle = child.stderr.take();
+
+        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+            let (stdout_result, stderr_result) = tokio::join!(
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut out) = stdout_handle {
+                        out.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut err) = stderr_handle {
+                        err.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                }
+            );
+
+            let stdout = stdout_result?;
+            let stderr = stderr_result?;
+            let status = child.wait().await?;
+
+            Ok::<_, std::io::Error>((status, stdout, stderr))
+        })
+        .await
+        .map_err(|_| MetadataError::Timeout)?
+        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+
+        let (status, stdout, stderr) = result;
+        Ok(PsqlOutput {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+
     pub(in crate::infra::adapters::postgres) async fn execute_query(
         &self,
         dsn: &str,
@@ -101,10 +171,13 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         source: QuerySource,
+        read_only: bool,
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &["--csv"], query).await?;
+        let output = self
+            .run_psql_with_read_only(dsn, &["--csv"], query, read_only)
+            .await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -174,10 +247,13 @@ impl PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<WriteExecutionResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &[], query).await?;
+        let output = self
+            .run_psql_with_read_only(dsn, &[], query, read_only)
+            .await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -199,8 +275,11 @@ impl PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<usize, MetadataError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
+        let output = self
+            .run_psql_with_read_only(dsn, &["-t", "-A"], query, read_only)
+            .await?;
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
         }
@@ -216,15 +295,20 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
+        read_only: bool,
     ) -> Result<usize, MetadataError> {
         let mut cmd = Command::new("psql");
         cmd.arg(dsn)
             .arg("-X")
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
-            .arg("--csv")
-            .arg("-c")
-            .arg(query);
+            .arg("--csv");
+
+        if read_only {
+            cmd.arg("-c").arg("SET default_transaction_read_only = on");
+        }
+
+        cmd.arg("-c").arg(query);
 
         let mut child = cmd
             .stdout(Stdio::piped())

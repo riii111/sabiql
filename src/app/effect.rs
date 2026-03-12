@@ -58,26 +58,31 @@ pub enum Effect {
         limit: usize,
         offset: usize,
         target_page: usize,
+        read_only: bool,
     },
     ExecuteAdhoc {
         dsn: String,
         query: String,
+        read_only: bool,
     },
     ExecuteWrite {
         dsn: String,
         query: String,
+        read_only: bool,
     },
     CountRowsForExport {
         dsn: String,
         count_query: String,
         export_query: String,
         file_name: String,
+        read_only: bool,
     },
     ExportCsv {
         dsn: String,
         query: String,
         file_name: String,
         row_count: Option<usize>,
+        read_only: bool,
     },
 
     CacheTableInCompletionEngine {

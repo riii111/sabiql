@@ -73,6 +73,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::StageRowForDelete => {
+            if state.runtime.read_only {
+                return Some(vec![]);
+            }
             if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
                 && let Some(row_idx) = state.ui.result_selection.row()
             {

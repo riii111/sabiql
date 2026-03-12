@@ -48,20 +48,29 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::ResultEnterCellEdit => match editable_cell_context(state) {
-            Ok((row_idx, col_idx, value)) => {
-                if state.cell_edit.row != Some(row_idx) || state.cell_edit.col != Some(col_idx) {
-                    state.cell_edit.begin(row_idx, col_idx, value);
-                    state.pending_write_preview = None;
+        Action::ResultEnterCellEdit => {
+            if state.runtime.read_only {
+                state
+                    .messages
+                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return Some(vec![]);
+            }
+            match editable_cell_context(state) {
+                Ok((row_idx, col_idx, value)) => {
+                    if state.cell_edit.row != Some(row_idx) || state.cell_edit.col != Some(col_idx)
+                    {
+                        state.cell_edit.begin(row_idx, col_idx, value);
+                        state.pending_write_preview = None;
+                    }
+                    state.ui.input_mode = InputMode::CellEdit;
+                    Some(vec![])
                 }
-                state.ui.input_mode = InputMode::CellEdit;
-                Some(vec![])
+                Err(reason) => {
+                    state.messages.set_error_at(reason, now);
+                    Some(vec![])
+                }
             }
-            Err(reason) => {
-                state.messages.set_error_at(reason, now);
-                Some(vec![])
-            }
-        },
+        }
         Action::ResultCancelCellEdit => {
             state.pending_write_preview = None;
             state.ui.input_mode = InputMode::Normal;
