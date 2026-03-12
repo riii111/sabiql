@@ -15,6 +15,7 @@ pub enum ConfirmIntent {
         file_name: String,
         row_count: Option<usize>,
     },
+    DisableReadOnly,
 }
 
 #[derive(Debug, Clone)]

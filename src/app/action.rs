@@ -333,6 +333,9 @@ pub enum Action {
     // Focus mode
     ToggleFocus,
 
+    // Read-only mode
+    ToggleReadOnly,
+
     // ER Table Picker
     OpenErTablePicker,
     CloseErTablePicker,
