@@ -371,6 +371,50 @@ mod overlays {
 
         insta::assert_snapshot!(output);
     }
+
+    #[test]
+    fn query_history_picker_with_entries() {
+        use sabiql::domain::ConnectionId;
+        use sabiql::domain::query_history::QueryHistoryEntry;
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::QueryHistoryPicker;
+        state.query_history_picker.entries = vec![
+            QueryHistoryEntry::new(
+                "SELECT * FROM users WHERE id = 1".to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            ),
+            QueryHistoryEntry::new(
+                "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
+                "2026-03-13T11:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            ),
+            QueryHistoryEntry::new(
+                "SELECT count(*) FROM users".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            ),
+        ];
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn query_history_picker_empty() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.ui.input_mode = InputMode::QueryHistoryPicker;
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
 }
 
 mod er_diagram {
