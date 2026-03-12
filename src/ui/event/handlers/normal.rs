@@ -26,6 +26,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('k') if state.query.history_index.is_none() => {
                 return Action::OpenCommandPalette;
             }
+            Key::Char('r') => {
+                return Action::ToggleReadOnly;
+            }
             Key::Char('e')
                 if state
                     .query
@@ -720,6 +723,15 @@ mod tests {
         let result = handle_normal_mode(combo(Key::Char('l')), &state);
 
         assert!(matches!(result, Action::ExplorerScrollRight));
+    }
+
+    #[test]
+    fn ctrl_r_toggles_read_only() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo_ctrl(Key::Char('r')), &state);
+
+        assert!(matches!(result, Action::ToggleReadOnly));
     }
 
     #[test]

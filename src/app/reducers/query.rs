@@ -158,6 +158,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
+            read_only: state.runtime.read_only,
         });
     }
 
@@ -339,6 +340,7 @@ pub fn reduce_query(
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
+                    read_only: state.runtime.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -352,6 +354,7 @@ pub fn reduce_query(
                 Some(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
+                    read_only: state.runtime.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -402,6 +405,13 @@ pub fn reduce_query(
         }
 
         Action::OpenWritePreviewConfirm(preview) => {
+            if state.runtime.read_only {
+                state.messages.set_error_at(
+                    "Read-only mode: write operations are disabled".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
             state.pending_write_preview = Some((**preview).clone());
             let operation = preview.operation;
             let caller_mode = state.ui.input_mode;
@@ -447,12 +457,21 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWrite(query) => {
+            if state.runtime.read_only {
+                state.messages.set_error_at(
+                    "Read-only mode: write operations are disabled".to_string(),
+                    now,
+                );
+                return Some(vec![]);
+            }
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
+                // read_only is always false here (early return above); kept as defense-in-depth
                 Some(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
                     query: query.clone(),
+                    read_only: state.runtime.read_only,
                 }])
             } else {
                 state
@@ -500,6 +519,7 @@ pub fn reduce_query(
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
+                            read_only: state.runtime.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -550,6 +570,7 @@ pub fn reduce_query(
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
+                            read_only: state.runtime.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -613,6 +634,7 @@ pub fn reduce_query(
                 count_query,
                 export_query,
                 file_name,
+                read_only: state.runtime.read_only,
             }])
         }
 
@@ -654,6 +676,7 @@ pub fn reduce_query(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
+                    read_only: state.runtime.read_only,
                 }])
             }
         }
@@ -672,6 +695,7 @@ pub fn reduce_query(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
+                read_only: state.runtime.read_only,
             }])
         }
 
@@ -726,6 +750,7 @@ pub fn reduce_query(
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
+                    read_only: state.runtime.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -760,6 +785,7 @@ pub fn reduce_query(
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
+                    read_only: state.runtime.read_only,
                 }])
             } else {
                 Some(vec![])

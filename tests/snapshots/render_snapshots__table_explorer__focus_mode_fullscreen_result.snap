@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
-Enter:Select  f:Exit Focus  ]/[:Page  ^E:Export  ?:Help  q:Quit
+Enter:Select  ^E:Export  ]/[:Page  ?:Help  f:Exit Focus  q:Quit

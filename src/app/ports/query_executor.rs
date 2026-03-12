@@ -14,19 +14,32 @@ pub trait QueryExecutor: Send + Sync {
         table: &str,
         limit: usize,
         offset: usize,
+        read_only: bool,
     ) -> Result<QueryResult, MetadataError>;
 
-    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError>;
+    async fn execute_adhoc(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<QueryResult, MetadataError>;
     async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<WriteExecutionResult, MetadataError>;
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, MetadataError>;
+    async fn count_query_rows(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<usize, MetadataError>;
     async fn export_to_csv(
         &self,
         dsn: &str,
         query: &str,
         path: &std::path::Path,
+        read_only: bool,
     ) -> Result<usize, MetadataError>;
 }

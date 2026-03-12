@@ -12,6 +12,7 @@ pub struct RuntimeState {
     pub active_connection_name: Option<String>,
     pub connection_state: ConnectionState,
     pub is_reloading: bool,
+    pub read_only: bool,
     pub service_file_path: Option<PathBuf>,
 }
 
@@ -25,6 +26,7 @@ impl RuntimeState {
             active_connection_name: None,
             connection_state: ConnectionState::default(),
             is_reloading: false,
+            read_only: false,
             service_file_path: None,
         }
     }
@@ -49,6 +51,7 @@ mod tests {
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reloading);
+        assert!(!state.read_only);
     }
 
     #[test]
@@ -62,5 +65,6 @@ mod tests {
         assert!(state.active_connection_name.is_none());
         assert!(state.connection_state.is_not_connected());
         assert!(!state.is_reloading);
+        assert!(!state.read_only);
     }
 }

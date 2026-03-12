@@ -63,6 +63,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.connection_error.clear();
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
+                state.runtime.read_only = false;
                 state.ui.input_mode = InputMode::Normal;
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {

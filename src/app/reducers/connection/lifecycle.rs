@@ -36,6 +36,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
+            state.runtime.read_only = false;
 
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
@@ -195,6 +196,18 @@ mod tests {
             state.ui.result_selection.mode(),
             crate::app::ui_state::ResultNavMode::Scroll
         );
+    }
+
+    #[test]
+    fn resets_read_only_on_switch() {
+        let mut state = AppState::new("test".to_string());
+        let new_id = ConnectionId::new();
+        state.runtime.read_only = true;
+
+        let action = create_switch_action(&new_id, "fresh_db");
+        reduce(&mut state, &action, Instant::now());
+
+        assert!(!state.runtime.read_only);
     }
 
     #[test]

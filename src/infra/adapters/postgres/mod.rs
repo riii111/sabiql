@@ -134,6 +134,7 @@ impl QueryExecutor for PostgresAdapter {
         table: &str,
         limit: usize,
         offset: usize,
+        read_only: bool,
     ) -> Result<QueryResult, MetadataError> {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
@@ -149,24 +150,36 @@ impl QueryExecutor for PostgresAdapter {
             }
         };
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
-        self.execute_query_raw(dsn, &query, QuerySource::Preview)
+        self.execute_query_raw(dsn, &query, QuerySource::Preview, read_only)
             .await
     }
 
-    async fn execute_adhoc(&self, dsn: &str, query: &str) -> Result<QueryResult, MetadataError> {
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc).await
+    async fn execute_adhoc(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<QueryResult, MetadataError> {
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc, read_only)
+            .await
     }
 
     async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<WriteExecutionResult, MetadataError> {
-        self.execute_write_raw(dsn, query).await
+        self.execute_write_raw(dsn, query, read_only).await
     }
 
-    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, MetadataError> {
-        self.count_rows(dsn, query).await
+    async fn count_query_rows(
+        &self,
+        dsn: &str,
+        query: &str,
+        read_only: bool,
+    ) -> Result<usize, MetadataError> {
+        self.count_rows(dsn, query, read_only).await
     }
 
     async fn export_to_csv(
@@ -174,7 +187,8 @@ impl QueryExecutor for PostgresAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
+        read_only: bool,
     ) -> Result<usize, MetadataError> {
-        self.export_csv_to_file(dsn, query, path).await
+        self.export_csv_to_file(dsn, query, path, read_only).await
     }
 }

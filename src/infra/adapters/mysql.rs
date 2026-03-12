@@ -69,13 +69,19 @@ impl QueryExecutor for MySqlAdapter {
         _table: &str,
         _limit: usize,
         _offset: usize,
+        _read_only: bool,
     ) -> Result<QueryResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
 
-    async fn execute_adhoc(&self, _dsn: &str, _query: &str) -> Result<QueryResult, MetadataError> {
+    async fn execute_adhoc(
+        &self,
+        _dsn: &str,
+        _query: &str,
+        _read_only: bool,
+    ) -> Result<QueryResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
@@ -85,13 +91,19 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
+        _read_only: bool,
     ) -> Result<WriteExecutionResult, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
 
-    async fn count_query_rows(&self, _dsn: &str, _query: &str) -> Result<usize, MetadataError> {
+    async fn count_query_rows(
+        &self,
+        _dsn: &str,
+        _query: &str,
+        _read_only: bool,
+    ) -> Result<usize, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
@@ -102,6 +114,7 @@ impl QueryExecutor for MySqlAdapter {
         _dsn: &str,
         _query: &str,
         _path: &std::path::Path,
+        _read_only: bool,
     ) -> Result<usize, MetadataError> {
         Err(MetadataError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),

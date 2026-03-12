@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::state::AppState;
 use crate::app::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
 use crate::app::write_update::escape_preview_value;
@@ -32,6 +33,14 @@ impl ConfirmDialog {
         }
     }
 
+    fn intent_border_color(intent: Option<&ConfirmIntent>) -> Option<Color> {
+        match intent {
+            Some(ConfirmIntent::DisableReadOnly) => Some(Theme::STATUS_WARNING),
+            Some(ConfirmIntent::DeleteConnection(_)) => Some(Theme::STATUS_ERROR),
+            _ => None,
+        }
+    }
+
     fn render_plain(frame: &mut Frame, state: &AppState) {
         let dialog = &state.confirm_dialog;
         let hint = " Enter: Confirm │ Esc: Cancel ";
@@ -56,13 +65,25 @@ impl ConfirmDialog {
         let modal_height = (message_height + 2).clamp(6, max_modal_height);
 
         let title = format!(" {} ", dialog.title);
-        let (_, modal_inner) = render_modal(
-            frame,
-            Constraint::Length(modal_width),
-            Constraint::Length(modal_height),
-            &title,
-            hint,
-        );
+        let (_, modal_inner) =
+            if let Some(color) = Self::intent_border_color(dialog.intent.as_ref()) {
+                render_modal_with_border_color(
+                    frame,
+                    Constraint::Length(modal_width),
+                    Constraint::Length(modal_height),
+                    &title,
+                    hint,
+                    color,
+                )
+            } else {
+                render_modal(
+                    frame,
+                    Constraint::Length(modal_width),
+                    Constraint::Length(modal_height),
+                    &title,
+                    hint,
+                )
+            };
 
         let inner = modal_inner.inner(Margin::new(1, 0));
         let message_para = Paragraph::new(dialog.message.clone())

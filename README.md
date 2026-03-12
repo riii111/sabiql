@@ -14,7 +14,7 @@ sabiql wraps your existing `psql` CLI. No Rust database drivers, no connection p
 
 Inspired by [oil.nvim](https://github.com/stevearc/oil.nvim)'s "oil and vinegar" philosophy: UI elements appear only when needed, never occupying your screen permanently. Vim-native keybindings (`j/k`, `dd`, `/`) let you navigate and edit without leaving your muscle memory.
 
-Destructive operations are guarded. Inline edits and row deletions always show a preview modal before touching your data.
+Destructive operations are guarded. Inline edits and row deletions always show a preview modal before touching your data. Read-only mode (`Ctrl+R`) goes further — block all writes at the PostgreSQL session level with a single keystroke.
 
 Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featured alternative to GUI tools like DBeaver or DataGrip, without ever leaving the terminal.
 
@@ -24,6 +24,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 ### Core
 
+- **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
 - **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`
 - **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table

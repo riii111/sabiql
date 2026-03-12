@@ -159,6 +159,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         Some(vec![Effect::ExecuteWrite {
                             dsn: dsn.clone(),
                             query: sql,
+                            read_only: state.runtime.read_only,
                         }])
                     } else {
                         state.pending_write_preview = None;
@@ -168,6 +169,10 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                             .set_error_at("No active connection".to_string(), now);
                         Some(vec![])
                     }
+                }
+                Some(ConfirmIntent::DisableReadOnly) => {
+                    state.runtime.read_only = false;
+                    Some(vec![])
                 }
                 Some(ConfirmIntent::CsvExport {
                     export_query,
@@ -180,6 +185,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                             query: export_query,
                             file_name,
                             row_count,
+                            read_only: state.runtime.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -366,6 +372,22 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExportCsv { .. }));
+        }
+
+        #[test]
+        fn disable_read_only_confirm_sets_read_only_false() {
+            let mut state = create_test_state();
+            state.runtime.read_only = true;
+            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.confirm_dialog.intent = Some(ConfirmIntent::DisableReadOnly);
+            state.confirm_dialog.return_mode = InputMode::Normal;
+
+            let effects =
+                reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
+
+            assert!(!state.runtime.read_only);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(effects.is_empty());
         }
 
         #[test]

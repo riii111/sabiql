@@ -65,13 +65,14 @@ pub(crate) async fn run(
             limit,
             offset,
             target_page,
+            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match executor
-                    .execute_preview(&dsn, &schema, &table, limit, offset)
+                    .execute_preview(&dsn, &schema, &table, limit, offset, read_only)
                     .await
                 {
                     Ok(result) => {
@@ -93,12 +94,16 @@ pub(crate) async fn run(
             Ok(())
         }
 
-        Effect::ExecuteAdhoc { dsn, query } => {
+        Effect::ExecuteAdhoc {
+            dsn,
+            query,
+            read_only,
+        } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                match executor.execute_adhoc(&dsn, &query).await {
+                match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(mut result) => {
                         if let Some(tag) = result.command_tag.take() {
                             result.command_tag =
@@ -120,12 +125,16 @@ pub(crate) async fn run(
             Ok(())
         }
 
-        Effect::ExecuteWrite { dsn, query } => {
+        Effect::ExecuteWrite {
+            dsn,
+            query,
+            read_only,
+        } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                match executor.execute_write(&dsn, &query).await {
+                match executor.execute_write(&dsn, &query, read_only).await {
                     Ok(result) => {
                         tx.send(Action::ExecuteWriteSucceeded {
                             affected_rows: result.affected_rows,
@@ -148,12 +157,16 @@ pub(crate) async fn run(
             count_query,
             export_query,
             file_name,
+            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
+                let row_count = executor
+                    .count_query_rows(&dsn, &count_query, read_only)
+                    .await
+                    .ok();
                 tx.send(Action::CsvExportRowsCounted {
                     row_count,
                     export_query,
@@ -170,13 +183,14 @@ pub(crate) async fn run(
             query,
             file_name,
             row_count,
+            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
-                match executor.export_to_csv(&dsn, &query, &path).await {
+                match executor.export_to_csv(&dsn, &query, &path, read_only).await {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             path: path.display().to_string(),
@@ -279,7 +293,7 @@ mod tests {
             mock_executor
                 .expect_execute_preview()
                 .once()
-                .returning(|_, _, _, _, _| Ok(sample_query_result()));
+                .returning(|_, _, _, _, _, _| Ok(sample_query_result()));
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
@@ -305,6 +319,7 @@ mod tests {
                         limit: 100,
                         offset: 0,
                         target_page: 0,
+                        read_only: false,
                     }],
                     &mut renderer,
                     state,
@@ -331,7 +346,7 @@ mod tests {
             mock_executor
                 .expect_execute_preview()
                 .once()
-                .returning(|_, _, _, _, _| {
+                .returning(|_, _, _, _, _, _| {
                     Err(crate::app::ports::MetadataError::QueryFailed(
                         "syntax error".to_string(),
                     ))
@@ -361,6 +376,7 @@ mod tests {
                         limit: 100,
                         offset: 0,
                         target_page: 0,
+                        read_only: false,
                     }],
                     &mut renderer,
                     state,
