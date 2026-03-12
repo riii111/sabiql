@@ -93,63 +93,12 @@ impl PostgresAdapter {
             return self.run_psql(dsn, extra_args, query).await;
         }
 
-        let mut cmd = Command::new("psql");
-        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
-
-        for arg in extra_args {
-            cmd.arg(arg);
-        }
-
-        // Multiple -c: SET first, then the actual query
-        cmd.arg("-c")
-            .arg("SET default_transaction_read_only = on")
-            .arg("-c")
-            .arg(query);
-
-        let mut child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
-
-        let mut stdout_handle = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
-
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut out) = stdout_handle {
-                        out.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                },
-                async {
-                    let mut buf = Vec::new();
-                    if let Some(ref mut err) = stderr_handle {
-                        err.read_to_end(&mut buf).await?;
-                    }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
-                }
-            );
-
-            let stdout = stdout_result?;
-            let stderr = stderr_result?;
-            let status = child.wait().await?;
-
-            Ok::<_, std::io::Error>((status, stdout, stderr))
-        })
-        .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
-
-        let (status, stdout, stderr) = result;
-        Ok(PsqlOutput {
-            status,
-            stdout,
-            stderr,
-        })
+        // Concatenate SET + query in a single -c to keep a single command
+        // context. SET produces no stdout rows, so CSV/count parsers are safe.
+        // Two separate -c flags would output the SET response as a distinct
+        // result set, polluting stdout and breaking downstream parsers.
+        let combined = format!("SET default_transaction_read_only = on; {}", query);
+        self.run_psql(dsn, extra_args, &combined).await
     }
 
     pub(in crate::infra::adapters::postgres) async fn execute_query(
@@ -304,11 +253,15 @@ impl PostgresAdapter {
             .arg("ON_ERROR_STOP=1")
             .arg("--csv");
 
-        if read_only {
-            cmd.arg("-c").arg("SET default_transaction_read_only = on");
-        }
+        let combined_query;
+        let effective_query = if read_only {
+            combined_query = format!("SET default_transaction_read_only = on; {}", query);
+            &combined_query
+        } else {
+            query
+        };
 
-        cmd.arg("-c").arg(query);
+        cmd.arg("-c").arg(effective_query);
 
         let mut child = cmd
             .stdout(Stdio::piped())

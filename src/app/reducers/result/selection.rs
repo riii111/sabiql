@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::state::AppState;
@@ -17,7 +19,7 @@ fn ensure_cell_visible(state: &mut AppState) {
     }
 }
 
-pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
+pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ResultEnterRowActive => {
             let rows = result_row_count(state);
@@ -74,6 +76,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::StageRowForDelete => {
             if state.runtime.read_only {
+                state.messages.set_error_at(
+                    "Read-only mode: delete operations are disabled".to_string(),
+                    now,
+                );
                 return Some(vec![]);
             }
             if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
@@ -169,7 +175,7 @@ mod tests {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.ui.result_selection.enter_row(0);
 
-            reduce(&mut state, &Action::StageRowForDelete);
+            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert!(state.ui.staged_delete_rows.contains(&0));
         }
@@ -180,7 +186,7 @@ mod tests {
             state.ui.result_selection.enter_row(0);
             state.ui.staged_delete_rows.insert(0);
 
-            reduce(&mut state, &Action::StageRowForDelete);
+            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert_eq!(state.ui.staged_delete_rows.len(), 1);
         }
@@ -189,7 +195,7 @@ mod tests {
         fn staging_requires_row_active_mode() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
 
-            reduce(&mut state, &Action::StageRowForDelete);
+            reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
             assert!(state.ui.staged_delete_rows.is_empty());
         }
@@ -204,7 +210,7 @@ mod tests {
             state.ui.staged_delete_rows.insert(0);
             state.ui.staged_delete_rows.insert(1);
 
-            reduce(&mut state, &Action::UnstageLastStagedRow);
+            reduce(&mut state, &Action::UnstageLastStagedRow, Instant::now());
 
             assert_eq!(state.ui.staged_delete_rows.len(), 1);
             assert!(state.ui.staged_delete_rows.contains(&0));
@@ -220,7 +226,7 @@ mod tests {
             state.ui.staged_delete_rows.insert(0);
             state.ui.staged_delete_rows.insert(1);
 
-            reduce(&mut state, &Action::ClearStagedDeletes);
+            reduce(&mut state, &Action::ClearStagedDeletes, Instant::now());
 
             assert!(state.ui.staged_delete_rows.is_empty());
         }
@@ -265,7 +271,7 @@ mod tests {
         fn next_page_resets_all_view_state_and_returns_none() {
             let mut state = dirty_state();
 
-            let result = reduce(&mut state, &Action::ResultNextPage);
+            let result = reduce(&mut state, &Action::ResultNextPage, Instant::now());
 
             assert!(result.is_none());
             assert!(state.ui.result_selection.row().is_none());
@@ -279,7 +285,7 @@ mod tests {
         fn prev_page_resets_all_view_state_and_returns_none() {
             let mut state = dirty_state();
 
-            let result = reduce(&mut state, &Action::ResultPrevPage);
+            let result = reduce(&mut state, &Action::ResultPrevPage, Instant::now());
 
             assert!(result.is_none());
             assert!(state.ui.result_selection.row().is_none());
