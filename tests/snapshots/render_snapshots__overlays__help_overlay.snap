@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │  e                   Open ER Diagram                ││           │
 │           │  c                   Open Connection Selector       ││           │
 │           │  Ctrl+E              Export result to CSV           ││           │
-│           │                                                     ││           │
-│           │▸ Navigation                                         ▼│           │
-│           │  j / ↓               Move down / scroll      row   0%│           │
+│           │  Ctrl+R              Enable Read-Only mode          ││           │
+│           │  Ctrl+R              Disable Read-Only mode         ▼│           │
+│           │                                              row   0%│           │
 └───────────╰ j/k / ↑↓ to scroll, ? or Esc to close ───────────────╯───────────┘
 j/k / ↑↓:Scroll  ?/Esc:Close

@@ -18,7 +18,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││  e                  Open ER Diagram  │                   │
 │                  ││  c                  Open Connection S│                   │
 │                  ││  Ctrl+E             Export result to │                   │
-│                  ││                                      │                   │
+│                  ││  Ctrl+R             Enable Read-Only │                   │
 │                  │╰ j/k / ↑↓ Navigate │ Enter Select │ Es╯                   │
 │                  ││                                                          │
 │                  ││                                                          │

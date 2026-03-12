@@ -163,6 +163,11 @@ impl Footer {
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
+                    if state.runtime.read_only {
+                        list.push(GLOBAL_KEYS[idx::global::EXIT_READ_ONLY].as_hint());
+                    } else {
+                        list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
+                    }
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());

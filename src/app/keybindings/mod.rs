@@ -116,6 +116,8 @@ pub mod idx {
         pub const ER_DIAGRAM: usize = 11;
         pub const CONNECTIONS: usize = 12;
         pub const CSV_EXPORT: usize = 13;
+        pub const READ_ONLY: usize = 14;
+        pub const EXIT_READ_ONLY: usize = 15;
     }
 
     pub mod footer_nav {
@@ -323,6 +325,10 @@ pub fn is_csv_export(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::CSV_EXPORT].combos.contains(combo)
 }
 
+pub fn is_read_only_toggle(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::READ_ONLY].combos.contains(combo)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,6 +350,8 @@ mod tests {
         assert!(idx::global::ER_DIAGRAM < GLOBAL_KEYS.len());
         assert!(idx::global::CONNECTIONS < GLOBAL_KEYS.len());
         assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
+        assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
+        assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
 
         // FOOTER_NAV_KEYS
         assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
@@ -504,6 +512,8 @@ mod tests {
         #[case(idx::global::ER_DIAGRAM, Action::OpenErTablePicker)]
         #[case(idx::global::CONNECTIONS, Action::OpenConnectionSelector)]
         #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
+        #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
+        #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
         fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),

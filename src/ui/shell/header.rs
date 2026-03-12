@@ -31,7 +31,7 @@ impl Header {
             .as_deref()
             .unwrap_or("-");
 
-        let line = Line::from(vec![
+        let mut line = Line::from(vec![
             Span::styled(
                 &state.runtime.project_name,
                 Style::default().fg(Color::Gray),
@@ -45,6 +45,10 @@ impl Header {
             Span::styled(" | ", Style::default().fg(Color::DarkGray)),
             Span::styled(connection_name, Style::default().fg(Color::Gray)),
         ]);
+        if state.runtime.read_only {
+            line.push_span(Span::styled(" ", Style::default().fg(Color::DarkGray)));
+            line.push_span(Span::styled("[RO]", Style::default().fg(Color::Magenta)));
+        }
 
         frame.render_widget(Paragraph::new(line), area);
     }

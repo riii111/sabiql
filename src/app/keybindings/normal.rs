@@ -134,6 +134,25 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::RequestCsvExport,
         combos: &[KeyCombo::ctrl(Key::Char('e'))],
     },
+    // idx 14: READ_ONLY / idx 15: EXIT_READ_ONLY — intentionally duplicate combo (Ctrl+R)
+    // for the same Action::ToggleReadOnly. Two entries exist because the footer
+    // shows different labels depending on whether read-only mode is active.
+    KeyBinding {
+        key_short: "^R",
+        key: "Ctrl+R",
+        desc_short: "Read-Only",
+        description: "Enable Read-Only mode",
+        action: Action::ToggleReadOnly,
+        combos: &[KeyCombo::ctrl(Key::Char('r'))],
+    },
+    KeyBinding {
+        key_short: "^R",
+        key: "Ctrl+R",
+        desc_short: "Read-Write",
+        description: "Disable Read-Only mode",
+        action: Action::ToggleReadOnly,
+        combos: &[KeyCombo::ctrl(Key::Char('r'))],
+    },
 ];
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[
