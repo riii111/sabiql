@@ -7,6 +7,7 @@ pub mod er;
 pub mod foreign_key;
 pub mod index;
 pub mod metadata;
+pub mod query_history;
 pub mod query_result;
 pub mod rls;
 pub mod schema;
