@@ -180,19 +180,21 @@ pub fn reduce_query(
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
-                state.ui.result_scroll_offset = 0;
-                state.ui.result_horizontal_offset = 0;
-                state.ui.result_selection.reset();
-                state.cell_edit.clear();
-                state.pending_write_preview = None;
-                state.query.result_highlight_until = Some(now + Duration::from_millis(500));
-                state.query.history_index = None;
+
+                if result.source != QuerySource::Adhoc {
+                    state.ui.result_scroll_offset = 0;
+                    state.ui.result_horizontal_offset = 0;
+                    state.ui.result_selection.reset();
+                    state.cell_edit.clear();
+                    state.pending_write_preview = None;
+                    state.query.result_highlight_until = Some(now + Duration::from_millis(500));
+                    state.query.history_index = None;
+                }
 
                 if result.source == QuerySource::Adhoc {
                     if result.is_error() {
                         state.sql_modal.status = SqlModalStatus::Error;
-                        state.sql_modal.last_adhoc_error =
-                            result.error.clone();
+                        state.sql_modal.last_adhoc_error = result.error.clone();
                     } else {
                         state.sql_modal.status = SqlModalStatus::Success;
                         state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
