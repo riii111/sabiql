@@ -309,6 +309,11 @@ impl EffectRunner {
                 .await
             }
 
+            e @ Effect::LoadQueryHistory { .. } => {
+                effect_handlers::query_history::run(e, &self.action_tx, &self.query_history_store)
+                    .await
+            }
+
             e @ (Effect::CacheTableInCompletionEngine { .. }
             | Effect::EvictTablesFromCompletionCache { .. }
             | Effect::ClearCompletionEngineCache

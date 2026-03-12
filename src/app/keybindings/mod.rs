@@ -80,6 +80,9 @@ pub const TABLE_PICKER: ModeBindings = ModeBindings {
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
+pub const QUERY_HISTORY_PICKER: ModeBindings = ModeBindings {
+    rows: QUERY_HISTORY_PICKER_ROWS,
+};
 pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
     rows: COMMAND_PALETTE_ROWS,
 };
@@ -92,6 +95,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("TABLE_PICKER", &TABLE_PICKER),
     ("ER_PICKER", &ER_PICKER),
+    ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
 ];
@@ -194,6 +198,13 @@ pub mod idx {
         pub const ESC_CLOSE: usize = 5;
     }
 
+    pub mod query_history_picker {
+        pub const ENTER_SELECT: usize = 0;
+        pub const NAVIGATE: usize = 1;
+        pub const TYPE_FILTER: usize = 2;
+        pub const ESC_CLOSE: usize = 3;
+    }
+
     pub mod cmd_palette {
         pub const ENTER_EXECUTE: usize = 0;
         pub const NAVIGATE_JK: usize = 1;
@@ -258,7 +269,7 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    18 + 17 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
+    19 + 18 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
@@ -270,6 +281,7 @@ pub const fn help_content_line_count() -> usize {
         + CONNECTION_ERROR_ROWS.len()
         + CONNECTION_SELECTOR_ROWS.len()
         + ER_PICKER_ROWS.len()
+        + QUERY_HISTORY_PICKER_ROWS.len()
         + TABLE_PICKER_ROWS.len()
         + COMMAND_PALETTE_ROWS.len()
         + HELP_ROWS.len()
@@ -416,6 +428,12 @@ mod tests {
         assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
         assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
 
+        // QUERY_HISTORY_PICKER_ROWS
+        assert!(idx::query_history_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
+
         // COMMAND_PALETTE_ROWS
         assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
         assert!(idx::cmd_palette::NAVIGATE_JK < COMMAND_PALETTE_ROWS.len());
@@ -480,6 +498,7 @@ mod tests {
             CONNECTION_ERROR_ROWS.len(),
             CONNECTION_SELECTOR_ROWS.len(),
             ER_PICKER_ROWS.len(),
+            QUERY_HISTORY_PICKER_ROWS.len(),
             TABLE_PICKER_ROWS.len(),
             COMMAND_PALETTE_ROWS.len(),
             HELP_ROWS.len(),
@@ -815,7 +834,7 @@ mod tests {
         // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
         #[test]
         fn all_mode_bindings_count() {
-            assert_eq!(ALL_MODE_BINDINGS.len(), 6);
+            assert_eq!(ALL_MODE_BINDINGS.len(), 7);
         }
     }
 }

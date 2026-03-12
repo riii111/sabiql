@@ -26,6 +26,7 @@ pub mod metadata_cache;
 pub mod palette;
 pub mod ports;
 pub mod query_execution;
+pub mod query_history_state;
 pub mod reducer;
 pub mod reducers;
 pub mod render_schedule;
