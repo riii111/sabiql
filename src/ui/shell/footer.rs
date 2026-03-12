@@ -126,18 +126,9 @@ impl Footer {
                         ]
                     }
                 } else if state.ui.focus_mode {
-                    let mut list = vec![
-                        RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
-                        GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint(),
-                    ];
-                    if state
-                        .query
-                        .current_result
-                        .as_ref()
-                        .is_some_and(|r| r.source == QuerySource::Preview)
-                    {
-                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
-                    }
+                    // Actions → Navigation → Help → Close/Cancel → Quit
+                    let mut list =
+                        vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];
                     if state
                         .query
                         .current_result
@@ -146,10 +137,20 @@ impl Footer {
                     {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
+                    if state
+                        .query
+                        .current_result
+                        .as_ref()
+                        .is_some_and(|r| r.source == QuerySource::Preview)
+                    {
+                        list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                    }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
+                    list.push(GLOBAL_KEYS[idx::global::EXIT_FOCUS].as_hint());
                     list.push(GLOBAL_KEYS[idx::global::QUIT].as_hint());
                     list
                 } else {
+                    // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list = vec![
                         GLOBAL_KEYS[idx::global::RELOAD].as_hint(),
                         GLOBAL_KEYS[idx::global::SQL].as_hint(),
@@ -159,22 +160,15 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::CONNECTIONS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::TABLE_PICKER].as_hint());
-                    list.push(GLOBAL_KEYS[idx::global::PALETTE].as_hint());
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
-                    list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
-                    if state.ui.focused_pane == FocusedPane::Result {
-                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
-                        if state
-                            .query
-                            .current_result
-                            .as_ref()
-                            .is_some_and(|r| r.source == QuerySource::Preview)
-                        {
-                            list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
-                        }
+                    if state.runtime.read_only {
+                        list.push(GLOBAL_KEYS[idx::global::EXIT_READ_ONLY].as_hint());
+                    } else {
+                        list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
                     }
+                    list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
                     if state
                         .query
                         .current_result
@@ -188,6 +182,20 @@ impl Footer {
                         if state.ui.inspector_tab == InspectorTab::Ddl {
                             list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
+                    }
+                    // Navigation
+                    if state.ui.focused_pane == FocusedPane::Result {
+                        list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
+                        if state
+                            .query
+                            .current_result
+                            .as_ref()
+                            .is_some_and(|r| r.source == QuerySource::Preview)
+                        {
+                            list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
+                        }
+                    }
+                    if state.ui.focused_pane == FocusedPane::Inspector {
                         list.push(GLOBAL_KEYS[idx::global::INSPECTOR_TABS].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());

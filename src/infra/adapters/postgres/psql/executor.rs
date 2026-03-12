@@ -17,17 +17,20 @@ struct PsqlOutput {
 }
 
 impl PostgresAdapter {
+    const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
+
     async fn run_psql(
         &self,
         dsn: &str,
         extra_args: &[&str],
         query: &str,
+        read_only: bool,
     ) -> Result<PsqlOutput, MetadataError> {
         let mut cmd = Command::new("psql");
-        cmd.arg(dsn)
-            .arg("-X") // Ignore .psqlrc to avoid unexpected output
-            .arg("-v")
-            .arg("ON_ERROR_STOP=1"); // Exit with non-zero on SQL errors
+        if read_only {
+            Self::apply_read_only_pgoptions(&mut cmd);
+        }
+        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
 
         for arg in extra_args {
             cmd.arg(arg);
@@ -35,6 +38,23 @@ impl PostgresAdapter {
 
         cmd.arg("-c").arg(query);
 
+        Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    /// Merges the read-only session parameter into PGOPTIONS,
+    /// preserving any existing user-set options.
+    fn apply_read_only_pgoptions(cmd: &mut Command) {
+        let merged = match std::env::var("PGOPTIONS") {
+            Ok(existing) => format!("{} {}", Self::PGOPTIONS_READ_ONLY, existing),
+            Err(_) => Self::PGOPTIONS_READ_ONLY.to_string(),
+        };
+        cmd.env("PGOPTIONS", merged);
+    }
+
+    async fn collect_output(
+        cmd: &mut Command,
+        timeout_secs: u64,
+    ) -> Result<PsqlOutput, MetadataError> {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -42,11 +62,10 @@ impl PostgresAdapter {
             .spawn()
             .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
 
-        // Read stdout/stderr BEFORE wait() to prevent pipe buffer deadlock
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
-        let result = timeout(Duration::from_secs(self.timeout_secs), async {
+        let result = timeout(Duration::from_secs(timeout_secs), async {
             let (stdout_result, stderr_result) = tokio::join!(
                 async {
                     let mut buf = Vec::new();
@@ -87,7 +106,7 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
     ) -> Result<String, MetadataError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
+        let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
@@ -101,10 +120,11 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         source: QuerySource,
+        read_only: bool,
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &["--csv"], query).await?;
+        let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -174,10 +194,11 @@ impl PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<WriteExecutionResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self.run_psql(dsn, &[], query).await?;
+        let output = self.run_psql(dsn, &[], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -199,8 +220,9 @@ impl PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
+        read_only: bool,
     ) -> Result<usize, MetadataError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
+        let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
         }
@@ -216,8 +238,12 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
+        read_only: bool,
     ) -> Result<usize, MetadataError> {
         let mut cmd = Command::new("psql");
+        if read_only {
+            Self::apply_read_only_pgoptions(&mut cmd);
+        }
         cmd.arg(dsn)
             .arg("-X")
             .arg("-v")

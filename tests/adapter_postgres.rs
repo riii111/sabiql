@@ -80,7 +80,7 @@ mod query_execution {
 
         let table = &metadata.tables[0];
         let result = adapter
-            .execute_preview(&dsn, &table.schema, &table.name, 10, 0)
+            .execute_preview(&dsn, &table.schema, &table.name, 10, 0, false)
             .await
             .unwrap();
 
@@ -98,7 +98,7 @@ mod query_execution {
         let dsn = test_dsn();
 
         let result = adapter
-            .execute_adhoc(&dsn, "SELECT 1 AS value")
+            .execute_adhoc(&dsn, "SELECT 1 AS value", false)
             .await
             .unwrap();
 
@@ -128,7 +128,9 @@ mod error_paths {
         let adapter = PostgresAdapter::with_timeout(1);
         let dsn = test_dsn();
 
-        let result = adapter.execute_adhoc(&dsn, "SELECT pg_sleep(5)").await;
+        let result = adapter
+            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", false)
+            .await;
 
         assert!(
             matches!(result, Err(MetadataError::Timeout)),

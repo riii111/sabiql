@@ -11,15 +11,15 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │  Ctrl+P              Open Table Picker              ││           │
 │           │  Ctrl+K              Open Command Palette           ││           │
 │           │  :                   Enter command line             ││           │
-│           │  f                   Toggle Focus mode              ││           │
-│           │  f                   Exit Focus mode                ││           │
-│           │  1/2/3               Switch pane focus              ││───────────┘
-│           │  Tab/⇧Tab            Inspector prev/next tab        ││───────────┐
-│           │  r                   Reload metadata                ││           │
+│           │  f                   Toggle Focus                   ││           │
+│           │  1/2/3               Switch pane focus              ││           │
+│           │  Tab/⇧Tab            Inspector prev/next tab        ││───────────┘
+│           │  r                   Reload metadata                ││───────────┐
 │           │  s                   Open SQL Editor                ││           │
 │           │  e                   Open ER Diagram                ││           │
 │           │  c                   Open Connection Selector       ││           │
 │           │  Ctrl+E              Export result to CSV           ││           │
+│           │  Ctrl+R              Toggle Read-Only               ││           │
 │           │                                                     ││           │
 │           │▸ Navigation                                         ▼│           │
 │           │  j / ↓               Move down / scroll      row   0%│           │

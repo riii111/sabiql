@@ -220,6 +220,20 @@ pub fn reduce_sql_modal(
                         risk_level: risk.risk_level,
                         label,
                     };
+                    // In read-only mode, block non-Immediate (write) queries
+                    if state.runtime.read_only
+                        && !matches!(risk.confirmation, ConfirmationType::Immediate)
+                    {
+                        state.sql_modal.status = SqlModalStatus::Error;
+                        state.query.current_result =
+                            Some(std::sync::Arc::new(crate::domain::QueryResult::error(
+                                query,
+                                "Read-only mode: write operations are disabled".to_string(),
+                                0,
+                                crate::domain::QuerySource::Adhoc,
+                            )));
+                        return Some(vec![]);
+                    }
                     match risk.confirmation {
                         ConfirmationType::Immediate => {
                             state.sql_modal.status = SqlModalStatus::Running;
@@ -302,6 +316,7 @@ pub fn reduce_sql_modal(
                     return Some(vec![Effect::ExecuteAdhoc {
                         dsn: dsn.clone(),
                         query,
+                        read_only: state.runtime.read_only,
                     }]);
                 }
             }
@@ -373,6 +388,7 @@ fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
         Some(dsn) => vec![Effect::ExecuteAdhoc {
             dsn: dsn.clone(),
             query,
+            read_only: state.runtime.read_only,
         }],
         None => vec![],
     }
@@ -804,6 +820,47 @@ mod tests {
                 effects
                     .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
             );
+        }
+    }
+
+    mod read_only_guard {
+        use super::*;
+
+        #[test]
+        fn read_only_blocks_write_query_in_sql_modal() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.read_only = true;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Error);
+            assert!(
+                state
+                    .query
+                    .current_result
+                    .as_ref()
+                    .is_some_and(|r| r.is_error())
+            );
+        }
+
+        #[test]
+        fn read_only_allows_select_query() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.read_only = true;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert!(!effects.is_empty());
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
         }
     }
 

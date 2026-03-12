@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::app::action::{Action, ConnectionsLoadedPayload};
+use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
@@ -79,6 +80,21 @@ pub fn reduce_navigation(
                 state.cell_edit.clear();
                 state.ui.staged_delete_rows.clear();
                 state.pending_write_preview = None;
+            }
+            Some(vec![])
+        }
+        Action::ToggleReadOnly => {
+            if state.runtime.read_only {
+                // RO→RW: confirm dialog (dangerous direction)
+                state.confirm_dialog.title = "Disable Read-Only".to_string();
+                state.confirm_dialog.message =
+                    "Switch to read-write mode? Write operations will be allowed.".to_string();
+                state.confirm_dialog.intent = Some(ConfirmIntent::DisableReadOnly);
+                state.confirm_dialog.return_mode = state.ui.input_mode;
+                state.ui.input_mode = InputMode::ConfirmDialog;
+            } else {
+                // RW→RO: immediate (safe direction)
+                state.runtime.read_only = true;
             }
             Some(vec![])
         }
@@ -499,6 +515,46 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             ssl_mode: SslMode::Prefer,
+        }
+    }
+
+    mod toggle_read_only {
+        use super::*;
+
+        #[test]
+        fn rw_to_ro_switches_immediately() {
+            let mut state = AppState::new("test".to_string());
+            assert!(!state.runtime.read_only);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ToggleReadOnly,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(state.runtime.read_only);
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+        }
+
+        #[test]
+        fn ro_to_rw_opens_confirm_dialog() {
+            let mut state = AppState::new("test".to_string());
+            state.runtime.read_only = true;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ToggleReadOnly,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(state.runtime.read_only);
+            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert!(matches!(
+                state.confirm_dialog.intent,
+                Some(crate::app::confirm_dialog_state::ConfirmIntent::DisableReadOnly)
+            ));
         }
     }
 
