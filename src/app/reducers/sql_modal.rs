@@ -205,13 +205,7 @@ pub fn reduce_sql_modal(
             match evaluate_multi_statement(&query) {
                 MultiStatementDecision::Block { reason } => {
                     state.sql_modal.status = SqlModalStatus::Error;
-                    state.query.current_result =
-                        Some(std::sync::Arc::new(crate::domain::QueryResult::error(
-                            query,
-                            reason,
-                            0,
-                            crate::domain::QuerySource::Adhoc,
-                        )));
+                    state.sql_modal.last_adhoc_error = Some(reason);
                     Some(vec![])
                 }
                 MultiStatementDecision::Allow { risk, .. } => {

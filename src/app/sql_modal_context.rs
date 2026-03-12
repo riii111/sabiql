@@ -76,6 +76,7 @@ pub struct SqlModalContext {
     pub cursor: usize,
     pub status: SqlModalStatus,
     pub last_adhoc_success: Option<AdhocSuccessSnapshot>,
+    pub last_adhoc_error: Option<String>,
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,

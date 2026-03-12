@@ -332,10 +332,9 @@ impl SqlModal {
 
     fn error_status_message(state: &AppState) -> String {
         state
-            .query
-            .current_result
+            .sql_modal
+            .last_adhoc_error
             .as_ref()
-            .and_then(|r| r.error.as_ref())
             .and_then(|e| e.lines().next())
             .map(|line| format!("\u{2717} {}", line))
             .unwrap_or_else(|| "\u{2717} Error".to_string())
