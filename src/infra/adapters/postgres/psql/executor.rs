@@ -45,7 +45,7 @@ impl PostgresAdapter {
     /// preserving any existing user-set options.
     fn apply_read_only_pgoptions(cmd: &mut Command) {
         let merged = match std::env::var("PGOPTIONS") {
-            Ok(existing) => format!("{} {}", existing, Self::PGOPTIONS_READ_ONLY),
+            Ok(existing) => format!("{} {}", Self::PGOPTIONS_READ_ONLY, existing),
             Err(_) => Self::PGOPTIONS_READ_ONLY.to_string(),
         };
         cmd.env("PGOPTIONS", merged);
