@@ -70,6 +70,15 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalClear,
         combos: &[KeyCombo::ctrl(Key::Char('l'))],
     },
+    // idx 7: QUERY_HISTORY
+    KeyBinding {
+        key_short: "^O",
+        key: "Ctrl+O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenQueryHistoryPicker,
+        combos: &[KeyCombo::ctrl(Key::Char('o'))],
+    },
 ];
 
 // Keys active only while SqlModalStatus::Confirming — mutually exclusive with SQL_MODAL_KEYS.
