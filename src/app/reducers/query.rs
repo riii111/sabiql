@@ -191,6 +191,8 @@ pub fn reduce_query(
                 if result.source == QuerySource::Adhoc {
                     if result.is_error() {
                         state.sql_modal.status = SqlModalStatus::Error;
+                        state.sql_modal.last_adhoc_error =
+                            result.error.clone();
                     } else {
                         state.sql_modal.status = SqlModalStatus::Success;
                         state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
@@ -212,7 +214,9 @@ pub fn reduce_query(
                     }
                 }
 
-                state.query.current_result = Some(Arc::clone(result));
+                if result.source != QuerySource::Adhoc {
+                    state.query.current_result = Some(Arc::clone(result));
+                }
 
                 if result.source == QuerySource::Preview {
                     match state.query.post_delete_row_selection {
@@ -252,13 +256,7 @@ pub fn reduce_query(
                 state.set_error(error.clone());
                 if state.ui.input_mode == InputMode::SqlModal {
                     state.sql_modal.status = SqlModalStatus::Error;
-                    let error_result = Arc::new(QueryResult::error(
-                        state.sql_modal.content.clone(),
-                        error.clone(),
-                        0,
-                        QuerySource::Adhoc,
-                    ));
-                    state.query.current_result = Some(error_result);
+                    state.sql_modal.last_adhoc_error = Some(error.clone());
                 }
                 state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                 state.query.pending_delete_refresh_target = None;
