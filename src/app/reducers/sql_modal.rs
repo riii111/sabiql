@@ -819,6 +819,40 @@ mod tests {
         }
     }
 
+    mod read_only_guard {
+        use super::*;
+
+        #[test]
+        fn read_only_blocks_write_query_in_sql_modal() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.read_only = true;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn read_only_allows_select_query() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.input_mode = InputMode::SqlModal;
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.runtime.read_only = true;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert!(!effects.is_empty());
+            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+        }
+    }
+
     mod confirmation_flow {
         use super::*;
         use crate::app::write_guardrails::RiskLevel;

@@ -17,13 +17,19 @@ struct PsqlOutput {
 }
 
 impl PostgresAdapter {
+    const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
+
     async fn run_psql(
         &self,
         dsn: &str,
         extra_args: &[&str],
         query: &str,
+        read_only: bool,
     ) -> Result<PsqlOutput, MetadataError> {
         let mut cmd = Command::new("psql");
+        if read_only {
+            Self::apply_read_only_pgoptions(&mut cmd);
+        }
         cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
 
         for arg in extra_args {
@@ -33,6 +39,16 @@ impl PostgresAdapter {
         cmd.arg("-c").arg(query);
 
         Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    /// Merges the read-only session parameter into PGOPTIONS,
+    /// preserving any existing user-set options.
+    fn apply_read_only_pgoptions(cmd: &mut Command) {
+        let merged = match std::env::var("PGOPTIONS") {
+            Ok(existing) => format!("{} {}", Self::PGOPTIONS_READ_ONLY, existing),
+            Err(_) => Self::PGOPTIONS_READ_ONLY.to_string(),
+        };
+        cmd.env("PGOPTIONS", merged);
     }
 
     async fn collect_output(
@@ -85,38 +101,12 @@ impl PostgresAdapter {
         })
     }
 
-    const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
-
-    async fn run_psql_read_only(
-        &self,
-        dsn: &str,
-        extra_args: &[&str],
-        query: &str,
-        read_only: bool,
-    ) -> Result<PsqlOutput, MetadataError> {
-        if !read_only {
-            return self.run_psql(dsn, extra_args, query).await;
-        }
-
-        let mut cmd = Command::new("psql");
-        cmd.env("PGOPTIONS", Self::PGOPTIONS_READ_ONLY);
-        cmd.arg(dsn).arg("-X").arg("-v").arg("ON_ERROR_STOP=1");
-
-        for arg in extra_args {
-            cmd.arg(arg);
-        }
-
-        cmd.arg("-c").arg(query);
-
-        Self::collect_output(&mut cmd, self.timeout_secs).await
-    }
-
     pub(in crate::infra::adapters::postgres) async fn execute_query(
         &self,
         dsn: &str,
         query: &str,
     ) -> Result<String, MetadataError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query).await?;
+        let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
@@ -134,9 +124,7 @@ impl PostgresAdapter {
     ) -> Result<QueryResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self
-            .run_psql_read_only(dsn, &["--csv"], query, read_only)
-            .await?;
+        let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -210,7 +198,7 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, MetadataError> {
         let start = Instant::now();
 
-        let output = self.run_psql_read_only(dsn, &[], query, read_only).await?;
+        let output = self.run_psql(dsn, &[], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
@@ -234,9 +222,7 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<usize, MetadataError> {
-        let output = self
-            .run_psql_read_only(dsn, &["-t", "-A"], query, read_only)
-            .await?;
+        let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
         if !output.status.success() {
             return Err(MetadataError::QueryFailed(output.stderr));
         }
@@ -256,7 +242,7 @@ impl PostgresAdapter {
     ) -> Result<usize, MetadataError> {
         let mut cmd = Command::new("psql");
         if read_only {
-            cmd.env("PGOPTIONS", Self::PGOPTIONS_READ_ONLY);
+            Self::apply_read_only_pgoptions(&mut cmd);
         }
         cmd.arg(dsn)
             .arg("-X")

@@ -112,7 +112,7 @@ mod tests {
     mod cell_edit_entry_guardrails {
         use super::*;
 
-        fn minimal_users_table() -> Table {
+        pub(super) fn minimal_users_table() -> Table {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
@@ -128,7 +128,7 @@ mod tests {
             }
         }
 
-        fn preview_state_with_selection() -> AppState {
+        pub(super) fn preview_state_with_selection() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.query.current_result = Some(Arc::new(QueryResult {
                 query: String::new(),
@@ -204,6 +204,23 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
             );
+        }
+    }
+
+    mod read_only_guard {
+        use super::*;
+
+        #[test]
+        fn read_only_blocks_cell_edit_entry() {
+            let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            state.cache.table_detail = Some(cell_edit_entry_guardrails::minimal_users_table());
+            state.runtime.read_only = true;
+
+            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert!(state.messages.last_error.is_some());
         }
     }
 

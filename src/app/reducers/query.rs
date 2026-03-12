@@ -467,6 +467,7 @@ pub fn reduce_query(
             if let Some(dsn) = &state.runtime.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
+                // read_only is always false here (early return above); kept as defense-in-depth
                 Some(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
                     query: query.clone(),

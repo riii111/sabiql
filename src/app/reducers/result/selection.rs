@@ -232,6 +232,23 @@ mod tests {
         }
     }
 
+    mod read_only_guard {
+        use super::*;
+
+        #[test]
+        fn read_only_blocks_stage_row_for_delete() {
+            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            state.ui.result_selection.enter_row(0);
+            state.runtime.read_only = true;
+
+            let effects = reduce(&mut state, &Action::StageRowForDelete, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.messages.last_error.is_some());
+        }
+    }
+
     mod page_passthrough {
         use super::*;
         use crate::app::write_guardrails::{
