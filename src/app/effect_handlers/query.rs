@@ -7,9 +7,10 @@ use tokio::sync::mpsc;
 
 use crate::app::action::Action;
 use crate::app::effect::Effect;
-use crate::app::ports::QueryExecutor;
+use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
+use crate::domain::query_history::QueryHistoryEntry;
 
 /// Convert days since Unix epoch to (year, month, day) in UTC.
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -25,6 +26,40 @@ fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
+}
+
+fn utc_now_iso8601() -> String {
+    let now_sys = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now_sys.as_secs();
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+    let (y, m, d) = epoch_days_to_ymd(days as i64);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds
+    )
+}
+
+fn save_query_history(
+    query_history_store: &Arc<dyn QueryHistoryStore>,
+    project_name: &str,
+    connection_id: &crate::domain::ConnectionId,
+    query: &str,
+) {
+    let store = Arc::clone(query_history_store);
+    let entry = QueryHistoryEntry::new(query.to_string(), utc_now_iso8601(), connection_id.clone());
+    let project = project_name.to_string();
+    let conn_id = connection_id.clone();
+    tokio::spawn(async move {
+        if let Err(e) = store.append(&project, &conn_id, &entry).await {
+            eprintln!("Failed to save query history: {}", e);
+        }
+    });
 }
 
 fn resolve_export_path(file_name: &str) -> PathBuf {
@@ -54,6 +89,7 @@ pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
+    query_history_store: &Arc<dyn QueryHistoryStore>,
     _state: &mut AppState,
 ) -> Result<()> {
     match effect {
@@ -99,6 +135,14 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
+            if let Some(conn_id) = &_state.runtime.active_connection_id {
+                save_query_history(
+                    query_history_store,
+                    &_state.runtime.project_name,
+                    conn_id,
+                    &query,
+                );
+            }
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
@@ -130,6 +174,14 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
+            if let Some(conn_id) = &_state.runtime.active_connection_id {
+                save_query_history(
+                    query_history_store,
+                    &_state.runtime.project_name,
+                    conn_id,
+                    &query,
+                );
+            }
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
