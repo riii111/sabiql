@@ -46,8 +46,11 @@ impl Header {
             Span::styled(connection_name, Style::default().fg(Color::Gray)),
         ]);
         if state.runtime.read_only {
-            line.push_span(Span::styled(" ", Style::default().fg(Color::DarkGray)));
-            line.push_span(Span::styled("[RO]", Style::default().fg(Color::Magenta)));
+            line.push_span(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+            line.push_span(Span::styled(
+                "READ-ONLY",
+                Style::default().fg(Color::Magenta),
+            ));
         }
 
         frame.render_widget(Paragraph::new(line), area);

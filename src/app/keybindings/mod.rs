@@ -254,12 +254,11 @@ pub mod idx {
 
 /// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
-    // 18 sections × 1 header each = 18
-    // 17 blank-line separators between sections = 17
-    18 + 17
-        + GLOBAL_KEYS.len()
-        + NAVIGATION_KEYS.len()
-        + HISTORY_KEYS.len()
+    // Dedup pairs collapsed into one line by HelpOverlay::push_dedup:
+    //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
+    //   HISTORY_KEYS: Open/Exit (1 pair)
+    const DEDUP_PAIRS: usize = 3;
+    18 + 17 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
@@ -487,7 +486,9 @@ mod tests {
             CONFIRM_DIALOG_KEYS.len(),
         ];
         let section_count = sections.len();
-        let expected: usize = section_count + sections.iter().sum::<usize>() + (section_count - 1);
+        let dedup_pairs = 3; // Focus, ReadOnly, History
+        let expected: usize =
+            section_count + sections.iter().sum::<usize>() + (section_count - 1) - dedup_pairs;
 
         assert_eq!(help_content_line_count(), expected);
     }

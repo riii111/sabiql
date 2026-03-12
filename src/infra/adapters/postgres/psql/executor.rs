@@ -82,6 +82,18 @@ impl PostgresAdapter {
         })
     }
 
+    /// Builds a DSN with `options=-c default_transaction_read_only=on` appended
+    /// so PostgreSQL enforces read-only at the session level without any stdout
+    /// output that would break CSV/count parsers.
+    fn read_only_dsn(dsn: &str) -> String {
+        let opt = "options=-c%20default_transaction_read_only%3Don";
+        if dsn.contains('?') {
+            format!("{}&{}", dsn, opt)
+        } else {
+            format!("{}?{}", dsn, opt)
+        }
+    }
+
     async fn run_psql_with_read_only(
         &self,
         dsn: &str,
@@ -92,13 +104,8 @@ impl PostgresAdapter {
         if !read_only {
             return self.run_psql(dsn, extra_args, query).await;
         }
-
-        // Concatenate SET + query in a single -c to keep a single command
-        // context. SET produces no stdout rows, so CSV/count parsers are safe.
-        // Two separate -c flags would output the SET response as a distinct
-        // result set, polluting stdout and breaking downstream parsers.
-        let combined = format!("SET default_transaction_read_only = on; {}", query);
-        self.run_psql(dsn, extra_args, &combined).await
+        let ro_dsn = Self::read_only_dsn(dsn);
+        self.run_psql(&ro_dsn, extra_args, query).await
     }
 
     pub(in crate::infra::adapters::postgres) async fn execute_query(
@@ -246,22 +253,22 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, MetadataError> {
+        let ro_dsn;
+        let effective_dsn = if read_only {
+            ro_dsn = Self::read_only_dsn(dsn);
+            &ro_dsn
+        } else {
+            dsn
+        };
+
         let mut cmd = Command::new("psql");
-        cmd.arg(dsn)
+        cmd.arg(effective_dsn)
             .arg("-X")
             .arg("-v")
             .arg("ON_ERROR_STOP=1")
-            .arg("--csv");
-
-        let combined_query;
-        let effective_query = if read_only {
-            combined_query = format!("SET default_transaction_read_only = on; {}", query);
-            &combined_query
-        } else {
-            query
-        };
-
-        cmd.arg("-c").arg(effective_query);
+            .arg("--csv")
+            .arg("-c")
+            .arg(query);
 
         let mut child = cmd
             .stdout(Stdio::piped())
@@ -345,6 +352,27 @@ impl PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::infra::adapters::postgres::PostgresAdapter;
+
+    mod read_only_dsn {
+        use super::*;
+
+        #[test]
+        fn appends_options_to_plain_dsn() {
+            let dsn = "postgres://localhost/mydb";
+            let result = PostgresAdapter::read_only_dsn(dsn);
+            assert!(result.starts_with(dsn));
+            assert!(result.contains("options=-c%20default_transaction_read_only%3Don"));
+            assert!(result.contains('?'));
+        }
+
+        #[test]
+        fn appends_with_ampersand_when_query_params_exist() {
+            let dsn = "postgres://localhost/mydb?sslmode=require";
+            let result = PostgresAdapter::read_only_dsn(dsn);
+            assert!(result.contains("sslmode=require"));
+            assert!(result.contains('&'));
+        }
+    }
 
     mod csv_parsing {
         #[test]
