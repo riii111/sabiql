@@ -183,11 +183,7 @@ pub fn reduce_query(
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
-                    state.ui.result_scroll_offset = 0;
-                    state.ui.result_horizontal_offset = 0;
-                    state.ui.result_selection.reset();
-                    state.cell_edit.clear();
-                    state.pending_write_preview = None;
+                    super::helpers::reset_result_view(state);
                     state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                     state.query.history_index = None;
                 }
@@ -1191,10 +1187,12 @@ mod tests {
         #[test]
         fn adhoc_success_writes_current_result_without_touching_history_index() {
             let mut state = create_test_state();
-            // Simulate scrolled preview state
+            // Simulate scrolled preview state with staged deletes
             state.ui.result_scroll_offset = 50;
             state.ui.result_horizontal_offset = 10;
             state.ui.result_selection.enter_row(5);
+            state.ui.staged_delete_rows.insert(0);
+            state.ui.staged_delete_rows.insert(2);
             let result = adhoc_result();
 
             reduce_query(
@@ -1217,10 +1215,11 @@ mod tests {
                 state.query.current_result.as_ref().unwrap().source,
                 QuerySource::Adhoc,
             );
-            // View state must be reset so the new result is visible from the top
+            // View state must be fully reset so the new result is visible from the top
             assert_eq!(state.ui.result_scroll_offset, 0);
             assert_eq!(state.ui.result_horizontal_offset, 0);
             assert_eq!(state.ui.result_selection.row(), None);
+            assert!(state.ui.staged_delete_rows.is_empty());
         }
 
         #[test]
