@@ -249,11 +249,7 @@ pub fn reduce_query(
                 state.query.start_time = None;
                 let is_adhoc = state.ui.input_mode == InputMode::SqlModal;
                 if !is_adhoc {
-                    state.ui.result_selection.reset();
-                    state.ui.result_scroll_offset = 0;
-                    state.ui.result_horizontal_offset = 0;
-                    state.cell_edit.clear();
-                    state.pending_write_preview = None;
+                    super::helpers::reset_result_view(state);
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                     state.query.pending_delete_refresh_target = None;
                 }
