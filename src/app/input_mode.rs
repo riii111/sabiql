@@ -13,4 +13,5 @@ pub enum InputMode {
     ConfirmDialog,
     ConnectionSelector,
     ErTablePicker,
+    QueryHistoryPicker,
 }

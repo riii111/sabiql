@@ -26,7 +26,7 @@ use crate::app::effect::Effect;
 use crate::app::effect_handlers;
 use crate::app::ports::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
-    FolderOpener, MetadataProvider, QueryExecutor, Renderer, ServiceFileReader,
+    FolderOpener, MetadataProvider, QueryExecutor, QueryHistoryStore, Renderer, ServiceFileReader,
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
@@ -43,6 +43,7 @@ pub struct EffectRunner {
     service_file_reader: Arc<dyn ServiceFileReader>,
     clipboard: Arc<dyn ClipboardWriter>,
     folder_opener: Arc<dyn FolderOpener>,
+    query_history_store: Arc<dyn QueryHistoryStore>,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 }
@@ -58,6 +59,7 @@ pub struct EffectRunnerBuilder {
     service_file_reader: Option<Arc<dyn ServiceFileReader>>,
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
+    query_history_store: Option<Arc<dyn QueryHistoryStore>>,
     metadata_cache: Option<TtlCache<String, Arc<DatabaseMetadata>>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
@@ -103,6 +105,10 @@ impl EffectRunnerBuilder {
         self.folder_opener = Some(v);
         self
     }
+    pub fn query_history_store(mut self, v: Arc<dyn QueryHistoryStore>) -> Self {
+        self.query_history_store = Some(v);
+        self
+    }
     pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
         self.metadata_cache = Some(v);
         self
@@ -128,6 +134,9 @@ impl EffectRunnerBuilder {
                 .expect("service_file_reader is required"),
             clipboard: self.clipboard.expect("clipboard is required"),
             folder_opener: self.folder_opener.expect("folder_opener is required"),
+            query_history_store: self
+                .query_history_store
+                .expect("query_history_store is required"),
             metadata_cache: self.metadata_cache.expect("metadata_cache is required"),
             action_tx: self.action_tx.expect("action_tx is required"),
         }
@@ -147,6 +156,7 @@ impl EffectRunner {
             service_file_reader: None,
             clipboard: None,
             folder_opener: None,
+            query_history_store: None,
             metadata_cache: None,
             action_tx: None,
         }
@@ -272,7 +282,14 @@ impl EffectRunner {
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }) => {
-                effect_handlers::query::run(e, &self.action_tx, &self.query_executor, state).await
+                effect_handlers::query::run(
+                    e,
+                    &self.action_tx,
+                    &self.query_executor,
+                    &self.query_history_store,
+                    state,
+                )
+                .await
             }
 
             e @ (Effect::GenerateErDiagramFromCache { .. }
@@ -290,6 +307,11 @@ impl EffectRunner {
                     completion_engine,
                 )
                 .await
+            }
+
+            e @ Effect::LoadQueryHistory { .. } => {
+                effect_handlers::query_history::run(e, &self.action_tx, &self.query_history_store)
+                    .await
             }
 
             e @ (Effect::CacheTableInCompletionEngine { .. }

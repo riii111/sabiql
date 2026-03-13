@@ -16,6 +16,7 @@ use crate::ui::features::overlays::confirm_dialog::ConfirmDialog;
 use crate::ui::features::overlays::help::HelpOverlay;
 use crate::ui::features::pickers::command_palette::CommandPalette;
 use crate::ui::features::pickers::er_table_picker::ErTablePicker;
+use crate::ui::features::pickers::query_history_picker::QueryHistoryPicker;
 use crate::ui::features::pickers::table_picker::TablePicker;
 use crate::ui::features::sql_modal::SqlModal;
 use crate::ui::shell::command_line::CommandLine;
@@ -50,6 +51,7 @@ impl MainLayout {
         match state.ui.input_mode {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::ErTablePicker => ErTablePicker::render(frame, state),
+            InputMode::QueryHistoryPicker => QueryHistoryPicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
             InputMode::SqlModal => SqlModal::render(frame, state),
