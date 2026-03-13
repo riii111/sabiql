@@ -181,12 +181,9 @@ pub fn reduce_query(
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
 
-                if result.source != QuerySource::Adhoc {
-                    state.ui.result_scroll_offset = 0;
-                    state.ui.result_horizontal_offset = 0;
-                    state.ui.result_selection.reset();
-                    state.cell_edit.clear();
-                    state.pending_write_preview = None;
+                let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
+                if !is_adhoc_error {
+                    super::helpers::reset_result_view(state);
                     state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                     state.query.history_index = None;
                 }
@@ -216,7 +213,7 @@ pub fn reduce_query(
                     }
                 }
 
-                if result.source != QuerySource::Adhoc {
+                if !result.is_error() || result.source != QuerySource::Adhoc {
                     state.query.current_result = Some(Arc::clone(result));
                 }
 
@@ -252,11 +249,7 @@ pub fn reduce_query(
                 state.query.start_time = None;
                 let is_adhoc = state.ui.input_mode == InputMode::SqlModal;
                 if !is_adhoc {
-                    state.ui.result_selection.reset();
-                    state.ui.result_scroll_offset = 0;
-                    state.ui.result_horizontal_offset = 0;
-                    state.cell_edit.clear();
-                    state.pending_write_preview = None;
+                    super::helpers::reset_result_view(state);
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                     state.query.pending_delete_refresh_target = None;
                 }
@@ -1185,6 +1178,99 @@ mod tests {
 
             // Pagination unchanged for adhoc
             assert_eq!(state.query.pagination.current_page, 3);
+        }
+
+        #[test]
+        fn adhoc_success_writes_current_result_without_touching_history_index() {
+            let mut state = create_test_state();
+            // Simulate scrolled preview state with staged deletes
+            state.ui.result_scroll_offset = 50;
+            state.ui.result_horizontal_offset = 10;
+            state.ui.result_selection.enter_row(5);
+            state.ui.staged_delete_rows.insert(0);
+            state.ui.staged_delete_rows.insert(2);
+            let result = adhoc_result();
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result,
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.result_history.len(), 1);
+            // history_index must stay None — setting it would trigger
+            // the history-browsing footer mode and break pane switching
+            assert_eq!(state.query.history_index, None);
+            assert!(state.query.current_result.is_some());
+            assert_eq!(
+                state.query.current_result.as_ref().unwrap().source,
+                QuerySource::Adhoc,
+            );
+            // View state must be fully reset so the new result is visible from the top
+            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.ui.result_horizontal_offset, 0);
+            assert_eq!(state.ui.result_selection.row(), None);
+            assert!(state.ui.staged_delete_rows.is_empty());
+        }
+
+        #[test]
+        fn adhoc_error_preserves_current_result_and_view_state() {
+            let mut state = create_test_state();
+            // Set a pre-existing preview result with scroll state
+            state.query.current_result = Some(preview_result(5));
+            state.ui.result_scroll_offset = 20;
+            state.ui.result_horizontal_offset = 5;
+            state.ui.result_selection.enter_row(3);
+            let result = adhoc_error_result();
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result,
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.result_history.is_empty());
+            assert_eq!(state.query.history_index, None);
+            // Previous preview result and view state must be preserved
+            assert_eq!(
+                state.query.current_result.as_ref().unwrap().source,
+                QuerySource::Preview,
+            );
+            assert_eq!(state.ui.result_scroll_offset, 20);
+            assert_eq!(state.ui.result_horizontal_offset, 5);
+            assert_eq!(state.ui.result_selection.row(), Some(3));
+        }
+
+        #[test]
+        fn preview_clears_history_index() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.query.result_history.push(adhoc_result());
+            state.query.history_index = Some(0);
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(5),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.history_index, None);
+            assert!(state.query.current_result.is_some());
         }
     }
 
