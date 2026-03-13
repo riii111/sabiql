@@ -29,6 +29,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
             }
+            Key::Char('o') if state.query.history_index.is_none() => {
+                return Action::OpenQueryHistoryPicker;
+            }
             Key::Char('e')
                 if state
                     .query
@@ -726,6 +729,15 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_o_opens_query_history_picker() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
+
+        assert!(matches!(result, Action::OpenQueryHistoryPicker));
+    }
+
+    #[test]
     fn ctrl_r_toggles_read_only() {
         let state = browse_state();
 
@@ -1108,6 +1120,19 @@ mod tests {
                 handle_normal_mode(combo(Key::Char('G')), &state),
                 Action::ResultScrollBottom
             ));
+        }
+
+        #[test]
+        fn ctrl_o_blocked_in_history_mode() {
+            let mut state = state_with_history(3);
+            state.query.history_index = Some(1);
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
+
+            assert!(
+                matches!(result, Action::None),
+                "^O should be blocked in history mode"
+            );
         }
 
         #[test]

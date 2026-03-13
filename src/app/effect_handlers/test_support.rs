@@ -80,6 +80,27 @@ impl crate::app::ports::FolderOpener for NoopFolderOpener {
     }
 }
 
+pub(crate) struct NoopQueryHistoryStore;
+#[async_trait::async_trait]
+impl crate::app::ports::QueryHistoryStore for NoopQueryHistoryStore {
+    async fn append(
+        &self,
+        _project_name: &str,
+        _connection_id: &crate::domain::ConnectionId,
+        _entry: &crate::domain::query_history::QueryHistoryEntry,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn load(
+        &self,
+        _project_name: &str,
+        _connection_id: &crate::domain::ConnectionId,
+    ) -> Result<Vec<crate::domain::query_history::QueryHistoryEntry>, String> {
+        Ok(Vec::new())
+    }
+}
+
 pub(crate) fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -98,6 +119,7 @@ pub(crate) fn make_runner(
         .service_file_reader(Arc::new(NoopServiceFileReader))
         .clipboard(Arc::new(NoopClipboardWriter))
         .folder_opener(Arc::new(NoopFolderOpener))
+        .query_history_store(Arc::new(NoopQueryHistoryStore))
         .metadata_cache(cache)
         .action_tx(action_tx)
         .build()

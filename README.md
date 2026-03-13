@@ -25,7 +25,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 ### Core
 
 - **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
-- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`
+- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`; recall previous queries with `Ctrl+O`
 - **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
 

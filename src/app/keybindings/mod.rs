@@ -80,6 +80,9 @@ pub const TABLE_PICKER: ModeBindings = ModeBindings {
 pub const ER_PICKER: ModeBindings = ModeBindings {
     rows: ER_PICKER_ROWS,
 };
+pub const QUERY_HISTORY_PICKER: ModeBindings = ModeBindings {
+    rows: QUERY_HISTORY_PICKER_ROWS,
+};
 pub const COMMAND_PALETTE: ModeBindings = ModeBindings {
     rows: COMMAND_PALETTE_ROWS,
 };
@@ -92,6 +95,7 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_ERROR", &CONNECTION_ERROR),
     ("TABLE_PICKER", &TABLE_PICKER),
     ("ER_PICKER", &ER_PICKER),
+    ("QUERY_HISTORY_PICKER", &QUERY_HISTORY_PICKER),
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
 ];
@@ -118,6 +122,7 @@ pub mod idx {
         pub const CSV_EXPORT: usize = 13;
         pub const READ_ONLY: usize = 14;
         pub const EXIT_READ_ONLY: usize = 15;
+        pub const QUERY_HISTORY: usize = 16;
     }
 
     pub mod footer_nav {
@@ -136,6 +141,7 @@ pub mod idx {
         pub const TAB: usize = 4;
         pub const COMPLETION_TRIGGER: usize = 5;
         pub const CLEAR: usize = 6;
+        pub const QUERY_HISTORY: usize = 7;
     }
 
     pub mod sql_modal_confirming {
@@ -192,6 +198,13 @@ pub mod idx {
         pub const NAVIGATE: usize = 3;
         pub const TYPE_FILTER: usize = 4;
         pub const ESC_CLOSE: usize = 5;
+    }
+
+    pub mod query_history_picker {
+        pub const ENTER_SELECT: usize = 0;
+        pub const NAVIGATE: usize = 1;
+        pub const TYPE_FILTER: usize = 2;
+        pub const ESC_CLOSE: usize = 3;
     }
 
     pub mod cmd_palette {
@@ -258,7 +271,7 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    18 + 17 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
+    19 + 18 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
@@ -270,6 +283,7 @@ pub const fn help_content_line_count() -> usize {
         + CONNECTION_ERROR_ROWS.len()
         + CONNECTION_SELECTOR_ROWS.len()
         + ER_PICKER_ROWS.len()
+        + QUERY_HISTORY_PICKER_ROWS.len()
         + TABLE_PICKER_ROWS.len()
         + COMMAND_PALETTE_ROWS.len()
         + HELP_ROWS.len()
@@ -328,6 +342,12 @@ pub fn is_read_only_toggle(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::READ_ONLY].combos.contains(combo)
 }
 
+pub fn is_query_history(combo: &KeyCombo) -> bool {
+    GLOBAL_KEYS[idx::global::QUERY_HISTORY]
+        .combos
+        .contains(combo)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,6 +371,7 @@ mod tests {
         assert!(idx::global::CSV_EXPORT < GLOBAL_KEYS.len());
         assert!(idx::global::READ_ONLY < GLOBAL_KEYS.len());
         assert!(idx::global::EXIT_READ_ONLY < GLOBAL_KEYS.len());
+        assert!(idx::global::QUERY_HISTORY < GLOBAL_KEYS.len());
 
         // FOOTER_NAV_KEYS
         assert!(idx::footer_nav::SCROLL < FOOTER_NAV_KEYS.len());
@@ -367,6 +388,7 @@ mod tests {
         assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::COMPLETION_TRIGGER < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
 
         // SQL_MODAL_CONFIRMING_KEYS
         assert!(idx::sql_modal_confirming::CONFIRM_EXECUTE < SQL_MODAL_CONFIRMING_KEYS.len());
@@ -415,6 +437,12 @@ mod tests {
         assert!(idx::er_picker::NAVIGATE < ER_PICKER_ROWS.len());
         assert!(idx::er_picker::TYPE_FILTER < ER_PICKER_ROWS.len());
         assert!(idx::er_picker::ESC_CLOSE < ER_PICKER_ROWS.len());
+
+        // QUERY_HISTORY_PICKER_ROWS
+        assert!(idx::query_history_picker::ENTER_SELECT < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::NAVIGATE < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::TYPE_FILTER < QUERY_HISTORY_PICKER_ROWS.len());
+        assert!(idx::query_history_picker::ESC_CLOSE < QUERY_HISTORY_PICKER_ROWS.len());
 
         // COMMAND_PALETTE_ROWS
         assert!(idx::cmd_palette::ENTER_EXECUTE < COMMAND_PALETTE_ROWS.len());
@@ -480,6 +508,7 @@ mod tests {
             CONNECTION_ERROR_ROWS.len(),
             CONNECTION_SELECTOR_ROWS.len(),
             ER_PICKER_ROWS.len(),
+            QUERY_HISTORY_PICKER_ROWS.len(),
             TABLE_PICKER_ROWS.len(),
             COMMAND_PALETTE_ROWS.len(),
             HELP_ROWS.len(),
@@ -515,6 +544,7 @@ mod tests {
         #[case(idx::global::CSV_EXPORT, Action::RequestCsvExport)]
         #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
+        #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
         fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
@@ -765,6 +795,15 @@ mod tests {
         }
 
         #[test]
+        fn query_history_picker_has_no_plain_char_combos() {
+            check_no_plain_char_in_filter_mode_rows(
+                QUERY_HISTORY_PICKER_ROWS,
+                "QUERY_HISTORY_PICKER_ROWS",
+                &[],
+            );
+        }
+
+        #[test]
         fn command_line_has_no_problematic_plain_char_combos() {
             check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
         }
@@ -815,7 +854,7 @@ mod tests {
         // HELP, CONNECTION_ERROR, TABLE_PICKER, ER_PICKER, COMMAND_PALETTE, CONNECTION_SELECTOR
         #[test]
         fn all_mode_bindings_count() {
-            assert_eq!(ALL_MODE_BINDINGS.len(), 6);
+            assert_eq!(ALL_MODE_BINDINGS.len(), 7);
         }
     }
 }

@@ -6,6 +6,7 @@ use super::connection_setup_state::ConnectionSetupState;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
 use super::query_execution::QueryExecution;
+use super::query_history_state::QueryHistoryPickerState;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
 use super::ui_state::UiState;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub cell_edit: CellEditState,
+    pub query_history_picker: QueryHistoryPickerState,
     pub pending_write_preview: Option<WritePreview>,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
@@ -58,6 +60,7 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             cell_edit: CellEditState::default(),
+            query_history_picker: QueryHistoryPickerState::default(),
             pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),

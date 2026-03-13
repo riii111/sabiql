@@ -22,8 +22,8 @@ use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
 use sabiql::error;
 use sabiql::infra::adapters::{
-    ArboardClipboard, FileConfigWriter, FsErLogWriter, NativeFolderOpener, PgServiceFileReader,
-    PostgresAdapter, TomlConnectionStore,
+    ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,
+    PgServiceFileReader, PostgresAdapter, TomlConnectionStore,
 };
 use sabiql::infra::config::project_root::{find_project_root, get_project_name};
 use sabiql::infra::export::DotExporter;
@@ -92,6 +92,7 @@ async fn main() -> Result<()> {
         .service_file_reader(Arc::clone(&service_file_reader))
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
+        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();

@@ -43,6 +43,10 @@ pub fn handle_sql_modal_keys(
         return Action::SqlModalSubmit;
     }
 
+    if ctrl && combo.key == Key::Char('o') {
+        return Action::OpenQueryHistoryPicker;
+    }
+
     if ctrl && combo.key == Key::Char(' ') {
         return Action::CompletionTrigger;
     }
@@ -250,6 +254,14 @@ mod tests {
         let result = handle_sql_modal_keys(combo_alt(Key::Enter), false, &SqlModalStatus::Editing);
 
         assert_action(result, Expected::SqlModalSubmit);
+    }
+
+    #[test]
+    fn ctrl_o_opens_query_history_picker() {
+        let result =
+            handle_sql_modal_keys(combo_ctrl(Key::Char('o')), false, &SqlModalStatus::Editing);
+
+        assert!(matches!(result, Action::OpenQueryHistoryPicker));
     }
 
     #[test]

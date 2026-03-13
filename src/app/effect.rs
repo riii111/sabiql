@@ -124,6 +124,11 @@ pub enum Effect {
         path: std::path::PathBuf,
     },
 
+    LoadQueryHistory {
+        project_name: String,
+        connection_id: crate::domain::ConnectionId,
+    },
+
     /// Executes effects in order. Each effect awaits before starting the next,
     /// but spawned async tasks (e.g., FetchMetadata) may complete out of order.
     Sequence(Vec<Effect>),

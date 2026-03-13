@@ -244,6 +244,63 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
+// Query History Picker
+// =============================================================================
+
+pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
+    // idx 0: ENTER_SELECT
+    ModeRow {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Select",
+        description: "Select query",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryConfirmSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
+    },
+    // idx 1: NAVIGATE
+    ModeRow {
+        key_short: "↑↓",
+        key: "↑↓",
+        desc_short: "Navigate",
+        description: "Navigate",
+        bindings: &[
+            ExecBinding {
+                action: Action::QueryHistorySelectNext,
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::QueryHistorySelectPrevious,
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+        ],
+    },
+    // idx 2: TYPE_FILTER
+    ModeRow {
+        key_short: "type",
+        key: "type",
+        desc_short: "Filter",
+        description: "Type to filter",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryFilterBackspace,
+            combos: &[KeyCombo::plain(Key::Backspace)],
+        }],
+    },
+    // idx 3: ESC_CLOSE
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close",
+        bindings: &[ExecBinding {
+            action: Action::CloseQueryHistoryPicker,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+];
+
+// =============================================================================
 // Command Palette
 // =============================================================================
 

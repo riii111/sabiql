@@ -153,6 +153,15 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleReadOnly,
         combos: &[KeyCombo::ctrl(Key::Char('r'))],
     },
+    // idx 16: QUERY_HISTORY
+    KeyBinding {
+        key_short: "^O",
+        key: "Ctrl+O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenQueryHistoryPicker,
+        combos: &[KeyCombo::ctrl(Key::Char('o'))],
+    },
 ];
 
 pub const NAVIGATION_KEYS: &[KeyBinding] = &[

@@ -345,6 +345,20 @@ pub enum Action {
     ErSelectAll,
     ErConfirmSelection,
 
+    // Query History Picker
+    OpenQueryHistoryPicker,
+    CloseQueryHistoryPicker,
+    QueryHistoryLoaded(
+        crate::domain::ConnectionId,
+        Vec<crate::domain::query_history::QueryHistoryEntry>,
+    ),
+    QueryHistoryLoadFailed(String),
+    QueryHistoryFilterInput(char),
+    QueryHistoryFilterBackspace,
+    QueryHistorySelectNext,
+    QueryHistorySelectPrevious,
+    QueryHistoryConfirmSelection,
+
     // CSV Export
     RequestCsvExport,
     CsvExportRowsCounted {
