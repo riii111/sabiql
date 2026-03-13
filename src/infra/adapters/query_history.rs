@@ -9,16 +9,35 @@ use crate::infra::config::cache::get_cache_dir;
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
 
-pub struct FileQueryHistoryStore;
+pub struct FileQueryHistoryStore {
+    base_dir: Option<PathBuf>,
+}
+
+impl Default for FileQueryHistoryStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl FileQueryHistoryStore {
-    fn history_path(project_name: &str, connection_id: &ConnectionId) -> Result<PathBuf, String> {
-        let cache_dir = get_cache_dir(project_name).map_err(|e| e.to_string())?;
-        let history_dir = cache_dir.join("history");
-        if !history_dir.exists() {
-            std::fs::create_dir_all(&history_dir).map_err(|e| e.to_string())?;
+    pub fn new() -> Self {
+        Self { base_dir: None }
+    }
+
+    #[cfg(test)]
+    fn with_base_dir(base_dir: PathBuf) -> Self {
+        Self {
+            base_dir: Some(base_dir),
         }
-        Ok(history_dir.join(format!("{}.jsonl", connection_id)))
+    }
+
+    fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, String> {
+        if let Some(base) = &self.base_dir {
+            Ok(base.join("history"))
+        } else {
+            let cache_dir = get_cache_dir(project_name).map_err(|e| e.to_string())?;
+            Ok(cache_dir.join("history"))
+        }
     }
 }
 
@@ -30,89 +49,14 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         connection_id: &ConnectionId,
         entry: &QueryHistoryEntry,
     ) -> Result<(), String> {
-        let path = Self::history_path(project_name, connection_id)?;
-
+        let history_dir = self.resolve_history_dir(project_name)?;
+        let path = history_dir.join(format!("{}.jsonl", connection_id));
         let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
 
-        use std::fs::OpenOptions;
-        use std::io::Write;
-
-        {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-                .map_err(|e| e.to_string())?;
-            writeln!(file, "{}", line).map_err(|e| e.to_string())?;
-        }
-
-        // Trim to MAX_HISTORY_ENTRIES if exceeded
-        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let lines: Vec<&str> = content.lines().collect();
-        if lines.len() > MAX_HISTORY_ENTRIES {
-            let trimmed = &lines[lines.len() - MAX_HISTORY_ENTRIES..];
-            let tmp_path = path.with_extension("jsonl.tmp");
-            std::fs::write(&tmp_path, trimmed.join("\n") + "\n").map_err(|e| e.to_string())?;
-            std::fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
-    }
-
-    async fn load(
-        &self,
-        project_name: &str,
-        connection_id: &ConnectionId,
-    ) -> Result<Vec<QueryHistoryEntry>, String> {
-        let path = Self::history_path(project_name, connection_id)?;
-
-        if !path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let entries: Vec<QueryHistoryEntry> = content
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect();
-
-        Ok(entries)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-    struct TempQueryHistoryStore {
-        base_dir: PathBuf,
-    }
-
-    impl TempQueryHistoryStore {
-        fn new(base_dir: PathBuf) -> Self {
-            Self { base_dir }
-        }
-
-        fn history_path(&self, connection_id: &ConnectionId) -> PathBuf {
-            let history_dir = self.base_dir.join("history");
+        tokio::task::spawn_blocking(move || {
             if !history_dir.exists() {
-                std::fs::create_dir_all(&history_dir).unwrap();
+                std::fs::create_dir_all(&history_dir).map_err(|e| e.to_string())?;
             }
-            history_dir.join(format!("{}.jsonl", connection_id))
-        }
-    }
-
-    #[async_trait]
-    impl QueryHistoryStore for TempQueryHistoryStore {
-        async fn append(
-            &self,
-            _project_name: &str,
-            connection_id: &ConnectionId,
-            entry: &QueryHistoryEntry,
-        ) -> Result<(), String> {
-            let path = self.history_path(connection_id);
-            let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
 
             use std::fs::OpenOptions;
             use std::io::Write;
@@ -126,6 +70,7 @@ mod tests {
                 writeln!(file, "{}", line).map_err(|e| e.to_string())?;
             }
 
+            // Trim to MAX_HISTORY_ENTRIES if exceeded
             let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let lines: Vec<&str> = content.lines().collect();
             if lines.len() > MAX_HISTORY_ENTRIES {
@@ -136,15 +81,20 @@ mod tests {
             }
 
             Ok(())
-        }
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
 
-        async fn load(
-            &self,
-            _project_name: &str,
-            connection_id: &ConnectionId,
-        ) -> Result<Vec<QueryHistoryEntry>, String> {
-            let path = self.history_path(connection_id);
+    async fn load(
+        &self,
+        project_name: &str,
+        connection_id: &ConnectionId,
+    ) -> Result<Vec<QueryHistoryEntry>, String> {
+        let history_dir = self.resolve_history_dir(project_name)?;
+        let path = history_dir.join(format!("{}.jsonl", connection_id));
 
+        tokio::task::spawn_blocking(move || {
             if !path.exists() {
                 return Ok(Vec::new());
             }
@@ -157,8 +107,16 @@ mod tests {
                 .collect();
 
             Ok(entries)
-        }
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
         QueryHistoryEntry::new(
@@ -171,13 +129,14 @@ mod tests {
     #[tokio::test]
     async fn append_creates_file_and_writes_entry() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
         let entry = make_entry("SELECT 1");
         store.append("test", &conn_id, &entry).await.unwrap();
 
-        let path = store.history_path(&conn_id);
+        let history_dir = tmp.path().join("history");
+        let path = history_dir.join(format!("{}.jsonl", conn_id));
         assert!(path.exists());
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -187,7 +146,7 @@ mod tests {
     #[tokio::test]
     async fn load_returns_entries_in_order() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
         store
@@ -214,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn append_trims_to_1000_when_exceeded() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
         // Write 1001 entries
@@ -236,7 +195,7 @@ mod tests {
     #[tokio::test]
     async fn load_nonexistent_file_returns_empty_vec() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("nonexistent");
 
         let entries = store.load("test", &conn_id).await.unwrap();
@@ -247,7 +206,7 @@ mod tests {
     #[tokio::test]
     async fn malformed_lines_are_skipped() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
         // Write a valid entry
@@ -257,7 +216,8 @@ mod tests {
             .unwrap();
 
         // Manually append a malformed line
-        let path = store.history_path(&conn_id);
+        let history_dir = tmp.path().join("history");
+        let path = history_dir.join(format!("{}.jsonl", conn_id));
         use std::fs::OpenOptions;
         use std::io::Write;
         let mut file = OpenOptions::new().append(true).open(&path).unwrap();
@@ -279,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn trim_failure_preserves_existing_history() {
         let tmp = TempDir::new().unwrap();
-        let store = TempQueryHistoryStore::new(tmp.path().to_path_buf());
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
         // Write some entries

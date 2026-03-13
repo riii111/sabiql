@@ -148,14 +148,12 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.query_history_picker.origin_mode = Some(origin);
             state.ui.input_mode = InputMode::QueryHistoryPicker;
 
-            if let Some(conn_id) = &state.runtime.active_connection_id {
-                Some(vec![Effect::LoadQueryHistory {
-                    project_name: state.runtime.project_name.clone(),
-                    connection_id: conn_id.clone(),
-                }])
-            } else {
-                Some(vec![])
-            }
+            // Guard above ensures active_connection_id is Some
+            let conn_id = state.runtime.active_connection_id.as_ref().unwrap();
+            Some(vec![Effect::LoadQueryHistory {
+                project_name: state.runtime.project_name.clone(),
+                connection_id: conn_id.clone(),
+            }])
         }
         Action::CloseQueryHistoryPicker => {
             let origin = state

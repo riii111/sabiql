@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
         .service_file_reader(Arc::clone(&service_file_reader))
         .clipboard(Arc::new(ArboardClipboard))
         .folder_opener(Arc::new(NativeFolderOpener))
-        .query_history_store(Arc::new(FileQueryHistoryStore))
+        .query_history_store(Arc::new(FileQueryHistoryStore::new()))
         .metadata_cache(metadata_cache.clone())
         .action_tx(action_tx.clone())
         .build();

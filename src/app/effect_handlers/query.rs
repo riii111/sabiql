@@ -47,17 +47,24 @@ fn utc_now_iso8601() -> String {
 
 fn save_query_history(
     query_history_store: &Arc<dyn QueryHistoryStore>,
+    action_tx: &mpsc::Sender<Action>,
     project_name: &str,
     connection_id: &crate::domain::ConnectionId,
     query: &str,
 ) {
     let store = Arc::clone(query_history_store);
+    let tx = action_tx.clone();
     let entry = QueryHistoryEntry::new(query.to_string(), utc_now_iso8601(), connection_id.clone());
     let project = project_name.to_string();
     let conn_id = connection_id.clone();
     tokio::spawn(async move {
         if let Err(e) = store.append(&project, &conn_id, &entry).await {
-            eprintln!("Failed to save query history: {}", e);
+            let _ = tx
+                .send(Action::QueryHistoryLoadFailed(format!(
+                    "Failed to save query history: {}",
+                    e
+                )))
+                .await;
         }
     });
 }
@@ -138,6 +145,7 @@ pub(crate) async fn run(
             if let Some(conn_id) = &_state.runtime.active_connection_id {
                 save_query_history(
                     query_history_store,
+                    action_tx,
                     &_state.runtime.project_name,
                     conn_id,
                     &query,
@@ -177,6 +185,7 @@ pub(crate) async fn run(
             if let Some(conn_id) = &_state.runtime.active_connection_id {
                 save_query_history(
                     query_history_store,
+                    action_tx,
                     &_state.runtime.project_name,
                     conn_id,
                     &query,

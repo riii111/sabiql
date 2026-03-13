@@ -12,15 +12,23 @@ pub struct QueryHistoryPicker;
 
 impl QueryHistoryPicker {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let filtered_count = state.query_history_picker.filtered_count();
         let filter_is_empty = state.query_history_picker.filter_input.content().is_empty();
         let filter_content = state
             .query_history_picker
             .filter_input
             .content()
             .to_string();
-        let selected_idx = state.query_history_picker.clamped_selected();
         let scroll_offset = state.query_history_picker.scroll_offset;
+        let raw_selected = state.query_history_picker.selected;
+
+        // Single fuzzy match per frame (W1)
+        let filtered = state.query_history_picker.filtered_entries();
+        let filtered_count = filtered.len();
+        let selected_idx = if filtered_count == 0 {
+            0
+        } else {
+            raw_selected.min(filtered_count - 1)
+        };
 
         let (_, inner) = render_modal(
             frame,
@@ -36,8 +44,6 @@ impl QueryHistoryPicker {
         let [filter_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
 
-        state.query_history_picker.pane_height = list_area.height;
-
         // Filter input with cursor
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
@@ -52,6 +58,8 @@ impl QueryHistoryPicker {
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
         if filtered_count == 0 {
+            drop(filtered);
+            state.query_history_picker.pane_height = list_area.height;
             let msg = if filter_is_empty {
                 "No history yet"
             } else {
@@ -66,7 +74,6 @@ impl QueryHistoryPicker {
         }
 
         // Build list items from filtered entries
-        let filtered = state.query_history_picker.filtered_entries();
         let items: Vec<ListItem> = filtered
             .iter()
             .enumerate()
@@ -80,7 +87,7 @@ impl QueryHistoryPicker {
                     query_display
                 };
 
-                let timestamp = &fe.entry.executed_at;
+                let timestamp = fe.entry.executed_at.as_str();
                 // executed_at is always ASCII ISO-8601, so byte slice is safe
                 let ts_short = if timestamp.len() >= 16 {
                     &timestamp[..16]
@@ -126,6 +133,9 @@ impl QueryHistoryPicker {
                 ListItem::new(Line::from(spans))
             })
             .collect();
+
+        drop(filtered);
+        state.query_history_picker.pane_height = list_area.height;
 
         let list = List::new(items)
             .highlight_style(
