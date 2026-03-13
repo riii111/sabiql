@@ -207,6 +207,8 @@ pub fn reduce_query(
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
                     state.query.result_history.push(Arc::clone(result));
+                    state.query.history_index =
+                        Some(state.query.result_history.len() - 1);
                 }
 
                 if let Some(page) = target_page {
@@ -1185,6 +1187,69 @@ mod tests {
 
             // Pagination unchanged for adhoc
             assert_eq!(state.query.pagination.current_page, 3);
+        }
+
+        #[test]
+        fn adhoc_success_sets_history_index_to_latest() {
+            let mut state = create_test_state();
+            let result = adhoc_result();
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result,
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.result_history.len(), 1);
+            assert_eq!(state.query.history_index, Some(0));
+            assert!(state.query.current_result.is_none());
+        }
+
+        #[test]
+        fn adhoc_error_does_not_set_history_index() {
+            let mut state = create_test_state();
+            let result = adhoc_error_result();
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result,
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.result_history.is_empty());
+            assert_eq!(state.query.history_index, None);
+        }
+
+        #[test]
+        fn preview_clears_history_index() {
+            let mut state = create_test_state();
+            state.cache.selection_generation = 1;
+            state.query.result_history.push(adhoc_result());
+            state.query.history_index = Some(0);
+
+            reduce_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    result: preview_result(5),
+                    generation: 1,
+                    target_page: Some(0),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.history_index, None);
+            assert!(state.query.current_result.is_some());
         }
     }
 
