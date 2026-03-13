@@ -180,7 +180,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistoryLoadFailed(msg) => {
-            state.messages.last_error = Some(msg.clone());
+            state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }
         Action::QueryHistoryFilterInput(c) => {
@@ -659,17 +659,19 @@ mod tests {
         }
 
         #[test]
-        fn load_failed_sets_error_message() {
+        fn load_failed_sets_error_with_expiry() {
             let mut state = connected_state();
+            let now = Instant::now();
 
             reduce_modal(
                 &mut state,
                 &Action::QueryHistoryLoadFailed("disk error".to_string()),
-                Instant::now(),
+                now,
             )
             .unwrap();
 
             assert_eq!(state.messages.last_error.as_deref(), Some("disk error"));
+            assert!(state.messages.expires_at.is_some());
         }
 
         #[test]

@@ -72,13 +72,16 @@ impl QueryHistoryPicker {
             .enumerate()
             .map(|(i, fe)| {
                 let query_display = fe.entry.query.replace('\n', " ");
-                let truncated = if query_display.len() > 120 {
-                    format!("{}...", &query_display[..117])
+                let char_len = query_display.chars().count();
+                let truncated = if char_len > 120 {
+                    let s: String = query_display.chars().take(117).collect();
+                    format!("{}...", s)
                 } else {
                     query_display
                 };
 
                 let timestamp = &fe.entry.executed_at;
+                // executed_at is always ASCII ISO-8601, so byte slice is safe
                 let ts_short = if timestamp.len() >= 16 {
                     &timestamp[..16]
                 } else {
