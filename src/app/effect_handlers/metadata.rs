@@ -16,17 +16,14 @@ pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    metadata_cache: &TtlCache<String, DatabaseMetadata>,
+    metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
         Effect::FetchMetadata { dsn } => {
             if let Some(cached) = metadata_cache.get(&dsn).await {
-                action_tx
-                    .send(Action::MetadataLoaded(Box::new(cached)))
-                    .await
-                    .ok();
+                action_tx.send(Action::MetadataLoaded(cached)).await.ok();
             } else {
                 let provider = Arc::clone(metadata_provider);
                 let cache = metadata_cache.clone();
@@ -35,10 +32,9 @@ pub(crate) async fn run(
                 tokio::spawn(async move {
                     match provider.fetch_metadata(&dsn).await {
                         Ok(metadata) => {
-                            cache.set(dsn, metadata.clone()).await;
-                            tx.send(Action::MetadataLoaded(Box::new(metadata)))
-                                .await
-                                .ok();
+                            let metadata = Arc::new(metadata);
+                            cache.set(dsn, Arc::clone(&metadata)).await;
+                            tx.send(Action::MetadataLoaded(metadata)).await.ok();
                         }
                         Err(e) => {
                             tx.send(Action::MetadataFailed(e.to_string())).await.ok();
@@ -188,8 +184,10 @@ mod tests {
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider.expect_fetch_metadata().never();
 
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
-            cache.set("dsn://test".to_string(), sample_metadata()).await;
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
+            cache
+                .set("dsn://test".to_string(), Arc::new(sample_metadata()))
+                .await;
 
             let (tx, mut rx) = mpsc::channel(8);
             let runner = make_runner(
@@ -236,7 +234,7 @@ mod tests {
                 .once()
                 .returning(|_| Ok(sample_metadata()));
 
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(mock_provider),
@@ -283,7 +281,7 @@ mod tests {
                 ))
             });
 
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(mock_provider),
@@ -351,7 +349,7 @@ mod tests {
                 .returning(|_, _, _| Ok(sample_table()));
             mock_provider.expect_fetch_table_detail_light().never();
 
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(mock_provider),
@@ -401,7 +399,7 @@ mod tests {
                 .once()
                 .returning(|_, _, _| Ok(sample_table()));
 
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(mock_provider),
@@ -447,9 +445,9 @@ mod tests {
 
         #[tokio::test]
         async fn invalidate_removes_cache_entry() {
-            let cache: TtlCache<String, DatabaseMetadata> = TtlCache::new(300);
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             cache
-                .set("dsn://target".to_string(), sample_metadata())
+                .set("dsn://target".to_string(), Arc::new(sample_metadata()))
                 .await;
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_some());

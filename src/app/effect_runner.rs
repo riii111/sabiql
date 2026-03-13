@@ -43,7 +43,7 @@ pub struct EffectRunner {
     service_file_reader: Arc<dyn ServiceFileReader>,
     clipboard: Arc<dyn ClipboardWriter>,
     folder_opener: Arc<dyn FolderOpener>,
-    metadata_cache: TtlCache<String, DatabaseMetadata>,
+    metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 }
 
@@ -58,7 +58,7 @@ pub struct EffectRunnerBuilder {
     service_file_reader: Option<Arc<dyn ServiceFileReader>>,
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
-    metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
+    metadata_cache: Option<TtlCache<String, Arc<DatabaseMetadata>>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
 
@@ -103,7 +103,7 @@ impl EffectRunnerBuilder {
         self.folder_opener = Some(v);
         self
     }
-    pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
+    pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
         self.metadata_cache = Some(v);
         self
     }

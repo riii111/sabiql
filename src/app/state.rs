@@ -205,6 +205,8 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::app::focused_pane::FocusedPane;
     use crate::domain::DatabaseMetadata;
@@ -270,7 +272,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_empty_filter_returns_all() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -278,7 +280,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
             fetched_at: std::time::Instant::now(),
-        });
+        }));
         state.ui.filter_input = "".to_string();
 
         let filtered = state.filtered_tables();
@@ -289,7 +291,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_matching_filter_returns_subset() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -297,7 +299,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
             fetched_at: std::time::Instant::now(),
-        });
+        }));
         state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
@@ -309,7 +311,7 @@ mod tests {
     #[test]
     fn filtered_tables_is_case_insensitive() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(DatabaseMetadata {
+        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![TableSummary::new(
@@ -319,7 +321,7 @@ mod tests {
                 false,
             )],
             fetched_at: std::time::Instant::now(),
-        });
+        }));
         state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();

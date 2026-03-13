@@ -84,7 +84,7 @@ pub(crate) fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn crate::app::ports::ConnectionStore>,
-    cache: TtlCache<String, DatabaseMetadata>,
+    cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
     EffectRunner::builder()

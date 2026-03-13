@@ -161,6 +161,8 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::app::action::ConnectionTarget;
 
@@ -477,7 +479,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
+                Action::MetadataLoaded(Arc::new(metadata)),
                 now,
                 &AppServices::stub(),
             );
@@ -505,7 +507,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
+                Action::MetadataLoaded(Arc::new(metadata)),
                 now,
                 &AppServices::stub(),
             );
@@ -710,8 +712,8 @@ mod tests {
             }
         }
 
-        fn users_metadata(now: Instant) -> DatabaseMetadata {
-            DatabaseMetadata {
+        fn users_metadata(now: Instant) -> Arc<DatabaseMetadata> {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![TableSummary::new(
@@ -721,7 +723,7 @@ mod tests {
                     false,
                 )],
                 fetched_at: now,
-            }
+            })
         }
 
         #[test]
@@ -856,7 +858,7 @@ mod tests {
             };
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
+                Action::MetadataLoaded(Arc::new(metadata)),
                 now,
                 &AppServices::stub(),
             );
@@ -904,12 +906,12 @@ mod tests {
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
-            });
+            }));
             state.sql_modal.prefetch_started = true;
             state
                 .er_preparation
@@ -929,12 +931,12 @@ mod tests {
         fn prefetch_started_true_emits_smart_refresh() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
-            });
+            }));
             state.sql_modal.prefetch_started = true;
             let now = Instant::now();
 
@@ -949,12 +951,12 @@ mod tests {
         fn no_prefetch_emits_smart_refresh() {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
-            });
+            }));
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1538,7 +1540,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
+                Action::MetadataLoaded(Arc::new(metadata)),
                 now,
                 &AppServices::stub(),
             );
@@ -1706,12 +1708,12 @@ mod tests {
             let cached = crate::app::connection_cache::ConnectionCache {
                 explorer_selected: 10,
                 inspector_tab: InspectorTab::Indexes,
-                metadata: Some(DatabaseMetadata {
+                metadata: Some(Arc::new(DatabaseMetadata {
                     database_name: "cached_db".to_string(),
                     schemas: vec![],
                     tables: vec![],
                     fetched_at: Instant::now(),
-                }),
+                })),
                 ..Default::default()
             };
             state.connection_caches.save(&conn_b, cached);
@@ -1746,7 +1748,7 @@ mod tests {
 
         fn state_with_metadata() -> AppState {
             let mut state = create_test_state();
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![
@@ -1754,7 +1756,7 @@ mod tests {
                     TableSummary::new("public".to_string(), "posts".to_string(), None, false),
                 ],
                 fetched_at: Instant::now(),
-            });
+            }));
             state
         }
 
@@ -1799,8 +1801,8 @@ mod tests {
             assert!(effects.is_empty());
         }
 
-        fn sample_metadata() -> Box<DatabaseMetadata> {
-            Box::new(DatabaseMetadata {
+        fn sample_metadata() -> Arc<DatabaseMetadata> {
+            Arc::new(DatabaseMetadata {
                 database_name: "test_db".to_string(),
                 schemas: vec![],
                 tables: vec![TableSummary::new(
@@ -2050,7 +2052,7 @@ mod tests {
             };
             reduce(
                 &mut state,
-                Action::MetadataLoaded(Box::new(metadata)),
+                Action::MetadataLoaded(Arc::new(metadata)),
                 now,
                 &AppServices::stub(),
             );
