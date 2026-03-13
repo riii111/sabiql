@@ -7,6 +7,17 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::build_pk_pairs;
 use crate::domain::{QueryResult, QuerySource};
 
+/// Resets all Result-pane view state (scroll, selection, staging, edit).
+/// Used whenever the displayed result changes (adhoc success, history nav, etc.)
+pub fn reset_result_view(state: &mut AppState) {
+    state.ui.result_scroll_offset = 0;
+    state.ui.result_horizontal_offset = 0;
+    state.ui.result_selection.reset();
+    state.cell_edit.clear();
+    state.ui.staged_delete_rows.clear();
+    state.pending_write_preview = None;
+}
+
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";

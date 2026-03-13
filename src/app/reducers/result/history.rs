@@ -1,15 +1,7 @@
 use crate::app::action::Action;
 use crate::app::effect::Effect;
+use crate::app::reducers::helpers::reset_result_view;
 use crate::app::state::AppState;
-
-fn reset_result_view(state: &mut AppState) {
-    state.ui.result_scroll_offset = 0;
-    state.ui.result_horizontal_offset = 0;
-    state.ui.result_selection.reset();
-    state.cell_edit.clear();
-    state.ui.staged_delete_rows.clear();
-    state.pending_write_preview = None;
-}
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {

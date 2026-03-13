@@ -62,6 +62,12 @@ Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順
 
 Result 系ロジックを navigation.rs に追加してはならない。
 
+## Result pane 表示切り替え時の不変条件
+
+- **view state リセットは `reset_result_view()` で一括実行すること**。scroll offset / selection / staged_delete_rows / pending_write_preview を個別に手書きしない。フィールド追加時の漏れを防ぐ。
+- **`history_index` は user-initiated な履歴閲覧（Ctrl+H）専用**。adhoc completion から直接 set すると footer が history-browsing モードに切り替わり、ペイン切り替え等の Normal キーバインドが効かなくなる。
+- **adhoc success → `current_result` に書いてよい**（Result pane に表示される）。**adhoc error → `current_result` に書かない**（`SqlModalContext.last_adhoc_error` に閉じ込め、既存 preview を保持する）。
+
 ## 新 Action 追加時
 
 1. `action.rs` に variant 追加
