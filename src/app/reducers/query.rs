@@ -181,7 +181,8 @@ pub fn reduce_query(
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
 
-                if result.source != QuerySource::Adhoc {
+                let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
+                if !is_adhoc_error {
                     state.ui.result_scroll_offset = 0;
                     state.ui.result_horizontal_offset = 0;
                     state.ui.result_selection.reset();
@@ -207,8 +208,6 @@ pub fn reduce_query(
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
                     state.query.result_history.push(Arc::clone(result));
-                    state.query.history_index =
-                        Some(state.query.result_history.len() - 1);
                 }
 
                 if let Some(page) = target_page {
@@ -218,7 +217,7 @@ pub fn reduce_query(
                     }
                 }
 
-                if result.source != QuerySource::Adhoc {
+                if !result.is_error() || result.source != QuerySource::Adhoc {
                     state.query.current_result = Some(Arc::clone(result));
                 }
 
@@ -1190,8 +1189,12 @@ mod tests {
         }
 
         #[test]
-        fn adhoc_success_sets_history_index_to_latest() {
+        fn adhoc_success_writes_current_result_without_touching_history_index() {
             let mut state = create_test_state();
+            // Simulate scrolled preview state
+            state.ui.result_scroll_offset = 50;
+            state.ui.result_horizontal_offset = 10;
+            state.ui.result_selection.enter_row(5);
             let result = adhoc_result();
 
             reduce_query(
@@ -1206,13 +1209,28 @@ mod tests {
             );
 
             assert_eq!(state.query.result_history.len(), 1);
-            assert_eq!(state.query.history_index, Some(0));
-            assert!(state.query.current_result.is_none());
+            // history_index must stay None — setting it would trigger
+            // the history-browsing footer mode and break pane switching
+            assert_eq!(state.query.history_index, None);
+            assert!(state.query.current_result.is_some());
+            assert_eq!(
+                state.query.current_result.as_ref().unwrap().source,
+                QuerySource::Adhoc,
+            );
+            // View state must be reset so the new result is visible from the top
+            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.ui.result_horizontal_offset, 0);
+            assert_eq!(state.ui.result_selection.row(), None);
         }
 
         #[test]
-        fn adhoc_error_does_not_set_history_index() {
+        fn adhoc_error_preserves_current_result_and_view_state() {
             let mut state = create_test_state();
+            // Set a pre-existing preview result with scroll state
+            state.query.current_result = Some(preview_result(5));
+            state.ui.result_scroll_offset = 20;
+            state.ui.result_horizontal_offset = 5;
+            state.ui.result_selection.enter_row(3);
             let result = adhoc_error_result();
 
             reduce_query(
@@ -1228,6 +1246,14 @@ mod tests {
 
             assert!(state.query.result_history.is_empty());
             assert_eq!(state.query.history_index, None);
+            // Previous preview result and view state must be preserved
+            assert_eq!(
+                state.query.current_result.as_ref().unwrap().source,
+                QuerySource::Preview,
+            );
+            assert_eq!(state.ui.result_scroll_offset, 20);
+            assert_eq!(state.ui.result_horizontal_offset, 5);
+            assert_eq!(state.ui.result_selection.row(), Some(3));
         }
 
         #[test]
