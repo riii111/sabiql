@@ -7,6 +7,7 @@ use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::query_execution::QueryStatus;
+use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
 /// Handles modal/overlay toggles and confirm dialog actions.
@@ -165,10 +166,21 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.query_history_picker.reset();
             Some(vec![])
         }
-        Action::QueryHistoryLoaded(entries) => {
+        Action::QueryHistoryLoaded(conn_id, entries) => {
+            // Only apply if the picker is still open for this connection
+            if state.ui.input_mode != InputMode::QueryHistoryPicker {
+                return Some(vec![]);
+            }
+            if state.runtime.active_connection_id.as_ref() != Some(conn_id) {
+                return Some(vec![]);
+            }
             state.query_history_picker.entries = entries.clone();
             state.query_history_picker.selected = 0;
             state.query_history_picker.scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::QueryHistoryLoadFailed(msg) => {
+            state.messages.last_error = Some(msg.clone());
             Some(vec![])
         }
         Action::QueryHistoryFilterInput(c) => {
@@ -218,7 +230,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.ui.input_mode = InputMode::SqlModal;
                     state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
                     state.sql_modal.content = query;
-                    state.sql_modal.cursor = state.sql_modal.content.len();
+                    state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state.sql_modal.completion.visible = false;
                     state.sql_modal.completion.candidates.clear();
                     state.sql_modal.completion.selected_index = 0;
@@ -227,7 +239,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     // Overwrite existing editor content
                     state.ui.input_mode = InputMode::SqlModal;
                     state.sql_modal.content = query;
-                    state.sql_modal.cursor = state.sql_modal.content.len();
+                    state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
                 }
                 _ => {
@@ -585,21 +597,79 @@ mod tests {
         #[test]
         fn loaded_stores_entries() {
             let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            let conn_id = ConnectionId::from_string("test-conn");
             let entries = vec![QueryHistoryEntry::new(
                 "SELECT 1".to_string(),
                 "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
+                conn_id.clone(),
             )];
 
             let effects = reduce_modal(
                 &mut state,
-                &Action::QueryHistoryLoaded(entries.clone()),
+                &Action::QueryHistoryLoaded(conn_id, entries.clone()),
                 Instant::now(),
             )
             .unwrap();
 
             assert_eq!(state.query_history_picker.entries.len(), 1);
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn loaded_ignores_stale_connection() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            let stale_conn = ConnectionId::from_string("old-conn");
+            let entries = vec![QueryHistoryEntry::new(
+                "SELECT 1".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                stale_conn.clone(),
+            )];
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoaded(stale_conn, entries),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.query_history_picker.entries.is_empty());
+        }
+
+        #[test]
+        fn loaded_ignores_when_picker_closed() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::Normal;
+            let conn_id = ConnectionId::from_string("test-conn");
+            let entries = vec![QueryHistoryEntry::new(
+                "SELECT 1".to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                conn_id.clone(),
+            )];
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoaded(conn_id, entries),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.query_history_picker.entries.is_empty());
+        }
+
+        #[test]
+        fn load_failed_sets_error_message() {
+            let mut state = connected_state();
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoadFailed("disk error".to_string()),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.messages.last_error.as_deref(), Some("disk error"));
         }
 
         #[test]
@@ -617,6 +687,31 @@ mod tests {
             assert_eq!(state.query_history_picker.selected, 0);
             assert_eq!(state.query_history_picker.filter_input.content(), "a");
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn confirm_sets_cursor_to_char_count_not_byte_len() {
+            let mut state = connected_state();
+            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+            // 「SELECT 'あいう'」: 13 chars but 19 bytes
+            let query = "SELECT '\u{3042}\u{3044}\u{3046}'".to_string();
+            let expected_chars = query.chars().count(); // 13
+            assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
+            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
+                query,
+                "2026-03-13T12:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+            )];
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryConfirmSelection,
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(state.sql_modal.cursor, expected_chars);
         }
 
         #[test]

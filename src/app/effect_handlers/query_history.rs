@@ -20,14 +20,21 @@ pub(crate) async fn run(
             let store = Arc::clone(query_history_store);
             let tx = action_tx.clone();
 
+            let conn_id = connection_id.clone();
             tokio::spawn(async move {
                 match store.load(&project_name, &connection_id).await {
                     Ok(entries) => {
-                        tx.send(Action::QueryHistoryLoaded(entries)).await.ok();
+                        tx.send(Action::QueryHistoryLoaded(conn_id, entries))
+                            .await
+                            .ok();
                     }
                     Err(e) => {
-                        eprintln!("Failed to load query history: {}", e);
-                        tx.send(Action::QueryHistoryLoaded(Vec::new())).await.ok();
+                        tx.send(Action::QueryHistoryLoadFailed(format!(
+                            "Failed to load query history: {}",
+                            e
+                        )))
+                        .await
+                        .ok();
                     }
                 }
             });

@@ -348,7 +348,11 @@ pub enum Action {
     // Query History Picker
     OpenQueryHistoryPicker,
     CloseQueryHistoryPicker,
-    QueryHistoryLoaded(Vec<crate::domain::query_history::QueryHistoryEntry>),
+    QueryHistoryLoaded(
+        crate::domain::ConnectionId,
+        Vec<crate::domain::query_history::QueryHistoryEntry>,
+    ),
+    QueryHistoryLoadFailed(String),
     QueryHistoryFilterInput(char),
     QueryHistoryFilterBackspace,
     QueryHistorySelectNext,
