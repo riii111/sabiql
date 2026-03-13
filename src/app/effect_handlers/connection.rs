@@ -19,7 +19,7 @@ pub(crate) async fn run(
     action_tx: &mpsc::Sender<Action>,
     dsn_builder: &Arc<dyn DsnBuilder>,
     metadata_provider: &Arc<dyn MetadataProvider>,
-    metadata_cache: &TtlCache<String, DatabaseMetadata>,
+    metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     connection_store: &Arc<dyn ConnectionStore>,
     service_file_reader: &Arc<dyn ServiceFileReader>,
     state: &mut AppState,
@@ -81,7 +81,7 @@ pub(crate) async fn run(
             tokio::spawn(async move {
                 match provider.fetch_metadata(&dsn).await {
                     Ok(metadata) => {
-                        cache.set(dsn.clone(), metadata).await;
+                        cache.set(dsn.clone(), Arc::new(metadata)).await;
                         match store.save(&profile) {
                             Ok(()) => {
                                 tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {

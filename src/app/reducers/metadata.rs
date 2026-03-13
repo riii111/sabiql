@@ -1,5 +1,6 @@
 //! Metadata sub-reducer: metadata loading, table detail, and prefetch.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::action::{Action, TableTarget};
@@ -55,7 +56,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
     match action {
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.tables.is_empty();
-            state.cache.metadata = Some(*metadata.clone());
+            state.cache.metadata = Some(Arc::clone(metadata));
             state.cache.state = MetadataState::Loaded;
             state.runtime.connection_state = ConnectionState::Connected;
 
@@ -750,8 +751,8 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(tables: Vec<(&str, &str)>) -> Box<DatabaseMetadata> {
-            Box::new(DatabaseMetadata {
+        fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: tables
@@ -861,16 +862,16 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
                 .collect();
-            DatabaseMetadata {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            }
+            })
         }
 
         #[test]

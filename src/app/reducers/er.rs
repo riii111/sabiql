@@ -1,5 +1,6 @@
 //! ER diagram sub-reducer.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
@@ -75,7 +76,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            state.cache.metadata = Some(*new_metadata.clone());
+            state.cache.metadata = Some(Arc::clone(new_metadata));
             state.er_preparation.last_signatures = new_signatures.clone();
             state.er_preparation.total_tables = new_metadata.tables.len();
 
@@ -126,8 +127,8 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            if let Some(md) = new_metadata.as_deref() {
-                state.cache.metadata = Some(md.clone());
+            if let Some(md) = new_metadata {
+                state.cache.metadata = Some(Arc::clone(md));
             }
 
             let Some(metadata) = &state.cache.metadata else {
@@ -206,16 +207,16 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
                 .collect();
-            DatabaseMetadata {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            }
+            })
         }
 
         #[test]
@@ -314,12 +315,12 @@ mod tests {
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Idle;
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
-            });
+            }));
             state.er_preparation.target_tables = vec!["public.users".to_string()];
 
             let effects =
@@ -352,16 +353,16 @@ mod tests {
 
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
                 .collect();
-            DatabaseMetadata {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            }
+            })
         }
 
         #[test]
@@ -373,7 +374,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(2)),
+                new_metadata: make_metadata(2),
                 stale_tables: vec![],
                 added_tables: vec![],
                 removed_tables: vec![],
@@ -399,7 +400,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(2)),
+                new_metadata: make_metadata(2),
                 stale_tables: vec!["public.users".to_string()],
                 added_tables: vec![],
                 removed_tables: vec![],
@@ -430,7 +431,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(3)),
+                new_metadata: make_metadata(3),
                 stale_tables: vec![],
                 added_tables: vec!["public.new_table".to_string()],
                 removed_tables: vec![],
@@ -456,7 +457,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(1)),
+                new_metadata: make_metadata(1),
                 stale_tables: vec![],
                 added_tables: vec![],
                 removed_tables: vec!["public.dropped".to_string()],
@@ -482,7 +483,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(2)),
+                new_metadata: make_metadata(2),
                 stale_tables: vec![],
                 added_tables: vec![],
                 removed_tables: vec![],
@@ -507,7 +508,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 3,
-                new_metadata: Box::new(make_metadata(0)),
+                new_metadata: make_metadata(0),
                 stale_tables: vec![],
                 added_tables: vec![],
                 removed_tables: vec![],
@@ -534,7 +535,7 @@ mod tests {
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
-                new_metadata: Box::new(make_metadata(5)),
+                new_metadata: make_metadata(5),
                 stale_tables: vec![],
                 added_tables: vec![],
                 removed_tables: vec![],
@@ -553,16 +554,16 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(table_count: usize) -> DatabaseMetadata {
+        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
                 .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
                 .collect();
-            DatabaseMetadata {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            }
+            })
         }
 
         #[test]
@@ -688,7 +689,7 @@ mod tests {
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
                     error: "sig fetch failed".to_string(),
-                    new_metadata: Some(Box::new(make_metadata(20))),
+                    new_metadata: Some(make_metadata(20)),
                 }),
                 Instant::now(),
             )

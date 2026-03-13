@@ -162,10 +162,11 @@ pub(crate) async fn run(
                 let new_sigs_vec = match provider.fetch_table_signatures(&dsn).await {
                     Ok(s) => s,
                     Err(e) => {
+                        let new_metadata = Arc::new(new_metadata);
                         tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                             run_id,
                             error: e.to_string(),
-                            new_metadata: Some(Box::new(new_metadata)),
+                            new_metadata: Some(Arc::clone(&new_metadata)),
                         }))
                         .await
                         .ok();
@@ -208,7 +209,7 @@ pub(crate) async fn run(
 
                 tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {
                     run_id,
-                    new_metadata: Box::new(new_metadata),
+                    new_metadata: Arc::new(new_metadata),
                     stale_tables,
                     added_tables,
                     removed_tables,

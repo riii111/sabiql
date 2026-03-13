@@ -22,7 +22,7 @@ pub enum CursorMove {
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshResult {
     pub run_id: u64,
-    pub new_metadata: Box<DatabaseMetadata>,
+    pub new_metadata: Arc<DatabaseMetadata>,
     pub stale_tables: Vec<String>,
     pub added_tables: Vec<String>,
     pub removed_tables: Vec<String>,
@@ -34,7 +34,7 @@ pub struct SmartErRefreshResult {
 pub struct SmartErRefreshError {
     pub run_id: u64,
     pub error: String,
-    pub new_metadata: Option<Box<DatabaseMetadata>>,
+    pub new_metadata: Option<Arc<DatabaseMetadata>>,
 }
 
 #[derive(Debug, Clone)]
@@ -177,7 +177,7 @@ pub enum Action {
     // Metadata loading
     LoadMetadata,
     ReloadMetadata,
-    MetadataLoaded(Box<DatabaseMetadata>),
+    MetadataLoaded(Arc<DatabaseMetadata>),
     MetadataFailed(String),
 
     // Table detail loading
