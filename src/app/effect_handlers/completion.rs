@@ -47,7 +47,8 @@ pub(crate) async fn run(
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare(content, cursor);
-                let missing = engine.missing_tables_prepared(&prep, state.cache.metadata.as_ref());
+                let missing =
+                    engine.missing_tables_prepared(&prep, state.cache.metadata.as_deref());
                 (prep, missing)
             };
 
@@ -75,7 +76,7 @@ pub(crate) async fn run(
                     content,
                     cursor,
                     &prep,
-                    state.cache.metadata.as_ref(),
+                    state.cache.metadata.as_deref(),
                     state.cache.table_detail.as_ref(),
                     &recent_cols,
                 );

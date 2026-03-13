@@ -2046,8 +2046,8 @@ mod tests {
         use crate::app::reducers::metadata::reduce_metadata;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        fn make_metadata(tables: Vec<(&str, &str)>) -> Box<DatabaseMetadata> {
-            Box::new(DatabaseMetadata {
+        fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
+            Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: tables

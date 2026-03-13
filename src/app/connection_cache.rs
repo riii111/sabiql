@@ -11,7 +11,7 @@ use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCache {
-    pub metadata: Option<DatabaseMetadata>,
+    pub metadata: Option<Arc<DatabaseMetadata>>,
     pub table_detail: Option<Table>,
     pub current_table: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
@@ -122,7 +122,7 @@ mod tests {
         let mut store = ConnectionCacheStore::new();
         let id = ConnectionId::new();
 
-        let metadata = DatabaseMetadata {
+        let metadata = Arc::new(DatabaseMetadata {
             database_name: "test_db".to_string(),
             schemas: vec![],
             tables: vec![TableSummary::new(
@@ -132,7 +132,7 @@ mod tests {
                 false,
             )],
             fetched_at: Instant::now(),
-        };
+        });
 
         let cache = ConnectionCache {
             metadata: Some(metadata.clone()),

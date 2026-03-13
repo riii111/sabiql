@@ -53,7 +53,7 @@ mod table_explorer {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -70,7 +70,7 @@ mod table_explorer {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
@@ -87,7 +87,7 @@ mod table_explorer {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
@@ -104,7 +104,7 @@ mod table_explorer {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.messages.last_error = Some("Connection failed: timeout".to_string());
@@ -121,7 +121,7 @@ mod table_explorer {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -142,7 +142,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::SqlModal;
         state.sql_modal.content = "SELECT * FROM us".to_string();
@@ -316,7 +316,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::Help;
 
@@ -331,7 +331,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::CommandPalette;
 
@@ -346,7 +346,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::TablePicker;
         state.ui.filter_input = "user".to_string();
@@ -362,7 +362,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::CommandLine;
         state.command_line_input = "sql".to_string();
@@ -426,7 +426,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -452,7 +452,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::ErTablePicker;
 
@@ -467,7 +467,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::ErTablePicker;
         state.ui.er_filter_input = "user".to_string();
@@ -483,7 +483,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::ErTablePicker;
         state
@@ -502,7 +502,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::ErTablePicker;
         state
@@ -525,7 +525,7 @@ mod er_diagram {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.input_mode = InputMode::ErTablePicker;
         state
@@ -948,7 +948,7 @@ mod confirm_dialogs {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.ui.input_mode = InputMode::ConfirmDialog;
@@ -972,7 +972,7 @@ mod confirm_dialogs {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
 
@@ -1021,7 +1021,7 @@ mod confirm_dialogs {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
 
@@ -1067,7 +1067,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1085,7 +1085,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1103,7 +1103,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1121,7 +1121,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1142,7 +1142,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1160,7 +1160,7 @@ mod inspector {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1187,7 +1187,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1206,7 +1206,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1226,7 +1226,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1252,7 +1252,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1275,7 +1275,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1298,7 +1298,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1324,7 +1324,7 @@ mod result_pane {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1363,7 +1363,7 @@ mod result_history {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
         state.cache.table_detail = Some(fixtures::sample_table_detail());
@@ -1386,7 +1386,7 @@ mod result_history {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1426,7 +1426,7 @@ mod result_history {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1452,7 +1452,7 @@ mod result_history {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1477,7 +1477,7 @@ mod result_history {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.ui.set_explorer_selection(Some(0));
 
@@ -1519,7 +1519,7 @@ mod style_assertions {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
@@ -1551,7 +1551,7 @@ mod style_assertions {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
@@ -1583,7 +1583,7 @@ mod style_assertions {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
@@ -1609,7 +1609,7 @@ mod style_assertions {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.ui.input_mode = InputMode::Help;
 
@@ -1629,7 +1629,7 @@ mod style_assertions {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.cache.metadata = Some(fixtures::sample_metadata(now));
+        state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
         state.ui.input_mode = InputMode::Help;
 

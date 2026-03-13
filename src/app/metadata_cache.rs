@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use crate::domain::{DatabaseMetadata, MetadataState, Table, TableSummary};
 
 #[derive(Debug, Clone, Default)]
 pub struct MetadataCache {
     pub state: MetadataState,
-    pub metadata: Option<DatabaseMetadata>,
+    pub metadata: Option<Arc<DatabaseMetadata>>,
     pub table_detail: Option<Table>,
     pub current_table: Option<String>,
     pub selection_generation: u64,
@@ -45,7 +47,7 @@ mod tests {
     #[test]
     fn tables_returns_all_when_metadata_exists() {
         let cache = MetadataCache {
-            metadata: Some(DatabaseMetadata {
+            metadata: Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![
@@ -53,7 +55,7 @@ mod tests {
                     TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
                 ],
                 fetched_at: std::time::Instant::now(),
-            }),
+            })),
             ..Default::default()
         };
 

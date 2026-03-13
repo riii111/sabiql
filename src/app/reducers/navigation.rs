@@ -1080,6 +1080,7 @@ mod tests {
     mod explorer_page_scroll {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use std::sync::Arc;
 
         fn state_with_tables(count: usize, pane_height: u16) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -1090,12 +1091,12 @@ mod tests {
                     TableSummary::new("public".to_string(), format!("table_{}", i), Some(0), false)
                 })
                 .collect();
-            state.cache.metadata = Some(DatabaseMetadata {
+            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            });
+            }));
             state.ui.set_explorer_selection(Some(0));
             state
         }

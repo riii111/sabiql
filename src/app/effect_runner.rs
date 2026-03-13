@@ -44,7 +44,7 @@ pub struct EffectRunner {
     clipboard: Arc<dyn ClipboardWriter>,
     folder_opener: Arc<dyn FolderOpener>,
     query_history_store: Arc<dyn QueryHistoryStore>,
-    metadata_cache: TtlCache<String, DatabaseMetadata>,
+    metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 }
 
@@ -60,7 +60,7 @@ pub struct EffectRunnerBuilder {
     clipboard: Option<Arc<dyn ClipboardWriter>>,
     folder_opener: Option<Arc<dyn FolderOpener>>,
     query_history_store: Option<Arc<dyn QueryHistoryStore>>,
-    metadata_cache: Option<TtlCache<String, DatabaseMetadata>>,
+    metadata_cache: Option<TtlCache<String, Arc<DatabaseMetadata>>>,
     action_tx: Option<mpsc::Sender<Action>>,
 }
 
@@ -109,7 +109,7 @@ impl EffectRunnerBuilder {
         self.query_history_store = Some(v);
         self
     }
-    pub fn metadata_cache(mut self, v: TtlCache<String, DatabaseMetadata>) -> Self {
+    pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
         self.metadata_cache = Some(v);
         self
     }
