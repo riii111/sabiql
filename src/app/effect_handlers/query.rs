@@ -97,17 +97,20 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
 /// `correct_command_tag` only fires on `Select(_)` tags, but multi-statement
 /// aggregation may have already replaced the CTAS `Select` with another tag.
 fn correct_aggregate_tag(query: &str, tag: CommandTag) -> CommandTag {
+    // Rolled-back transactions have no effect — skip CTAS correction too.
+    if matches!(tag, CommandTag::Rollback) {
+        return tag;
+    }
+
     let stmts = split_statements(query);
     if stmts.len() <= 1 {
         return statement_classifier::correct_command_tag(query, tag);
     }
 
-    // If the aggregated tag is already schema-modifying, no correction needed.
     if tag.is_schema_modifying() {
         return tag;
     }
 
-    // Check if any individual statement is CTAS / SELECT INTO.
     for stmt in &stmts {
         let corrected = statement_classifier::correct_command_tag(stmt, CommandTag::Select(0));
         if corrected.is_schema_modifying() {
@@ -392,6 +395,13 @@ mod tests {
             let query = "INSERT INTO users VALUES (1); UPDATE users SET x = 2 WHERE id = 1";
             let result = correct_aggregate_tag(query, CommandTag::Update(2));
             assert_eq!(result, CommandTag::Update(2));
+        }
+
+        #[test]
+        fn rollback_tag_skips_ctas_correction() {
+            let query = "BEGIN; CREATE TABLE backup AS SELECT * FROM users; ROLLBACK";
+            let result = correct_aggregate_tag(query, CommandTag::Rollback);
+            assert_eq!(result, CommandTag::Rollback);
         }
     }
 

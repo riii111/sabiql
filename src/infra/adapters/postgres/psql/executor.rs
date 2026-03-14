@@ -652,10 +652,33 @@ mod tests {
             );
         }
 
+        #[rstest]
+        #[case::begin_update_rollback("BEGIN\nUPDATE 1\nROLLBACK", Some(CommandTag::Rollback))]
+        #[case::begin_create_rollback("BEGIN\nCREATE TABLE\nROLLBACK", Some(CommandTag::Rollback))]
+        fn rolled_back_txn_returns_rollback(
+            #[case] stdout: &str,
+            #[case] expected: Option<CommandTag>,
+        ) {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                expected
+            );
+        }
+
+        #[test]
+        fn rollback_then_insert_returns_insert() {
+            // INSERT outside the transaction still took effect.
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nROLLBACK\nINSERT 0 1"
+                ),
+                Some(CommandTag::Insert(1))
+            );
+        }
+
         #[test]
         fn select_and_delete_returns_delete() {
             // CTAS returns "SELECT n" from psql; correct_command_tag (app layer) fixes it later.
-            // At the parser level, Delete is the refresh-worthy tag.
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag("SELECT 5\nDELETE 1"),
                 Some(CommandTag::Delete(1))

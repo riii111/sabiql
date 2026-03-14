@@ -500,15 +500,50 @@ impl PostgresAdapter {
             return None;
         }
 
-        // schema-modifying > data-modifying > last
-        // TCL (BEGIN/COMMIT/ROLLBACK) is skipped since it carries no refresh semantics.
-        if let Some(t) = tags.iter().find(|t| t.is_schema_modifying()) {
+        // Discard tags inside rolled-back transactions — those changes never took effect.
+        let effective = Self::discard_rolled_back(&tags);
+
+        if let Some(t) = effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(t.clone());
         }
-        if let Some(t) = tags.iter().rev().find(|t| t.needs_refresh()) {
+        if let Some(t) = effective.iter().rev().find(|t| t.needs_refresh()) {
             return Some(t.clone());
         }
+        // All effective tags are non-refresh (e.g. pure ROLLBACK) — return last for display.
         tags.into_iter().last()
+    }
+
+    fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
+        let mut effective: Vec<CommandTag> = Vec::new();
+        let mut txn_buf: Vec<CommandTag> = Vec::new();
+        let mut in_txn = false;
+
+        for tag in tags {
+            match tag {
+                CommandTag::Begin => {
+                    in_txn = true;
+                    txn_buf.clear();
+                }
+                CommandTag::Commit => {
+                    effective.append(&mut txn_buf);
+                    in_txn = false;
+                }
+                CommandTag::Rollback => {
+                    txn_buf.clear();
+                    in_txn = false;
+                }
+                other => {
+                    if in_txn {
+                        txn_buf.push(other.clone());
+                    } else {
+                        effective.push(other.clone());
+                    }
+                }
+            }
+        }
+        // Unclosed transaction (no COMMIT/ROLLBACK) — treat as effective.
+        effective.extend(txn_buf);
+        effective
     }
 }
 
