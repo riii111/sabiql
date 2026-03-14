@@ -457,9 +457,10 @@ impl PostgresAdapter {
                 Some(CommandTag::Alter(obj.to_string()))
             }
             "TRUNCATE" => Some(CommandTag::Truncate),
-            "BEGIN" => Some(CommandTag::Begin),
+            "BEGIN" | "START" => Some(CommandTag::Begin),
             "COMMIT" => Some(CommandTag::Commit),
             "ROLLBACK" => Some(CommandTag::Rollback),
+            "SAVEPOINT" | "RELEASE" => Some(CommandTag::Other(trimmed.to_string())),
             _ => Some(CommandTag::Other(trimmed.to_string())),
         }
     }
@@ -491,8 +492,13 @@ impl PostgresAdapter {
                 continue;
             }
             let tag = Self::parse_command_tag(trimmed)?;
-            if matches!(tag, CommandTag::Other(_)) {
-                return None;
+            if let CommandTag::Other(ref s) = tag {
+                // Known TCL variants (SAVEPOINT, RELEASE) are safe to skip.
+                // Unknown Other tags likely indicate CSV data — abort aggregation.
+                if !Self::is_known_tcl_tag(s) {
+                    return None;
+                }
+                continue;
             }
             tags.push(tag);
         }
@@ -511,6 +517,11 @@ impl PostgresAdapter {
         }
         // All effective tags are non-refresh (e.g. pure ROLLBACK) — return last for display.
         tags.into_iter().last()
+    }
+
+    fn is_known_tcl_tag(s: &str) -> bool {
+        let first = s.split_whitespace().next().unwrap_or("");
+        matches!(first, "SAVEPOINT" | "RELEASE")
     }
 
     fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {

@@ -693,5 +693,23 @@ mod tests {
                 None
             );
         }
+
+        #[test]
+        fn start_transaction_treated_as_begin() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("START TRANSACTION\nUPDATE 1\nCOMMIT"),
+                Some(CommandTag::Update(1))
+            );
+        }
+
+        #[test]
+        fn savepoint_and_release_skipped_in_aggregation() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSAVEPOINT\nUPDATE 1\nRELEASE\nCOMMIT"
+                ),
+                Some(CommandTag::Update(1))
+            );
+        }
     }
 }
