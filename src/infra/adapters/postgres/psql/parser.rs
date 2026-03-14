@@ -474,8 +474,8 @@ impl PostgresAdapter {
             .and_then(Self::parse_command_tag)
     }
 
-    /// Prioritizes schema-modifying tags so that multi-statement DDL
-    /// (e.g. `DROP TABLE …; DELETE …`) triggers metadata refresh.
+    /// Picks the most refresh-worthy tag so that `try_adhoc_refresh` triggers
+    /// the right level of cache invalidation for multi-statement batches.
     pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
         stdout: &str,
     ) -> Option<CommandTag> {
@@ -500,7 +500,12 @@ impl PostgresAdapter {
             return None;
         }
 
+        // schema-modifying > data-modifying > last
+        // TCL (BEGIN/COMMIT/ROLLBACK) is skipped since it carries no refresh semantics.
         if let Some(t) = tags.iter().find(|t| t.is_schema_modifying()) {
+            return Some(t.clone());
+        }
+        if let Some(t) = tags.iter().rev().find(|t| t.needs_refresh()) {
             return Some(t.clone());
         }
         tags.into_iter().last()

@@ -626,13 +626,39 @@ mod tests {
         #[rstest]
         #[case::insert_and_update("INSERT 0 1\nUPDATE 3", Some(CommandTag::Update(3)))]
         #[case::three_dml("DELETE 2\nINSERT 0 3\nUPDATE 1", Some(CommandTag::Update(1)))]
-        fn multi_line_dml_only_returns_last_tag(
+        fn multi_line_dml_only_returns_last_dml_tag(
             #[case] stdout: &str,
             #[case] expected: Option<CommandTag>,
         ) {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(stdout),
                 expected
+            );
+        }
+
+        #[rstest]
+        #[case::begin_update_commit("BEGIN\nUPDATE 1\nCOMMIT", Some(CommandTag::Update(1)))]
+        #[case::begin_insert_delete_commit(
+            "BEGIN\nINSERT 0 3\nDELETE 2\nCOMMIT",
+            Some(CommandTag::Delete(2))
+        )]
+        fn tcl_wrapped_dml_returns_refresh_worthy_tag(
+            #[case] stdout: &str,
+            #[case] expected: Option<CommandTag>,
+        ) {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                expected
+            );
+        }
+
+        #[test]
+        fn select_and_delete_returns_delete() {
+            // CTAS returns "SELECT n" from psql; correct_command_tag (app layer) fixes it later.
+            // At the parser level, Delete is the refresh-worthy tag.
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("SELECT 5\nDELETE 1"),
+                Some(CommandTag::Delete(1))
             );
         }
 
