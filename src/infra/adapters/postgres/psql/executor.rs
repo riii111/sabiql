@@ -713,14 +713,13 @@ mod tests {
         }
 
         #[test]
-        fn rollback_with_savepoints_still_discards() {
-            // psql can't distinguish ROLLBACK from ROLLBACK TO SAVEPOINT,
-            // so we always treat it as full abort — may require manual refresh.
+        fn rollback_with_savepoints_returns_rollback() {
+            // ROLLBACK discards all buffered tags; empty effective → Rollback.
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT"
                 ),
-                Some(CommandTag::Commit)
+                Some(CommandTag::Rollback)
             );
         }
     }

@@ -403,6 +403,15 @@ mod tests {
             let result = correct_aggregate_tag(query, CommandTag::Rollback);
             assert_eq!(result, CommandTag::Rollback);
         }
+
+        #[test]
+        fn rollback_from_savepoint_ctas_skips_correction() {
+            // Parser returns Rollback when effective set is empty (all changes discarded).
+            // correct_aggregate_tag must not override with CTAS Create.
+            let query = "BEGIN; SAVEPOINT s; CREATE TABLE backup AS SELECT * FROM users; ROLLBACK TO SAVEPOINT s; COMMIT";
+            let result = correct_aggregate_tag(query, CommandTag::Rollback);
+            assert_eq!(result, CommandTag::Rollback);
+        }
     }
 
     mod execute_preview {

@@ -508,13 +508,18 @@ impl PostgresAdapter {
 
         let effective = Self::discard_rolled_back(&tags);
 
+        // No changes took effect — signal no-refresh so downstream
+        // (correct_aggregate_tag) doesn't override with CTAS correction.
+        if effective.is_empty() {
+            return Some(CommandTag::Rollback);
+        }
+
         if let Some(t) = effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(t.clone());
         }
         if let Some(t) = effective.iter().rev().find(|t| t.needs_refresh()) {
             return Some(t.clone());
         }
-        // All effective tags are non-refresh (e.g. pure ROLLBACK) — return last for display.
         tags.into_iter().last()
     }
 
