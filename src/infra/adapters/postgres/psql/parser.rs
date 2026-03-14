@@ -486,7 +486,6 @@ impl PostgresAdapter {
         }
 
         let mut tags: Vec<CommandTag> = Vec::new();
-        let mut has_savepoint = false;
         for line in stdout.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -499,7 +498,6 @@ impl PostgresAdapter {
                 if !Self::is_known_tcl_tag(s) {
                     return None;
                 }
-                has_savepoint = true;
                 continue;
             }
             tags.push(tag);
@@ -508,7 +506,7 @@ impl PostgresAdapter {
             return None;
         }
 
-        let effective = Self::discard_rolled_back(&tags, has_savepoint);
+        let effective = Self::discard_rolled_back(&tags);
 
         if let Some(t) = effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(t.clone());
@@ -525,9 +523,9 @@ impl PostgresAdapter {
         matches!(first, "SAVEPOINT" | "RELEASE")
     }
 
-    /// When `has_savepoint` is true, psql's `ROLLBACK` tag might be a partial
-    /// `ROLLBACK TO SAVEPOINT` rather than a full abort — so we keep the buffer.
-    fn discard_rolled_back(tags: &[CommandTag], has_savepoint: bool) -> Vec<CommandTag> {
+    /// psql cannot distinguish ROLLBACK from ROLLBACK TO SAVEPOINT,
+    /// so we always treat it as full abort (user can press `r` if needed).
+    fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         let mut effective: Vec<CommandTag> = Vec::new();
         let mut txn_buf: Vec<CommandTag> = Vec::new();
         let mut in_txn = false;
@@ -543,13 +541,8 @@ impl PostgresAdapter {
                     in_txn = false;
                 }
                 CommandTag::Rollback => {
-                    if has_savepoint {
-                        // May be ROLLBACK TO SAVEPOINT — keep tags to avoid losing valid changes.
-                        // Transaction may still be open, so don't change in_txn.
-                    } else {
-                        txn_buf.clear();
-                        in_txn = false;
-                    }
+                    txn_buf.clear();
+                    in_txn = false;
                 }
                 other => {
                     if in_txn {
