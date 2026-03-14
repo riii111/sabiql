@@ -711,5 +711,28 @@ mod tests {
                 Some(CommandTag::Update(1))
             );
         }
+
+        #[test]
+        fn rollback_to_savepoint_keeps_prior_update() {
+            // BEGIN; UPDATE; SAVEPOINT s; INSERT; ROLLBACK TO s; COMMIT
+            // psql output: BEGIN / UPDATE 1 / SAVEPOINT / INSERT 0 1 / ROLLBACK / COMMIT
+            // UPDATE is valid (committed), INSERT was rolled back to savepoint.
+            // Since we can't distinguish ROLLBACK from ROLLBACK TO SAVEPOINT,
+            // we conservatively keep all tags when savepoints are present.
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT"
+                ),
+                Some(CommandTag::Insert(1))
+            );
+        }
+
+        #[test]
+        fn full_rollback_without_savepoint_still_discards() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nUPDATE 1\nROLLBACK"),
+                Some(CommandTag::Rollback)
+            );
+        }
     }
 }
