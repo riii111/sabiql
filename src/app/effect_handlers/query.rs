@@ -6,10 +6,12 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::app::action::Action;
+use crate::app::adhoc_risk::split_statements;
 use crate::app::effect::Effect;
 use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
+use crate::domain::CommandTag;
 use crate::domain::query_history::QueryHistoryEntry;
 
 /// Convert days since Unix epoch to (year, month, day) in UTC.
@@ -92,6 +94,29 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     dir.join(file_stem)
 }
 
+/// `correct_command_tag` only fires on `Select(_)` tags, but multi-statement
+/// aggregation may have already replaced the CTAS `Select` with another tag.
+fn correct_aggregate_tag(query: &str, tag: CommandTag) -> CommandTag {
+    let stmts = split_statements(query);
+    if stmts.len() <= 1 {
+        return statement_classifier::correct_command_tag(query, tag);
+    }
+
+    // If the aggregated tag is already schema-modifying, no correction needed.
+    if tag.is_schema_modifying() {
+        return tag;
+    }
+
+    // Check if any individual statement is CTAS / SELECT INTO.
+    for stmt in &stmts {
+        let corrected = statement_classifier::correct_command_tag(stmt, CommandTag::Select(0));
+        if corrected.is_schema_modifying() {
+            return corrected;
+        }
+    }
+    tag
+}
+
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
@@ -158,8 +183,7 @@ pub(crate) async fn run(
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(mut result) => {
                         if let Some(tag) = result.command_tag.take() {
-                            result.command_tag =
-                                Some(statement_classifier::correct_command_tag(&query, tag));
+                            result.command_tag = Some(correct_aggregate_tag(&query, tag));
                         }
                         tx.send(Action::QueryCompleted {
                             result: Arc::new(result),
@@ -315,6 +339,59 @@ mod tests {
             let file_name = path.file_name().unwrap().to_str().unwrap();
             assert!(file_name.starts_with("sabiql_export_users_"));
             assert!(file_name.ends_with(".csv"));
+        }
+    }
+
+    mod correct_aggregate_tag_tests {
+        use super::super::correct_aggregate_tag;
+        use crate::domain::CommandTag;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::single_statement_passthrough(
+            "UPDATE users SET x = 1",
+            CommandTag::Update(1),
+            CommandTag::Update(1)
+        )]
+        #[case::single_ctas_corrected(
+            "CREATE TABLE backup AS SELECT * FROM users",
+            CommandTag::Select(5),
+            CommandTag::Create("TABLE".to_string())
+        )]
+        #[case::single_select_into_corrected(
+            "SELECT * INTO backup FROM users",
+            CommandTag::Select(5),
+            CommandTag::Create("TABLE".to_string())
+        )]
+        fn single_statement(
+            #[case] query: &str,
+            #[case] input_tag: CommandTag,
+            #[case] expected: CommandTag,
+        ) {
+            assert_eq!(correct_aggregate_tag(query, input_tag), expected);
+        }
+
+        #[test]
+        fn multi_statement_ctas_plus_delete_returns_create() {
+            let query = "CREATE TABLE backup AS SELECT * FROM users; DELETE FROM old WHERE id = 1";
+            // Aggregated tag from parser is Delete (last refresh-worthy),
+            // but CTAS statement must override to schema-modifying.
+            let result = correct_aggregate_tag(query, CommandTag::Delete(1));
+            assert_eq!(result, CommandTag::Create("TABLE".to_string()));
+        }
+
+        #[test]
+        fn multi_statement_already_schema_modifying_returns_unchanged() {
+            let query = "DROP TABLE old; INSERT INTO log VALUES (1)";
+            let result = correct_aggregate_tag(query, CommandTag::Drop("TABLE".to_string()));
+            assert_eq!(result, CommandTag::Drop("TABLE".to_string()));
+        }
+
+        #[test]
+        fn multi_statement_no_ctas_returns_original_tag() {
+            let query = "INSERT INTO users VALUES (1); UPDATE users SET x = 2 WHERE id = 1";
+            let result = correct_aggregate_tag(query, CommandTag::Update(2));
+            assert_eq!(result, CommandTag::Update(2));
         }
     }
 
