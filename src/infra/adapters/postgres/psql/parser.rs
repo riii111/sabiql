@@ -533,9 +533,11 @@ impl PostgresAdapter {
         matches!(first, "SAVEPOINT" | "RELEASE")
     }
 
-    /// Uses a frame stack to track savepoint nesting. ROLLBACK pops only the
-    /// innermost savepoint frame when nested, or discards the entire transaction
-    /// when at the top level (no savepoints).
+    /// Tracks savepoint nesting with a frame stack. ROLLBACK pops only the
+    /// innermost frame when nested, or discards the entire txn otherwise.
+    ///
+    /// psql emits the same `ROLLBACK` tag for both full and partial rollback,
+    /// so we prefer false-positive refresh (harmless re-fetch) over missed refresh.
     fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         let mut effective: Vec<CommandTag> = Vec::new();
         let mut frames: Vec<Vec<CommandTag>> = Vec::new();

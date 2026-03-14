@@ -716,7 +716,8 @@ mod tests {
 
         #[test]
         fn partial_rollback_preserves_pre_savepoint_changes() {
-            // UPDATE is in the top-level txn frame; only the savepoint frame (INSERT) is rolled back.
+            // Ambiguous: psql emits ROLLBACK for both full and partial rollback.
+            // We prefer false-positive refresh (see discard_rolled_back doc).
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nSAVEPOINT s\nINSERT 0 1\nROLLBACK\nCOMMIT"
