@@ -588,6 +588,8 @@ mod tests {
         #[rstest]
         #[case::dml("DELETE 3", Some(CommandTag::Delete(3)))]
         #[case::ddl("DROP TABLE", Some(CommandTag::Drop("TABLE".to_string())))]
+        #[case::savepoint("SAVEPOINT sp1", Some(CommandTag::Other("SAVEPOINT sp1".to_string())))]
+        #[case::release("RELEASE SAVEPOINT sp1", Some(CommandTag::Other("RELEASE SAVEPOINT sp1".to_string())))]
         #[case::csv_header("id,name", None)]
         #[case::empty("", None)]
         fn single_line_returns_tag_or_none(
@@ -706,19 +708,41 @@ mod tests {
         fn savepoint_and_release_skipped_in_aggregation() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
-                    "BEGIN\nSAVEPOINT\nUPDATE 1\nRELEASE\nCOMMIT"
+                    "BEGIN\nSAVEPOINT s\nUPDATE 1\nRELEASE SAVEPOINT s\nCOMMIT"
                 ),
                 Some(CommandTag::Update(1))
             );
         }
 
         #[test]
-        fn rollback_with_savepoints_returns_rollback() {
+        fn partial_rollback_preserves_pre_savepoint_changes() {
+            // UPDATE is in the top-level txn frame; only the savepoint frame (INSERT) is rolled back.
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
-                    "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT"
+                    "BEGIN\nUPDATE 1\nSAVEPOINT s\nINSERT 0 1\nROLLBACK\nCOMMIT"
+                ),
+                Some(CommandTag::Update(1))
+            );
+        }
+
+        #[test]
+        fn full_savepoint_rollback_with_no_outer_changes_returns_rollback() {
+            // All changes were inside the savepoint frame — nothing survives.
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSAVEPOINT s\nCREATE TABLE\nROLLBACK\nCOMMIT"
                 ),
                 Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn released_savepoint_merges_into_parent_frame() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nSAVEPOINT s\nINSERT 0 1\nRELEASE SAVEPOINT s\nCOMMIT"
+                ),
+                Some(CommandTag::Insert(1))
             );
         }
 

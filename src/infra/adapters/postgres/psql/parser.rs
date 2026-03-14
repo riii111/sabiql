@@ -481,8 +481,11 @@ impl PostgresAdapter {
         stdout: &str,
     ) -> Option<CommandTag> {
         if !stdout.contains('\n') {
-            return Self::parse_command_tag(stdout)
-                .filter(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
+            return Self::parse_command_tag(stdout).filter(|t| {
+                t.is_data_modifying()
+                    || matches!(t, CommandTag::Select(_))
+                    || matches!(t, CommandTag::Other(s) if Self::is_known_tcl_tag(s))
+            });
         }
 
         let mut tags: Vec<CommandTag> = Vec::new();
@@ -492,13 +495,10 @@ impl PostgresAdapter {
                 continue;
             }
             let tag = Self::parse_command_tag(trimmed)?;
-            if let CommandTag::Other(ref s) = tag {
-                // Known TCL variants (SAVEPOINT, RELEASE) are safe to skip.
-                // Unknown Other tags likely indicate CSV data — abort aggregation.
-                if !Self::is_known_tcl_tag(s) {
-                    return None;
-                }
-                continue;
+            if let CommandTag::Other(ref s) = tag
+                && !Self::is_known_tcl_tag(s)
+            {
+                return None;
             }
             tags.push(tag);
         }
@@ -513,10 +513,8 @@ impl PostgresAdapter {
                 .iter()
                 .any(|t| t.needs_refresh() || matches!(t, CommandTag::Select(_)));
             return if had_changes {
-                // DML/DDL existed but was rolled back — signal no-refresh.
                 Some(CommandTag::Rollback)
             } else {
-                // TCL-only (e.g. BEGIN; COMMIT) — return last tag for display.
                 tags.into_iter().last()
             };
         }
@@ -535,38 +533,57 @@ impl PostgresAdapter {
         matches!(first, "SAVEPOINT" | "RELEASE")
     }
 
-    /// psql cannot distinguish ROLLBACK from ROLLBACK TO SAVEPOINT,
-    /// so we always treat it as full abort (user can press `r` if needed).
+    /// Uses a frame stack to track savepoint nesting. ROLLBACK pops only the
+    /// innermost savepoint frame when nested, or discards the entire transaction
+    /// when at the top level (no savepoints).
     fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         let mut effective: Vec<CommandTag> = Vec::new();
-        let mut txn_buf: Vec<CommandTag> = Vec::new();
+        let mut frames: Vec<Vec<CommandTag>> = Vec::new();
         let mut in_txn = false;
 
         for tag in tags {
             match tag {
                 CommandTag::Begin => {
                     in_txn = true;
-                    txn_buf.clear();
+                    frames.push(Vec::new());
+                }
+                CommandTag::Other(s) if Self::is_known_tcl_tag(s) => {
+                    if s.starts_with("SAVEPOINT") && in_txn {
+                        frames.push(Vec::new());
+                    } else if s.starts_with("RELEASE") && frames.len() > 1 {
+                        let nested = frames.pop().unwrap();
+                        frames.last_mut().unwrap().extend(nested);
+                    }
                 }
                 CommandTag::Commit => {
-                    effective.append(&mut txn_buf);
+                    for frame in frames.drain(..) {
+                        effective.extend(frame);
+                    }
                     in_txn = false;
                 }
                 CommandTag::Rollback => {
-                    txn_buf.clear();
-                    in_txn = false;
+                    if frames.len() > 1 {
+                        frames.pop();
+                    } else {
+                        frames.clear();
+                        in_txn = false;
+                    }
                 }
                 other => {
                     if in_txn {
-                        txn_buf.push(other.clone());
+                        if let Some(frame) = frames.last_mut() {
+                            frame.push(other.clone());
+                        }
                     } else {
                         effective.push(other.clone());
                     }
                 }
             }
         }
-        // Unclosed transaction (no COMMIT/ROLLBACK) — treat as effective.
-        effective.extend(txn_buf);
+        // Unclosed transaction — treat remaining as effective.
+        for frame in frames {
+            effective.extend(frame);
+        }
         effective
     }
 }
