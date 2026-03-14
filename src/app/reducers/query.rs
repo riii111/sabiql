@@ -732,14 +732,13 @@ pub fn reduce_query(
             if !state.query.pagination.can_next() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = state.runtime.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                state.ui.result_scroll_offset = 0;
-                state.ui.result_horizontal_offset = 0;
+                super::helpers::reset_result_view(state);
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
+                    dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.cache.selection_generation,
@@ -765,16 +764,15 @@ pub fn reduce_query(
             if !state.query.pagination.can_prev() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = state.runtime.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                state.ui.result_scroll_offset = 0;
-                state.ui.result_horizontal_offset = 0;
+                super::helpers::reset_result_view(state);
                 // When going back, the page is not at the end anymore
                 state.query.pagination.reached_end = false;
                 Some(vec![Effect::ExecutePreview {
-                    dsn: dsn.clone(),
+                    dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
                     generation: state.cache.selection_generation,
@@ -1019,6 +1017,50 @@ mod tests {
 
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn noop_preserves_view_state() {
+            let mut state = create_test_state();
+            state.query.current_result = Some(preview_result(100));
+            state.query.pagination.reached_end = true;
+            state.ui.result_selection.enter_row(2);
+            state.ui.staged_delete_rows.insert(2);
+
+            reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.result_selection.row(), Some(2));
+            assert!(state.ui.staged_delete_rows.contains(&2));
+        }
+
+        #[test]
+        fn transition_resets_view_state() {
+            let mut state = create_test_state();
+            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.pagination = PaginationState {
+                current_page: 0,
+                total_rows_estimate: Some(1500),
+                reached_end: false,
+                schema: "public".to_string(),
+                table: "users".to_string(),
+            };
+            state.ui.result_selection.enter_row(3);
+            state.ui.staged_delete_rows.insert(3);
+
+            reduce_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.ui.result_selection.row().is_none());
+            assert!(state.ui.staged_delete_rows.is_empty());
+        }
     }
 
     mod prev_page {
@@ -1075,6 +1117,25 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn noop_preserves_view_state() {
+            let mut state = create_test_state();
+            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.pagination.current_page = 0;
+            state.ui.result_selection.enter_row(1);
+            state.ui.staged_delete_rows.insert(1);
+
+            reduce_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.ui.result_selection.row(), Some(1));
+            assert!(state.ui.staged_delete_rows.contains(&1));
         }
     }
 
