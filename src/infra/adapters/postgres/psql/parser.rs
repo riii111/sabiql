@@ -474,11 +474,8 @@ impl PostgresAdapter {
             .and_then(Self::parse_command_tag)
     }
 
-    /// Parse command tags from single-line or multi-line stdout.
-    ///
-    /// Single line: parsed directly as a command tag.
-    /// Multi-line: if every non-empty line is a valid command tag, returns the
-    /// most refresh-worthy tag (schema-modifying > data-modifying > last).
+    /// Prioritizes schema-modifying tags so that multi-statement DDL
+    /// (e.g. `DROP TABLE …; DELETE …`) triggers metadata refresh.
     pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
         stdout: &str,
     ) -> Option<CommandTag> {
@@ -503,8 +500,6 @@ impl PostgresAdapter {
             return None;
         }
 
-        // Prefer schema-modifying tag (triggers metadata refresh),
-        // then data-modifying, then fall back to last tag.
         if let Some(t) = tags.iter().find(|t| t.is_schema_modifying()) {
             return Some(t.clone());
         }

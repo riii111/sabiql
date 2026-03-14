@@ -147,9 +147,6 @@ impl PostgresAdapter {
             ));
         }
 
-        // psql --csv never appends a command tag to SELECT output, so a single-line
-        // stdout is the only case where DML/DDL detection is safe.
-        // For multi-statement DML/DDL, every line is a command tag (e.g. "DROP TABLE\nDELETE 1").
         let stdout_trimmed = output.stdout.trim();
         if let Some(tag) = Self::parse_aggregate_command_tag(stdout_trimmed) {
             let row_count = tag.affected_rows().unwrap_or(0) as usize;
@@ -586,67 +583,66 @@ mod tests {
     mod parse_aggregate_command_tag {
         use crate::domain::CommandTag;
         use crate::infra::adapters::postgres::PostgresAdapter;
+        use rstest::rstest;
 
-        #[test]
-        fn single_line_dml() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("DELETE 3");
-            assert_eq!(tag, Some(CommandTag::Delete(3)));
+        #[rstest]
+        #[case::dml("DELETE 3", Some(CommandTag::Delete(3)))]
+        #[case::ddl("DROP TABLE", Some(CommandTag::Drop("TABLE".to_string())))]
+        #[case::csv_header("id,name", None)]
+        #[case::empty("", None)]
+        fn single_line_returns_tag_or_none(
+            #[case] stdout: &str,
+            #[case] expected: Option<CommandTag>,
+        ) {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                expected
+            );
         }
 
-        #[test]
-        fn single_line_ddl() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("DROP TABLE");
-            assert_eq!(tag, Some(CommandTag::Drop("TABLE".to_string())));
+        #[rstest]
+        #[case::drop_and_delete(
+            "DROP TABLE\nDELETE 1",
+            Some(CommandTag::Drop("TABLE".to_string()))
+        )]
+        #[case::create_and_insert(
+            "CREATE TABLE\nINSERT 0 5",
+            Some(CommandTag::Create("TABLE".to_string()))
+        )]
+        #[case::drop_with_blank_lines(
+            "DROP TABLE\n\nDELETE 1\n",
+            Some(CommandTag::Drop("TABLE".to_string()))
+        )]
+        fn multi_line_with_ddl_returns_schema_modifying_tag(
+            #[case] stdout: &str,
+            #[case] expected: Option<CommandTag>,
+        ) {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                expected
+            );
         }
 
-        #[test]
-        fn single_line_csv_header_rejected() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("id,name");
-            assert_eq!(tag, None);
-        }
-
-        #[test]
-        fn multi_line_drop_and_delete_returns_schema_modifying() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("DROP TABLE\nDELETE 1");
-            assert_eq!(tag, Some(CommandTag::Drop("TABLE".to_string())));
-        }
-
-        #[test]
-        fn multi_line_insert_and_update_returns_last() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("INSERT 0 1\nUPDATE 3");
-            assert_eq!(tag, Some(CommandTag::Update(3)));
-        }
-
-        #[test]
-        fn multi_line_create_and_insert_returns_schema_modifying() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("CREATE TABLE\nINSERT 0 5");
-            assert_eq!(tag, Some(CommandTag::Create("TABLE".to_string())));
+        #[rstest]
+        #[case::insert_and_update("INSERT 0 1\nUPDATE 3", Some(CommandTag::Update(3)))]
+        #[case::three_dml("DELETE 2\nINSERT 0 3\nUPDATE 1", Some(CommandTag::Update(1)))]
+        fn multi_line_dml_only_returns_last_tag(
+            #[case] stdout: &str,
+            #[case] expected: Option<CommandTag>,
+        ) {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                expected
+            );
         }
 
         #[test]
         fn multi_line_with_csv_data_returns_none() {
-            // Mixed command tag + CSV should not be treated as multi-statement
-            let tag = PostgresAdapter::parse_aggregate_command_tag("INSERT 0 1\nid,name\n1,Alice");
-            assert_eq!(tag, None);
-        }
-
-        #[test]
-        fn multi_line_all_dml() {
-            let tag =
-                PostgresAdapter::parse_aggregate_command_tag("DELETE 2\nINSERT 0 3\nUPDATE 1");
-            assert_eq!(tag, Some(CommandTag::Update(1)));
-        }
-
-        #[test]
-        fn multi_line_with_blank_lines_ignored() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("DROP TABLE\n\nDELETE 1\n");
-            assert_eq!(tag, Some(CommandTag::Drop("TABLE".to_string())));
-        }
-
-        #[test]
-        fn empty_input_returns_none() {
-            let tag = PostgresAdapter::parse_aggregate_command_tag("");
-            assert_eq!(tag, None);
+            // CSV lines fail parse_command_tag, so mixed output must not be mistaken for multi-statement
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("INSERT 0 1\nid,name\n1,Alice"),
+                None
+            );
         }
     }
 }
