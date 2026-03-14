@@ -82,11 +82,20 @@ On first run, enter your connection details — saved to `~/.config/sabiql/conne
 
 ## Roadmap
 
-- [x] Connection UI
-- [x] Focused ER diagrams
-- [x] Expanded viewport / horizontal scrolling
+- [x] Connection management UI
+- [x] ER diagram generation
+- [x] Read-only mode (`Ctrl+R`)
+- [x] SQL modal with DML/DDL safety guardrails
+- [x] Query history persistence & fuzzy search
+- [x] CSV export & clipboard yank
+- [ ] JSON/JSONB support (tree view, editing, validation)
+- [ ] Neovim integration (`sabiql.nvim`)
+- [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
+- [ ] EXPLAIN workflow (plan tree view & comparison)
 - [ ] Google Cloud SQL / AlloyDB support
 - [ ] MySQL support
+
+Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new) feedback is welcome!
 
 ## License
 
