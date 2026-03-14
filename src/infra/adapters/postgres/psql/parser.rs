@@ -508,10 +508,17 @@ impl PostgresAdapter {
 
         let effective = Self::discard_rolled_back(&tags);
 
-        // No changes took effect — signal no-refresh so downstream
-        // (correct_aggregate_tag) doesn't override with CTAS correction.
         if effective.is_empty() {
-            return Some(CommandTag::Rollback);
+            let had_changes = tags
+                .iter()
+                .any(|t| t.needs_refresh() || matches!(t, CommandTag::Select(_)));
+            return if had_changes {
+                // DML/DDL existed but was rolled back — signal no-refresh.
+                Some(CommandTag::Rollback)
+            } else {
+                // TCL-only (e.g. BEGIN; COMMIT) — return last tag for display.
+                tags.into_iter().last()
+            };
         }
 
         if let Some(t) = effective.iter().find(|t| t.is_schema_modifying()) {

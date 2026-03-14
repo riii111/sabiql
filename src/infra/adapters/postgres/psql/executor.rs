@@ -714,12 +714,19 @@ mod tests {
 
         #[test]
         fn rollback_with_savepoints_returns_rollback() {
-            // ROLLBACK discards all buffered tags; empty effective → Rollback.
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT"
                 ),
                 Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn tcl_only_begin_commit_returns_commit() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nCOMMIT"),
+                Some(CommandTag::Commit)
             );
         }
     }
