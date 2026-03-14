@@ -473,6 +473,43 @@ impl PostgresAdapter {
             .find(|line| !line.trim().is_empty())
             .and_then(Self::parse_command_tag)
     }
+
+    /// Parse command tags from single-line or multi-line stdout.
+    ///
+    /// Single line: parsed directly as a command tag.
+    /// Multi-line: if every non-empty line is a valid command tag, returns the
+    /// most refresh-worthy tag (schema-modifying > data-modifying > last).
+    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
+        stdout: &str,
+    ) -> Option<CommandTag> {
+        if !stdout.contains('\n') {
+            return Self::parse_command_tag(stdout)
+                .filter(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
+        }
+
+        let mut tags: Vec<CommandTag> = Vec::new();
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let tag = Self::parse_command_tag(trimmed)?;
+            if matches!(tag, CommandTag::Other(_)) {
+                return None;
+            }
+            tags.push(tag);
+        }
+        if tags.is_empty() {
+            return None;
+        }
+
+        // Prefer schema-modifying tag (triggers metadata refresh),
+        // then data-modifying, then fall back to last tag.
+        if let Some(t) = tags.iter().find(|t| t.is_schema_modifying()) {
+            return Some(t.clone());
+        }
+        tags.into_iter().last()
+    }
 }
 
 #[cfg(test)]
