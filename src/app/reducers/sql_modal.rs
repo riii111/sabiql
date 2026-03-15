@@ -181,7 +181,7 @@ pub fn reduce_sql_modal(
 
         // Modal open/submit
         Action::OpenSqlModal => {
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.status = SqlModalStatus::Editing;
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();

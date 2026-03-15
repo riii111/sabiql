@@ -15,34 +15,34 @@ use crate::app::state::AppState;
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenTablePicker => {
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
             state.ui.filter_input.clear();
             state.ui.reset_picker_selection();
             Some(vec![])
         }
         Action::CloseTablePicker => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::OpenCommandPalette => {
-            state.ui.input_mode = InputMode::CommandPalette;
+            state.modal.set_mode(InputMode::CommandPalette);
             state.ui.reset_picker_selection();
             Some(vec![])
         }
         Action::CloseCommandPalette => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::OpenHelp => {
-            state.ui.input_mode = if state.ui.input_mode == InputMode::Help {
-                InputMode::Normal
+            if state.ui.input_mode == InputMode::Help {
+                state.modal.set_mode(InputMode::Normal);
             } else {
-                InputMode::Help
-            };
+                state.modal.set_mode(InputMode::Help);
+            }
             Some(vec![])
         }
         Action::CloseHelp => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.ui.help_scroll_offset = 0;
             Some(vec![])
         }
@@ -58,7 +58,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::CloseSqlModal => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = None;
             Some(vec![])
@@ -71,13 +71,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
             state.ui.pending_er_picker = false;
             state.ui.er_selected_tables.clear();
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
             state.ui.er_filter_input.clear();
             state.ui.reset_er_picker_selection();
             Some(vec![])
         }
         Action::CloseErTablePicker => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.ui.er_filter_input.clear();
             state.ui.er_selected_tables.clear();
             state.ui.pending_er_picker = false;
@@ -120,7 +120,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
             state.er_preparation.target_tables =
                 state.ui.er_selected_tables.iter().cloned().collect();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.ui.er_filter_input.clear();
             state.ui.er_selected_tables.clear();
             Some(vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])])
@@ -248,7 +248,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
 
         Action::Escape => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
 
