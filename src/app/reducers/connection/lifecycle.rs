@@ -13,7 +13,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
     match action {
         Action::TryConnect => {
             if state.runtime.connection_state.is_not_connected()
-                && state.ui.input_mode == InputMode::Normal
+                && state.modal.active_mode() == InputMode::Normal
             {
                 if let Some(dsn) = state.runtime.dsn.clone() {
                     state.runtime.connection_state = ConnectionState::Connecting;

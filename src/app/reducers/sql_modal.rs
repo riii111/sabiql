@@ -53,7 +53,7 @@ pub fn reduce_sql_modal(
         }
 
         // Clipboard paste
-        Action::Paste(text) if state.ui.input_mode == InputMode::SqlModal => {
+        Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
             if matches!(
                 state.sql_modal.status,
                 SqlModalStatus::ConfirmingHigh { .. }
@@ -398,7 +398,7 @@ mod tests {
 
         fn sql_modal_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state
         }
 
@@ -513,7 +513,7 @@ mod tests {
 
         fn sql_modal_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state
         }
 
@@ -823,7 +823,7 @@ mod tests {
         #[test]
         fn read_only_blocks_write_query_in_sql_modal() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.read_only = true;
@@ -845,7 +845,7 @@ mod tests {
         #[test]
         fn read_only_allows_select_query() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = "SELECT 1".to_string();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.read_only = true;
@@ -864,7 +864,7 @@ mod tests {
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = query.to_string();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state

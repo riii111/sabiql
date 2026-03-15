@@ -247,7 +247,7 @@ pub fn reduce_query(
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
-                let is_adhoc = state.ui.input_mode == InputMode::SqlModal;
+                let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
                     super::helpers::reset_result_view(state);
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
@@ -1406,7 +1406,7 @@ mod tests {
             state.cache.table_detail = Some(users_table_detail());
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.ui.input_mode = InputMode::CellEdit;
+            state.modal.set_mode(InputMode::CellEdit);
             state.cell_edit.begin(0, 1, "Alice".to_string());
             state.cell_edit.input.set_content("Bob".to_string());
             state
@@ -1415,7 +1415,7 @@ mod tests {
         #[test]
         fn write_requires_cell_edit_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             // No cell_edit active
 
             let effects = reduce_query(
@@ -1580,7 +1580,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
@@ -1616,7 +1616,7 @@ mod tests {
         #[test]
         fn open_write_preview_confirm_for_delete_sets_normal_return_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
             let effects = reduce_query(
@@ -1652,7 +1652,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Select(499)
@@ -1690,7 +1690,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("DELETE expected 1 row, but affected 0 rows")
@@ -1712,7 +1712,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
         }
 

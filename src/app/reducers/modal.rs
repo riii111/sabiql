@@ -34,7 +34,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::OpenHelp => {
-            if state.ui.input_mode == InputMode::Help {
+            if state.modal.active_mode() == InputMode::Help {
                 state.modal.set_mode(InputMode::Normal);
             } else {
                 state.modal.set_mode(InputMode::Help);
@@ -133,7 +133,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if matches!(state.query.status, QueryStatus::Running) {
                 return Some(vec![]);
             }
-            if state.ui.input_mode == InputMode::ConfirmDialog {
+            if state.modal.active_mode() == InputMode::ConfirmDialog {
                 return Some(vec![]);
             }
             if state.sql_modal.completion.visible
@@ -512,7 +512,6 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.active_connection_id = Some(ConnectionId::from_string("test-conn"));
             state.runtime.project_name = "test-project".to_string();
-            state.ui.input_mode = InputMode::Normal;
             state
         }
 
@@ -524,7 +523,7 @@ mod tests {
             let effects =
                 reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
 
@@ -536,7 +535,7 @@ mod tests {
             let effects =
                 reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
 

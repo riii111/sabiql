@@ -154,7 +154,7 @@ mod tests {
             state.cache.table_detail = Some(minimal_users_table());
             state.cell_edit.begin(0, 1, "alice".to_string());
             state.cell_edit.input.set_content("modified".to_string());
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
@@ -199,7 +199,7 @@ mod tests {
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
@@ -219,7 +219,7 @@ mod tests {
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.messages.last_error.is_some());
         }
     }
@@ -229,7 +229,7 @@ mod tests {
 
         fn state_in_cell_edit(content: &str, cursor: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::CellEdit;
+            state.modal.set_mode(InputMode::CellEdit);
             state.cell_edit.begin(0, 0, content.to_string());
             state.cell_edit.input.set_cursor(cursor);
             state

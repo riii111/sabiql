@@ -41,7 +41,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         // ===== Clipboard Paste =====
-        Action::Paste(text) if state.ui.input_mode == InputMode::ConnectionSetup => {
+        Action::Paste(text) if state.modal.active_mode() == InputMode::ConnectionSetup => {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             let setup = &mut state.connection_setup;
             match setup.focused_field {
@@ -303,7 +303,7 @@ mod tests {
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.focused_field = field;
             state.connection_setup.cursor_position = 0;
             // Clear default values so tests start clean

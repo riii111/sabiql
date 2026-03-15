@@ -229,7 +229,7 @@ mod tests {
         fn empty_list_does_nothing() {
             let mut state = AppState::new("test".to_string());
             state.set_connections(vec![]);
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             reduce(
                 &mut state,
@@ -237,7 +237,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
@@ -246,7 +246,7 @@ mod tests {
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.modal.set_mode(InputMode::ConnectionSelector);
 
             reduce(
@@ -409,7 +409,7 @@ mod tests {
                     user: None,
                 }],
             );
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             reduce(
                 &mut state,
@@ -418,7 +418,7 @@ mod tests {
             );
 
             assert!(state.connections().is_empty());
-            assert_ne!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_ne!(state.input_mode(), InputMode::ConnectionSetup);
             assert_eq!(state.connection_list_items(), build_connection_list(0, 1));
         }
     }

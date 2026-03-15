@@ -86,7 +86,7 @@ mod tests {
 
         fn setup_state() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state
         }
 

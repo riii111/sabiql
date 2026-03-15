@@ -22,7 +22,7 @@ pub fn handle_event(event: Event, state: &AppState) -> Action {
 }
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
-    match state.ui.input_mode {
+    match state.input_mode() {
         InputMode::TablePicker
         | InputMode::ErTablePicker
         | InputMode::CommandLine
@@ -34,7 +34,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    match state.ui.input_mode {
+    match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
         InputMode::CommandLine => editors::handle_command_line_mode(combo),
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
@@ -70,7 +70,7 @@ mod tests {
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = mode;
+            state.modal.set_mode(mode);
             state
         }
 
@@ -100,7 +100,7 @@ mod tests {
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = mode;
+            state.modal.set_mode(mode);
             state
         }
 

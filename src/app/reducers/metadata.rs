@@ -120,11 +120,12 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.runtime.is_reloading = false;
             }
 
-            if state.ui.input_mode == InputMode::SqlModal && !state.sql_modal.prefetch_started {
+            if state.modal.active_mode() == InputMode::SqlModal && !state.sql_modal.prefetch_started
+            {
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
 
-            if state.ui.pending_er_picker && state.ui.input_mode == InputMode::Normal {
+            if state.ui.pending_er_picker && state.modal.active_mode() == InputMode::Normal {
                 state.ui.pending_er_picker = false;
                 effects.push(Effect::DispatchActions(vec![Action::OpenErTablePicker]));
             } else {
@@ -140,7 +141,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             state.runtime.is_reloading = false;
             if !state.runtime.connection_state.is_connected() {
                 state.runtime.connection_state = ConnectionState::Failed;
-                state.ui.input_mode = InputMode::ConnectionError;
+                state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status == ErStatus::Waiting {
                 state.er_preparation.status = ErStatus::Idle;

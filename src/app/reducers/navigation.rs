@@ -65,7 +65,7 @@ pub fn reduce_navigation(
                 state.cell_edit.clear();
                 state.ui.staged_delete_rows.clear();
                 state.pending_write_preview = None;
-                if state.ui.input_mode == InputMode::CellEdit {
+                if state.modal.active_mode() == InputMode::CellEdit {
                     state.modal.set_mode(InputMode::Normal);
                 }
             }
@@ -107,7 +107,7 @@ pub fn reduce_navigation(
         }
 
         // Clipboard paste
-        Action::Paste(text) => match state.ui.input_mode {
+        Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.ui.filter_input.push_str(&clean);
@@ -166,7 +166,7 @@ pub fn reduce_navigation(
 
         // Selection
         Action::SelectNext => {
-            match state.ui.input_mode {
+            match state.modal.active_mode() {
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     if state.ui.picker_selected < max {
@@ -202,7 +202,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::SelectPrevious => {
-            match state.ui.input_mode {
+            match state.modal.active_mode() {
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state
                         .ui
@@ -225,7 +225,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::SelectFirst => {
-            match state.ui.input_mode {
+            match state.modal.active_mode() {
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state.ui.reset_picker_selection();
                 }
@@ -243,7 +243,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::SelectLast => {
-            match state.ui.input_mode {
+            match state.modal.active_mode() {
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     state.ui.set_picker_selection(max);
@@ -482,7 +482,7 @@ pub fn reduce_navigation(
                 _ => None,
             };
 
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             match effect {
                 Some(e) => Some(vec![e]),
@@ -531,7 +531,7 @@ mod tests {
             );
 
             assert!(state.runtime.read_only);
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
@@ -561,7 +561,7 @@ mod tests {
         #[test]
         fn paste_in_table_picker_appends_text() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
 
             let effects = reduce_navigation(
                 &mut state,
@@ -577,7 +577,7 @@ mod tests {
         #[test]
         fn paste_in_table_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
 
             reduce_navigation(
                 &mut state,
@@ -592,7 +592,7 @@ mod tests {
         #[test]
         fn paste_in_table_picker_resets_selection() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
             state.ui.picker_selected = 5;
 
             reduce_navigation(
@@ -608,7 +608,7 @@ mod tests {
         #[test]
         fn paste_in_command_line_appends_text() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::CommandLine;
+            state.modal.set_mode(InputMode::CommandLine);
 
             reduce_navigation(
                 &mut state,
@@ -623,7 +623,7 @@ mod tests {
         #[test]
         fn paste_in_command_line_strips_newlines() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::CommandLine;
+            state.modal.set_mode(InputMode::CommandLine);
 
             reduce_navigation(
                 &mut state,
@@ -638,7 +638,7 @@ mod tests {
         #[test]
         fn paste_in_normal_mode_returns_none() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             let effects = reduce_navigation(
                 &mut state,
@@ -653,7 +653,7 @@ mod tests {
         #[test]
         fn paste_in_er_table_picker_appends_to_er_filter() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
 
             let effects = reduce_navigation(
                 &mut state,
@@ -670,7 +670,7 @@ mod tests {
         #[test]
         fn paste_in_er_table_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
 
             reduce_navigation(
                 &mut state,
@@ -942,7 +942,7 @@ mod tests {
                 create_test_profile_with_id("other", other_id.clone()),
             ]);
             state.runtime.active_connection_id = Some(active_id);
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = reduce_navigation(
@@ -952,7 +952,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
 
             let effects = effects.unwrap();
             assert!(effects.iter().any(
@@ -970,7 +970,7 @@ mod tests {
                 active_id.clone(),
             )]);
             state.runtime.active_connection_id = Some(active_id);
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = reduce_navigation(
@@ -980,7 +980,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
 
             let effects = effects.unwrap();
             assert!(effects.is_empty());
