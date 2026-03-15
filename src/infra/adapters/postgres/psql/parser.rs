@@ -719,6 +719,53 @@ impl PostgresAdapter {
                         }
                     }
                 }
+                b'"' => {
+                    i += 1;
+                    while i < len {
+                        if bytes[i] == b'"' {
+                            i += 1;
+                            if i < len && bytes[i] == b'"' {
+                                i += 1;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                b'$' => {
+                    let tag_start = i;
+                    i += 1;
+                    while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                        i += 1;
+                    }
+                    if i < len && bytes[i] == b'$' {
+                        let tag = &lower[tag_start..=i];
+                        i += 1;
+                        while i + tag.len() <= len {
+                            if &lower[i..i + tag.len()] == tag {
+                                i += tag.len();
+                                break;
+                            }
+                            i += 1;
+                        }
+                    }
+                }
+                b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
+                    while i < len && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                }
+                b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
+                    i += 2;
+                    while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                        i += 1;
+                    }
+                    if i + 1 < len {
+                        i += 2;
+                    }
+                }
                 b'(' => {
                     depth += 1;
                     i += 1;
@@ -738,7 +785,6 @@ impl PostgresAdapter {
                             found_from = true;
                         }
                         "into" if !found_from => {
-                            // Make sure it's not INSERT INTO
                             if word_start >= 6 {
                                 let before = lower[..word_start].trim_end();
                                 if before.ends_with("insert") {
@@ -1808,6 +1854,54 @@ mod tests {
             assert_eq!(
                 PostgresAdapter::detect_ctas_kind("create table t as select 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn into_in_double_quotes_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind(r#"SELECT "into" FROM t"#),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_dollar_quote_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind("SELECT $$into$$ FROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_tagged_dollar_quote_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind("SELECT $x$into$x$ FROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_line_comment_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind("SELECT 1 -- into\nFROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_block_comment_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind("SELECT /* into */ 1 FROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_single_quote_not_ctas() {
+            assert_eq!(
+                PostgresAdapter::detect_ctas_kind("SELECT 'into' FROM t"),
+                None
             );
         }
     }
