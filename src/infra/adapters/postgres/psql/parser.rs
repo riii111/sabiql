@@ -473,6 +473,166 @@ impl PostgresAdapter {
             .find(|line| !line.trim().is_empty())
             .and_then(Self::parse_command_tag)
     }
+
+    /// Returns `true` for known TCL tags that should be skipped during aggregation:
+    /// `SAVEPOINT ...`, `RELEASE ...`, `START TRANSACTION`, `BEGIN`, `COMMIT`, `ROLLBACK`.
+    fn is_known_tcl_tag(s: &str) -> bool {
+        matches!(
+            s.split_whitespace().next().unwrap_or(""),
+            "BEGIN" | "COMMIT" | "ROLLBACK"
+        ) || s.starts_with("SAVEPOINT ")
+            || s.starts_with("RELEASE ")
+            || s == "START TRANSACTION"
+    }
+
+    /// Stage 1: Parse stdout line-by-line into a vec of `CommandTag`.
+    ///
+    /// Returns `None` if any non-empty line produces an `Other` variant
+    /// that is not a known TCL tag (indicating CSV data or unknown output).
+    /// Empty lines are skipped.
+    fn parse_all_tags(stdout: &str) -> Option<Vec<CommandTag>> {
+        let mut tags = Vec::new();
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let tag = Self::parse_command_tag(trimmed)?;
+            if let CommandTag::Other(ref raw) = tag
+                && !Self::is_known_tcl_tag(raw)
+            {
+                return None;
+            }
+            tags.push(tag);
+        }
+        if tags.is_empty() {
+            return None;
+        }
+        Some(tags)
+    }
+
+    /// Stage 2: Remove tags that were rolled back using a frame-stack model.
+    ///
+    /// # Rollback policy
+    ///
+    /// - `BEGIN` / `Other("START TRANSACTION")` → push a new frame onto the stack
+    /// - `SAVEPOINT` (`Other("SAVEPOINT ...")`) → push a nested frame
+    /// - `RELEASE` (`Other("RELEASE ...")`) → merge innermost frame into parent
+    /// - `ROLLBACK` with `frames.len() > 1` → partial: pop innermost frame (discard)
+    /// - `ROLLBACK` with `frames.len() <= 1` → full: clear all frames
+    /// - `COMMIT` → drain all frames into effective tags
+    /// - Unclosed transaction tags are treated as effective (false-positive-over-missed policy)
+    ///
+    /// # Approximation constraints
+    ///
+    /// psql command tags do not include savepoint names, so:
+    ///
+    /// 1. `ROLLBACK TO SAVEPOINT <outer>` targeting a non-innermost savepoint
+    ///    is indistinguishable from a rollback of the innermost savepoint.
+    ///    Only 1 frame is popped even if multiple should be. Rolled-back tags
+    ///    may survive as false positives (safe: unnecessary refresh > missed refresh).
+    ///
+    /// 2. After `ROLLBACK TO SAVEPOINT`, the target savepoint still exists in PostgreSQL,
+    ///    but the frame stack has already popped it. Subsequent DML accumulates in the
+    ///    parent frame (false-positive direction).
+    fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
+        let mut effective: Vec<CommandTag> = Vec::new();
+        let mut frames: Vec<Vec<CommandTag>> = Vec::new();
+
+        for tag in tags {
+            match tag {
+                CommandTag::Begin => {
+                    frames.push(Vec::new());
+                }
+                CommandTag::Other(raw) if raw == "START TRANSACTION" => {
+                    frames.push(Vec::new());
+                }
+                CommandTag::Other(raw) if raw.starts_with("SAVEPOINT ") => {
+                    frames.push(Vec::new());
+                }
+                CommandTag::Other(raw) if raw.starts_with("RELEASE ") => {
+                    if let Some(inner) = frames.pop() {
+                        if let Some(parent) = frames.last_mut() {
+                            parent.extend(inner);
+                        } else {
+                            effective.extend(inner);
+                        }
+                    }
+                }
+                CommandTag::Rollback => {
+                    if frames.len() > 1 {
+                        // Partial rollback: discard innermost savepoint frame
+                        frames.pop();
+                    } else {
+                        // Full rollback: discard everything
+                        frames.clear();
+                    }
+                }
+                CommandTag::Commit => {
+                    for frame in frames.drain(..) {
+                        effective.extend(frame);
+                    }
+                }
+                _ => {
+                    if let Some(frame) = frames.last_mut() {
+                        frame.push(tag.clone());
+                    } else {
+                        effective.push(tag.clone());
+                    }
+                }
+            }
+        }
+
+        // Unclosed transaction: treat remaining frames as effective
+        for frame in frames.drain(..) {
+            effective.extend(frame);
+        }
+
+        effective
+    }
+
+    /// Stage 3: Select the most important tag from the effective set.
+    ///
+    /// Priority:
+    /// 1. First schema-modifying tag (`is_schema_modifying`)
+    /// 2. Last `needs_refresh` tag
+    /// 3. If effective is empty but `all_tags` had modifying tags → `Rollback`
+    /// 4. If effective is empty and TCL-only → last of `all_tags`
+    fn select_aggregate_tag(
+        all_tags: &[CommandTag],
+        effective: &[CommandTag],
+    ) -> Option<CommandTag> {
+        // 1. Schema-modifying takes priority
+        if let Some(tag) = effective.iter().find(|t| t.is_schema_modifying()) {
+            return Some(tag.clone());
+        }
+
+        // 2. Last needs_refresh tag
+        if let Some(tag) = effective.iter().rev().find(|t| t.needs_refresh()) {
+            return Some(tag.clone());
+        }
+
+        // 3. Effective empty, but original had modifying tags → Rollback
+        let had_modifying = all_tags.iter().any(|t| t.needs_refresh());
+        if had_modifying {
+            return Some(CommandTag::Rollback);
+        }
+
+        // 4. TCL-only → last tag
+        all_tags.last().cloned()
+    }
+
+    /// Orchestrator: parse multi-statement stdout into a single aggregate `CommandTag`.
+    ///
+    /// Chains Stage 1 → Stage 2 → Stage 3. Returns `None` if the output
+    /// looks like CSV data (not command tags).
+    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
+        stdout: &str,
+    ) -> Option<CommandTag> {
+        let all_tags = Self::parse_all_tags(stdout)?;
+        let effective = Self::discard_rolled_back(&all_tags);
+        Self::select_aggregate_tag(&all_tags, &effective)
+    }
 }
 
 #[cfg(test)]
@@ -1344,6 +1504,373 @@ mod tests {
                 Some(10)
             );
             assert_eq!(PostgresAdapter::parse_affected_rows("SELECT 1\n"), Some(1));
+        }
+    }
+
+    mod is_known_tcl_tag {
+        use super::*;
+
+        #[test]
+        fn recognizes_begin_commit_rollback() {
+            assert!(PostgresAdapter::is_known_tcl_tag("BEGIN"));
+            assert!(PostgresAdapter::is_known_tcl_tag("COMMIT"));
+            assert!(PostgresAdapter::is_known_tcl_tag("ROLLBACK"));
+        }
+
+        #[test]
+        fn recognizes_savepoint_and_release() {
+            assert!(PostgresAdapter::is_known_tcl_tag("SAVEPOINT s1"));
+            assert!(PostgresAdapter::is_known_tcl_tag("RELEASE s1"));
+        }
+
+        #[test]
+        fn recognizes_start_transaction() {
+            assert!(PostgresAdapter::is_known_tcl_tag("START TRANSACTION"));
+        }
+
+        #[test]
+        fn rejects_non_tcl() {
+            assert!(!PostgresAdapter::is_known_tcl_tag("UPDATE 1"));
+            assert!(!PostgresAdapter::is_known_tcl_tag("id,name"));
+            assert!(!PostgresAdapter::is_known_tcl_tag("VACUUM"));
+        }
+    }
+
+    mod parse_all_tags {
+        use super::*;
+
+        #[test]
+        fn single_dml() {
+            assert_eq!(
+                PostgresAdapter::parse_all_tags("DELETE 3"),
+                Some(vec![CommandTag::Delete(3)])
+            );
+        }
+
+        #[test]
+        fn single_ddl() {
+            assert_eq!(
+                PostgresAdapter::parse_all_tags("CREATE TABLE"),
+                Some(vec![CommandTag::Create("TABLE".to_string())])
+            );
+        }
+
+        #[test]
+        fn multi_line_tags() {
+            assert_eq!(
+                PostgresAdapter::parse_all_tags("BEGIN\nUPDATE 1\nCOMMIT"),
+                Some(vec![
+                    CommandTag::Begin,
+                    CommandTag::Update(1),
+                    CommandTag::Commit,
+                ])
+            );
+        }
+
+        #[test]
+        fn csv_returns_none() {
+            assert_eq!(PostgresAdapter::parse_all_tags("id,name\n1,Alice"), None);
+        }
+
+        #[test]
+        fn empty_string_returns_none() {
+            assert_eq!(PostgresAdapter::parse_all_tags(""), None);
+        }
+
+        #[test]
+        fn skips_empty_lines() {
+            assert_eq!(
+                PostgresAdapter::parse_all_tags("BEGIN\n\nUPDATE 1\n"),
+                Some(vec![CommandTag::Begin, CommandTag::Update(1)])
+            );
+        }
+
+        #[test]
+        fn savepoint_line_is_accepted() {
+            let result = PostgresAdapter::parse_all_tags("SAVEPOINT s1");
+            assert!(result.is_some());
+            assert_eq!(
+                result.unwrap(),
+                vec![CommandTag::Other("SAVEPOINT s1".to_string())]
+            );
+        }
+    }
+
+    mod discard_rolled_back {
+        use super::*;
+
+        fn sp(name: &str) -> CommandTag {
+            CommandTag::Other(format!("SAVEPOINT {}", name))
+        }
+        fn release(name: &str) -> CommandTag {
+            CommandTag::Other(format!("RELEASE {}", name))
+        }
+
+        #[test]
+        fn committed_txn() {
+            let tags = vec![CommandTag::Begin, CommandTag::Update(1), CommandTag::Commit];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1)]
+            );
+        }
+
+        #[test]
+        fn full_rollback() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                CommandTag::Rollback,
+            ];
+            let effective = PostgresAdapter::discard_rolled_back(&tags);
+            assert!(effective.is_empty());
+        }
+
+        #[test]
+        fn no_txn() {
+            let tags = vec![CommandTag::Update(1)];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1)]
+            );
+        }
+
+        #[test]
+        fn savepoint_release() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                sp("s1"),
+                CommandTag::Insert(1),
+                release("s1"),
+                CommandTag::Commit,
+            ];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1), CommandTag::Insert(1)]
+            );
+        }
+
+        #[test]
+        fn partial_rollback() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                sp("s1"),
+                CommandTag::Insert(1),
+                CommandTag::Rollback,
+                CommandTag::Commit,
+            ];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1)]
+            );
+        }
+
+        #[test]
+        fn full_rollback_with_savepoint() {
+            let tags = vec![
+                CommandTag::Begin,
+                sp("s1"),
+                CommandTag::Create("TABLE".to_string()),
+                CommandTag::Rollback,
+                CommandTag::Commit,
+            ];
+            let effective = PostgresAdapter::discard_rolled_back(&tags);
+            assert!(effective.is_empty());
+        }
+
+        #[test]
+        fn unclosed_txn() {
+            let tags = vec![CommandTag::Begin, CommandTag::Update(1)];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1)]
+            );
+        }
+
+        #[test]
+        fn tcl_only() {
+            let tags = vec![CommandTag::Begin, CommandTag::Commit];
+            let effective = PostgresAdapter::discard_rolled_back(&tags);
+            assert!(effective.is_empty());
+        }
+
+        #[test]
+        fn rollback_then_dml() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                sp("s1"),
+                CommandTag::Insert(1),
+                CommandTag::Rollback,
+                CommandTag::Delete(3),
+                CommandTag::Commit,
+            ];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1), CommandTag::Delete(3)]
+            );
+        }
+
+        #[test]
+        fn rollback_then_release_same_sp() {
+            // After rollback, the savepoint frame is already popped.
+            // RELEASE is a no-op (no frame to pop).
+            let tags = vec![
+                CommandTag::Begin,
+                sp("s1"),
+                CommandTag::Insert(1),
+                CommandTag::Rollback, // pops s1 frame
+                release("s1"),        // no-op: tries to pop but only txn frame remains
+                CommandTag::Commit,
+            ];
+            let effective = PostgresAdapter::discard_rolled_back(&tags);
+            assert!(effective.is_empty());
+        }
+
+        #[test]
+        fn multiple_txns() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                CommandTag::Commit,
+                CommandTag::Begin,
+                CommandTag::Insert(1),
+                CommandTag::Commit,
+            ];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Update(1), CommandTag::Insert(1)]
+            );
+        }
+
+        #[test]
+        fn full_rollback_then_bare_dml() {
+            let tags = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                CommandTag::Rollback,
+                CommandTag::Delete(3),
+            ];
+            assert_eq!(
+                PostgresAdapter::discard_rolled_back(&tags),
+                vec![CommandTag::Delete(3)]
+            );
+        }
+    }
+
+    mod select_aggregate_tag {
+        use super::*;
+
+        #[test]
+        fn schema_modifying_takes_priority() {
+            let all = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
+            let effective = all.clone();
+            assert_eq!(
+                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                Some(CommandTag::Drop("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn last_needs_refresh() {
+            let all = vec![CommandTag::Insert(1), CommandTag::Update(2)];
+            let effective = all.clone();
+            assert_eq!(
+                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                Some(CommandTag::Update(2))
+            );
+        }
+
+        #[test]
+        fn effective_empty_with_modifying_returns_rollback() {
+            let all = vec![
+                CommandTag::Begin,
+                CommandTag::Update(1),
+                CommandTag::Rollback,
+            ];
+            let effective = vec![];
+            assert_eq!(
+                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn tcl_only_returns_last_tag() {
+            let all = vec![CommandTag::Begin, CommandTag::Commit];
+            let effective = vec![];
+            assert_eq!(
+                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                Some(CommandTag::Commit)
+            );
+        }
+
+        #[test]
+        fn ddl_and_dml_mixed_schema_wins() {
+            let all = vec![
+                CommandTag::Create("TABLE".to_string()),
+                CommandTag::Insert(1),
+            ];
+            let effective = all.clone();
+            assert_eq!(
+                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+    }
+
+    mod parse_aggregate_command_tag {
+        use super::*;
+
+        #[test]
+        fn committed_txn_with_update() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nUPDATE 1\nCOMMIT"),
+                Some(CommandTag::Update(1))
+            );
+        }
+
+        #[test]
+        fn rolled_back_txn() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nUPDATE 1\nROLLBACK"),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn partial_rollback_keeps_outer_dml() {
+            let stdout = "BEGIN\nUPDATE 1\nSAVEPOINT s\nINSERT 0 1\nROLLBACK\nCOMMIT";
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                Some(CommandTag::Update(1))
+            );
+        }
+
+        #[test]
+        fn single_dml() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("DELETE 3"),
+                Some(CommandTag::Delete(3))
+            );
+        }
+
+        #[test]
+        fn csv_returns_none() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("id,name"),
+                None
+            );
+        }
+
+        #[test]
+        fn single_line_select_passes_through() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("SELECT 5"),
+                Some(CommandTag::Select(5))
+            );
         }
     }
 }
