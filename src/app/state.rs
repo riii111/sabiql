@@ -3,8 +3,10 @@ use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
+use super::input_mode::InputMode;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
+use super::modal_state::ModalState;
 use super::query_execution::QueryExecution;
 use super::query_history_state::QueryHistoryPickerState;
 use super::runtime_state::RuntimeState;
@@ -35,6 +37,7 @@ pub struct AppState {
     pub confirm_dialog: ConfirmDialogState,
     pub cell_edit: CellEditState,
     pub query_history_picker: QueryHistoryPickerState,
+    pub modal: ModalState,
     pub pending_write_preview: Option<WritePreview>,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
@@ -61,12 +64,17 @@ impl AppState {
             confirm_dialog: ConfirmDialogState::default(),
             cell_edit: CellEditState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
+            modal: ModalState::default(),
             pending_write_preview: None,
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
             connection_list_items: Vec::new(),
         }
+    }
+
+    pub fn input_mode(&self) -> InputMode {
+        self.modal.active_mode()
     }
 
     /// Mark the state as needing a render.
