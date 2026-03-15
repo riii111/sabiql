@@ -32,12 +32,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('o') if !state.query.is_history_mode() => {
                 return Action::OpenQueryHistoryPicker;
             }
-            Key::Char('e')
-                if state
-                    .query
-                    .visible_result()
-                    .is_some_and(|r| !r.is_error()) =>
-            {
+            Key::Char('e') if state.query.visible_result().is_some_and(|r| !r.is_error()) => {
                 return Action::RequestCsvExport;
             }
             Key::Char('d') => {
