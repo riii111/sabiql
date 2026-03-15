@@ -1,6 +1,7 @@
 ---
 paths:
   - "**/src/app/state.rs"
+  - "**/src/app/result_interaction.rs"
   - "**/src/app/services.rs"
   - "**/src/app/reducer.rs"
   - "**/src/app/reducers/**/*.rs"
@@ -25,6 +26,20 @@ paths:
   - Getter: `connections()`, `service_entries()`, `connection_list_items()`
 
 新しい派生フィールドを追加する場合も同じパターンを適用すること。
+
+## ResultInteraction aggregate
+
+`ResultInteraction`（`app/result_interaction.rs`）は Result pane のインタラクション状態を集約する。
+
+### Ownership
+
+`selection`, `cell_edit`, `staged_delete_rows`, `pending_write_preview` は private。遷移時に同時 reset が必要で、バラバラに触ると不整合が起きるため。
+
+### 不変条件
+
+- 複数フィールドの同時リセットは aggregate の transition API（`reset_view`, `reset_interaction`, `exit_cell_to_row`, `exit_row_to_scroll`）を使うこと
+- 新しい Result interaction state を追加したら、上記 transition メソッドへの統合を検討すること
+- `exit_cell_to_row()` / `exit_row_to_scroll()` の後、caller が `input_mode` を `Normal` に戻す責務を持つ（SAB-136 で統合予定）
 
 ## pub フィールドの型設計
 
