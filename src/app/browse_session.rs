@@ -50,6 +50,7 @@ impl BrowseSession {
     // ── Table selection ──────────────────────────────────────────────
 
     /// Returns the new generation for use as a staleness token.
+    #[must_use]
     pub fn select_table(
         &mut self,
         schema: &str,
@@ -66,6 +67,7 @@ impl BrowseSession {
     }
 
     /// Returns `false` if generation is stale (detail discarded).
+    #[must_use]
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
             self.table_detail = Some(detail);
@@ -78,6 +80,7 @@ impl BrowseSession {
     pub fn clear_table_selection(&mut self, pagination: &mut PaginationState) {
         self.current_table = None;
         self.table_detail = None;
+        self.selection_generation += 1;
         pagination.reset();
     }
 
@@ -207,34 +210,34 @@ impl BrowseSession {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 
-    // ── Transitional raw setters (Phase 3 will replace with aggregate API) ──
-
-    pub fn set_metadata_state(&mut self, state: MetadataState) {
+    pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
-    pub fn set_connection_state(&mut self, state: ConnectionState) {
+    pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
     }
 
-    pub fn set_metadata(&mut self, metadata: Option<Arc<DatabaseMetadata>>) {
+    pub(crate) fn set_metadata(&mut self, metadata: Option<Arc<DatabaseMetadata>>) {
         self.metadata = metadata;
     }
 
-    pub fn set_table_detail_raw(&mut self, detail: Option<Table>) {
+    pub(crate) fn set_table_detail_raw(&mut self, detail: Option<Table>) {
         self.table_detail = detail;
     }
 
-    pub fn set_current_table(&mut self, table: Option<String>) {
+    pub(crate) fn set_current_table(&mut self, table: Option<String>) {
         self.current_table = table;
     }
 
-    pub fn bump_generation(&mut self) -> u64 {
+    pub(crate) fn bump_generation(&mut self) -> u64 {
         self.selection_generation += 1;
         self.selection_generation
     }
 
-    pub fn set_selection_generation(&mut self, value: u64) {
+    #[cfg(any(test, feature = "test-support"))]
+    #[allow(dead_code)]
+    pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }
 }
@@ -306,7 +309,7 @@ mod tests {
             session.set_table_detail_raw(Some(make_table_detail()));
             let mut pagination = PaginationState::default();
 
-            session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut pagination);
 
             assert!(session.table_detail().is_none());
         }
@@ -316,7 +319,7 @@ mod tests {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
 
-            session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut pagination);
 
             assert_eq!(session.current_table(), Some("public.users"));
         }
@@ -332,7 +335,7 @@ mod tests {
                 table: "old".to_string(),
             };
 
-            session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut pagination);
 
             assert_eq!(pagination.current_page, 0);
             assert_eq!(pagination.total_rows_estimate, None);
@@ -364,7 +367,7 @@ mod tests {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
             let old_gen = session.select_table("public", "users", &mut pagination);
-            session.select_table("public", "posts", &mut pagination);
+            let _ = session.select_table("public", "posts", &mut pagination);
 
             let accepted = session.set_table_detail(make_table_detail(), old_gen);
 
@@ -379,14 +382,28 @@ mod tests {
     fn clear_table_selection_clears_all() {
         let mut session = BrowseSession::default();
         let mut pagination = PaginationState::default();
-        session.select_table("public", "users", &mut pagination);
-        session.set_table_detail(make_table_detail(), session.selection_generation());
+        let _ = session.select_table("public", "users", &mut pagination);
+        let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
 
         session.clear_table_selection(&mut pagination);
 
         assert!(session.current_table().is_none());
         assert!(session.table_detail().is_none());
         assert_eq!(pagination.current_page, 0);
+    }
+
+    #[test]
+    fn clear_table_selection_invalidates_pending_detail() {
+        let mut session = BrowseSession::default();
+        let mut pagination = PaginationState::default();
+        let pre_clear_gen = session.select_table("public", "users", &mut pagination);
+
+        session.clear_table_selection(&mut pagination);
+
+        // A TableDetailLoaded arriving with the pre-clear generation must be rejected
+        let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
+        assert!(!accepted);
+        assert!(session.table_detail().is_none());
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -471,8 +488,8 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("round_trip_db"));
             let mut pagination = PaginationState::default();
-            session.select_table("public", "users", &mut pagination);
-            session.set_table_detail(make_table_detail(), session.selection_generation());
+            let _ = session.select_table("public", "users", &mut pagination);
+            let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
 
             let result = make_query_result();
             let mut history = ResultHistory::default();
@@ -500,7 +517,7 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
-            session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut pagination);
             session.is_reloading = true;
             assert!(session.selection_generation() > 0);
 
@@ -522,7 +539,7 @@ mod tests {
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
             let generation = session.select_table("public", "users", &mut pagination);
-            session.set_table_detail(make_table_detail(), generation);
+            let _ = session.set_table_detail(make_table_detail(), generation);
 
             let cache = session.to_cache(
                 3,

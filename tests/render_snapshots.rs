@@ -17,7 +17,7 @@ use sabiql::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use sabiql::app::write_guardrails::{
     ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
 };
-use sabiql::domain::{CommandTag, MetadataState, QuerySource};
+use sabiql::domain::{CommandTag, QuerySource};
 
 mod initial_state {
     use super::*;
@@ -55,12 +55,11 @@ mod table_explorer {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -76,8 +75,7 @@ mod table_explorer {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
@@ -95,8 +93,7 @@ mod table_explorer {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focus_mode = true;
@@ -114,8 +111,7 @@ mod table_explorer {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
         state.messages.last_error = Some("Connection failed: timeout".to_string());
         state.messages.expires_at = Some(now + Duration::from_secs(10));
@@ -133,12 +129,11 @@ mod table_explorer {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::empty_query_result(now)));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -158,8 +153,7 @@ mod overlays {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FROM us".to_string();
         state.sql_modal.cursor = 16;
@@ -334,8 +328,7 @@ mod overlays {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::Help);
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -351,8 +344,7 @@ mod overlays {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::CommandPalette);
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -368,8 +360,7 @@ mod overlays {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::TablePicker);
         state.ui.filter_input = "user".to_string();
 
@@ -386,8 +377,7 @@ mod overlays {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::CommandLine);
         state.command_line_input = "sql".to_string();
 
@@ -452,8 +442,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         state.er_preparation.status = ErStatus::Waiting;
@@ -480,8 +469,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -497,8 +485,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
         state.ui.er_filter_input = "user".to_string();
 
@@ -515,8 +502,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
@@ -536,8 +522,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
@@ -561,8 +546,7 @@ mod er_diagram {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
@@ -986,11 +970,10 @@ mod confirm_dialogs {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
         state.confirm_dialog.message =
@@ -1014,11 +997,10 @@ mod confirm_dialogs {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
 
         let sql =
             "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
@@ -1067,11 +1049,10 @@ mod confirm_dialogs {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
 
         let sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '3';".to_string();
         state.result_interaction.set_write_preview(WritePreview {
@@ -1117,12 +1098,11 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Indexes;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1139,12 +1119,11 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::ForeignKeys;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1161,12 +1140,11 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Triggers;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1183,13 +1161,12 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         let mut table = fixtures::sample_table_detail();
         table.triggers = vec![];
-        state.session.set_table_detail_raw(Some(table));
+        let _ = state.session.set_table_detail(table, 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Triggers;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1206,12 +1183,11 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Info;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1228,15 +1204,14 @@ mod inspector {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         let mut table = fixtures::sample_table_detail();
         table.owner = None;
         table.comment = None;
         table.row_count_estimate = None;
-        state.session.set_table_detail_raw(Some(table));
+        let _ = state.session.set_table_detail(table, 0);
         state.ui.inspector_tab = sabiql::app::inspector_tab::InspectorTab::Info;
         state.ui.focused_pane = FocusedPane::Inspector;
 
@@ -1257,12 +1232,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
@@ -1280,12 +1254,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1304,12 +1277,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1336,12 +1308,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1365,12 +1336,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1394,12 +1364,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1426,14 +1395,11 @@ mod result_pane {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
-            .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
@@ -1471,12 +1437,11 @@ mod result_history {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state
+        let _ = state
             .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         // Current result is Preview, but history has adhoc entries
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state
@@ -1498,8 +1463,7 @@ mod result_history {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         // Push 3 adhoc results
@@ -1540,8 +1504,7 @@ mod result_history {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         let long_query = "SELECT column_1, column_2, column_3, column_4, column_5 FROM very_long_table_name WHERE id > 100";
@@ -1568,8 +1531,7 @@ mod result_history {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         // Push history but do NOT enter history mode (history_index = None)
@@ -1595,8 +1557,7 @@ mod result_history {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state.session.set_metadata_state(MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
 
         for i in 1..=3 {
@@ -1639,13 +1600,10 @@ mod style_assertions {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
-        state
-            .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1679,13 +1637,10 @@ mod style_assertions {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
-        state
-            .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
@@ -1719,13 +1674,10 @@ mod style_assertions {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+        let _ = state
             .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
-        state
-            .session
-            .set_table_detail_raw(Some(fixtures::sample_table_detail()));
+            .set_table_detail(fixtures::sample_table_detail(), 0);
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
@@ -1751,10 +1703,7 @@ mod style_assertions {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
-            .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::Help);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -1775,10 +1724,7 @@ mod style_assertions {
 
         state
             .session
-            .set_metadata(Some(Arc::new(fixtures::sample_metadata(now))));
-        state
-            .session
-            .set_metadata_state(sabiql::domain::MetadataState::Loaded);
+            .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::Help);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
