@@ -32,18 +32,7 @@ pub fn reduce(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
-    // Bidirectional sync: keeps ui.input_mode and modal in lockstep
-    // during incremental migration. Removed once all writers use ModalState.
-    state.modal.set_mode_raw(state.ui.input_mode);
-    let mode_before = state.modal.active_mode();
-
     let effects = reduce_inner(state, action, now, services);
-
-    if state.modal.active_mode() != mode_before {
-        state.ui.input_mode = state.modal.active_mode();
-    } else {
-        state.modal.set_mode_raw(state.ui.input_mode);
-    }
 
     if should_mark_dirty {
         state.mark_dirty();
@@ -1369,7 +1358,6 @@ mod tests {
                 sql: delete_sql,
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let now = Instant::now();
             let effects = reduce(
@@ -1437,7 +1425,6 @@ mod tests {
                 sql: "DELETE FROM t WHERE id='1'".to_string(),
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let now = Instant::now();
             reduce(
@@ -1529,7 +1516,6 @@ mod tests {
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::NotConnected;
             state.modal.set_mode(InputMode::ConnectionSetup);
-            state.ui.input_mode = InputMode::ConnectionSetup;
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1873,7 +1859,6 @@ mod tests {
             let mut state = create_test_state();
             state.ui.pending_er_picker = true;
             state.modal.set_mode(InputMode::SqlModal);
-            state.ui.input_mode = InputMode::SqlModal;
             let now = Instant::now();
 
             let effects = reduce(
@@ -1891,7 +1876,7 @@ mod tests {
         fn close_er_table_picker_returns_to_normal() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
-            state.ui.input_mode = InputMode::ErTablePicker;
+
             state.ui.er_filter_input = "test".to_string();
             let now = Instant::now();
 
@@ -1911,7 +1896,7 @@ mod tests {
         fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
-            state.ui.input_mode = InputMode::ErTablePicker;
+
             state
                 .ui
                 .er_selected_tables
@@ -1938,7 +1923,7 @@ mod tests {
         fn confirm_with_no_selection_returns_error() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
-            state.ui.input_mode = InputMode::ErTablePicker;
+
             let now = Instant::now();
 
             let effects = reduce(
@@ -2174,7 +2159,7 @@ mod tests {
         fn state_in_palette_mode() -> AppState {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::CommandPalette);
-            state.ui.input_mode = InputMode::CommandPalette;
+
             state
         }
 

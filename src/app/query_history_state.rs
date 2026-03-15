@@ -1,7 +1,6 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
-use super::input_mode::InputMode;
 use super::text_input::TextInputState;
 use crate::domain::query_history::QueryHistoryEntry;
 
@@ -12,7 +11,6 @@ pub struct QueryHistoryPickerState {
     pub selected: usize,
     pub scroll_offset: usize,
     pub pane_height: u16,
-    pub origin_mode: Option<InputMode>,
 }
 
 pub struct FilteredEntry<'a> {
@@ -26,7 +24,6 @@ impl QueryHistoryPickerState {
         self.filter_input.clear();
         self.selected = 0;
         self.scroll_offset = 0;
-        self.origin_mode = None;
     }
 
     pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {
@@ -145,7 +142,6 @@ mod tests {
             entries: vec![make_entry("SELECT 1")],
             selected: 5,
             scroll_offset: 3,
-            origin_mode: Some(InputMode::Normal),
             ..Default::default()
         };
         state.filter_input.set_content("test".to_string());
@@ -156,7 +152,6 @@ mod tests {
         assert_eq!(state.filter_input.content(), "");
         assert_eq!(state.selected, 0);
         assert_eq!(state.scroll_offset, 0);
-        assert!(state.origin_mode.is_none());
     }
 
     #[test]

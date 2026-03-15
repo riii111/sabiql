@@ -143,9 +143,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Keep ui.input_mode in sync until all readers migrate to state.input_mode()
-    state.ui.input_mode = state.modal.active_mode();
-
     let mut tui = TuiRunner::new()?;
     tui.enter()?;
 

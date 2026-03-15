@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
-use super::input_mode::InputMode;
 use super::inspector_tab::InspectorTab;
 use super::keybindings::help_content_line_count;
 use super::viewport::ViewportPlan;
@@ -105,9 +104,6 @@ pub struct UiState {
     pub focused_pane: FocusedPane,
     pub focus_mode: bool,
     pub focus_mode_prev_pane: Option<FocusedPane>,
-    pub input_mode: InputMode,
-    pub command_line_return_mode: InputMode,
-
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,

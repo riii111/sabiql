@@ -45,12 +45,6 @@ impl ModalState {
     pub fn is_modal_active(&self) -> bool {
         !matches!(self.mode, InputMode::Normal | InputMode::CellEdit)
     }
-
-    /// Sync bridge only: sets mode without clearing the stack.
-    /// Removed when all writers migrate to ModalState API.
-    pub fn set_mode_raw(&mut self, mode: InputMode) {
-        self.mode = mode;
-    }
 }
 
 #[cfg(test)]
@@ -170,21 +164,6 @@ mod tests {
 
         modal.set_mode(InputMode::Help);
         assert!(modal.is_modal_active());
-    }
-
-    #[test]
-    fn set_mode_raw_does_not_clear_stack() {
-        let mut modal = ModalState::default();
-        modal.push_mode(InputMode::CommandLine);
-
-        modal.set_mode_raw(InputMode::Normal);
-
-        assert_eq!(modal.active_mode(), InputMode::Normal);
-        // Stack is preserved
-        assert_eq!(modal.return_destination(), InputMode::Normal);
-        // But the entry is still there
-        let popped = modal.pop_mode();
-        assert_eq!(popped, InputMode::Normal);
     }
 
     #[test]
