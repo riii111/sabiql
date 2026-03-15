@@ -560,80 +560,78 @@ impl PostgresAdapter {
         effective
     }
 
-    fn split_statements(sql: &str) -> Vec<&str> {
+    // -- CTAS / SELECT INTO correction (newspaper style: high→low) --
+
+    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
+        stdout: &str,
+        sql: &str,
+    ) -> Option<CommandTag> {
+        ResolvedTags::resolve(stdout, sql)?.aggregate()
+    }
+
+    fn correct_ctas_tags(sql: &str, tags: Vec<CommandTag>) -> Vec<CommandTag> {
+        let stmts = Self::split_sql_statements(sql);
+        if stmts.len() != tags.len() {
+            return tags;
+        }
+        tags.into_iter()
+            .zip(stmts.iter())
+            .map(|(tag, stmt)| {
+                if !matches!(tag, CommandTag::Select(_)) {
+                    return tag;
+                }
+                Self::detect_create_as_kind(stmt)
+                    .or_else(|| Self::detect_select_into_kind(stmt))
+                    .unwrap_or(tag)
+            })
+            .collect()
+    }
+
+    fn detect_create_as_kind(stmt: &str) -> Option<CommandTag> {
+        let lower = stmt.trim().to_ascii_lowercase();
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        if words.first() != Some(&"create") {
+            return None;
+        }
+        let mut idx = 1;
+        while idx < words.len() && matches!(words[idx], "temp" | "temporary" | "unlogged") {
+            idx += 1;
+        }
+        if idx < words.len() && words[idx] == "table" {
+            return Some(CommandTag::Create("TABLE".to_string()));
+        }
+        if idx < words.len() && words[idx] == "materialized" && words.get(idx + 1) == Some(&"view")
+        {
+            return Some(CommandTag::Create("MATERIALIZED VIEW".to_string()));
+        }
+        None
+    }
+
+    fn detect_select_into_kind(stmt: &str) -> Option<CommandTag> {
+        let lower = stmt.trim().to_ascii_lowercase();
+        let first = lower.split_whitespace().next()?;
+        if !matches!(first, "select" | "with") {
+            return None;
+        }
+        Self::has_select_into(&lower).then(|| CommandTag::Create("TABLE".to_string()))
+    }
+
+    fn split_sql_statements(sql: &str) -> Vec<&str> {
         let bytes = sql.as_bytes();
-        let len = bytes.len();
         let mut stmts = Vec::new();
         let mut start = 0;
         let mut i = 0;
 
-        while i < len {
+        while i < bytes.len() {
             match bytes[i] {
-                b'\'' => {
-                    i += 1;
-                    while i < len {
-                        if bytes[i] == b'\'' {
-                            i += 1;
-                            if i < len && bytes[i] == b'\'' {
-                                i += 1; // escaped ''
-                            } else {
-                                break;
-                            }
-                        } else {
-                            i += 1;
-                        }
-                    }
+                b'\'' => i = skip_single_quoted(bytes, i),
+                b'"' => i = skip_double_quoted(bytes, i),
+                b'$' => i = skip_dollar_quoted(sql, bytes, i),
+                b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                    i = skip_line_comment(bytes, i)
                 }
-                b'"' => {
-                    i += 1;
-                    while i < len {
-                        if bytes[i] == b'"' {
-                            i += 1;
-                            if i < len && bytes[i] == b'"' {
-                                i += 1; // escaped ""
-                            } else {
-                                break;
-                            }
-                        } else {
-                            i += 1;
-                        }
-                    }
-                }
-                b'$' => {
-                    // Dollar-quoted string: find the opening tag $...$ then seek closing tag
-                    let tag_start = i;
-                    i += 1;
-                    while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                        i += 1;
-                    }
-                    if i < len && bytes[i] == b'$' {
-                        let tag = &sql[tag_start..=i];
-                        i += 1;
-                        while i + tag.len() <= len {
-                            if &sql[i..i + tag.len()] == tag {
-                                i += tag.len();
-                                break;
-                            }
-                            i += 1;
-                        }
-                    }
-                    // If no closing $, i already advanced past tag chars
-                }
-                b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
-                    // Line comment
-                    while i < len && bytes[i] != b'\n' {
-                        i += 1;
-                    }
-                }
-                b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
-                    // Block comment
-                    i += 2;
-                    while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                        i += 1;
-                    }
-                    if i + 1 < len {
-                        i += 2;
-                    }
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                    i = skip_block_comment(bytes, i)
                 }
                 b';' => {
                     let slice = sql[start..i].trim();
@@ -643,9 +641,7 @@ impl PostgresAdapter {
                     i += 1;
                     start = i;
                 }
-                _ => {
-                    i += 1;
-                }
+                _ => i += 1,
             }
         }
         let tail = sql[start..].trim();
@@ -655,116 +651,22 @@ impl PostgresAdapter {
         stmts
     }
 
-    /// Determines if a single SQL statement is CTAS, CREATE MATERIALIZED VIEW AS,
-    /// or SELECT INTO. Returns the corrected `CommandTag` if so.
-    fn detect_ctas_kind(stmt: &str) -> Option<CommandTag> {
-        let lower = stmt.trim().to_ascii_lowercase();
-        let words: Vec<&str> = lower.split_whitespace().collect();
-        if words.is_empty() {
-            return None;
-        }
-
-        match words[0] {
-            "create" => {
-                // CREATE [TEMP|TEMPORARY|UNLOGGED] TABLE ... → CTAS
-                // CREATE MATERIALIZED VIEW ... → CREATE MATERIALIZED VIEW
-                let mut idx = 1;
-                // Skip optional qualifiers
-                while idx < words.len() && matches!(words[idx], "temp" | "temporary" | "unlogged") {
-                    idx += 1;
-                }
-                if idx < words.len() && words[idx] == "table" {
-                    return Some(CommandTag::Create("TABLE".to_string()));
-                }
-                if idx < words.len()
-                    && words[idx] == "materialized"
-                    && words.get(idx + 1) == Some(&"view")
-                {
-                    return Some(CommandTag::Create("MATERIALIZED VIEW".to_string()));
-                }
-                None
-            }
-            "select" | "with" => {
-                // SELECT ... INTO ... FROM ... or WITH ... SELECT ... INTO ... FROM ...
-                // Find top-level INTO that appears before FROM
-                Self::has_select_into(&lower).then(|| CommandTag::Create("TABLE".to_string()))
-            }
-            _ => None,
-        }
-    }
-
-    /// Check if a lowercased SQL has a top-level INTO before FROM,
-    /// indicating SELECT INTO (not INSERT INTO).
     fn has_select_into(lower: &str) -> bool {
         let bytes = lower.as_bytes();
-        let len = bytes.len();
         let mut i = 0;
         let mut depth: i32 = 0;
         let mut found_from = false;
 
-        while i < len {
+        while i < bytes.len() {
             match bytes[i] {
-                b'\'' => {
-                    i += 1;
-                    while i < len {
-                        if bytes[i] == b'\'' {
-                            i += 1;
-                            if i < len && bytes[i] == b'\'' {
-                                i += 1;
-                            } else {
-                                break;
-                            }
-                        } else {
-                            i += 1;
-                        }
-                    }
+                b'\'' => i = skip_single_quoted(bytes, i),
+                b'"' => i = skip_double_quoted(bytes, i),
+                b'$' => i = skip_dollar_quoted(lower, bytes, i),
+                b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                    i = skip_line_comment(bytes, i)
                 }
-                b'"' => {
-                    i += 1;
-                    while i < len {
-                        if bytes[i] == b'"' {
-                            i += 1;
-                            if i < len && bytes[i] == b'"' {
-                                i += 1;
-                            } else {
-                                break;
-                            }
-                        } else {
-                            i += 1;
-                        }
-                    }
-                }
-                b'$' => {
-                    let tag_start = i;
-                    i += 1;
-                    while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                        i += 1;
-                    }
-                    if i < len && bytes[i] == b'$' {
-                        let tag = &lower[tag_start..=i];
-                        i += 1;
-                        while i + tag.len() <= len {
-                            if &lower[i..i + tag.len()] == tag {
-                                i += tag.len();
-                                break;
-                            }
-                            i += 1;
-                        }
-                    }
-                }
-                b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
-                    while i < len && bytes[i] != b'\n' {
-                        i += 1;
-                    }
-                }
-                b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
-                    i += 2;
-                    while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                        i += 1;
-                    }
-                    if i + 1 < len {
-                        i += 2;
-                    }
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                    i = skip_block_comment(bytes, i)
                 }
                 b'(' => {
                     depth += 1;
@@ -776,57 +678,27 @@ impl PostgresAdapter {
                 }
                 _ if depth == 0 && bytes[i].is_ascii_alphabetic() => {
                     let word_start = i;
-                    while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+                    {
                         i += 1;
                     }
                     let word = &lower[word_start..i];
                     match word {
-                        "from" => {
-                            found_from = true;
-                        }
+                        "from" => found_from = true,
                         "into" if !found_from => {
-                            if word_start >= 6 {
-                                let before = lower[..word_start].trim_end();
-                                if before.ends_with("insert") {
-                                    continue;
-                                }
+                            if word_start >= 6 && lower[..word_start].trim_end().ends_with("insert")
+                            {
+                                continue;
                             }
                             return true;
                         }
                         _ => {}
                     }
                 }
-                _ => {
-                    i += 1;
-                }
+                _ => i += 1,
             }
         }
         false
-    }
-
-    fn correct_ctas_tags(sql: &str, tags: Vec<CommandTag>) -> Vec<CommandTag> {
-        let stmts = Self::split_statements(sql);
-        if stmts.len() != tags.len() {
-            return tags;
-        }
-        tags.into_iter()
-            .zip(stmts.iter())
-            .map(|(tag, stmt)| {
-                if matches!(tag, CommandTag::Select(_))
-                    && let Some(corrected) = Self::detect_ctas_kind(stmt)
-                {
-                    return corrected;
-                }
-                tag
-            })
-            .collect()
-    }
-
-    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
-        stdout: &str,
-        sql: &str,
-    ) -> Option<CommandTag> {
-        ResolvedTags::resolve(stdout, sql)?.aggregate()
     }
 }
 
@@ -844,9 +716,12 @@ pub(in crate::infra::adapters::postgres) struct ResolvedTags {
 impl ResolvedTags {
     pub(in crate::infra::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
         let parsed = PostgresAdapter::parse_all_tags(stdout)?;
-        let all = PostgresAdapter::correct_ctas_tags(sql, parsed);
-        let effective = PostgresAdapter::discard_rolled_back(&all);
-        Some(Self { all, effective })
+        let corrected = PostgresAdapter::correct_ctas_tags(sql, parsed);
+        let effective = PostgresAdapter::discard_rolled_back(&corrected);
+        Some(Self {
+            all: corrected,
+            effective,
+        })
     }
 
     pub(in crate::infra::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
@@ -864,6 +739,81 @@ impl ResolvedTags {
 
         self.all.last().cloned()
     }
+}
+
+// -- SQL lexical skip helpers (byte-level) --
+// Shared by split_sql_statements and has_select_into to ensure
+// consistent quote/comment boundary handling.
+
+fn skip_single_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b'\'' {
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'\'' {
+                i += 1;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_double_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'"' {
+                i += 1;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_dollar_quoted(sql: &str, bytes: &[u8], mut i: usize) -> usize {
+    let tag_start = i;
+    i += 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b'$' {
+        let tag = &sql[tag_start..=i];
+        i += 1;
+        while i + tag.len() <= bytes.len() {
+            if &sql[i..i + tag.len()] == tag {
+                return i + tag.len();
+            }
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i
+}
+
+fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
+    i += 2;
+    while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+        i += 1;
+    }
+    if i + 1 < bytes.len() {
+        i += 2;
+    }
+    i
 }
 
 #[cfg(test)]
@@ -1651,13 +1601,13 @@ mod tests {
         }
     }
 
-    mod split_statements {
+    mod split_sql_statements {
         use super::*;
 
         #[test]
         fn basic_split() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 1; SELECT 2"),
+                PostgresAdapter::split_sql_statements("SELECT 1; SELECT 2"),
                 vec!["SELECT 1", "SELECT 2"]
             );
         }
@@ -1665,7 +1615,7 @@ mod tests {
         #[test]
         fn single_statement() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 1"),
+                PostgresAdapter::split_sql_statements("SELECT 1"),
                 vec!["SELECT 1"]
             );
         }
@@ -1673,7 +1623,7 @@ mod tests {
         #[test]
         fn trailing_semicolon() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 1;"),
+                PostgresAdapter::split_sql_statements("SELECT 1;"),
                 vec!["SELECT 1"]
             );
         }
@@ -1681,7 +1631,7 @@ mod tests {
         #[test]
         fn semicolon_in_single_quotes() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 'a;b'"),
+                PostgresAdapter::split_sql_statements("SELECT 'a;b'"),
                 vec!["SELECT 'a;b'"]
             );
         }
@@ -1689,7 +1639,7 @@ mod tests {
         #[test]
         fn semicolon_in_double_quotes() {
             assert_eq!(
-                PostgresAdapter::split_statements(r#"SELECT "a;b""#),
+                PostgresAdapter::split_sql_statements(r#"SELECT "a;b""#),
                 vec![r#"SELECT "a;b""#]
             );
         }
@@ -1697,7 +1647,7 @@ mod tests {
         #[test]
         fn semicolon_in_dollar_quote() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT $$a;b$$"),
+                PostgresAdapter::split_sql_statements("SELECT $$a;b$$"),
                 vec!["SELECT $$a;b$$"]
             );
         }
@@ -1705,7 +1655,7 @@ mod tests {
         #[test]
         fn semicolon_in_tagged_dollar_quote() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT $tag$a;b$tag$"),
+                PostgresAdapter::split_sql_statements("SELECT $tag$a;b$tag$"),
                 vec!["SELECT $tag$a;b$tag$"]
             );
         }
@@ -1713,7 +1663,7 @@ mod tests {
         #[test]
         fn semicolon_in_line_comment() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 1 -- comment; here\n"),
+                PostgresAdapter::split_sql_statements("SELECT 1 -- comment; here\n"),
                 vec!["SELECT 1 -- comment; here"]
             );
         }
@@ -1721,27 +1671,27 @@ mod tests {
         #[test]
         fn semicolon_in_block_comment() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT /* ; */ 1"),
+                PostgresAdapter::split_sql_statements("SELECT /* ; */ 1"),
                 vec!["SELECT /* ; */ 1"]
             );
         }
 
         #[test]
         fn empty_input() {
-            let result: Vec<&str> = PostgresAdapter::split_statements("");
+            let result: Vec<&str> = PostgresAdapter::split_sql_statements("");
             assert!(result.is_empty());
         }
 
         #[test]
         fn whitespace_only() {
-            let result: Vec<&str> = PostgresAdapter::split_statements("   ");
+            let result: Vec<&str> = PostgresAdapter::split_sql_statements("   ");
             assert!(result.is_empty());
         }
 
         #[test]
         fn escaped_single_quote() {
             assert_eq!(
-                PostgresAdapter::split_statements("SELECT 'it''s'; SELECT 2"),
+                PostgresAdapter::split_sql_statements("SELECT 'it''s'; SELECT 2"),
                 vec!["SELECT 'it''s'", "SELECT 2"]
             );
         }
@@ -1749,19 +1699,19 @@ mod tests {
         #[test]
         fn multi_statement_txn() {
             assert_eq!(
-                PostgresAdapter::split_statements("BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"),
+                PostgresAdapter::split_sql_statements("BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"),
                 vec!["BEGIN", "CREATE TABLE t AS SELECT 1", "COMMIT"]
             );
         }
     }
 
-    mod detect_ctas_kind {
+    mod detect_create_as_kind {
         use super::*;
 
         #[test]
         fn ctas_basic() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE TABLE t AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE TABLE t AS SELECT 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
@@ -1769,7 +1719,7 @@ mod tests {
         #[test]
         fn ctas_temp() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE TEMP TABLE t AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE TEMP TABLE t AS SELECT 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
@@ -1777,7 +1727,7 @@ mod tests {
         #[test]
         fn ctas_temporary() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE TEMPORARY TABLE t AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE TEMPORARY TABLE t AS SELECT 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
@@ -1785,7 +1735,7 @@ mod tests {
         #[test]
         fn ctas_unlogged() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE UNLOGGED TABLE t AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE UNLOGGED TABLE t AS SELECT 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
@@ -1793,58 +1743,15 @@ mod tests {
         #[test]
         fn create_materialized_view() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE MATERIALIZED VIEW v AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE MATERIALIZED VIEW v AS SELECT 1"),
                 Some(CommandTag::Create("MATERIALIZED VIEW".to_string()))
             );
         }
 
         #[test]
-        fn select_into() {
+        fn create_view_not_detected() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT * INTO t FROM users"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn select_into_columns() {
-            assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT id, name INTO t FROM users"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn with_select_into() {
-            assert_eq!(
-                PostgresAdapter::detect_ctas_kind(
-                    "WITH cte AS (SELECT 1) SELECT * INTO t FROM cte"
-                ),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn plain_select_not_ctas() {
-            assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT * FROM users"),
-                None
-            );
-        }
-
-        #[test]
-        fn insert_into_not_ctas() {
-            assert_eq!(
-                PostgresAdapter::detect_ctas_kind("INSERT INTO users VALUES (1)"),
-                None
-            );
-        }
-
-        #[test]
-        fn create_view_not_ctas() {
-            // psql returns CREATE VIEW, not SELECT, so this shouldn't be detected
-            assert_eq!(
-                PostgresAdapter::detect_ctas_kind("CREATE VIEW v AS SELECT 1"),
+                PostgresAdapter::detect_create_as_kind("CREATE VIEW v AS SELECT 1"),
                 None
             );
         }
@@ -1852,55 +1759,117 @@ mod tests {
         #[test]
         fn case_insensitive() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("create table t as select 1"),
+                PostgresAdapter::detect_create_as_kind("create table t as select 1"),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
 
         #[test]
-        fn into_in_double_quotes_not_ctas() {
+        fn plain_select_returns_none() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind(r#"SELECT "into" FROM t"#),
+                PostgresAdapter::detect_create_as_kind("SELECT * FROM users"),
+                None
+            );
+        }
+    }
+
+    mod detect_select_into_kind {
+        use super::*;
+
+        #[test]
+        fn select_into() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT * INTO t FROM users"),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn select_into_columns() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT id, name INTO t FROM users"),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn with_select_into() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind(
+                    "WITH cte AS (SELECT 1) SELECT * INTO t FROM cte"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn plain_select_not_detected() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT * FROM users"),
                 None
             );
         }
 
         #[test]
-        fn into_in_dollar_quote_not_ctas() {
+        fn insert_into_not_detected() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT $$into$$ FROM t"),
+                PostgresAdapter::detect_select_into_kind("INSERT INTO users VALUES (1)"),
                 None
             );
         }
 
         #[test]
-        fn into_in_tagged_dollar_quote_not_ctas() {
+        fn create_not_detected() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT $x$into$x$ FROM t"),
+                PostgresAdapter::detect_select_into_kind("CREATE TABLE t AS SELECT 1"),
                 None
             );
         }
 
         #[test]
-        fn into_in_line_comment_not_ctas() {
+        fn into_in_double_quotes() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT 1 -- into\nFROM t"),
+                PostgresAdapter::detect_select_into_kind(r#"SELECT "into" FROM t"#),
                 None
             );
         }
 
         #[test]
-        fn into_in_block_comment_not_ctas() {
+        fn into_in_dollar_quote() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT /* into */ 1 FROM t"),
+                PostgresAdapter::detect_select_into_kind("SELECT $$into$$ FROM t"),
                 None
             );
         }
 
         #[test]
-        fn into_in_single_quote_not_ctas() {
+        fn into_in_tagged_dollar_quote() {
             assert_eq!(
-                PostgresAdapter::detect_ctas_kind("SELECT 'into' FROM t"),
+                PostgresAdapter::detect_select_into_kind("SELECT $x$into$x$ FROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_line_comment() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT 1 -- into\nFROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_block_comment() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT /* into */ 1 FROM t"),
+                None
+            );
+        }
+
+        #[test]
+        fn into_in_single_quote() {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind("SELECT 'into' FROM t"),
                 None
             );
         }
