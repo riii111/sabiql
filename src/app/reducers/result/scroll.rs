@@ -60,7 +60,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             match new_row {
                 Some(r) => move_row_or_scroll(state, r, |_| {}),
                 None if state.result_interaction.selection().row().is_none() => {
-                    state.result_interaction.scroll_offset = state.result_interaction.scroll_offset.saturating_sub(1);
+                    state.result_interaction.scroll_offset =
+                        state.result_interaction.scroll_offset.saturating_sub(1);
                 }
                 _ => {} // row == 0, no-op
             }
@@ -89,7 +90,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         Action::ResultScrollBottom => {
             let max_row = result_row_count(state).saturating_sub(1);
             let max_scroll = result_max_scroll(state);
-            move_row_or_scroll(state, max_row, |s| s.result_interaction.scroll_offset = max_scroll);
+            move_row_or_scroll(state, max_row, |s| {
+                s.result_interaction.scroll_offset = max_scroll
+            });
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
@@ -103,7 +106,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
                 let max = result_max_scroll(s);
-                s.result_interaction.scroll_offset = (s.result_interaction.scroll_offset + delta).min(max);
+                s.result_interaction.scroll_offset =
+                    (s.result_interaction.scroll_offset + delta).min(max);
             });
             Some(vec![])
         }
@@ -116,7 +120,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .map(|r| r.saturating_sub(delta))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
-                s.result_interaction.scroll_offset = s.result_interaction.scroll_offset.saturating_sub(delta);
+                s.result_interaction.scroll_offset =
+                    s.result_interaction.scroll_offset.saturating_sub(delta);
             });
             Some(vec![])
         }
@@ -131,7 +136,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
                 let max = result_max_scroll(s);
-                s.result_interaction.scroll_offset = (s.result_interaction.scroll_offset + delta).min(max);
+                s.result_interaction.scroll_offset =
+                    (s.result_interaction.scroll_offset + delta).min(max);
             });
             Some(vec![])
         }
@@ -144,7 +150,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .map(|r| r.saturating_sub(delta))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
-                s.result_interaction.scroll_offset = s.result_interaction.scroll_offset.saturating_sub(delta);
+                s.result_interaction.scroll_offset =
+                    s.result_interaction.scroll_offset.saturating_sub(delta);
             });
             Some(vec![])
         }

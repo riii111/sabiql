@@ -122,6 +122,9 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
+    /// Preserves `staged_delete_rows`: cell edit is orthogonal to delete staging,
+    /// so returning to row-active should not discard a partially-staged batch.
+    ///
     /// Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
     pub fn exit_cell_to_row(&mut self) {
         self.selection.exit_to_row();

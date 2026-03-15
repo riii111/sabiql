@@ -7,12 +7,6 @@ use crate::app::write_guardrails::{
 use crate::app::write_update::build_pk_pairs;
 use crate::domain::{QueryResult, QuerySource};
 
-/// Resets all Result-pane view state (scroll, selection, staging, edit).
-/// Used whenever the displayed result changes (adhoc success, history nav, etc.)
-pub fn reset_result_view(state: &mut AppState) {
-    state.result_interaction.reset_view();
-}
-
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
@@ -102,7 +96,12 @@ pub fn build_bulk_delete_preview(
     );
 
     let staged_count = state.result_interaction.staged_delete_rows().len();
-    let first_deleted_idx = *state.result_interaction.staged_delete_rows().iter().next().unwrap();
+    let first_deleted_idx = *state
+        .result_interaction
+        .staged_delete_rows()
+        .iter()
+        .next()
+        .unwrap();
     let (target_page, target_row) = deletion_refresh_target_bulk(
         result.rows.len(),
         staged_count,

@@ -121,7 +121,10 @@ pub fn reduce_navigation(
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.result_interaction.cell_edit_input_mut().insert_str(&clean);
+                state
+                    .result_interaction
+                    .cell_edit_input_mut()
+                    .insert_str(&clean);
                 Some(vec![])
             }
             _ => None,

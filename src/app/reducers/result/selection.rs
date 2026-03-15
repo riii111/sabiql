@@ -76,7 +76,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 );
                 return Some(vec![]);
             }
-            if state.result_interaction.selection().mode() == crate::app::ui_state::ResultNavMode::RowActive
+            if state.result_interaction.selection().mode()
+                == crate::app::ui_state::ResultNavMode::RowActive
                 && let Some(row_idx) = state.result_interaction.selection().row()
             {
                 state.result_interaction.stage_row(row_idx);

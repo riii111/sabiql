@@ -82,7 +82,11 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         diff: vec![ColumnDiff {
             column: column_name,
             before: state.result_interaction.cell_edit().original_value.clone(),
-            after: state.result_interaction.cell_edit().draft_value().to_string(),
+            after: state
+                .result_interaction
+                .cell_edit()
+                .draft_value()
+                .to_string(),
         }],
         guardrail,
     };
@@ -185,7 +189,7 @@ pub fn reduce_query(
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
-                    super::helpers::reset_result_view(state);
+                    state.result_interaction.reset_view();
                     state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                     state.query.history_index = None;
                 }
@@ -251,7 +255,7 @@ pub fn reduce_query(
                 state.query.start_time = None;
                 let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
-                    super::helpers::reset_result_view(state);
+                    state.result_interaction.reset_view();
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                     state.query.pending_delete_refresh_target = None;
                 }
@@ -409,7 +413,9 @@ pub fn reduce_query(
                 );
                 return Some(vec![]);
             }
-            state.result_interaction.set_write_preview((**preview).clone());
+            state
+                .result_interaction
+                .set_write_preview((**preview).clone());
             let operation = preview.operation;
             let title = match operation {
                 WriteOperation::Update => {
@@ -732,7 +738,7 @@ pub fn reduce_query(
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                super::helpers::reset_result_view(state);
+                state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
@@ -764,7 +770,7 @@ pub fn reduce_query(
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                super::helpers::reset_result_view(state);
+                state.result_interaction.reset_view();
                 // When going back, the page is not at the end anymore
                 state.query.pagination.reached_end = false;
                 Some(vec![Effect::ExecutePreview {
@@ -1390,7 +1396,10 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.result_interaction.selection().mode(), ResultNavMode::Scroll);
+            assert_eq!(
+                state.result_interaction.selection().mode(),
+                ResultNavMode::Scroll
+            );
             assert_eq!(state.result_interaction.scroll_offset, 0);
             assert_eq!(state.result_interaction.horizontal_offset, 0);
         }
@@ -1448,8 +1457,13 @@ mod tests {
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
             state.modal.set_mode(InputMode::CellEdit);
-            state.result_interaction.begin_cell_edit(0, 1, "Alice".to_string());
-            state.result_interaction.cell_edit_input_mut().set_content("Bob".to_string());
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "Alice".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("Bob".to_string());
             state
         }
 
@@ -1563,7 +1577,10 @@ mod tests {
             );
 
             assert_eq!(
-                state.result_interaction.pending_write_preview().map(|p| p.sql.as_str()),
+                state
+                    .result_interaction
+                    .pending_write_preview()
+                    .map(|p| p.sql.as_str()),
                 Some(expected_sql.as_str())
             );
             match &state.confirm_dialog.intent {

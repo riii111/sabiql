@@ -429,22 +429,24 @@ mod tests {
         fn execute_write_blocked_confirm_clears_preview_state() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.result_interaction.set_write_preview(crate::app::write_guardrails::WritePreview {
-                operation: crate::app::write_guardrails::WriteOperation::Update,
-                sql: "UPDATE t SET x=1".to_string(),
-                target_summary: crate::app::write_guardrails::TargetSummary {
-                    schema: "public".to_string(),
-                    table: "t".to_string(),
-                    key_values: vec![],
+            state.result_interaction.set_write_preview(
+                crate::app::write_guardrails::WritePreview {
+                    operation: crate::app::write_guardrails::WriteOperation::Update,
+                    sql: "UPDATE t SET x=1".to_string(),
+                    target_summary: crate::app::write_guardrails::TargetSummary {
+                        schema: "public".to_string(),
+                        table: "t".to_string(),
+                        key_values: vec![],
+                    },
+                    diff: vec![],
+                    guardrail: crate::app::write_guardrails::GuardrailDecision {
+                        risk_level: crate::app::write_guardrails::RiskLevel::High,
+                        blocked: true,
+                        reason: Some("too risky".to_string()),
+                        target_summary: None,
+                    },
                 },
-                diff: vec![],
-                guardrail: crate::app::write_guardrails::GuardrailDecision {
-                    risk_level: crate::app::write_guardrails::RiskLevel::High,
-                    blocked: true,
-                    reason: Some("too risky".to_string()),
-                    target_summary: None,
-                },
-            });
+            );
             state.query.pending_delete_refresh_target = Some((0, None, 1));
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),

@@ -1,6 +1,5 @@
 use crate::app::action::Action;
 use crate::app::effect::Effect;
-use crate::app::reducers::helpers::reset_result_view;
 use crate::app::state::AppState;
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -11,7 +10,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 return Some(vec![]);
             }
             state.query.history_index = Some(len - 1);
-            reset_result_view(state);
+            state.result_interaction.reset_view();
             Some(vec![])
         }
         Action::HistoryOlder => {
@@ -19,7 +18,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 && idx > 0
             {
                 state.query.history_index = Some(idx - 1);
-                reset_result_view(state);
+                state.result_interaction.reset_view();
             }
             Some(vec![])
         }
@@ -28,14 +27,14 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let len = state.query.result_history.len();
                 if idx + 1 < len {
                     state.query.history_index = Some(idx + 1);
-                    reset_result_view(state);
+                    state.result_interaction.reset_view();
                 }
             }
             Some(vec![])
         }
         Action::ExitResultHistory => {
             state.query.history_index = None;
-            reset_result_view(state);
+            state.result_interaction.reset_view();
             Some(vec![])
         }
         _ => None,
