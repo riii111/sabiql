@@ -56,7 +56,7 @@ paru -S sabiql  # or yay -S sabiql
 
 # Void Linux (Unofficial Repo)
 echo repository=https://raw.githubusercontent.com/Event-Horizon-VL/blackhole-vl/repository-x86_64 | sudo tee /etc/xbps.d/20-repository-extra.conf
-xbps-install -S sabiql
+sudo xbps-install -S sabiql
 
 # FreeBSD (ports)
 cd /usr/ports/databases/sabiql/ && make install clean
