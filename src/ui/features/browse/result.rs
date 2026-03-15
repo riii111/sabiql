@@ -63,7 +63,7 @@ impl ResultPane {
                             state.cell_edit.row.unwrap_or_default(),
                             state.cell_edit.col.unwrap_or_default(),
                             state.cell_edit.draft_value(),
-                            state.ui.input_mode == crate::app::input_mode::InputMode::CellEdit,
+                            state.input_mode() == crate::app::input_mode::InputMode::CellEdit,
                             state.cell_edit.input.cursor(),
                         ))
                     } else {

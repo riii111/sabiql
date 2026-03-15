@@ -85,19 +85,19 @@ fn reduce_inner(
         }
 
         Action::ConfirmSelection => {
-            if state.ui.input_mode == InputMode::TablePicker {
+            if state.modal.active_mode() == InputMode::TablePicker {
                 let table = state
                     .filtered_tables()
                     .get(state.ui.picker_selected)
                     .cloned()
                     .cloned();
                 if let Some(table) = table {
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
                     return select_table(state, &table);
                 }
-            } else if state.ui.input_mode == InputMode::Normal {
+            } else if state.modal.active_mode() == InputMode::Normal {
                 if state.connection_error.error_info.is_some() {
-                    state.ui.input_mode = InputMode::ConnectionError;
+                    state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
                 if state.ui.focused_pane != FocusedPane::Explorer {
@@ -111,11 +111,11 @@ fn reduce_inner(
                 if let Some(table) = table {
                     return select_table(state, &table);
                 }
-            } else if state.ui.input_mode == InputMode::CommandPalette {
+            } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::app::palette::palette_action_for_index;
 
                 let cmd_action = palette_action_for_index(state.ui.picker_selected);
-                state.ui.input_mode = InputMode::Normal;
+                state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
 
@@ -311,7 +311,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::TablePicker);
+            assert_eq!(state.input_mode(), InputMode::TablePicker);
             assert!(state.ui.filter_input.is_empty());
             assert_eq!(state.ui.picker_selected, 0);
             assert!(effects.is_empty());
@@ -320,7 +320,7 @@ mod tests {
         #[test]
         fn close_table_picker_returns_to_normal() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
             let now = Instant::now();
 
             let effects = reduce(
@@ -330,7 +330,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
 
@@ -341,12 +341,12 @@ mod tests {
 
             // First open
             let effects = reduce(&mut state, Action::OpenHelp, now, &AppServices::stub());
-            assert_eq!(state.ui.input_mode, InputMode::Help);
+            assert_eq!(state.input_mode(), InputMode::Help);
             assert!(effects.is_empty());
 
             // Toggle back to normal
             let effects = reduce(&mut state, Action::OpenHelp, now, &AppServices::stub());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
     }
@@ -358,7 +358,7 @@ mod tests {
         #[test]
         fn sql_modal_input_sets_debounce_state() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
             let effects = reduce(
@@ -529,7 +529,7 @@ mod tests {
             );
 
             assert!(matches!(state.cache.state, MetadataState::Error(_)));
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
             assert!(effects.is_empty());
         }
@@ -550,7 +550,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
     }
 
@@ -566,7 +566,7 @@ mod tests {
                 "psql: error: could not translate host",
             );
             state.connection_error.set_error(info);
-            state.ui.input_mode = InputMode::ConnectionError;
+            state.modal.set_mode(InputMode::ConnectionError);
             state
         }
 
@@ -586,7 +586,7 @@ mod tests {
 
             // error_info is kept so Enter can re-open modal
             assert!(state.connection_error.error_info.is_some());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             // UI state is reset
             assert!(!state.connection_error.details_expanded);
             assert_eq!(state.connection_error.scroll_offset, 0);
@@ -624,7 +624,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
 
             // Re-open with Enter
             reduce(
@@ -633,7 +633,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
         }
 
@@ -732,7 +732,7 @@ mod tests {
             let mut state = create_test_state();
             state.cache.metadata = Some(users_metadata(now));
             state.cache.table_detail = Some(stale_table_detail());
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.ui.focused_pane = FocusedPane::Explorer;
             state.ui.set_explorer_selection(Some(0));
 
@@ -752,7 +752,7 @@ mod tests {
             let mut state = create_test_state();
             state.cache.metadata = Some(users_metadata(now));
             state.cache.table_detail = Some(stale_table_detail());
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
             state.ui.picker_selected = 0;
 
             reduce(
@@ -1194,7 +1194,7 @@ mod tests {
         #[test]
         fn save_completed_sets_dsn_and_returns_fetch_effect() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = true;
             state.connection_setup.host = "db.example.com".to_string();
             state.connection_setup.port = "5432".to_string();
@@ -1221,7 +1221,7 @@ mod tests {
                 state.runtime.active_connection_name,
                 Some("Test Connection".to_string())
             );
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
         }
@@ -1229,7 +1229,7 @@ mod tests {
         #[test]
         fn save_failed_sets_error_message() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1246,7 +1246,7 @@ mod tests {
         #[test]
         fn cancel_on_first_run_opens_confirm_dialog() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = true;
             let now = Instant::now();
 
@@ -1257,7 +1257,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent,
                 Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
@@ -1268,7 +1268,7 @@ mod tests {
         #[test]
         fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = false;
             let now = Instant::now();
 
@@ -1279,7 +1279,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::DispatchActions(_)));
         }
@@ -1292,7 +1292,7 @@ mod tests {
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.modal.set_mode(InputMode::ConfirmDialog);
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
@@ -1310,7 +1310,7 @@ mod tests {
         #[test]
         fn cancel_quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.modal.set_mode(InputMode::ConfirmDialog);
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
@@ -1322,7 +1322,7 @@ mod tests {
             );
 
             assert!(state.confirm_dialog.intent.is_none());
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
 
@@ -1334,7 +1334,7 @@ mod tests {
 
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
             state.pending_write_preview = Some(WritePreview {
@@ -1358,7 +1358,6 @@ mod tests {
                 sql: delete_sql,
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let now = Instant::now();
             let effects = reduce(
@@ -1404,7 +1403,7 @@ mod tests {
 
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            state.modal.set_mode(InputMode::ConfirmDialog);
 
             state.pending_write_preview = Some(WritePreview {
                 operation: WriteOperation::Delete,
@@ -1426,7 +1425,6 @@ mod tests {
                 sql: "DELETE FROM t WHERE id='1'".to_string(),
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let now = Instant::now();
             reduce(
@@ -1444,7 +1442,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.pending_write_preview.is_none());
         }
     }
@@ -1459,7 +1457,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::NotConnected;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1475,7 +1473,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.dsn = None;
             state.runtime.connection_state = ConnectionState::NotConnected;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1489,7 +1487,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::Connecting;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1503,7 +1501,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::Connected;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1517,7 +1515,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.runtime.connection_state = ConnectionState::NotConnected;
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::TryConnect, now, &AppServices::stub());
@@ -1593,7 +1591,7 @@ mod tests {
             let mut state = create_test_state();
             state.runtime.connection_state = ConnectionState::Failed;
             state.cache.state = MetadataState::Error("error".to_string());
-            state.ui.input_mode = InputMode::ConnectionError;
+            state.modal.set_mode(InputMode::ConnectionError);
             let now = Instant::now();
 
             reduce(
@@ -1605,7 +1603,7 @@ mod tests {
 
             assert!(state.runtime.connection_state.is_not_connected());
             assert!(matches!(state.cache.state, MetadataState::NotLoaded));
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
 
         #[test]
@@ -1777,7 +1775,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.ui.er_filter_input.is_empty());
             assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
@@ -1797,7 +1795,7 @@ mod tests {
 
             assert!(state.ui.pending_er_picker);
             assert!(state.messages.last_success.is_some());
-            assert_ne!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert_ne!(state.input_mode(), InputMode::ErTablePicker);
             assert!(effects.is_empty());
         }
 
@@ -1826,7 +1824,7 @@ mod tests {
         fn metadata_loaded_with_pending_dispatches_open() {
             let mut state = create_test_state();
             state.ui.pending_er_picker = true;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1860,7 +1858,7 @@ mod tests {
         fn metadata_loaded_with_pending_but_non_normal_mode_discards() {
             let mut state = create_test_state();
             state.ui.pending_er_picker = true;
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1877,7 +1875,8 @@ mod tests {
         #[test]
         fn close_er_table_picker_returns_to_normal() {
             let mut state = state_with_metadata();
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
+
             state.ui.er_filter_input = "test".to_string();
             let now = Instant::now();
 
@@ -1888,7 +1887,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.ui.er_filter_input.is_empty());
             assert!(effects.is_empty());
         }
@@ -1896,7 +1895,8 @@ mod tests {
         #[test]
         fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
             let mut state = state_with_metadata();
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
+
             state
                 .ui
                 .er_selected_tables
@@ -1914,7 +1914,7 @@ mod tests {
                 state.er_preparation.target_tables,
                 vec!["public.users".to_string()]
             );
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::DispatchActions(_)));
         }
@@ -1922,7 +1922,8 @@ mod tests {
         #[test]
         fn confirm_with_no_selection_returns_error() {
             let mut state = state_with_metadata();
-            state.ui.input_mode = InputMode::ErTablePicker;
+            state.modal.set_mode(InputMode::ErTablePicker);
+
             let now = Instant::now();
 
             let effects = reduce(
@@ -1932,7 +1933,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ErTablePicker);
+            assert_eq!(state.input_mode(), InputMode::ErTablePicker);
             assert!(state.messages.last_error.is_some());
             assert!(effects.is_empty());
         }
@@ -2058,7 +2059,7 @@ mod tests {
             );
 
             // ConfirmSelection from Normal mode (explorer focused)
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.ui.focused_pane = FocusedPane::Explorer;
             state.ui.explorer_selected = 0;
             let effects = reduce(
@@ -2157,7 +2158,8 @@ mod tests {
 
         fn state_in_palette_mode() -> AppState {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::CommandPalette;
+            state.modal.set_mode(InputMode::CommandPalette);
+
             state
         }
 
@@ -2192,7 +2194,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.input_mode, expected_mode);
+            assert_eq!(state.input_mode(), expected_mode);
         }
 
         #[test]
@@ -2234,7 +2236,7 @@ mod tests {
             );
 
             assert_ne!(
-                state.ui.input_mode,
+                state.input_mode(),
                 InputMode::CommandPalette,
                 "palette must be closed after confirm"
             );

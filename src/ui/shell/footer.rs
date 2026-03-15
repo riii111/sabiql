@@ -62,7 +62,7 @@ impl Footer {
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::focused_pane::FocusedPane;
 
-        match state.ui.input_mode {
+        match state.input_mode() {
             InputMode::Normal => {
                 if state.query.history_index.is_some() {
                     return vec![

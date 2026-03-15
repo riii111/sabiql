@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn paste_handled_by_setup_in_connection_setup_mode() {
         let mut state = AppState::new("test".to_string());
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
 
         let result = reduce_connection(
             &mut state,
@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn paste_falls_through_in_normal_mode() {
         let mut state = AppState::new("test".to_string());
-        state.ui.input_mode = InputMode::Normal;
+        state.modal.set_mode(InputMode::Normal);
 
         let result = reduce_connection(
             &mut state,
