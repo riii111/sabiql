@@ -255,9 +255,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         // Confirm Dialog
         Action::ConfirmDialogConfirm => {
             let intent = state.confirm_dialog.intent.take();
-            let return_mode =
-                std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
-            state.ui.input_mode = return_mode;
+            state.modal.pop_mode();
 
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
@@ -321,21 +319,18 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let intent = state.confirm_dialog.intent.take();
             state.pending_write_preview = None;
             state.query.pending_delete_refresh_target = None;
-            let return_mode =
-                std::mem::replace(&mut state.confirm_dialog.return_mode, InputMode::Normal);
 
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
-                    // Restore ConnectionSetup synchronously to avoid 1-tick flicker
                     state.connection_setup.reset();
                     if !state.connections().is_empty() || state.runtime.dsn.is_some() {
                         state.connection_setup.is_first_run = false;
                     }
-                    state.ui.input_mode = InputMode::ConnectionSetup;
+                    state.modal.pop_mode_override(InputMode::ConnectionSetup);
                     Some(vec![])
                 }
                 _ => {
-                    state.ui.input_mode = return_mode;
+                    state.modal.pop_mode();
                     Some(vec![])
                 }
             }
@@ -359,10 +354,15 @@ mod tests {
     mod confirm_dialog_confirm {
         use super::*;
 
+        pub(super) fn enter_confirm_dialog(state: &mut AppState, return_mode: InputMode) {
+            state.modal.set_mode(return_mode);
+            state.modal.push_mode(InputMode::ConfirmDialog);
+        }
+
         #[test]
         fn quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
 
             let effects =
@@ -376,15 +376,14 @@ mod tests {
         #[test]
         fn delete_connection_returns_delete_effect() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
             let id = crate::domain::ConnectionId::new();
             state.confirm_dialog.intent = Some(ConfirmIntent::DeleteConnection(id.clone()));
-            state.confirm_dialog.return_mode = InputMode::ConnectionSelector;
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::DeleteConnection { .. }));
         }
@@ -392,18 +391,17 @@ mod tests {
         #[test]
         fn execute_write_sets_running_state_and_returns_effect() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::CellEdit);
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::CellEdit;
 
             let now = Instant::now();
             let effects = reduce_modal(&mut state, &Action::ConfirmDialogConfirm, now).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(matches!(state.query.status, QueryStatus::Running));
             assert!(state.query.start_time.is_some());
             assert_eq!(effects.len(), 1);
@@ -413,7 +411,7 @@ mod tests {
         #[test]
         fn execute_write_no_dsn_sets_error() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.runtime.dsn = None;
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
@@ -433,24 +431,23 @@ mod tests {
         #[test]
         fn execute_write_blocked_returns_to_mode_with_no_effects() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: true,
             });
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn execute_write_blocked_confirm_clears_preview_state() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.pending_write_preview = Some(crate::app::write_guardrails::WritePreview {
                 operation: crate::app::write_guardrails::WriteOperation::Update,
                 sql: "UPDATE t SET x=1".to_string(),
@@ -482,7 +479,7 @@ mod tests {
         #[test]
         fn csv_export_returns_export_effect() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.confirm_dialog.intent = Some(ConfirmIntent::CsvExport {
                 export_query: "SELECT 1".to_string(),
@@ -501,22 +498,21 @@ mod tests {
         fn disable_read_only_confirm_sets_read_only_false() {
             let mut state = create_test_state();
             state.runtime.read_only = true;
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = Some(ConfirmIntent::DisableReadOnly);
-            state.confirm_dialog.return_mode = InputMode::Normal;
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(!state.runtime.read_only);
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn none_intent_confirm_does_not_panic() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = None;
 
             let effects =
@@ -832,35 +828,35 @@ mod tests {
     }
 
     mod confirm_dialog_cancel {
+        use super::confirm_dialog_confirm::enter_confirm_dialog;
         use super::*;
 
         #[test]
         fn quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn other_intents_cancel_returns_empty_effects() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::CellEdit);
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: false,
             });
-            state.confirm_dialog.return_mode = InputMode::CellEdit;
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogCancel, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(effects.is_empty());
             assert!(state.pending_write_preview.is_none());
         }
@@ -868,7 +864,7 @@ mod tests {
         #[test]
         fn none_intent_cancel_does_not_panic() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = None;
 
             let effects =

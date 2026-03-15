@@ -44,8 +44,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
                 state.confirm_dialog.intent =
                     Some(crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id));
-                state.confirm_dialog.return_mode = state.ui.input_mode;
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
             }
             Some(vec![])
         }
@@ -166,7 +165,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert_eq!(state.confirm_dialog.title, "Delete Connection");
             assert!(state.confirm_dialog.message.contains("Production"));
             assert!(
@@ -249,6 +248,7 @@ mod tests {
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
             state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
 
             reduce(
                 &mut state,
@@ -257,7 +257,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.confirm_dialog.return_mode,
+                state.modal.return_destination(),
                 InputMode::ConnectionSelector
             );
         }

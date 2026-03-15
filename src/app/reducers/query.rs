@@ -409,14 +409,10 @@ pub fn reduce_query(
             }
             state.pending_write_preview = Some((**preview).clone());
             let operation = preview.operation;
-            let caller_mode = state.ui.input_mode;
-            let (title, return_mode) = match operation {
+            let title = match operation {
                 WriteOperation::Update => {
                     state.query.pending_delete_refresh_target = None;
-                    (
-                        format!("Confirm UPDATE: {}", preview.target_summary.table),
-                        caller_mode,
-                    )
+                    format!("Confirm UPDATE: {}", preview.target_summary.table)
                 }
                 WriteOperation::Delete => {
                     let n = state
@@ -425,14 +421,11 @@ pub fn reduce_query(
                         .as_ref()
                         .map(|(_, _, count)| *count)
                         .unwrap_or(1);
-                    (
-                        format!(
-                            "Confirm DELETE: {} {} from {}",
-                            n,
-                            if n == 1 { "row" } else { "rows" },
-                            preview.target_summary.table
-                        ),
-                        InputMode::Normal,
+                    format!(
+                        "Confirm DELETE: {} {} from {}",
+                        n,
+                        if n == 1 { "row" } else { "rows" },
+                        preview.target_summary.table
                     )
                 }
             };
@@ -445,8 +438,11 @@ pub fn reduce_query(
                     blocked: preview.guardrail.blocked,
                 },
             );
-            state.confirm_dialog.return_mode = return_mode;
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            if matches!(operation, WriteOperation::Delete) {
+                // Delete returns to Normal regardless of caller
+                state.modal.set_mode(InputMode::Normal);
+            }
+            state.modal.push_mode(InputMode::ConfirmDialog);
 
             Some(vec![])
         }
@@ -658,8 +654,7 @@ pub fn reduce_query(
                         file_name: file_name.clone(),
                         row_count: *row_count,
                     });
-                state.confirm_dialog.return_mode = InputMode::Normal;
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
                 let dsn = match &state.runtime.dsn {
@@ -1633,8 +1628,8 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
-            assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
                 state.confirm_dialog.title,
                 "Confirm DELETE: 1 row from users"
@@ -1891,7 +1886,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.title.contains("CSV Export"));
         }
 
@@ -1912,7 +1907,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.message.contains("unknown"));
         }
 
