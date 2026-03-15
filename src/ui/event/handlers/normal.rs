@@ -13,23 +13,23 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Ctrl combos (context-independent)
     if combo.modifiers.ctrl {
         match combo.key {
-            Key::Char('p') if state.query.history_index.is_none() => {
+            Key::Char('p') if !state.query.is_history_mode() => {
                 return Action::OpenTablePicker;
             }
             Key::Char('h') => {
-                return if state.query.history_index.is_some() {
+                return if state.query.is_history_mode() {
                     Action::ExitResultHistory
                 } else {
                     Action::OpenResultHistory
                 };
             }
-            Key::Char('k') if state.query.history_index.is_none() => {
+            Key::Char('k') if !state.query.is_history_mode() => {
                 return Action::OpenCommandPalette;
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
             }
-            Key::Char('o') if state.query.history_index.is_none() => {
+            Key::Char('o') if !state.query.is_history_mode() => {
                 return Action::OpenQueryHistoryPicker;
             }
             Key::Char('e')
@@ -78,7 +78,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 };
             }
             _ => {
-                if state.query.history_index.is_some() {
+                if state.query.is_history_mode() {
                     return Action::None;
                 }
             }
@@ -86,7 +86,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
 
     // History mode: whitelist — only history nav, help, and scroll allowed
-    if state.query.history_index.is_some() {
+    if state.query.is_history_mode() {
         match combo.key {
             Key::Char('[') => return Action::HistoryOlder,
             Key::Char(']') => return Action::HistoryNewer,
