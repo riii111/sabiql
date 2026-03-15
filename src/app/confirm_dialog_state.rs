@@ -1,4 +1,3 @@
-use crate::app::input_mode::InputMode;
 use crate::domain::ConnectionId;
 
 #[derive(Debug, Clone)]
@@ -23,7 +22,6 @@ pub struct ConfirmDialogState {
     pub title: String,
     pub message: String,
     pub intent: Option<ConfirmIntent>,
-    pub return_mode: InputMode,
 }
 
 impl Default for ConfirmDialogState {
@@ -32,7 +30,6 @@ impl Default for ConfirmDialogState {
             title: "Confirm".to_string(),
             message: String::new(),
             intent: None,
-            return_mode: InputMode::Normal,
         }
     }
 }

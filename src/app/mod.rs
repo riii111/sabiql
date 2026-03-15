@@ -23,6 +23,7 @@ pub mod keybindings;
 pub mod keymap;
 pub mod message_state;
 pub mod metadata_cache;
+pub mod modal_state;
 pub mod palette;
 pub mod ports;
 pub mod query_execution;

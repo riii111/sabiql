@@ -12,7 +12,7 @@ use super::helpers::reset_connection_state;
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenConnectionSelector => {
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
             Some(vec![Effect::LoadConnections])
         }
@@ -44,8 +44,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
                 state.confirm_dialog.intent =
                     Some(crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id));
-                state.confirm_dialog.return_mode = state.ui.input_mode;
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
             }
             Some(vec![])
         }
@@ -72,7 +71,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if state.connections().is_empty() && state.service_entries().is_empty() {
                 state.connection_setup.reset();
                 state.connection_setup.is_first_run = false;
-                state.ui.input_mode = InputMode::ConnectionSetup;
+                state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
             state
@@ -130,11 +129,10 @@ mod tests {
         #[test]
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::Normal;
 
             let effects = reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
             let effects = effects.unwrap();
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
         }
@@ -166,7 +164,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert_eq!(state.confirm_dialog.title, "Delete Connection");
             assert!(state.confirm_dialog.message.contains("Production"));
             assert!(
@@ -231,7 +229,7 @@ mod tests {
         fn empty_list_does_nothing() {
             let mut state = AppState::new("test".to_string());
             state.set_connections(vec![]);
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             reduce(
                 &mut state,
@@ -239,7 +237,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
@@ -248,7 +246,8 @@ mod tests {
             let profile = create_profile("Production");
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
+            state.modal.set_mode(InputMode::ConnectionSelector);
 
             reduce(
                 &mut state,
@@ -257,7 +256,7 @@ mod tests {
             );
 
             assert_eq!(
-                state.confirm_dialog.return_mode,
+                state.modal.return_destination(),
                 InputMode::ConnectionSelector
             );
         }
@@ -365,7 +364,6 @@ mod tests {
             let profile = create_profile("Only");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.ui.input_mode = InputMode::Normal;
 
             reduce(
                 &mut state,
@@ -374,7 +372,7 @@ mod tests {
             );
 
             assert!(state.connections().is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
 
         #[test]
@@ -411,7 +409,7 @@ mod tests {
                     user: None,
                 }],
             );
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
 
             reduce(
                 &mut state,
@@ -420,7 +418,7 @@ mod tests {
             );
 
             assert!(state.connections().is_empty());
-            assert_ne!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_ne!(state.input_mode(), InputMode::ConnectionSetup);
             assert_eq!(state.connection_list_items(), build_connection_list(0, 1));
         }
     }

@@ -11,14 +11,14 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
     match action {
         Action::ShowConnectionError(info) => {
             state.connection_error.set_error(info.clone());
-            state.ui.input_mode = InputMode::ConnectionError;
+            state.modal.replace_mode(InputMode::ConnectionError);
             Some(vec![])
         }
         Action::CloseConnectionError => {
             state.connection_error.details_expanded = false;
             state.connection_error.scroll_offset = 0;
             state.connection_error.clear_copied_feedback();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ToggleConnectionErrorDetails => {
@@ -55,7 +55,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.connection_error.clear();
             state.runtime.connection_state = ConnectionState::NotConnected;
             state.cache.state = MetadataState::NotLoaded;
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.replace_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::RetryServiceConnection => {
@@ -64,7 +64,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.runtime.connection_state = ConnectionState::Connecting;
                 state.cache.state = MetadataState::Loading;
                 state.runtime.read_only = false;
-                state.ui.input_mode = InputMode::Normal;
+                state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {
                 Some(vec![])
@@ -86,22 +86,22 @@ mod tests {
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
             state.runtime.dsn = Some("service=mydb".to_string());
-            state.ui.input_mode = InputMode::ConnectionError;
+            state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionError);
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
         }
 
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
             state.runtime.dsn = Some("postgres://localhost/db".to_string());
-            state.ui.input_mode = InputMode::ConnectionError;
+            state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
     }
 }

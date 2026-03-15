@@ -247,7 +247,7 @@ pub fn reduce_query(
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
-                let is_adhoc = state.ui.input_mode == InputMode::SqlModal;
+                let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
                     super::helpers::reset_result_view(state);
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
@@ -265,8 +265,7 @@ pub fn reduce_query(
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.ui.input_mode = state.ui.command_line_return_mode;
-            state.ui.command_line_return_mode = InputMode::Normal;
+            state.modal.pop_mode();
             state.command_line_input.clear();
 
             Some(match follow_up {
@@ -275,11 +274,11 @@ pub fn reduce_query(
                     vec![]
                 }
                 Action::OpenHelp => {
-                    state.ui.input_mode = InputMode::Help;
+                    state.modal.set_mode(InputMode::Help);
                     vec![]
                 }
                 Action::OpenSqlModal => {
-                    state.ui.input_mode = InputMode::SqlModal;
+                    state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.status = SqlModalStatus::Editing;
                     if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
@@ -410,14 +409,10 @@ pub fn reduce_query(
             }
             state.pending_write_preview = Some((**preview).clone());
             let operation = preview.operation;
-            let caller_mode = state.ui.input_mode;
-            let (title, return_mode) = match operation {
+            let title = match operation {
                 WriteOperation::Update => {
                     state.query.pending_delete_refresh_target = None;
-                    (
-                        format!("Confirm UPDATE: {}", preview.target_summary.table),
-                        caller_mode,
-                    )
+                    format!("Confirm UPDATE: {}", preview.target_summary.table)
                 }
                 WriteOperation::Delete => {
                     let n = state
@@ -426,14 +421,11 @@ pub fn reduce_query(
                         .as_ref()
                         .map(|(_, _, count)| *count)
                         .unwrap_or(1);
-                    (
-                        format!(
-                            "Confirm DELETE: {} {} from {}",
-                            n,
-                            if n == 1 { "row" } else { "rows" },
-                            preview.target_summary.table
-                        ),
-                        InputMode::Normal,
+                    format!(
+                        "Confirm DELETE: {} {} from {}",
+                        n,
+                        if n == 1 { "row" } else { "rows" },
+                        preview.target_summary.table
                     )
                 }
             };
@@ -446,8 +438,11 @@ pub fn reduce_query(
                     blocked: preview.guardrail.blocked,
                 },
             );
-            state.confirm_dialog.return_mode = return_mode;
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            if matches!(operation, WriteOperation::Delete) {
+                // Delete returns to Normal regardless of caller
+                state.modal.set_mode(InputMode::Normal);
+            }
+            state.modal.push_mode(InputMode::ConfirmDialog);
 
             Some(vec![])
         }
@@ -493,7 +488,7 @@ pub fn reduce_query(
                             format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
                             now,
                         );
-                        state.ui.input_mode = InputMode::CellEdit;
+                        state.modal.set_mode(InputMode::CellEdit);
                         return Some(vec![]);
                     }
 
@@ -501,7 +496,7 @@ pub fn reduce_query(
                         .messages
                         .set_success_at("Updated 1 row".to_string(), now);
                     state.cell_edit.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
 
                     if let Some(dsn) = &state.runtime.dsn {
                         let page = state.query.pagination.current_page;
@@ -548,7 +543,7 @@ pub fn reduce_query(
                     }
                     state.cell_edit.clear();
                     state.ui.staged_delete_rows.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
 
                     state.query.post_delete_row_selection = target_row
                         .map(PostDeleteRowSelection::Select)
@@ -586,10 +581,10 @@ pub fn reduce_query(
             state.pending_write_preview = None;
             state.query.pending_delete_refresh_target = None;
             state.messages.set_error_at(error.clone(), now);
-            state.ui.input_mode = match operation {
+            state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
-            };
+            });
             Some(vec![])
         }
 
@@ -659,8 +654,7 @@ pub fn reduce_query(
                         file_name: file_name.clone(),
                         row_count: *row_count,
                     });
-                state.confirm_dialog.return_mode = InputMode::Normal;
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
                 let dsn = match &state.runtime.dsn {
@@ -925,6 +919,45 @@ mod tests {
         state.query.pagination.schema = schema.to_string();
         state.query.pagination.table = table.to_string();
         state
+    }
+
+    mod command_line_submit {
+        use super::*;
+
+        #[test]
+        fn submit_quit_pops_mode_and_sets_quit() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "q".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.should_quit);
+        }
+
+        #[test]
+        fn submit_unknown_pops_mode_without_side_effects() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::CellEdit);
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "unknown_cmd".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(!state.should_quit);
+        }
     }
 
     mod next_page {
@@ -1412,7 +1445,7 @@ mod tests {
             state.cache.table_detail = Some(users_table_detail());
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.ui.input_mode = InputMode::CellEdit;
+            state.modal.set_mode(InputMode::CellEdit);
             state.cell_edit.begin(0, 1, "Alice".to_string());
             state.cell_edit.input.set_content("Bob".to_string());
             state
@@ -1421,7 +1454,7 @@ mod tests {
         #[test]
         fn write_requires_cell_edit_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             // No cell_edit active
 
             let effects = reduce_query(
@@ -1556,7 +1589,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.query.status, QueryStatus::Running);
             assert!(state.query.start_time.is_some());
             assert_eq!(effects.len(), 1);
@@ -1586,7 +1619,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
@@ -1622,7 +1655,7 @@ mod tests {
         #[test]
         fn open_write_preview_confirm_for_delete_sets_normal_return_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
             let effects = reduce_query(
@@ -1634,8 +1667,8 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
-            assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
                 state.confirm_dialog.title,
                 "Confirm DELETE: 1 row from users"
@@ -1658,7 +1691,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Select(499)
@@ -1696,7 +1729,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("DELETE expected 1 row, but affected 0 rows")
@@ -1718,7 +1751,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
         }
 
@@ -1892,7 +1925,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.title.contains("CSV Export"));
         }
 
@@ -1913,7 +1946,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.message.contains("unknown"));
         }
 

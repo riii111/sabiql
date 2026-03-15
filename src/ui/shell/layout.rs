@@ -48,7 +48,7 @@ impl MainLayout {
         Footer::render(frame, footer_area, state, time_ms);
         CommandLine::render(frame, cmdline_area, state);
 
-        match state.ui.input_mode {
+        match state.input_mode() {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::ErTablePicker => ErTablePicker::render(frame, state),
             InputMode::QueryHistoryPicker => QueryHistoryPicker::render(frame, state),
