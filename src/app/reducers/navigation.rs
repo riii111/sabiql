@@ -148,14 +148,12 @@ pub fn reduce_navigation(
 
         // Command Line
         Action::EnterCommandLine => {
-            state.ui.command_line_return_mode = state.ui.input_mode;
-            state.ui.input_mode = InputMode::CommandLine;
+            state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.clear();
             Some(vec![])
         }
         Action::ExitCommandLine => {
-            state.ui.input_mode = state.ui.command_line_return_mode;
-            state.ui.command_line_return_mode = InputMode::Normal;
+            state.modal.pop_mode();
             Some(vec![])
         }
         Action::CommandLineInput(c) => {

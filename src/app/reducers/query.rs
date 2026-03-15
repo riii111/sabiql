@@ -265,8 +265,7 @@ pub fn reduce_query(
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.ui.input_mode = state.ui.command_line_return_mode;
-            state.ui.command_line_return_mode = InputMode::Normal;
+            state.modal.pop_mode();
             state.command_line_input.clear();
 
             Some(match follow_up {
@@ -275,11 +274,11 @@ pub fn reduce_query(
                     vec![]
                 }
                 Action::OpenHelp => {
-                    state.ui.input_mode = InputMode::Help;
+                    state.modal.set_mode(InputMode::Help);
                     vec![]
                 }
                 Action::OpenSqlModal => {
-                    state.ui.input_mode = InputMode::SqlModal;
+                    state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.status = SqlModalStatus::Editing;
                     if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
