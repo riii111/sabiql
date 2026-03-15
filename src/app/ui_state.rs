@@ -132,15 +132,8 @@ pub struct UiState {
 
     pub explorer_pane_height: u16,
 
-    pub result_scroll_offset: usize,
-    pub result_horizontal_offset: usize,
     pub result_viewport_plan: ViewportPlan,
     pub result_pane_height: u16,
-    pub result_selection: ResultSelection,
-    pub staged_delete_rows: BTreeSet<usize>,
-    pub delete_op_pending: bool,
-    pub yank_op_pending: bool,
-    pub yank_flash: Option<YankFlash>,
 
     pub help_scroll_offset: usize,
 

@@ -979,7 +979,7 @@ mod confirm_dialogs {
         let sql =
             "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
                 .to_string();
-        state.pending_write_preview = Some(WritePreview {
+        state.result_interaction.set_write_preview(WritePreview {
             operation: WriteOperation::Update,
             sql: sql.clone(),
             target_summary: TargetSummary {
@@ -1026,7 +1026,7 @@ mod confirm_dialogs {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
 
         let sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '3';".to_string();
-        state.pending_write_preview = Some(WritePreview {
+        state.result_interaction.set_write_preview(WritePreview {
             operation: WriteOperation::Delete,
             sql: sql.clone(),
             target_summary: TargetSummary {
@@ -1193,7 +1193,7 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
+        state.result_interaction.enter_row(0);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1212,8 +1212,8 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1232,13 +1232,13 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1258,11 +1258,11 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.input.set_cursor(0);
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state.result_interaction.cell_edit_input_mut().set_cursor(0);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1281,11 +1281,11 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.input.set_cursor(7);
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state.result_interaction.cell_edit_input_mut().set_cursor(7);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1304,13 +1304,13 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::Normal);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1330,8 +1330,8 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
-        state.ui.staged_delete_rows.insert(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.stage_row(1);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1524,13 +1524,13 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::Normal);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -1556,13 +1556,13 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -1588,8 +1588,8 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
-        state.ui.staged_delete_rows.insert(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.stage_row(1);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 

@@ -8,7 +8,7 @@ use crate::app::ui_state::ResultNavMode;
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let result_navigation = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
     let inspector_navigation = state.ui.focused_pane == FocusedPane::Inspector;
-    let result_nav_mode = state.ui.result_selection.mode();
+    let result_nav_mode = state.result_interaction.selection().mode();
 
     // Ctrl combos (context-independent)
     if combo.modifiers.ctrl {
@@ -128,7 +128,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 match result_nav_mode {
                     ResultNavMode::CellActive => {
-                        if state.cell_edit.has_pending_draft() {
+                        if state.result_interaction.cell_edit().has_pending_draft() {
                             Action::ResultDiscardCellEdit
                         } else {
                             Action::ResultExitToRowActive
@@ -256,7 +256,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
         Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
-            if state.ui.yank_op_pending {
+            if state.result_interaction.yank_op_pending {
                 Action::ResultRowYank
             } else {
                 Action::ResultRowYankOperatorPending
@@ -269,7 +269,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::DdlYank
         }
         Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
-            if state.ui.delete_op_pending {
+            if state.result_interaction.delete_op_pending {
                 Action::StageRowForDelete
             } else {
                 Action::ResultDeleteOperatorPending
@@ -642,7 +642,7 @@ mod tests {
     #[test]
     fn d_sets_delete_op_pending_in_row_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
+        state.result_interaction.enter_row(0);
 
         let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
@@ -652,8 +652,8 @@ mod tests {
     #[test]
     fn dd_stages_row_for_delete_in_row_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.delete_op_pending = true;
+        state.result_interaction.enter_row(0);
+        state.result_interaction.delete_op_pending = true;
 
         let result = handle_normal_mode(combo(Key::Char('d')), &state);
 
@@ -672,7 +672,7 @@ mod tests {
     #[test]
     fn y_sets_yank_op_pending_in_row_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
+        state.result_interaction.enter_row(0);
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
@@ -682,8 +682,8 @@ mod tests {
     #[test]
     fn yy_triggers_row_yank_in_row_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.yank_op_pending = true;
+        state.result_interaction.enter_row(0);
+        state.result_interaction.yank_op_pending = true;
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
@@ -702,8 +702,8 @@ mod tests {
     #[test]
     fn y_in_cell_active_still_cell_yank() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.result_selection.enter_cell(0);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.enter_cell(0);
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
 
@@ -758,10 +758,10 @@ mod tests {
     #[test]
     fn esc_in_cell_active_with_draft_returns_discard() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.result_selection.enter_cell(1);
-        state.cell_edit.begin(0, 1, "original".to_string());
-        state.cell_edit.input.set_content("modified".to_string());
+        state.result_interaction.enter_row(0);
+        state.result_interaction.enter_cell(1);
+        state.result_interaction.begin_cell_edit(0, 1, "original".to_string());
+        state.result_interaction.cell_edit_input_mut().set_content("modified".to_string());
 
         let result = handle_normal_mode(combo(Key::Esc), &state);
 
@@ -771,8 +771,8 @@ mod tests {
     #[test]
     fn esc_in_cell_active_without_draft_returns_exit_to_row_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.result_selection.enter_cell(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.enter_cell(1);
 
         let result = handle_normal_mode(combo(Key::Esc), &state);
 
@@ -782,8 +782,8 @@ mod tests {
     #[test]
     fn i_key_enters_cell_edit_when_cell_active() {
         let mut state = result_focused_state();
-        state.ui.result_selection.enter_row(0);
-        state.ui.result_selection.enter_cell(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.enter_cell(1);
 
         let result = handle_normal_mode(combo(Key::Char('i')), &state);
 

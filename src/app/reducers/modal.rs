@@ -247,7 +247,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     Some(vec![Effect::DeleteConnection { id }])
                 }
                 Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
-                    state.pending_write_preview = None;
+                    state.result_interaction.clear_write_preview();
                     state.query.pending_delete_refresh_target = None;
                     Some(vec![])
                 }
@@ -264,7 +264,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                             read_only: state.runtime.read_only,
                         }])
                     } else {
-                        state.pending_write_preview = None;
+                        state.result_interaction.clear_write_preview();
                         state.query.pending_delete_refresh_target = None;
                         state
                             .messages
@@ -298,7 +298,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::ConfirmDialogCancel => {
             let intent = state.confirm_dialog.intent.take();
-            state.pending_write_preview = None;
+            state.result_interaction.clear_write_preview();
             state.query.pending_delete_refresh_target = None;
 
             match intent {
@@ -429,7 +429,7 @@ mod tests {
         fn execute_write_blocked_confirm_clears_preview_state() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.pending_write_preview = Some(crate::app::write_guardrails::WritePreview {
+            state.result_interaction.set_write_preview(crate::app::write_guardrails::WritePreview {
                 operation: crate::app::write_guardrails::WriteOperation::Update,
                 sql: "UPDATE t SET x=1".to_string(),
                 target_summary: crate::app::write_guardrails::TargetSummary {
@@ -453,7 +453,7 @@ mod tests {
 
             reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
-            assert!(state.pending_write_preview.is_none());
+            assert!(state.result_interaction.pending_write_preview().is_none());
             assert!(state.query.pending_delete_refresh_target.is_none());
         }
 
@@ -835,7 +835,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(effects.is_empty());
-            assert!(state.pending_write_preview.is_none());
+            assert!(state.result_interaction.pending_write_preview().is_none());
         }
 
         #[test]

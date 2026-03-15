@@ -10,12 +10,7 @@ use crate::domain::{QueryResult, QuerySource};
 /// Resets all Result-pane view state (scroll, selection, staging, edit).
 /// Used whenever the displayed result changes (adhoc success, history nav, etc.)
 pub fn reset_result_view(state: &mut AppState) {
-    state.ui.result_scroll_offset = 0;
-    state.ui.result_horizontal_offset = 0;
-    state.ui.result_selection.reset();
-    state.cell_edit.clear();
-    state.ui.staged_delete_rows.clear();
-    state.pending_write_preview = None;
+    state.result_interaction.reset_view();
 }
 
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
@@ -71,7 +66,7 @@ pub fn build_bulk_delete_preview(
     state: &AppState,
     services: &AppServices,
 ) -> Result<(WritePreview, usize, Option<usize>), String> {
-    if state.ui.staged_delete_rows.is_empty() {
+    if state.result_interaction.staged_delete_rows().is_empty() {
         return Err("No rows staged for deletion".to_string());
     }
     if state.runtime.dsn.is_none() {
@@ -90,7 +85,7 @@ pub fn build_bulk_delete_preview(
     })?;
 
     let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
-    for &row_idx in &state.ui.staged_delete_rows {
+    for &row_idx in state.result_interaction.staged_delete_rows() {
         let row = result
             .rows
             .get(row_idx)
@@ -106,8 +101,8 @@ pub fn build_bulk_delete_preview(
         &pk_pairs_per_row,
     );
 
-    let staged_count = state.ui.staged_delete_rows.len();
-    let first_deleted_idx = *state.ui.staged_delete_rows.iter().next().unwrap();
+    let staged_count = state.result_interaction.staged_delete_rows().len();
+    let first_deleted_idx = *state.result_interaction.staged_delete_rows().iter().next().unwrap();
     let (target_page, target_row) = deletion_refresh_target_bulk(
         result.rows.len(),
         staged_count,

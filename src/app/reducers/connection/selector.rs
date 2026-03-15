@@ -317,10 +317,10 @@ mod tests {
             // Set state that was previously not reset by ConnectionDeleted
             state.query.history_index = Some(2);
             state.query.pagination.current_page = 3;
-            state.ui.result_selection.enter_row(5);
-            state.ui.result_scroll_offset = 10;
-            state.ui.result_horizontal_offset = 20;
-            state.ui.staged_delete_rows.insert(0);
+            state.result_interaction.enter_row(5);
+            state.result_interaction.scroll_offset = 10;
+            state.result_interaction.horizontal_offset = 20;
+            state.result_interaction.stage_row(0);
 
             reduce(
                 &mut state,
@@ -331,13 +331,13 @@ mod tests {
             assert!(state.query.history_index.is_none());
             assert_eq!(state.query.pagination.current_page, 0);
             assert_eq!(
-                state.ui.result_selection.mode(),
+                state.result_interaction.selection().mode(),
                 crate::app::ui_state::ResultNavMode::Scroll
             );
-            assert_eq!(state.ui.result_scroll_offset, 0);
-            assert_eq!(state.ui.result_horizontal_offset, 0);
-            assert!(state.ui.staged_delete_rows.is_empty());
-            assert!(state.pending_write_preview.is_none());
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert!(state.result_interaction.pending_write_preview().is_none());
         }
 
         #[test]

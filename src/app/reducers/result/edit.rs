@@ -10,13 +10,13 @@ use super::super::helpers::editable_preview_base;
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
     let row_idx = state
-        .ui
-        .result_selection
+        .result_interaction
+        .selection()
         .row()
         .ok_or_else(|| "No active row".to_string())?;
     let col_idx = state
-        .ui
-        .result_selection
+        .result_interaction
+        .selection()
         .cell()
         .ok_or_else(|| "No active cell".to_string())?;
 
@@ -57,10 +57,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.cell_edit.row != Some(row_idx) || state.cell_edit.col != Some(col_idx)
+                    if state.result_interaction.cell_edit().row != Some(row_idx) || state.result_interaction.cell_edit().col != Some(col_idx)
                     {
-                        state.cell_edit.begin(row_idx, col_idx, value);
-                        state.pending_write_preview = None;
+                        state.result_interaction.begin_cell_edit(row_idx, col_idx, value);
+                        state.result_interaction.clear_write_preview();
                     }
                     state.modal.set_mode(InputMode::CellEdit);
                     Some(vec![])
@@ -72,30 +72,30 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
         }
         Action::ResultCancelCellEdit => {
-            state.pending_write_preview = None;
+            state.result_interaction.clear_write_preview();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ResultDiscardCellEdit => {
-            state.cell_edit.clear();
-            state.pending_write_preview = None;
+            state.result_interaction.clear_cell_edit();
+            state.result_interaction.clear_write_preview();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ResultCellEditInput(c) => {
-            state.cell_edit.input.insert_char(*c);
+            state.result_interaction.cell_edit_input_mut().insert_char(*c);
             Some(vec![])
         }
         Action::ResultCellEditBackspace => {
-            state.cell_edit.input.backspace();
+            state.result_interaction.cell_edit_input_mut().backspace();
             Some(vec![])
         }
         Action::ResultCellEditDelete => {
-            state.cell_edit.input.delete();
+            state.result_interaction.cell_edit_input_mut().delete();
             Some(vec![])
         }
         Action::ResultCellEditMoveCursor(m) => {
-            state.cell_edit.input.move_cursor(*m);
+            state.result_interaction.cell_edit_input_mut().move_cursor(*m);
             Some(vec![])
         }
         _ => None,
@@ -143,8 +143,8 @@ mod tests {
             }));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.ui.result_selection.enter_row(0);
-            state.ui.result_selection.enter_cell(1);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.enter_cell(1);
             state
         }
 
@@ -152,31 +152,31 @@ mod tests {
         fn re_entering_same_cell_with_pending_draft_preserves_draft() {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
-            state.cell_edit.begin(0, 1, "alice".to_string());
-            state.cell_edit.input.set_content("modified".to_string());
+            state.result_interaction.begin_cell_edit(0, 1, "alice".to_string());
+            state.result_interaction.cell_edit_input_mut().set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.cell_edit.draft_value(), "modified");
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "modified");
         }
 
         #[test]
         fn entering_different_cell_resets_draft() {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
-            state.cell_edit.begin(0, 99, "stale".to_string());
+            state.result_interaction.begin_cell_edit(0, 99, "stale".to_string());
             state
-                .cell_edit
-                .input
+                .result_interaction
+                .cell_edit_input_mut()
                 .set_content("stale-modified".to_string());
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.cell_edit.col, Some(1));
-            assert_eq!(state.cell_edit.draft_value(), "alice");
+            assert_eq!(state.result_interaction.cell_edit().col, Some(1));
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "alice");
         }
 
         #[test]
@@ -230,8 +230,8 @@ mod tests {
         fn state_in_cell_edit(content: &str, cursor: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
-            state.cell_edit.begin(0, 0, content.to_string());
-            state.cell_edit.input.set_cursor(cursor);
+            state.result_interaction.begin_cell_edit(0, 0, content.to_string());
+            state.result_interaction.cell_edit_input_mut().set_cursor(cursor);
             state
         }
 
@@ -241,8 +241,8 @@ mod tests {
 
             reduce(&mut state, &Action::ResultCellEditDelete, Instant::now());
 
-            assert_eq!(state.cell_edit.draft_value(), "acd");
-            assert_eq!(state.cell_edit.input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
         }
 
         #[test]
@@ -251,7 +251,7 @@ mod tests {
 
             reduce(&mut state, &Action::ResultCellEditDelete, Instant::now());
 
-            assert_eq!(state.cell_edit.draft_value(), "abc");
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
         }
 
         #[test]
@@ -264,7 +264,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.cell_edit.input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
         }
 
         #[test]
@@ -277,7 +277,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.cell_edit.input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
         }
 
         #[test]
@@ -290,7 +290,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.cell_edit.input.cursor(), 0);
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 0);
         }
 
         #[test]
@@ -303,7 +303,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.cell_edit.input.cursor(), 3);
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 3);
         }
 
         #[test]
@@ -316,8 +316,8 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.cell_edit.draft_value(), "abc");
-            assert_eq!(state.cell_edit.input.cursor(), 2);
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 2);
         }
 
         #[test]
@@ -326,8 +326,8 @@ mod tests {
 
             reduce(&mut state, &Action::ResultCellEditBackspace, Instant::now());
 
-            assert_eq!(state.cell_edit.draft_value(), "ac");
-            assert_eq!(state.cell_edit.input.cursor(), 1);
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
+            assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
         }
     }
 }
