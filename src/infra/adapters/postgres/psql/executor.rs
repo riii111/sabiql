@@ -6,7 +6,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::MetadataError;
-use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
@@ -147,14 +147,8 @@ impl PostgresAdapter {
             ));
         }
 
-        // psql --csv never appends a command tag to SELECT output, so a single-line
-        // stdout is the only case where DML/DDL detection is safe.
         let stdout_trimmed = output.stdout.trim();
-        if let Some(tag) = (!stdout_trimmed.contains('\n'))
-            .then(|| Self::parse_command_tag(stdout_trimmed))
-            .flatten()
-            .filter(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
-        {
+        if let Some(tag) = Self::parse_aggregate_command_tag(stdout_trimmed) {
             let row_count = tag.affected_rows().unwrap_or(0) as usize;
             let mut result =
                 QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
