@@ -103,12 +103,12 @@ fn reduce_inner(
                     .cloned()
                     .cloned();
                 if let Some(table) = table {
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
                     return select_table(state, &table);
                 }
             } else if state.ui.input_mode == InputMode::Normal {
                 if state.connection_error.error_info.is_some() {
-                    state.ui.input_mode = InputMode::ConnectionError;
+                    state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
                 if state.ui.focused_pane != FocusedPane::Explorer {
@@ -126,7 +126,7 @@ fn reduce_inner(
                 use crate::app::palette::palette_action_for_index;
 
                 let cmd_action = palette_action_for_index(state.ui.picker_selected);
-                state.ui.input_mode = InputMode::Normal;
+                state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
 

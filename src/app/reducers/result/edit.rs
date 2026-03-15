@@ -62,7 +62,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         state.cell_edit.begin(row_idx, col_idx, value);
                         state.pending_write_preview = None;
                     }
-                    state.ui.input_mode = InputMode::CellEdit;
+                    state.modal.set_mode(InputMode::CellEdit);
                     Some(vec![])
                 }
                 Err(reason) => {
@@ -73,13 +73,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ResultCancelCellEdit => {
             state.pending_write_preview = None;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ResultDiscardCellEdit => {
             state.cell_edit.clear();
             state.pending_write_preview = None;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ResultCellEditInput(c) => {
@@ -158,7 +158,7 @@ mod tests {
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.cell_edit.draft_value(), "modified");
         }
 
@@ -174,7 +174,7 @@ mod tests {
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.cell_edit.col, Some(1));
             assert_eq!(state.cell_edit.draft_value(), "alice");
         }

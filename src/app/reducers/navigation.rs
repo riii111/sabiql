@@ -66,7 +66,7 @@ pub fn reduce_navigation(
                 state.ui.staged_delete_rows.clear();
                 state.pending_write_preview = None;
                 if state.ui.input_mode == InputMode::CellEdit {
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
                 }
             }
             state.ui.focused_pane = *pane;

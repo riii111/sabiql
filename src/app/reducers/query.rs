@@ -488,7 +488,7 @@ pub fn reduce_query(
                             format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
                             now,
                         );
-                        state.ui.input_mode = InputMode::CellEdit;
+                        state.modal.set_mode(InputMode::CellEdit);
                         return Some(vec![]);
                     }
 
@@ -496,7 +496,7 @@ pub fn reduce_query(
                         .messages
                         .set_success_at("Updated 1 row".to_string(), now);
                     state.cell_edit.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
 
                     if let Some(dsn) = &state.runtime.dsn {
                         let page = state.query.pagination.current_page;
@@ -543,7 +543,7 @@ pub fn reduce_query(
                     }
                     state.cell_edit.clear();
                     state.ui.staged_delete_rows.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.modal.set_mode(InputMode::Normal);
 
                     state.query.post_delete_row_selection = target_row
                         .map(PostDeleteRowSelection::Select)
@@ -581,10 +581,10 @@ pub fn reduce_query(
             state.pending_write_preview = None;
             state.query.pending_delete_refresh_target = None;
             state.messages.set_error_at(error.clone(), now);
-            state.ui.input_mode = match operation {
+            state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
-            };
+            });
             Some(vec![])
         }
 
@@ -1550,7 +1550,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.query.status, QueryStatus::Running);
             assert!(state.query.start_time.is_some());
             assert_eq!(effects.len(), 1);

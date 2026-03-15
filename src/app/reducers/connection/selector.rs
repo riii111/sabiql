@@ -12,7 +12,7 @@ use super::helpers::reset_connection_state;
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenConnectionSelector => {
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
             Some(vec![Effect::LoadConnections])
         }
@@ -71,7 +71,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if state.connections().is_empty() && state.service_entries().is_empty() {
                 state.connection_setup.reset();
                 state.connection_setup.is_first_run = false;
-                state.ui.input_mode = InputMode::ConnectionSetup;
+                state.modal.set_mode(InputMode::ConnectionSetup);
             }
 
             state
@@ -129,11 +129,10 @@ mod tests {
         #[test]
         fn sets_mode_and_loads_connections() {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::Normal;
 
             let effects = reduce(&mut state, &Action::OpenConnectionSelector, Instant::now());
 
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSelector);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSelector);
             let effects = effects.unwrap();
             assert!(effects.iter().any(|e| matches!(e, Effect::LoadConnections)));
         }
@@ -365,7 +364,6 @@ mod tests {
             let profile = create_profile("Only");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.ui.input_mode = InputMode::Normal;
 
             reduce(
                 &mut state,
@@ -374,7 +372,7 @@ mod tests {
             );
 
             assert!(state.connections().is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConnectionSetup);
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
 
         #[test]

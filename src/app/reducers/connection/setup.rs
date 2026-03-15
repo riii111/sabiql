@@ -19,7 +19,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if !state.connections().is_empty() || state.runtime.dsn.is_some() {
                 state.connection_setup.is_first_run = false;
             }
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::StartEditConnection(id) => {
@@ -28,7 +28,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup =
                 crate::app::connection_setup_state::ConnectionSetupState::from_profile(profile);
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::ConnectionEditLoadFailed(msg) => {
@@ -36,7 +36,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::CloseConnectionSetup => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
 
@@ -254,13 +254,13 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
-                state.ui.input_mode = InputMode::Normal;
+                state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
         Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
             state.connection_setup.is_first_run = false;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
