@@ -47,14 +47,10 @@ fn reduce_inner(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
-    // Reset the dd operator-pending flag on any action other than the first `d` press.
-    if !matches!(action, Action::ResultDeleteOperatorPending) {
-        state.ui.delete_op_pending = false;
-    }
-    // Reset the yy operator-pending flag on any action other than the first `y` press.
-    if !matches!(action, Action::ResultRowYankOperatorPending) {
-        state.ui.yank_op_pending = false;
-    }
+    state.result_interaction.clear_operator_pending(
+        matches!(action, Action::ResultDeleteOperatorPending),
+        matches!(action, Action::ResultRowYankOperatorPending),
+    );
 
     // reduce_result must precede reduce_query: passthrough actions (e.g. ResultNextPage)
     // reset view state here and return None, relying on reduce_query for the actual page change.
@@ -131,9 +127,7 @@ fn reduce_inner(
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     state.cache.current_table = Some(table.qualified_name());
     state.cache.table_detail = None;
-    state.cell_edit.clear();
-    state.ui.staged_delete_rows.clear();
-    state.pending_write_preview = None;
+    state.result_interaction.reset_interaction();
 
     state.cache.selection_generation += 1;
     let generation = state.cache.selection_generation;
@@ -246,7 +240,7 @@ mod tests {
         #[test]
         fn result_scroll_up_decrements_offset() {
             let mut state = create_test_state();
-            state.ui.result_scroll_offset = 5;
+            state.result_interaction.scroll_offset = 5;
             let now = Instant::now();
 
             let effects = reduce(
@@ -256,14 +250,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_scroll_offset, 4);
+            assert_eq!(state.result_interaction.scroll_offset, 4);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_up_saturates_at_zero() {
             let mut state = create_test_state();
-            state.ui.result_scroll_offset = 0;
+            state.result_interaction.scroll_offset = 0;
             let now = Instant::now();
 
             let effects = reduce(
@@ -273,14 +267,14 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn result_scroll_top_resets_to_zero() {
             let mut state = create_test_state();
-            state.ui.result_scroll_offset = 10;
+            state.result_interaction.scroll_offset = 10;
             let now = Instant::now();
 
             let effects = reduce(
@@ -290,7 +284,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
             assert!(effects.is_empty());
         }
     }
@@ -1337,7 +1331,7 @@ mod tests {
             state.modal.set_mode(InputMode::ConfirmDialog);
 
             let delete_sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '2';".to_string();
-            state.pending_write_preview = Some(WritePreview {
+            state.result_interaction.set_write_preview(WritePreview {
                 operation: WriteOperation::Delete,
                 sql: delete_sql.clone(),
                 target_summary: TargetSummary {
@@ -1368,7 +1362,7 @@ mod tests {
             );
 
             // Preview must survive confirm for ExecuteWriteSucceeded to detect Delete
-            assert!(state.pending_write_preview.is_some());
+            assert!(state.result_interaction.pending_write_preview().is_some());
             assert!(state.query.pending_delete_refresh_target.is_some());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
@@ -1382,7 +1376,7 @@ mod tests {
             );
 
             // After success, preview is cleaned up and delete message is shown
-            assert!(state.pending_write_preview.is_none());
+            assert!(state.result_interaction.pending_write_preview().is_none());
             assert!(
                 state
                     .messages
@@ -1405,7 +1399,7 @@ mod tests {
             state.runtime.dsn = Some("postgres://localhost/test".to_string());
             state.modal.set_mode(InputMode::ConfirmDialog);
 
-            state.pending_write_preview = Some(WritePreview {
+            state.result_interaction.set_write_preview(WritePreview {
                 operation: WriteOperation::Delete,
                 sql: "DELETE FROM t WHERE id='1'".to_string(),
                 target_summary: TargetSummary {
@@ -1443,7 +1437,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.pending_write_preview.is_none());
+            assert!(state.result_interaction.pending_write_preview().is_none());
         }
     }
 
@@ -2249,19 +2243,19 @@ mod tests {
         #[test]
         fn yank_pending_reset_on_non_yank_action() {
             let mut state = create_test_state();
-            state.ui.yank_op_pending = true;
+            state.result_interaction.yank_op_pending = true;
             let now = Instant::now();
 
             reduce(&mut state, Action::SelectNext, now, &AppServices::stub());
 
-            assert!(!state.ui.yank_op_pending);
+            assert!(!state.result_interaction.yank_op_pending);
         }
 
         #[test]
         fn y_then_d_cancels_yank_starts_delete() {
             let mut state = create_test_state();
             state.ui.focused_pane = FocusedPane::Result;
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
             let now = Instant::now();
 
             reduce(
@@ -2270,8 +2264,8 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.ui.yank_op_pending);
-            assert!(!state.ui.delete_op_pending);
+            assert!(state.result_interaction.yank_op_pending);
+            assert!(!state.result_interaction.delete_op_pending);
 
             reduce(
                 &mut state,
@@ -2279,8 +2273,8 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.ui.yank_op_pending);
-            assert!(state.ui.delete_op_pending);
+            assert!(!state.result_interaction.yank_op_pending);
+            assert!(state.result_interaction.delete_op_pending);
         }
     }
 }

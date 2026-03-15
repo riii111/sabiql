@@ -32,6 +32,7 @@ pub mod reducer;
 pub mod reducers;
 pub mod render_schedule;
 pub mod result_history;
+pub mod result_interaction;
 pub mod runtime_state;
 pub mod services;
 pub mod sql_lexer;

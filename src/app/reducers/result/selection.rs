@@ -7,13 +7,13 @@ use crate::app::state::AppState;
 use super::scroll::{result_col_count, result_row_count};
 
 fn ensure_cell_visible(state: &mut AppState) {
-    if let Some(col) = state.ui.result_selection.cell() {
+    if let Some(col) = state.result_interaction.selection().cell() {
         let plan = &state.ui.result_viewport_plan;
-        let h_offset = state.ui.result_horizontal_offset;
+        let h_offset = state.result_interaction.horizontal_offset;
         if col < h_offset {
-            state.ui.result_horizontal_offset = col;
+            state.result_interaction.horizontal_offset = col;
         } else if col >= h_offset + plan.column_count {
-            state.ui.result_horizontal_offset =
+            state.result_interaction.horizontal_offset =
                 col.saturating_sub(plan.column_count.saturating_sub(1));
         }
     }
@@ -24,54 +24,48 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ResultEnterRowActive => {
             let rows = result_row_count(state);
             if rows > 0 {
-                let clamped = state.ui.result_scroll_offset.min(rows - 1);
-                state.ui.result_selection.enter_row(clamped);
+                let clamped = state.result_interaction.scroll_offset.min(rows - 1);
+                state.result_interaction.enter_row(clamped);
             }
             Some(vec![])
         }
         Action::ResultEnterCellActive => {
-            if state.ui.result_selection.row().is_some() {
+            if state.result_interaction.selection().row().is_some() {
                 state
-                    .ui
-                    .result_selection
-                    .enter_cell(state.ui.result_horizontal_offset);
+                    .result_interaction
+                    .enter_cell(state.result_interaction.horizontal_offset);
             }
             Some(vec![])
         }
         Action::ResultExitToRowActive => {
-            state.ui.result_selection.exit_to_row();
-            state.cell_edit.clear();
-            state.pending_write_preview = None;
+            state.result_interaction.exit_cell_to_row();
             Some(vec![])
         }
         Action::ResultExitToScroll => {
-            state.ui.result_selection.reset();
-            state.cell_edit.clear();
-            state.ui.staged_delete_rows.clear();
-            state.pending_write_preview = None;
+            state.result_interaction.exit_row_to_scroll();
             Some(vec![])
         }
         Action::ResultCellLeft => {
-            if let Some(c) = state.ui.result_selection.cell()
+            if let Some(c) = state.result_interaction.selection().cell()
                 && c > 0
             {
-                state.ui.result_selection.enter_cell(c - 1);
+                state.result_interaction.enter_cell(c - 1);
                 ensure_cell_visible(state);
             }
             Some(vec![])
         }
         Action::ResultCellRight => {
-            if let Some(c) = state.ui.result_selection.cell() {
+            if let Some(c) = state.result_interaction.selection().cell() {
                 let max_col = result_col_count(state).saturating_sub(1);
                 if c < max_col {
-                    state.ui.result_selection.enter_cell(c + 1);
+                    state.result_interaction.enter_cell(c + 1);
                     ensure_cell_visible(state);
                 }
             }
             Some(vec![])
         }
         Action::ResultDeleteOperatorPending => {
-            state.ui.delete_op_pending = true;
+            state.result_interaction.delete_op_pending = true;
             Some(vec![])
         }
         Action::StageRowForDelete => {
@@ -82,21 +76,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 );
                 return Some(vec![]);
             }
-            if state.ui.result_selection.mode() == crate::app::ui_state::ResultNavMode::RowActive
-                && let Some(row_idx) = state.ui.result_selection.row()
+            if state.result_interaction.selection().mode()
+                == crate::app::ui_state::ResultNavMode::RowActive
+                && let Some(row_idx) = state.result_interaction.selection().row()
             {
-                state.ui.staged_delete_rows.insert(row_idx);
+                state.result_interaction.stage_row(row_idx);
             }
             Some(vec![])
         }
         Action::UnstageLastStagedRow => {
-            if let Some(&last) = state.ui.staged_delete_rows.iter().next_back() {
-                state.ui.staged_delete_rows.remove(&last);
-            }
+            state.result_interaction.unstage_last_row();
             Some(vec![])
         }
         Action::ClearStagedDeletes => {
-            state.ui.staged_delete_rows.clear();
+            state.result_interaction.clear_staged_deletes();
             Some(vec![])
         }
         Action::ResultNextPage | Action::ResultPrevPage => {
@@ -169,22 +162,22 @@ mod tests {
         #[test]
         fn dd_stages_active_row() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
-            assert!(state.ui.staged_delete_rows.contains(&0));
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
 
         #[test]
         fn dd_on_already_staged_row_is_noop() {
             let mut state = base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-            state.ui.staged_delete_rows.insert(0);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.stage_row(0);
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
-            assert_eq!(state.ui.staged_delete_rows.len(), 1);
+            assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
         }
 
         #[test]
@@ -193,7 +186,7 @@ mod tests {
 
             reduce(&mut state, &Action::StageRowForDelete, Instant::now());
 
-            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
 
         #[test]
@@ -203,13 +196,13 @@ mod tests {
                 vec![vec!["1", "alice"], vec!["2", "bob"]],
                 0,
             );
-            state.ui.staged_delete_rows.insert(0);
-            state.ui.staged_delete_rows.insert(1);
+            state.result_interaction.stage_row(0);
+            state.result_interaction.stage_row(1);
 
             reduce(&mut state, &Action::UnstageLastStagedRow, Instant::now());
 
-            assert_eq!(state.ui.staged_delete_rows.len(), 1);
-            assert!(state.ui.staged_delete_rows.contains(&0));
+            assert_eq!(state.result_interaction.staged_delete_rows().len(), 1);
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
 
         #[test]
@@ -219,12 +212,12 @@ mod tests {
                 vec![vec!["1", "alice"], vec!["2", "bob"]],
                 0,
             );
-            state.ui.staged_delete_rows.insert(0);
-            state.ui.staged_delete_rows.insert(1);
+            state.result_interaction.stage_row(0);
+            state.result_interaction.stage_row(1);
 
             reduce(&mut state, &Action::ClearStagedDeletes, Instant::now());
 
-            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
     }
 
@@ -234,13 +227,13 @@ mod tests {
         #[test]
         fn read_only_blocks_stage_row_for_delete() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
             state.runtime.read_only = true;
 
             let effects = reduce(&mut state, &Action::StageRowForDelete, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.messages.last_error.is_some());
         }
     }
@@ -251,27 +244,27 @@ mod tests {
         #[test]
         fn next_page_returns_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-            state.ui.staged_delete_rows.insert(0);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.stage_row(0);
 
             let result = reduce(&mut state, &Action::ResultNextPage, Instant::now());
 
             assert!(result.is_none());
-            assert_eq!(state.ui.result_selection.row(), Some(0));
-            assert!(state.ui.staged_delete_rows.contains(&0));
+            assert_eq!(state.result_interaction.selection().row(), Some(0));
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
 
         #[test]
         fn prev_page_returns_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
-            state.ui.result_selection.enter_row(0);
-            state.ui.staged_delete_rows.insert(0);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.stage_row(0);
 
             let result = reduce(&mut state, &Action::ResultPrevPage, Instant::now());
 
             assert!(result.is_none());
-            assert_eq!(state.ui.result_selection.row(), Some(0));
-            assert!(state.ui.staged_delete_rows.contains(&0));
+            assert_eq!(state.result_interaction.selection().row(), Some(0));
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
     }
 }

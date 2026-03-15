@@ -16,8 +16,8 @@ pub fn reduce(
     match action {
         Action::ResultCellYank => {
             if let (Some(row_idx), Some(col_idx)) = (
-                state.ui.result_selection.row(),
-                state.ui.result_selection.cell(),
+                state.result_interaction.selection().row(),
+                state.result_interaction.selection().cell(),
             ) {
                 let content = state
                     .query
@@ -28,7 +28,7 @@ pub fn reduce(
                     .cloned();
                 match content {
                     Some(value) => {
-                        state.ui.yank_flash = Some(YankFlash {
+                        state.result_interaction.yank_flash = Some(YankFlash {
                             row: row_idx,
                             col: Some(col_idx),
                             until: now + Duration::from_millis(200),
@@ -64,11 +64,11 @@ pub fn reduce(
             Some(vec![])
         }
         Action::ResultRowYankOperatorPending => {
-            state.ui.yank_op_pending = true;
+            state.result_interaction.yank_op_pending = true;
             Some(vec![])
         }
         Action::ResultRowYank => {
-            if let Some(row_idx) = state.ui.result_selection.row() {
+            if let Some(row_idx) = state.result_interaction.selection().row() {
                 let content = state
                     .query
                     .current_result
@@ -86,7 +86,7 @@ pub fn reduce(
                     });
                 match content {
                     Some(tsv) => {
-                        state.ui.yank_flash = Some(YankFlash {
+                        state.result_interaction.yank_flash = Some(YankFlash {
                             row: row_idx,
                             col: None,
                             until: now + Duration::from_millis(200),
@@ -151,8 +151,8 @@ mod tests {
         #[test]
         fn out_of_bounds_row_sets_error() {
             let mut state = state_with_grid(3, 3);
-            state.ui.result_selection.enter_row(10);
-            state.ui.result_selection.enter_cell(0);
+            state.result_interaction.enter_row(10);
+            state.result_interaction.enter_cell(0);
 
             let effects = reduce(
                 &mut state,
@@ -169,8 +169,8 @@ mod tests {
         #[test]
         fn out_of_bounds_col_sets_error() {
             let mut state = state_with_grid(3, 3);
-            state.ui.result_selection.enter_row(0);
-            state.ui.result_selection.enter_cell(10);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.enter_cell(10);
 
             let effects = reduce(
                 &mut state,
@@ -187,8 +187,8 @@ mod tests {
         #[test]
         fn valid_cell_emits_copy_effect() {
             let mut state = state_with_grid(3, 3);
-            state.ui.result_selection.enter_row(1);
-            state.ui.result_selection.enter_cell(2);
+            state.result_interaction.enter_row(1);
+            state.result_interaction.enter_cell(2);
 
             let effects = reduce(
                 &mut state,
@@ -248,7 +248,7 @@ mod tests {
         #[test]
         fn row_yank_emits_tsv_copy_effect() {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
 
             let effects = reduce(
                 &mut state,
@@ -270,7 +270,7 @@ mod tests {
         #[test]
         fn row_yank_escapes_tab_and_newline() {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
 
             let effects = reduce(
                 &mut state,
@@ -292,7 +292,7 @@ mod tests {
         #[test]
         fn row_yank_escapes_backslash() {
             let mut state = state_with_row(vec!["a\\b"]);
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
 
             let effects = reduce(
                 &mut state,
@@ -314,7 +314,7 @@ mod tests {
         #[test]
         fn row_yank_out_of_bounds_sets_error() {
             let mut state = state_with_row(vec!["val"]);
-            state.ui.result_selection.enter_row(99);
+            state.result_interaction.enter_row(99);
 
             let effects = reduce(
                 &mut state,
@@ -355,7 +355,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(state.ui.yank_op_pending);
+            assert!(state.result_interaction.yank_op_pending);
         }
     }
 
