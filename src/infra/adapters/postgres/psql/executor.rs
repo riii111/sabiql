@@ -148,7 +148,7 @@ impl PostgresAdapter {
         }
 
         let stdout_trimmed = output.stdout.trim();
-        if let Some(tag) = Self::parse_aggregate_command_tag(stdout_trimmed) {
+        if let Some(tag) = Self::parse_aggregate_command_tag(stdout_trimmed, query) {
             let row_count = tag.affected_rows().unwrap_or(0) as usize;
             let mut result =
                 QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);

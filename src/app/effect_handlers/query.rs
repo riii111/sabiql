@@ -9,7 +9,6 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
-use crate::app::statement_classifier;
 use crate::domain::query_history::QueryHistoryEntry;
 
 /// Convert days since Unix epoch to (year, month, day) in UTC.
@@ -156,11 +155,7 @@ pub(crate) async fn run(
 
             tokio::spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
-                    Ok(mut result) => {
-                        if let Some(tag) = result.command_tag.take() {
-                            result.command_tag =
-                                Some(statement_classifier::correct_command_tag(&query, tag));
-                        }
+                    Ok(result) => {
                         tx.send(Action::QueryCompleted {
                             result: Arc::new(result),
                             generation: 0,

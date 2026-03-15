@@ -481,7 +481,6 @@ impl PostgresAdapter {
         ) || s == "START TRANSACTION"
     }
 
-    /// Stage 1: Returns `None` if any line is an unknown `Other` (CSV bail-out).
     fn parse_all_tags(stdout: &str) -> Option<Vec<CommandTag>> {
         let mut tags = Vec::new();
         for line in stdout.lines() {
@@ -503,7 +502,6 @@ impl PostgresAdapter {
         Some(tags)
     }
 
-    /// Stage 2: Remove tags that were rolled back using a depth-based frame stack.
     fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         let mut effective: Vec<CommandTag> = Vec::new();
         let mut frames: Vec<Vec<CommandTag>> = Vec::new();
@@ -562,39 +560,260 @@ impl PostgresAdapter {
         effective
     }
 
-    /// Stage 3: schema-modifying first → last needs_refresh → Rollback → last tag.
-    fn select_aggregate_tag(
-        all_tags: &[CommandTag],
-        effective: &[CommandTag],
+    // -- CTAS / SELECT INTO correction (newspaper style: high→low) --
+
+    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
+        stdout: &str,
+        sql: &str,
     ) -> Option<CommandTag> {
-        // 1. Schema-modifying takes priority
-        if let Some(tag) = effective.iter().find(|t| t.is_schema_modifying()) {
+        ResolvedTags::resolve(stdout, sql)?.aggregate()
+    }
+
+    fn correct_ctas_tags(sql: &str, tags: Vec<CommandTag>) -> Vec<CommandTag> {
+        let stmts = Self::split_sql_statements(sql);
+        if stmts.len() != tags.len() {
+            return tags;
+        }
+        tags.into_iter()
+            .zip(stmts.iter())
+            .map(|(tag, stmt)| {
+                if !matches!(tag, CommandTag::Select(_)) {
+                    return tag;
+                }
+                Self::detect_create_as_kind(stmt)
+                    .or_else(|| Self::detect_select_into_kind(stmt))
+                    .unwrap_or(tag)
+            })
+            .collect()
+    }
+
+    fn detect_create_as_kind(stmt: &str) -> Option<CommandTag> {
+        let lower = stmt.trim().to_ascii_lowercase();
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        if words.first() != Some(&"create") {
+            return None;
+        }
+        let mut idx = 1;
+        while idx < words.len() && matches!(words[idx], "temp" | "temporary" | "unlogged") {
+            idx += 1;
+        }
+        if idx < words.len() && words[idx] == "table" {
+            return Some(CommandTag::Create("TABLE".to_string()));
+        }
+        if idx < words.len() && words[idx] == "materialized" && words.get(idx + 1) == Some(&"view")
+        {
+            return Some(CommandTag::Create("MATERIALIZED VIEW".to_string()));
+        }
+        None
+    }
+
+    fn detect_select_into_kind(stmt: &str) -> Option<CommandTag> {
+        let lower = stmt.trim().to_ascii_lowercase();
+        let first = lower.split_whitespace().next()?;
+        if !matches!(first, "select" | "with") {
+            return None;
+        }
+        Self::has_select_into(&lower).then(|| CommandTag::Create("TABLE".to_string()))
+    }
+
+    fn split_sql_statements(sql: &str) -> Vec<&str> {
+        let bytes = sql.as_bytes();
+        let mut stmts = Vec::new();
+        let mut start = 0;
+        let mut i = 0;
+
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\'' => i = skip_single_quoted(bytes, i),
+                b'"' => i = skip_double_quoted(bytes, i),
+                b'$' => i = skip_dollar_quoted(sql, bytes, i),
+                b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                    i = skip_line_comment(bytes, i)
+                }
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                    i = skip_block_comment(bytes, i)
+                }
+                b';' => {
+                    let slice = sql[start..i].trim();
+                    if !slice.is_empty() {
+                        stmts.push(slice);
+                    }
+                    i += 1;
+                    start = i;
+                }
+                _ => i += 1,
+            }
+        }
+        let tail = sql[start..].trim();
+        if !tail.is_empty() {
+            stmts.push(tail);
+        }
+        stmts
+    }
+
+    fn has_select_into(lower: &str) -> bool {
+        let bytes = lower.as_bytes();
+        let mut i = 0;
+        let mut depth: i32 = 0;
+        let mut found_from = false;
+
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\'' => i = skip_single_quoted(bytes, i),
+                b'"' => i = skip_double_quoted(bytes, i),
+                b'$' => i = skip_dollar_quoted(lower, bytes, i),
+                b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                    i = skip_line_comment(bytes, i)
+                }
+                b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                    i = skip_block_comment(bytes, i)
+                }
+                b'(' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b')' => {
+                    depth -= 1;
+                    i += 1;
+                }
+                _ if depth == 0 && bytes[i].is_ascii_alphabetic() => {
+                    let word_start = i;
+                    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+                    {
+                        i += 1;
+                    }
+                    let word = &lower[word_start..i];
+                    match word {
+                        "from" => found_from = true,
+                        "into" if !found_from => {
+                            if word_start >= 6 && lower[..word_start].trim_end().ends_with("insert")
+                            {
+                                continue;
+                            }
+                            return true;
+                        }
+                        _ => {}
+                    }
+                }
+                _ => i += 1,
+            }
+        }
+        false
+    }
+}
+
+/// Read model for multi-statement command tag resolution.
+///
+/// Holds two views of the same execution:
+/// - `all`: tags after CTAS correction (what psql *meant* to report)
+/// - `effective`: tags that survived rollback filtering (what actually persisted)
+#[cfg_attr(test, derive(Debug))]
+pub(in crate::infra::adapters::postgres) struct ResolvedTags {
+    all: Vec<CommandTag>,
+    effective: Vec<CommandTag>,
+}
+
+impl ResolvedTags {
+    pub(in crate::infra::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
+        let parsed = PostgresAdapter::parse_all_tags(stdout)?;
+        let corrected = PostgresAdapter::correct_ctas_tags(sql, parsed);
+        let effective = PostgresAdapter::discard_rolled_back(&corrected);
+        Some(Self {
+            all: corrected,
+            effective,
+        })
+    }
+
+    pub(in crate::infra::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
+        if let Some(tag) = self.effective.iter().find(|t| t.is_schema_modifying()) {
             return Some(tag.clone());
         }
 
-        // 2. Last needs_refresh tag
-        if let Some(tag) = effective.iter().rev().find(|t| t.needs_refresh()) {
+        if let Some(tag) = self.effective.iter().rev().find(|t| t.needs_refresh()) {
             return Some(tag.clone());
         }
 
-        // 3. Effective empty, but original had modifying tags → Rollback
-        let had_modifying = all_tags.iter().any(|t| t.needs_refresh());
-        if had_modifying {
+        if self.all.iter().any(|t| t.needs_refresh()) {
             return Some(CommandTag::Rollback);
         }
 
-        // 4. TCL-only → last tag
-        all_tags.last().cloned()
+        self.all.last().cloned()
     }
+}
 
-    /// Orchestrator: Stage 1→2→3. Returns `None` for CSV-like output.
-    pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
-        stdout: &str,
-    ) -> Option<CommandTag> {
-        let all_tags = Self::parse_all_tags(stdout)?;
-        let effective = Self::discard_rolled_back(&all_tags);
-        Self::select_aggregate_tag(&all_tags, &effective)
+// -- SQL lexical skip helpers (byte-level) --
+// Shared by split_sql_statements and has_select_into to ensure
+// consistent quote/comment boundary handling.
+
+fn skip_single_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b'\'' {
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'\'' {
+                i += 1;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
     }
+    i
+}
+
+fn skip_double_quoted(bytes: &[u8], mut i: usize) -> usize {
+    i += 1;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'"' {
+                i += 1;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_dollar_quoted(sql: &str, bytes: &[u8], mut i: usize) -> usize {
+    let tag_start = i;
+    i += 1;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b'$' {
+        let tag = &sql[tag_start..=i];
+        i += 1;
+        while i + tag.len() <= bytes.len() {
+            if &sql[i..i + tag.len()] == tag {
+                return i + tag.len();
+            }
+            i += 1;
+        }
+    }
+    i
+}
+
+fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i
+}
+
+fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
+    i += 2;
+    while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+        i += 1;
+    }
+    if i + 1 < bytes.len() {
+        i += 2;
+    }
+    i
 }
 
 #[cfg(test)]
@@ -1382,6 +1601,109 @@ mod tests {
         }
     }
 
+    mod split_sql_statements {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::two_statements("SELECT 1; SELECT 2", vec!["SELECT 1", "SELECT 2"])]
+        #[case::single_statement("SELECT 1", vec!["SELECT 1"])]
+        #[case::trailing_semicolon("SELECT 1;", vec!["SELECT 1"])]
+        #[case::multi_statement_txn(
+            "BEGIN; CREATE TABLE t AS SELECT 1; COMMIT",
+            vec!["BEGIN", "CREATE TABLE t AS SELECT 1", "COMMIT"]
+        )]
+        #[case::escaped_single_quote(
+            "SELECT 'it''s'; SELECT 2",
+            vec!["SELECT 'it''s'", "SELECT 2"]
+        )]
+        fn valid_input_returns_split_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
+            assert_eq!(PostgresAdapter::split_sql_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::single_quotes("SELECT 'a;b'", vec!["SELECT 'a;b'"])]
+        #[case::double_quotes(r#"SELECT "a;b""#, vec![r#"SELECT "a;b""#])]
+        #[case::dollar_quote("SELECT $$a;b$$", vec!["SELECT $$a;b$$"])]
+        #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
+        #[case::line_comment("SELECT 1 -- comment; here\n", vec!["SELECT 1 -- comment; here"])]
+        #[case::block_comment("SELECT /* ; */ 1", vec!["SELECT /* ; */ 1"])]
+        fn quoted_semicolon_returns_single_statement(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(PostgresAdapter::split_sql_statements(sql), expected);
+        }
+
+        #[rstest]
+        #[case::empty("")]
+        #[case::whitespace_only("   ")]
+        fn blank_input_returns_empty(#[case] sql: &str) {
+            assert!(PostgresAdapter::split_sql_statements(sql).is_empty());
+        }
+    }
+
+    mod detect_create_as_kind {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::basic("CREATE TABLE t AS SELECT 1", "TABLE")]
+        #[case::temp("CREATE TEMP TABLE t AS SELECT 1", "TABLE")]
+        #[case::temporary("CREATE TEMPORARY TABLE t AS SELECT 1", "TABLE")]
+        #[case::unlogged("CREATE UNLOGGED TABLE t AS SELECT 1", "TABLE")]
+        #[case::lowercase("create table t as select 1", "TABLE")]
+        #[case::materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1", "MATERIALIZED VIEW")]
+        fn create_as_returns_correct_tag(#[case] stmt: &str, #[case] object: &str) {
+            assert_eq!(
+                PostgresAdapter::detect_create_as_kind(stmt),
+                Some(CommandTag::Create(object.to_string()))
+            );
+        }
+
+        #[rstest]
+        #[case::create_view("CREATE VIEW v AS SELECT 1")]
+        #[case::plain_select("SELECT * FROM users")]
+        fn non_ctas_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_create_as_kind(stmt), None);
+        }
+    }
+
+    mod detect_select_into_kind {
+        use super::*;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case::basic("SELECT * INTO t FROM users")]
+        #[case::with_columns("SELECT id, name INTO t FROM users")]
+        #[case::with_cte("WITH cte AS (SELECT 1) SELECT * INTO t FROM cte")]
+        fn select_into_returns_create_table(#[case] stmt: &str) {
+            assert_eq!(
+                PostgresAdapter::detect_select_into_kind(stmt),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[rstest]
+        #[case::plain_select("SELECT * FROM users")]
+        #[case::insert_into("INSERT INTO users VALUES (1)")]
+        #[case::create_table("CREATE TABLE t AS SELECT 1")]
+        fn non_select_into_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_select_into_kind(stmt), None);
+        }
+
+        #[rstest]
+        #[case::double_quotes(r#"SELECT "into" FROM t"#)]
+        #[case::dollar_quote("SELECT $$into$$ FROM t")]
+        #[case::tagged_dollar_quote("SELECT $x$into$x$ FROM t")]
+        #[case::line_comment("SELECT 1 -- into\nFROM t")]
+        #[case::block_comment("SELECT /* into */ 1 FROM t")]
+        #[case::single_quote("SELECT 'into' FROM t")]
+        fn quoted_into_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_select_into_kind(stmt), None);
+        }
+    }
+
     mod command_tag_parsing {
         use super::*;
         use rstest::rstest;
@@ -1737,25 +2059,28 @@ mod tests {
         }
     }
 
-    mod select_aggregate_tag {
+    mod resolved_tags_aggregate {
         use super::*;
+        use crate::infra::adapters::postgres::psql::parser::ResolvedTags;
+
+        fn resolved(all: Vec<CommandTag>, effective: Vec<CommandTag>) -> ResolvedTags {
+            ResolvedTags { all, effective }
+        }
 
         #[test]
         fn schema_modifying_takes_priority() {
-            let all = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
-            let effective = all.clone();
+            let tags = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Drop("TABLE".to_string()))
             );
         }
 
         #[test]
         fn last_needs_refresh() {
-            let all = vec![CommandTag::Insert(1), CommandTag::Update(2)];
-            let effective = all.clone();
+            let tags = vec![CommandTag::Insert(1), CommandTag::Update(2)];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Update(2))
             );
         }
@@ -1767,9 +2092,8 @@ mod tests {
                 CommandTag::Update(1),
                 CommandTag::Rollback,
             ];
-            let effective = vec![];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(all, vec![]).aggregate(),
                 Some(CommandTag::Rollback)
             );
         }
@@ -1777,22 +2101,17 @@ mod tests {
         #[test]
         fn tcl_only_returns_last_tag() {
             let all = vec![CommandTag::Begin, CommandTag::Commit];
-            let effective = vec![];
-            assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
-                Some(CommandTag::Commit)
-            );
+            assert_eq!(resolved(all, vec![]).aggregate(), Some(CommandTag::Commit));
         }
 
         #[test]
         fn ddl_and_dml_mixed_schema_wins() {
-            let all = vec![
+            let tags = vec![
                 CommandTag::Create("TABLE".to_string()),
                 CommandTag::Insert(1),
             ];
-            let effective = all.clone();
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
@@ -1804,7 +2123,10 @@ mod tests {
         #[test]
         fn committed_txn_with_update() {
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nUPDATE 1\nCOMMIT"),
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nCOMMIT",
+                    "BEGIN; UPDATE t SET x=1; COMMIT"
+                ),
                 Some(CommandTag::Update(1))
             );
         }
@@ -1812,7 +2134,10 @@ mod tests {
         #[test]
         fn rolled_back_txn() {
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag("BEGIN\nUPDATE 1\nROLLBACK"),
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nUPDATE 1\nROLLBACK",
+                    "BEGIN; UPDATE t SET x=1; ROLLBACK"
+                ),
                 Some(CommandTag::Rollback)
             );
         }
@@ -1821,7 +2146,10 @@ mod tests {
         fn partial_rollback_keeps_outer_dml() {
             let stdout = "BEGIN\nUPDATE 1\nSAVEPOINT\nINSERT 0 1\nROLLBACK\nCOMMIT";
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag(stdout),
+                PostgresAdapter::parse_aggregate_command_tag(
+                    stdout,
+                    "BEGIN; UPDATE t SET x=1; SAVEPOINT s; INSERT INTO t VALUES(1); ROLLBACK TO SAVEPOINT s; COMMIT"
+                ),
                 Some(CommandTag::Update(1))
             );
         }
@@ -1829,7 +2157,7 @@ mod tests {
         #[test]
         fn single_dml() {
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag("DELETE 3"),
+                PostgresAdapter::parse_aggregate_command_tag("DELETE 3", "DELETE FROM t"),
                 Some(CommandTag::Delete(3))
             );
         }
@@ -1837,7 +2165,7 @@ mod tests {
         #[test]
         fn csv_returns_none() {
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag("id,name"),
+                PostgresAdapter::parse_aggregate_command_tag("id,name", "SELECT * FROM t"),
                 None
             );
         }
@@ -1845,8 +2173,127 @@ mod tests {
         #[test]
         fn single_line_select_passes_through() {
             assert_eq!(
-                PostgresAdapter::parse_aggregate_command_tag("SELECT 5"),
+                PostgresAdapter::parse_aggregate_command_tag("SELECT 5", "SELECT 1+4"),
                 Some(CommandTag::Select(5))
+            );
+        }
+
+        #[test]
+        fn ctas_committed() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSELECT 1\nCOMMIT",
+                    "BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn ctas_savepoint_rollback_with_outer_dml() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nUPDATE 1\nCOMMIT",
+                    "BEGIN; SAVEPOINT s; CREATE TABLE t AS SELECT 1; ROLLBACK TO SAVEPOINT s; UPDATE t SET x=1; COMMIT"
+                ),
+                Some(CommandTag::Update(1))
+            );
+        }
+
+        #[test]
+        fn ctas_savepoint_rollback_no_other_dml() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nCOMMIT",
+                    "BEGIN; SAVEPOINT s; CREATE TABLE t AS SELECT 1; ROLLBACK TO SAVEPOINT s; COMMIT"
+                ),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn select_into_savepoint_rollback() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSAVEPOINT\nSELECT 5\nROLLBACK\nCOMMIT",
+                    "BEGIN; SAVEPOINT s; SELECT * INTO t FROM u; ROLLBACK TO SAVEPOINT s; COMMIT"
+                ),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn single_ctas_no_txn() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 1",
+                    "CREATE TABLE t AS SELECT 1"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn ctas_outside_savepoint_survives() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSELECT 1\nCOMMIT",
+                    "BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn ctas_full_rollback() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "BEGIN\nSELECT 1\nROLLBACK",
+                    "BEGIN; CREATE TABLE t AS SELECT 1; ROLLBACK"
+                ),
+                Some(CommandTag::Rollback)
+            );
+        }
+
+        #[test]
+        fn create_temp_table_as() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 1",
+                    "CREATE TEMP TABLE t AS SELECT 1"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn create_materialized_view() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 1",
+                    "CREATE MATERIALIZED VIEW v AS SELECT 1"
+                ),
+                Some(CommandTag::Create("MATERIALIZED VIEW".to_string()))
+            );
+        }
+
+        #[test]
+        fn with_select_into() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 1",
+                    "WITH cte AS (SELECT 1) SELECT * INTO t FROM cte"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn count_mismatch_fallback() {
+            // 1 statement but 2 tags → skip correction, use last tag
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag("SELECT 1\nSELECT 2", "SELECT 1"),
+                Some(CommandTag::Select(2))
             );
         }
     }
