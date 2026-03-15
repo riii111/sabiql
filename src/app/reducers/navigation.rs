@@ -987,6 +987,53 @@ mod tests {
         }
     }
 
+    mod command_line_return_stack {
+        use super::*;
+
+        #[test]
+        fn enter_from_normal_and_exit_returns_to_normal() {
+            let mut state = AppState::new("test".to_string());
+
+            reduce_navigation(
+                &mut state,
+                &Action::EnterCommandLine,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+            assert_eq!(state.input_mode(), InputMode::CommandLine);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ExitCommandLine,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+            assert_eq!(state.input_mode(), InputMode::Normal);
+        }
+
+        #[test]
+        fn enter_from_cell_edit_and_exit_returns_to_cell_edit() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::CellEdit);
+
+            reduce_navigation(
+                &mut state,
+                &Action::EnterCommandLine,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+            assert_eq!(state.input_mode(), InputMode::CommandLine);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ExitCommandLine,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+        }
+    }
+
     mod inspector_scroll_top_bottom {
         use super::*;
         use crate::domain::{Column, Table};

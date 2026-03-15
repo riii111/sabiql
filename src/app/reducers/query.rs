@@ -921,6 +921,45 @@ mod tests {
         state
     }
 
+    mod command_line_submit {
+        use super::*;
+
+        #[test]
+        fn submit_quit_pops_mode_and_sets_quit() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "q".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.should_quit);
+        }
+
+        #[test]
+        fn submit_unknown_pops_mode_without_side_effects() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::CellEdit);
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "unknown_cmd".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(!state.should_quit);
+        }
+    }
+
     mod next_page {
         use super::*;
 
