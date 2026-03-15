@@ -595,7 +595,7 @@ pub fn reduce_query(
 
         // ── CSV Export ──────────────────────────────────────────────
         Action::RequestCsvExport => {
-            let result = match &state.query.current_result {
+            let result = match state.query.visible_result() {
                 Some(r) if !r.is_error() => r,
                 _ => return Some(vec![]),
             };

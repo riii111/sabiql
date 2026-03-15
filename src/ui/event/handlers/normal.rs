@@ -35,8 +35,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('e')
                 if state
                     .query
-                    .current_result
-                    .as_ref()
+                    .visible_result()
                     .is_some_and(|r| !r.is_error()) =>
             {
                 return Action::RequestCsvExport;
