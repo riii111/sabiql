@@ -4,6 +4,8 @@ paths:
   - "**/src/app/services.rs"
   - "**/src/app/reducer.rs"
   - "**/src/app/reducers/**/*.rs"
+  - "**/src/app/query_execution.rs"
+  - "**/src/ui/**/*.rs"
 ---
 
 # AppState 不変条件
@@ -57,3 +59,19 @@ paths:
 - `AppState` に `Arc<dyn Trait>`, `Sender`, `Rc<RefCell<...>>` 等の依存を追加してはならない
 - Reducer sig: `reduce(state: &mut AppState, action, now, services: &AppServices)`
 - Renderer sig: `draw(state: &mut AppState, services: &AppServices)`
+
+## Visible Result read model
+
+Result pane の「表示中 result」を `current_result` / `history_index` / `result_history` の組み合わせで各所が再解釈してはならない。`QueryExecution` が提供する read model と capability API を使うこと:
+
+| API | 用途 |
+|-----|------|
+| `visible_result()` | 表示中の `&QueryResult` を取得 |
+| `visible_result_kind()` | 表示中 result の意味分類（`VisibleResultKind`） |
+| `is_history_mode()` | history 閲覧中かどうか |
+| `can_edit_visible_result()` | 編集可能かどうか（LivePreview のみ） |
+| `can_paginate_visible_result()` | ページネーション可能かどうか（LivePreview のみ） |
+| `history_bar()` | history バー表示用 `(index, total)` |
+| `has_history_hint()` | history ヒント表示判定 |
+
+- Reducer による `history_index` の直接変更は許可（write は所有者、read は API 経由）
