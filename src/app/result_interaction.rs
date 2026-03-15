@@ -156,9 +156,11 @@ mod tests {
 
     #[test]
     fn reset_view_clears_scroll_and_all_interaction() {
-        let mut ri = ResultInteraction::default();
-        ri.scroll_offset = 10;
-        ri.horizontal_offset = 5;
+        let mut ri = ResultInteraction {
+            scroll_offset: 10,
+            horizontal_offset: 5,
+            ..Default::default()
+        };
         ri.enter_row(3);
         ri.enter_cell(2);
         ri.begin_cell_edit(3, 2, "val".to_string());
@@ -177,9 +179,11 @@ mod tests {
 
     #[test]
     fn reset_interaction_preserves_scroll() {
-        let mut ri = ResultInteraction::default();
-        ri.scroll_offset = 10;
-        ri.horizontal_offset = 5;
+        let mut ri = ResultInteraction {
+            scroll_offset: 10,
+            horizontal_offset: 5,
+            ..Default::default()
+        };
         ri.enter_row(3);
         ri.stage_row(1);
 
@@ -229,12 +233,14 @@ mod tests {
     #[test]
     fn clear_expired_flash_removes_expired() {
         let now = Instant::now();
-        let mut ri = ResultInteraction::default();
-        ri.yank_flash = Some(YankFlash {
-            row: 0,
-            col: None,
-            until: now - Duration::from_millis(1),
-        });
+        let mut ri = ResultInteraction {
+            yank_flash: Some(YankFlash {
+                row: 0,
+                col: None,
+                until: now - Duration::from_millis(1),
+            }),
+            ..Default::default()
+        };
 
         ri.clear_expired_flash(now);
 
@@ -244,12 +250,14 @@ mod tests {
     #[test]
     fn clear_expired_flash_keeps_active() {
         let now = Instant::now();
-        let mut ri = ResultInteraction::default();
-        ri.yank_flash = Some(YankFlash {
-            row: 0,
-            col: None,
-            until: now + Duration::from_secs(1),
-        });
+        let mut ri = ResultInteraction {
+            yank_flash: Some(YankFlash {
+                row: 0,
+                col: None,
+                until: now + Duration::from_secs(1),
+            }),
+            ..Default::default()
+        };
 
         ri.clear_expired_flash(now);
 
@@ -258,9 +266,11 @@ mod tests {
 
     #[test]
     fn clear_operator_pending_selective() {
-        let mut ri = ResultInteraction::default();
-        ri.delete_op_pending = true;
-        ri.yank_op_pending = true;
+        let mut ri = ResultInteraction {
+            delete_op_pending: true,
+            yank_op_pending: true,
+            ..Default::default()
+        };
 
         ri.clear_operator_pending(true, false);
 
