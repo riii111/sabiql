@@ -20,18 +20,20 @@ use crate::domain::{QueryResult, QuerySource};
 use super::helpers::{build_bulk_delete_preview, editable_preview_base};
 
 fn build_update_preview(state: &AppState, services: &AppServices) -> Result<WritePreview, String> {
-    if !state.cell_edit.is_active() {
+    if !state.result_interaction.cell_edit().is_active() {
         return Err("No active cell edit session".to_string());
     }
 
     let (result, pk_cols) = editable_preview_base(state)?;
 
     let row_idx = state
-        .cell_edit
+        .result_interaction
+        .cell_edit()
         .row
         .ok_or_else(|| "No row selected for edit".to_string())?;
     let col_idx = state
-        .cell_edit
+        .result_interaction
+        .cell_edit()
         .col
         .ok_or_else(|| "No column selected for edit".to_string())?;
 
@@ -70,7 +72,7 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         &target.schema,
         &target.table,
         &column_name,
-        state.cell_edit.draft_value(),
+        state.result_interaction.cell_edit().draft_value(),
         &target.key_values,
     );
     let preview = WritePreview {
@@ -79,8 +81,12 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         target_summary: target,
         diff: vec![ColumnDiff {
             column: column_name,
-            before: state.cell_edit.original_value.clone(),
-            after: state.cell_edit.draft_value().to_string(),
+            before: state.result_interaction.cell_edit().original_value.clone(),
+            after: state
+                .result_interaction
+                .cell_edit()
+                .draft_value()
+                .to_string(),
         }],
         guardrail,
     };
@@ -183,7 +189,7 @@ pub fn reduce_query(
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
-                    super::helpers::reset_result_view(state);
+                    state.result_interaction.reset_view();
                     state.query.result_highlight_until = Some(now + Duration::from_millis(500));
                     state.query.history_index = None;
                 }
@@ -221,16 +227,16 @@ pub fn reduce_query(
                     match state.query.post_delete_row_selection {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
-                            state.ui.result_selection.reset();
+                            state.result_interaction.exit_row_to_scroll();
                         }
                         PostDeleteRowSelection::Select(row) => {
                             if !result.rows.is_empty() {
                                 let clamped = row.min(result.rows.len() - 1);
-                                state.ui.result_selection.enter_row(clamped);
+                                state.result_interaction.enter_row(clamped);
 
                                 let visible = state.result_visible_rows();
                                 if visible > 0 && clamped >= visible {
-                                    state.ui.result_scroll_offset = clamped - visible + 1;
+                                    state.result_interaction.scroll_offset = clamped - visible + 1;
                                 }
                             }
                         }
@@ -247,9 +253,9 @@ pub fn reduce_query(
             if *generation == 0 || *generation == state.cache.selection_generation {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
-                let is_adhoc = state.ui.input_mode == InputMode::SqlModal;
+                let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
-                    super::helpers::reset_result_view(state);
+                    state.result_interaction.reset_view();
                     state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
                     state.query.pending_delete_refresh_target = None;
                 }
@@ -265,8 +271,7 @@ pub fn reduce_query(
         Action::CommandLineSubmit => {
             let cmd = parse_command(&state.command_line_input);
             let follow_up = command_to_action(cmd);
-            state.ui.input_mode = state.ui.command_line_return_mode;
-            state.ui.command_line_return_mode = InputMode::Normal;
+            state.modal.pop_mode();
             state.command_line_input.clear();
 
             Some(match follow_up {
@@ -275,11 +280,11 @@ pub fn reduce_query(
                     vec![]
                 }
                 Action::OpenHelp => {
-                    state.ui.input_mode = InputMode::Help;
+                    state.modal.set_mode(InputMode::Help);
                     vec![]
                 }
                 Action::OpenSqlModal => {
-                    state.ui.input_mode = InputMode::SqlModal;
+                    state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.status = SqlModalStatus::Editing;
                     if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
@@ -358,10 +363,10 @@ pub fn reduce_query(
         }
 
         Action::SubmitCellEditWrite => {
-            if !state.ui.staged_delete_rows.is_empty() {
+            if !state.result_interaction.staged_delete_rows().is_empty() {
                 match build_bulk_delete_preview(state, services) {
                     Ok((preview, target_page, target_row)) => {
-                        let staged_count = state.ui.staged_delete_rows.len();
+                        let staged_count = state.result_interaction.staged_delete_rows().len();
                         state.query.pending_delete_refresh_target =
                             Some((target_page, target_row, staged_count));
                         return Some(vec![Effect::DispatchActions(vec![
@@ -375,7 +380,7 @@ pub fn reduce_query(
                 }
             }
 
-            if !state.cell_edit.is_active() {
+            if !state.result_interaction.cell_edit().is_active() {
                 state
                     .messages
                     .set_error_at("No active cell edit session".to_string(), now);
@@ -408,16 +413,14 @@ pub fn reduce_query(
                 );
                 return Some(vec![]);
             }
-            state.pending_write_preview = Some((**preview).clone());
+            state
+                .result_interaction
+                .set_write_preview((**preview).clone());
             let operation = preview.operation;
-            let caller_mode = state.ui.input_mode;
-            let (title, return_mode) = match operation {
+            let title = match operation {
                 WriteOperation::Update => {
                     state.query.pending_delete_refresh_target = None;
-                    (
-                        format!("Confirm UPDATE: {}", preview.target_summary.table),
-                        caller_mode,
-                    )
+                    format!("Confirm UPDATE: {}", preview.target_summary.table)
                 }
                 WriteOperation::Delete => {
                     let n = state
@@ -426,14 +429,11 @@ pub fn reduce_query(
                         .as_ref()
                         .map(|(_, _, count)| *count)
                         .unwrap_or(1);
-                    (
-                        format!(
-                            "Confirm DELETE: {} {} from {}",
-                            n,
-                            if n == 1 { "row" } else { "rows" },
-                            preview.target_summary.table
-                        ),
-                        InputMode::Normal,
+                    format!(
+                        "Confirm DELETE: {} {} from {}",
+                        n,
+                        if n == 1 { "row" } else { "rows" },
+                        preview.target_summary.table
                     )
                 }
             };
@@ -446,8 +446,11 @@ pub fn reduce_query(
                     blocked: preview.guardrail.blocked,
                 },
             );
-            state.confirm_dialog.return_mode = return_mode;
-            state.ui.input_mode = InputMode::ConfirmDialog;
+            if matches!(operation, WriteOperation::Delete) {
+                // Delete returns to Normal regardless of caller
+                state.modal.set_mode(InputMode::Normal);
+            }
+            state.modal.push_mode(InputMode::ConfirmDialog);
 
             Some(vec![])
         }
@@ -481,11 +484,11 @@ pub fn reduce_query(
             state.query.status = QueryStatus::Idle;
             state.query.start_time = None;
             let operation = state
-                .pending_write_preview
-                .as_ref()
+                .result_interaction
+                .pending_write_preview()
                 .map(|p| p.operation)
                 .unwrap_or(WriteOperation::Update);
-            state.pending_write_preview = None;
+            state.result_interaction.clear_write_preview();
             match operation {
                 WriteOperation::Update => {
                     if *affected_rows != 1 {
@@ -493,15 +496,15 @@ pub fn reduce_query(
                             format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
                             now,
                         );
-                        state.ui.input_mode = InputMode::CellEdit;
+                        state.modal.set_mode(InputMode::CellEdit);
                         return Some(vec![]);
                     }
 
                     state
                         .messages
                         .set_success_at("Updated 1 row".to_string(), now);
-                    state.cell_edit.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.result_interaction.clear_cell_edit();
+                    state.modal.set_mode(InputMode::Normal);
 
                     if let Some(dsn) = &state.runtime.dsn {
                         let page = state.query.pagination.current_page;
@@ -546,9 +549,9 @@ pub fn reduce_query(
                             now,
                         );
                     }
-                    state.cell_edit.clear();
-                    state.ui.staged_delete_rows.clear();
-                    state.ui.input_mode = InputMode::Normal;
+                    state.result_interaction.clear_cell_edit();
+                    state.result_interaction.clear_staged_deletes();
+                    state.modal.set_mode(InputMode::Normal);
 
                     state.query.post_delete_row_selection = target_row
                         .map(PostDeleteRowSelection::Select)
@@ -579,17 +582,17 @@ pub fn reduce_query(
             state.query.status = QueryStatus::Idle;
             state.query.start_time = None;
             let operation = state
-                .pending_write_preview
-                .as_ref()
+                .result_interaction
+                .pending_write_preview()
                 .map(|p| p.operation)
                 .unwrap_or(WriteOperation::Update);
-            state.pending_write_preview = None;
+            state.result_interaction.clear_write_preview();
             state.query.pending_delete_refresh_target = None;
             state.messages.set_error_at(error.clone(), now);
-            state.ui.input_mode = match operation {
+            state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
-            };
+            });
             Some(vec![])
         }
 
@@ -659,8 +662,7 @@ pub fn reduce_query(
                         file_name: file_name.clone(),
                         row_count: *row_count,
                     });
-                state.confirm_dialog.return_mode = InputMode::Normal;
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
                 let dsn = match &state.runtime.dsn {
@@ -732,7 +734,7 @@ pub fn reduce_query(
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                super::helpers::reset_result_view(state);
+                state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
                     schema: state.query.pagination.schema.clone(),
@@ -760,7 +762,7 @@ pub fn reduce_query(
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
-                super::helpers::reset_result_view(state);
+                state.result_interaction.reset_view();
                 // When going back, the page is not at the end anymore
                 state.query.pagination.reached_end = false;
                 Some(vec![Effect::ExecutePreview {
@@ -919,6 +921,45 @@ mod tests {
         state
     }
 
+    mod command_line_submit {
+        use super::*;
+
+        #[test]
+        fn submit_quit_pops_mode_and_sets_quit() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "q".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.should_quit);
+        }
+
+        #[test]
+        fn submit_unknown_pops_mode_without_side_effects() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::CellEdit);
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "unknown_cmd".to_string();
+
+            reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(!state.should_quit);
+        }
+    }
+
     mod next_page {
         use super::*;
 
@@ -1015,8 +1056,8 @@ mod tests {
             let mut state = create_test_state();
             state.query.current_result = Some(preview_result(100));
             state.query.pagination.reached_end = true;
-            state.ui.result_selection.enter_row(2);
-            state.ui.staged_delete_rows.insert(2);
+            state.result_interaction.enter_row(2);
+            state.result_interaction.stage_row(2);
 
             reduce_query(
                 &mut state,
@@ -1025,8 +1066,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_selection.row(), Some(2));
-            assert!(state.ui.staged_delete_rows.contains(&2));
+            assert_eq!(state.result_interaction.selection().row(), Some(2));
+            assert!(state.result_interaction.staged_delete_rows().contains(&2));
         }
 
         #[test]
@@ -1040,8 +1081,8 @@ mod tests {
                 schema: "public".to_string(),
                 table: "users".to_string(),
             };
-            state.ui.result_selection.enter_row(3);
-            state.ui.staged_delete_rows.insert(3);
+            state.result_interaction.enter_row(3);
+            state.result_interaction.stage_row(3);
 
             reduce_query(
                 &mut state,
@@ -1050,8 +1091,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.ui.result_selection.row().is_none());
-            assert!(state.ui.staged_delete_rows.is_empty());
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
     }
 
@@ -1116,8 +1157,8 @@ mod tests {
             let mut state = create_test_state();
             state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
-            state.ui.result_selection.enter_row(1);
-            state.ui.staged_delete_rows.insert(1);
+            state.result_interaction.enter_row(1);
+            state.result_interaction.stage_row(1);
 
             reduce_query(
                 &mut state,
@@ -1126,8 +1167,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_selection.row(), Some(1));
-            assert!(state.ui.staged_delete_rows.contains(&1));
+            assert_eq!(state.result_interaction.selection().row(), Some(1));
+            assert!(state.result_interaction.staged_delete_rows().contains(&1));
         }
     }
 
@@ -1237,11 +1278,11 @@ mod tests {
         fn adhoc_success_writes_current_result_without_touching_history_index() {
             let mut state = create_test_state();
             // Simulate scrolled preview state with staged deletes
-            state.ui.result_scroll_offset = 50;
-            state.ui.result_horizontal_offset = 10;
-            state.ui.result_selection.enter_row(5);
-            state.ui.staged_delete_rows.insert(0);
-            state.ui.staged_delete_rows.insert(2);
+            state.result_interaction.scroll_offset = 50;
+            state.result_interaction.horizontal_offset = 10;
+            state.result_interaction.enter_row(5);
+            state.result_interaction.stage_row(0);
+            state.result_interaction.stage_row(2);
             let result = adhoc_result();
 
             reduce_query(
@@ -1265,10 +1306,10 @@ mod tests {
                 QuerySource::Adhoc,
             );
             // View state must be fully reset so the new result is visible from the top
-            assert_eq!(state.ui.result_scroll_offset, 0);
-            assert_eq!(state.ui.result_horizontal_offset, 0);
-            assert_eq!(state.ui.result_selection.row(), None);
-            assert!(state.ui.staged_delete_rows.is_empty());
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.horizontal_offset, 0);
+            assert_eq!(state.result_interaction.selection().row(), None);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
 
         #[test]
@@ -1276,9 +1317,9 @@ mod tests {
             let mut state = create_test_state();
             // Set a pre-existing preview result with scroll state
             state.query.current_result = Some(preview_result(5));
-            state.ui.result_scroll_offset = 20;
-            state.ui.result_horizontal_offset = 5;
-            state.ui.result_selection.enter_row(3);
+            state.result_interaction.scroll_offset = 20;
+            state.result_interaction.horizontal_offset = 5;
+            state.result_interaction.enter_row(3);
             let result = adhoc_error_result();
 
             reduce_query(
@@ -1299,9 +1340,9 @@ mod tests {
                 state.query.current_result.as_ref().unwrap().source,
                 QuerySource::Preview,
             );
-            assert_eq!(state.ui.result_scroll_offset, 20);
-            assert_eq!(state.ui.result_horizontal_offset, 5);
-            assert_eq!(state.ui.result_selection.row(), Some(3));
+            assert_eq!(state.result_interaction.scroll_offset, 20);
+            assert_eq!(state.result_interaction.horizontal_offset, 5);
+            assert_eq!(state.result_interaction.selection().row(), Some(3));
         }
 
         #[test]
@@ -1335,10 +1376,10 @@ mod tests {
         fn resets_result_selection_and_offsets() {
             let mut state = create_test_state();
             state.cache.selection_generation = 1;
-            state.ui.result_selection.enter_row(5);
-            state.ui.result_selection.enter_cell(2);
-            state.ui.result_scroll_offset = 10;
-            state.ui.result_horizontal_offset = 3;
+            state.result_interaction.enter_row(5);
+            state.result_interaction.enter_cell(2);
+            state.result_interaction.scroll_offset = 10;
+            state.result_interaction.horizontal_offset = 3;
 
             reduce_query(
                 &mut state,
@@ -1347,9 +1388,12 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_selection.mode(), ResultNavMode::Scroll);
-            assert_eq!(state.ui.result_scroll_offset, 0);
-            assert_eq!(state.ui.result_horizontal_offset, 0);
+            assert_eq!(
+                state.result_interaction.selection().mode(),
+                ResultNavMode::Scroll
+            );
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+            assert_eq!(state.result_interaction.horizontal_offset, 0);
         }
     }
 
@@ -1404,16 +1448,21 @@ mod tests {
             state.cache.table_detail = Some(users_table_detail());
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.ui.input_mode = InputMode::CellEdit;
-            state.cell_edit.begin(0, 1, "Alice".to_string());
-            state.cell_edit.input.set_content("Bob".to_string());
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "Alice".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("Bob".to_string());
             state
         }
 
         #[test]
         fn write_requires_cell_edit_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             // No cell_edit active
 
             let effects = reduce_query(
@@ -1520,7 +1569,10 @@ mod tests {
             );
 
             assert_eq!(
-                state.pending_write_preview.as_ref().map(|p| p.sql.as_str()),
+                state
+                    .result_interaction
+                    .pending_write_preview()
+                    .map(|p| p.sql.as_str()),
                 Some(expected_sql.as_str())
             );
             match &state.confirm_dialog.intent {
@@ -1548,7 +1600,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.query.status, QueryStatus::Running);
             assert!(state.query.start_time.is_some());
             assert_eq!(effects.len(), 1);
@@ -1578,7 +1630,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::CellEdit);
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
@@ -1614,7 +1666,7 @@ mod tests {
         #[test]
         fn open_write_preview_confirm_for_delete_sets_normal_return_mode() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
             let effects = reduce_query(
@@ -1626,8 +1678,8 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
-            assert_eq!(state.confirm_dialog.return_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
                 state.confirm_dialog.title,
                 "Confirm DELETE: 1 row from users"
@@ -1640,7 +1692,7 @@ mod tests {
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
             state.query.pending_delete_refresh_target = Some((1, Some(499), 1));
-            state.pending_write_preview = Some(delete_preview());
+            state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
                 &mut state,
@@ -1650,7 +1702,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Select(499)
@@ -1678,7 +1730,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.pending_write_preview = Some(delete_preview());
+            state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
                 &mut state,
@@ -1688,7 +1740,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("DELETE expected 1 row, but affected 0 rows")
@@ -1699,7 +1751,7 @@ mod tests {
         #[test]
         fn execute_write_failed_for_delete_returns_to_normal_mode() {
             let mut state = create_test_state();
-            state.pending_write_preview = Some(delete_preview());
+            state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
                 &mut state,
@@ -1710,7 +1762,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
         }
 
@@ -1731,7 +1783,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_selection.row(), Some(2));
+            assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Keep
@@ -1742,7 +1794,7 @@ mod tests {
         fn query_completed_clears_selection_when_requested() {
             let mut state = create_test_state();
             state.cache.selection_generation = 1;
-            state.ui.result_selection.enter_row(0);
+            state.result_interaction.enter_row(0);
             state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
 
             reduce_query(
@@ -1756,7 +1808,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.result_selection.row(), None);
+            assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(
                 state.query.post_delete_row_selection,
                 PostDeleteRowSelection::Keep
@@ -1884,7 +1936,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.title.contains("CSV Export"));
         }
 
@@ -1905,7 +1957,7 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.ui.input_mode, InputMode::ConfirmDialog);
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.confirm_dialog.message.contains("unknown"));
         }
 

@@ -109,9 +109,9 @@ async fn main() -> Result<()> {
             load_service_entries(&mut state, &*service_file_reader);
             if state.service_entries().is_empty() {
                 state.connection_setup.is_first_run = true;
-                state.ui.input_mode = InputMode::ConnectionSetup;
+                state.modal.set_mode(InputMode::ConnectionSetup);
             } else {
-                state.ui.input_mode = InputMode::ConnectionSelector;
+                state.modal.set_mode(InputMode::ConnectionSelector);
                 state.ui.set_connection_list_selection(Some(0));
             }
         }
@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
             state.set_connections(profiles);
             load_service_entries(&mut state, &*service_file_reader);
 
-            state.ui.input_mode = InputMode::ConnectionSelector;
+            state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
         }
         Err(ConnectionStoreError::VersionMismatch { found, expected }) => {
@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
         }
         Err(_) => {
             state.connection_setup.is_first_run = true;
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
         }
     }
 
@@ -149,8 +149,7 @@ async fn main() -> Result<()> {
     let initial_size = tui.terminal().size()?;
     state.ui.terminal_height = initial_size.height;
 
-    // TryConnect is idempotent, so safe even if called multiple times
-    if state.runtime.dsn.is_some() && state.ui.input_mode == InputMode::Normal {
+    if state.runtime.dsn.is_some() && state.input_mode() == InputMode::Normal {
         let _ = action_tx.send(Action::TryConnect).await;
     }
 

@@ -1,16 +1,17 @@
-use super::cell_edit_state::CellEditState;
 use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
+use super::input_mode::InputMode;
 use super::message_state::MessageState;
 use super::metadata_cache::MetadataCache;
+use super::modal_state::ModalState;
 use super::query_execution::QueryExecution;
 use super::query_history_state::QueryHistoryPickerState;
+use super::result_interaction::ResultInteraction;
 use super::runtime_state::RuntimeState;
 use super::sql_modal_context::SqlModalContext;
 use super::ui_state::UiState;
-use super::write_guardrails::WritePreview;
 use crate::domain::TableSummary;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 
@@ -33,9 +34,9 @@ pub struct AppState {
     pub connection_setup: ConnectionSetupState,
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
-    pub cell_edit: CellEditState,
+    pub result_interaction: ResultInteraction,
     pub query_history_picker: QueryHistoryPickerState,
-    pub pending_write_preview: Option<WritePreview>,
+    pub modal: ModalState,
     pub connection_caches: ConnectionCacheStore,
     /// Cached list of saved connections (for Explorer Connections mode).
     connections: Vec<ConnectionProfile>,
@@ -59,14 +60,18 @@ impl AppState {
             connection_setup: ConnectionSetupState::default(),
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
-            cell_edit: CellEditState::default(),
+            result_interaction: ResultInteraction::default(),
             query_history_picker: QueryHistoryPickerState::default(),
-            pending_write_preview: None,
+            modal: ModalState::default(),
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
             connection_list_items: Vec::new(),
         }
+    }
+
+    pub fn input_mode(&self) -> InputMode {
+        self.modal.active_mode()
     }
 
     /// Mark the state as needing a render.
@@ -102,11 +107,7 @@ impl AppState {
         {
             self.query.result_highlight_until = None;
         }
-        if let Some(flash) = self.ui.yank_flash
-            && now >= flash.until
-        {
-            self.ui.yank_flash = None;
-        }
+        self.result_interaction.clear_expired_flash(now);
     }
 
     pub fn result_visible_rows(&self) -> usize {

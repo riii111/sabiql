@@ -26,7 +26,7 @@ impl ConfirmDialog {
     }
 
     pub fn render(frame: &mut Frame, state: &AppState) {
-        if let Some(preview) = &state.pending_write_preview {
+        if let Some(preview) = state.result_interaction.pending_write_preview() {
             Self::render_write_preview(frame, state, preview);
         } else {
             Self::render_plain(frame, state);

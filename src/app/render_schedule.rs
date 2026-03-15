@@ -46,7 +46,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(debounce_until));
     }
 
-    if let Some(flash) = state.ui.yank_flash {
+    if let Some(flash) = state.result_interaction.yank_flash {
         earliest = min_instant(earliest, Some(flash.until));
     }
 
@@ -66,7 +66,7 @@ fn has_active_spinner(state: &AppState) -> bool {
 /// Returns true if the current input mode has a blinking cursor.
 fn has_blinking_cursor(state: &AppState) -> bool {
     matches!(
-        state.ui.input_mode,
+        state.input_mode(),
         InputMode::SqlModal
             | InputMode::TablePicker
             | InputMode::CommandLine
@@ -156,7 +156,7 @@ mod tests {
         #[test]
         fn sql_modal_returns_cursor_blink_interval() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -169,7 +169,7 @@ mod tests {
         #[test]
         fn table_picker_returns_cursor_blink_interval() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -182,7 +182,7 @@ mod tests {
         #[test]
         fn command_line_returns_cursor_blink_interval() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::CommandLine;
+            state.modal.set_mode(InputMode::CommandLine);
             let now = Instant::now();
 
             let deadline = next_animation_deadline(&state, now);
@@ -195,7 +195,7 @@ mod tests {
         #[test]
         fn spinner_takes_priority_over_cursor_blink() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
             state.query.status = QueryStatus::Running;
             let now = Instant::now();
 
@@ -303,7 +303,7 @@ mod tests {
         #[test]
         fn sql_modal_returns_true() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::SqlModal;
+            state.modal.set_mode(InputMode::SqlModal);
 
             assert!(has_blinking_cursor(&state));
         }
@@ -311,7 +311,7 @@ mod tests {
         #[test]
         fn table_picker_returns_true() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::TablePicker;
+            state.modal.set_mode(InputMode::TablePicker);
 
             assert!(has_blinking_cursor(&state));
         }
@@ -319,7 +319,7 @@ mod tests {
         #[test]
         fn command_line_returns_true() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::CommandLine;
+            state.modal.set_mode(InputMode::CommandLine);
 
             assert!(has_blinking_cursor(&state));
         }
@@ -327,7 +327,7 @@ mod tests {
         #[test]
         fn connection_setup_returns_true() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
 
             assert!(has_blinking_cursor(&state));
         }
@@ -335,7 +335,7 @@ mod tests {
         #[test]
         fn help_mode_returns_false() {
             let mut state = create_test_state();
-            state.ui.input_mode = InputMode::Help;
+            state.modal.set_mode(InputMode::Help);
 
             assert!(!has_blinking_cursor(&state));
         }

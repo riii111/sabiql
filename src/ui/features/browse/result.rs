@@ -51,24 +51,24 @@ impl ResultPane {
                     area,
                     result,
                     block,
-                    state.ui.result_scroll_offset,
-                    state.ui.result_horizontal_offset,
+                    state.result_interaction.scroll_offset,
+                    state.result_interaction.horizontal_offset,
                     &state.ui.result_viewport_plan,
-                    &state.ui.result_selection,
-                    if state.cell_edit.is_active() {
+                    state.result_interaction.selection(),
+                    if state.result_interaction.cell_edit().is_active() {
                         Some((
-                            state.cell_edit.row.unwrap_or_default(),
-                            state.cell_edit.col.unwrap_or_default(),
-                            state.cell_edit.draft_value(),
-                            state.ui.input_mode == crate::app::input_mode::InputMode::CellEdit,
-                            state.cell_edit.input.cursor(),
+                            state.result_interaction.cell_edit().row.unwrap_or_default(),
+                            state.result_interaction.cell_edit().col.unwrap_or_default(),
+                            state.result_interaction.cell_edit().draft_value(),
+                            state.input_mode() == crate::app::input_mode::InputMode::CellEdit,
+                            state.result_interaction.cell_edit().input.cursor(),
                         ))
                     } else {
                         None
                     },
-                    &state.ui.staged_delete_rows,
+                    state.result_interaction.staged_delete_rows(),
                     history_bar,
-                    state.ui.yank_flash,
+                    state.result_interaction.yank_flash,
                 )
             }
         } else {

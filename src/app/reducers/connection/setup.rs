@@ -19,7 +19,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if !state.connections().is_empty() || state.runtime.dsn.is_some() {
                 state.connection_setup.is_first_run = false;
             }
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::StartEditConnection(id) => {
@@ -28,7 +28,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup =
                 crate::app::connection_setup_state::ConnectionSetupState::from_profile(profile);
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::ConnectionEditLoadFailed(msg) => {
@@ -36,12 +36,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::CloseConnectionSetup => {
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
 
         // ===== Clipboard Paste =====
-        Action::Paste(text) if state.ui.input_mode == InputMode::ConnectionSetup => {
+        Action::Paste(text) if state.modal.active_mode() == InputMode::ConnectionSetup => {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             let setup = &mut state.connection_setup;
             match setup.focused_field {
@@ -251,16 +251,16 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     "No connection configured.\nAre you sure you want to quit?".to_string();
                 state.confirm_dialog.intent =
                     Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
-                state.ui.input_mode = InputMode::ConfirmDialog;
+                state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
-                state.ui.input_mode = InputMode::Normal;
+                state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::DispatchActions(vec![Action::TryConnect])])
             }
         }
         Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
             state.connection_setup.is_first_run = false;
-            state.ui.input_mode = InputMode::Normal;
+            state.modal.set_mode(InputMode::Normal);
             state.runtime.active_connection_id = Some(id.clone());
             state.runtime.dsn = Some(dsn.clone());
             state.runtime.active_connection_name = Some(name.clone());
@@ -303,7 +303,7 @@ mod tests {
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.input_mode = InputMode::ConnectionSetup;
+            state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.focused_field = field;
             state.connection_setup.cursor_position = 0;
             // Clear default values so tests start clean

@@ -144,7 +144,7 @@ mod overlays {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FROM us".to_string();
         state.sql_modal.cursor = 16;
         state.sql_modal.status = SqlModalStatus::Editing;
@@ -159,7 +159,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 0;
         state.sql_modal.status = SqlModalStatus::Editing;
@@ -174,7 +174,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 4;
         state.sql_modal.status = SqlModalStatus::Editing;
@@ -189,7 +189,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 8;
         state.sql_modal.status = SqlModalStatus::Editing;
@@ -205,7 +205,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FROM users".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
         state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
@@ -239,7 +239,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
         state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
@@ -270,7 +270,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "CREATE TABLE backup AS SELECT * FROM users".to_string();
         state.sql_modal.status = SqlModalStatus::Success;
         state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
@@ -300,7 +300,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::SqlModal;
+        state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FORM users".to_string();
         state.sql_modal.status = SqlModalStatus::Error;
         state.sql_modal.last_adhoc_error = Some("ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^".to_string());
@@ -318,7 +318,7 @@ mod overlays {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::Help;
+        state.modal.set_mode(InputMode::Help);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -333,7 +333,7 @@ mod overlays {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::CommandPalette;
+        state.modal.set_mode(InputMode::CommandPalette);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -348,7 +348,7 @@ mod overlays {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::TablePicker;
+        state.modal.set_mode(InputMode::TablePicker);
         state.ui.filter_input = "user".to_string();
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -364,7 +364,7 @@ mod overlays {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::CommandLine;
+        state.modal.set_mode(InputMode::CommandLine);
         state.command_line_input = "sql".to_string();
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -380,7 +380,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::QueryHistoryPicker;
+        state.modal.set_mode(InputMode::QueryHistoryPicker);
         state.query_history_picker.entries = vec![
             QueryHistoryEntry::new(
                 "SELECT * FROM users WHERE id = 1".to_string(),
@@ -409,7 +409,7 @@ mod overlays {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::QueryHistoryPicker;
+        state.modal.set_mode(InputMode::QueryHistoryPicker);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -454,7 +454,7 @@ mod er_diagram {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::ErTablePicker;
+        state.modal.set_mode(InputMode::ErTablePicker);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -469,7 +469,7 @@ mod er_diagram {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::ErTablePicker;
+        state.modal.set_mode(InputMode::ErTablePicker);
         state.ui.er_filter_input = "user".to_string();
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -485,7 +485,7 @@ mod er_diagram {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::ErTablePicker;
+        state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
             .er_selected_tables
@@ -504,7 +504,7 @@ mod er_diagram {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::ErTablePicker;
+        state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
             .er_selected_tables
@@ -527,7 +527,7 @@ mod er_diagram {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
-        state.ui.input_mode = InputMode::ErTablePicker;
+        state.modal.set_mode(InputMode::ErTablePicker);
         state
             .ui
             .er_selected_tables
@@ -555,7 +555,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.connection_setup.database = "mydb".to_string();
         state.connection_setup.user = "postgres".to_string();
 
@@ -569,7 +569,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.connection_setup.focused_field = ConnectionField::Host;
         state.connection_setup.host = "db.example.com".to_string();
         state.connection_setup.cursor_position = 0;
@@ -585,7 +585,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.connection_setup.focused_field = ConnectionField::Host;
         state.connection_setup.host = "db.example.com".to_string();
         state.connection_setup.cursor_position = 7;
@@ -601,7 +601,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.connection_setup.focused_field = ConnectionField::Host;
         state.connection_setup.host = "db.example.com".to_string();
         state.connection_setup.cursor_position = 14;
@@ -617,7 +617,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionSetup;
+        state.modal.set_mode(InputMode::ConnectionSetup);
         state.connection_setup.host = String::new();
         state.connection_setup.database = String::new();
         state.connection_setup.user = String::new();
@@ -644,7 +644,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionError;
+        state.modal.set_mode(InputMode::ConnectionError);
         state
             .connection_error
             .set_error(ConnectionErrorInfo::with_kind(
@@ -663,7 +663,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionError;
+        state.modal.set_mode(InputMode::ConnectionError);
         state.connection_error.set_error(ConnectionErrorInfo::with_kind(
             ConnectionErrorKind::Timeout,
             "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
@@ -680,7 +680,7 @@ mod connection_flow {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConnectionError;
+        state.modal.set_mode(InputMode::ConnectionError);
         state.connection_error.set_error(ConnectionErrorInfo::with_kind(
             ConnectionErrorKind::Unknown,
             "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
@@ -754,7 +754,7 @@ mod connection_management {
         let (active_id, connections) = three_connections();
         state.set_connections(connections);
         state.runtime.active_connection_id = Some(active_id);
-        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -790,7 +790,7 @@ mod connection_management {
             ],
         );
         state.runtime.active_connection_id = Some(active_id);
-        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -821,7 +821,7 @@ mod connection_management {
                 user: None,
             },
         ]);
-        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -855,7 +855,7 @@ mod connection_management {
         // Set active connection to the first service entry
         state.runtime.active_connection_id =
             Some(ConnectionId::from_string("service:dev-local".to_string()));
-        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -877,7 +877,7 @@ mod connection_management {
             port: Some(5432),
             user: None,
         }]);
-        state.ui.input_mode = InputMode::ConnectionSelector;
+        state.modal.set_mode(InputMode::ConnectionSelector);
         state.ui.set_connection_list_selection(Some(0));
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -891,7 +891,7 @@ mod connection_management {
         let mut terminal = create_test_terminal();
 
         let connection_id = ConnectionId::new();
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Delete Connection".to_string();
         state.confirm_dialog.message =
             "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.".to_string();
@@ -909,7 +909,7 @@ mod connection_management {
         let mut terminal = create_test_terminal();
 
         let target_id = ConnectionId::new();
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Delete Connection".to_string();
         state.confirm_dialog.message =
             "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
@@ -930,7 +930,7 @@ mod confirm_dialogs {
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
 
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Confirm".to_string();
         state.confirm_dialog.message =
             "No connection configured.\nAre you sure you want to quit?".to_string();
@@ -951,7 +951,7 @@ mod confirm_dialogs {
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = MetadataState::Loaded;
         state.cache.table_detail = Some(fixtures::sample_table_detail());
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
         state.confirm_dialog.message =
             "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
@@ -979,7 +979,7 @@ mod confirm_dialogs {
         let sql =
             "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
                 .to_string();
-        state.pending_write_preview = Some(WritePreview {
+        state.result_interaction.set_write_preview(WritePreview {
             operation: WriteOperation::Update,
             sql: sql.clone(),
             target_summary: TargetSummary {
@@ -999,7 +999,7 @@ mod confirm_dialogs {
                 target_summary: None,
             },
         });
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
         state.confirm_dialog.message =
             "email: \"bob@example.com\" -> \"new@example.com\"".to_string();
@@ -1026,7 +1026,7 @@ mod confirm_dialogs {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
 
         let sql = "DELETE FROM \"public\".\"users\"\nWHERE \"id\" = '3';".to_string();
-        state.pending_write_preview = Some(WritePreview {
+        state.result_interaction.set_write_preview(WritePreview {
             operation: WriteOperation::Delete,
             sql: sql.clone(),
             target_summary: TargetSummary {
@@ -1042,7 +1042,7 @@ mod confirm_dialogs {
                 target_summary: None,
             },
         });
-        state.ui.input_mode = InputMode::ConfirmDialog;
+        state.modal.set_mode(InputMode::ConfirmDialog);
         state.confirm_dialog.title = "Confirm DELETE: users".to_string();
         state.confirm_dialog.message = String::new();
         state.confirm_dialog.intent = Some(
@@ -1193,7 +1193,7 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
+        state.result_interaction.enter_row(0);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1212,8 +1212,8 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1232,13 +1232,15 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::CellEdit;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::CellEdit);
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1258,11 +1260,13 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::CellEdit;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.input.set_cursor(0);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::CellEdit);
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state.result_interaction.cell_edit_input_mut().set_cursor(0);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1281,11 +1285,13 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::CellEdit;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
-        state.cell_edit.input.set_cursor(7);
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::CellEdit);
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state.result_interaction.cell_edit_input_mut().set_cursor(7);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1304,13 +1310,15 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::Normal;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::Normal);
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1330,8 +1338,8 @@ mod result_pane {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
-        state.ui.staged_delete_rows.insert(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.stage_row(1);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1524,13 +1532,15 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::Normal;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::Normal);
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -1556,13 +1566,15 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(1);
-        state.ui.result_selection.enter_cell(2);
-        state.ui.input_mode = InputMode::CellEdit;
-        state.cell_edit.begin(1, 2, "bob@example.com".to_string());
+        state.result_interaction.enter_row(1);
+        state.result_interaction.enter_cell(2);
+        state.modal.set_mode(InputMode::CellEdit);
         state
-            .cell_edit
-            .input
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .cell_edit_input_mut()
             .set_content("new@example.com".to_string());
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -1588,8 +1600,8 @@ mod style_assertions {
         state.cache.table_detail = Some(fixtures::sample_table_detail());
         state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
-        state.ui.result_selection.enter_row(0);
-        state.ui.staged_delete_rows.insert(1);
+        state.result_interaction.enter_row(0);
+        state.result_interaction.stage_row(1);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -1611,7 +1623,7 @@ mod style_assertions {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
-        state.ui.input_mode = InputMode::Help;
+        state.modal.set_mode(InputMode::Help);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -1631,7 +1643,7 @@ mod style_assertions {
 
         state.cache.metadata = Some(Arc::new(fixtures::sample_metadata(now)));
         state.cache.state = sabiql::domain::MetadataState::Loaded;
-        state.ui.input_mode = InputMode::Help;
+        state.modal.set_mode(InputMode::Help);
 
         let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
