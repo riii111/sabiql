@@ -2289,6 +2289,28 @@ mod tests {
         }
 
         #[test]
+        fn ctas_then_delete_no_txn() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 1\nDELETE 1",
+                    "CREATE TABLE t AS SELECT 1; DELETE FROM users WHERE id = 1"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
+        fn select_into_then_delete_no_txn() {
+            assert_eq!(
+                PostgresAdapter::parse_aggregate_command_tag(
+                    "SELECT 5\nDELETE 1",
+                    "SELECT * INTO t FROM users; DELETE FROM users WHERE id = 1"
+                ),
+                Some(CommandTag::Create("TABLE".to_string()))
+            );
+        }
+
+        #[test]
         fn count_mismatch_fallback() {
             // 1 statement but 2 tags → skip correction, use last tag
             assert_eq!(
