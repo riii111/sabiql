@@ -2,7 +2,7 @@
 source: tests/render_snapshots.rs
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/test                             
+test_project | test_db | - | no dsn | localhost:5432/test                       
 ┌ [3] Result Query (1 row, 5ms) ───────────────────────────────────────────────┐
 │count                                                                         │
 │42                                                                            │

@@ -49,21 +49,22 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ReenterConnectionSetup => {
-            if state.runtime.is_service_connection() {
+            if state.session.is_service_connection() {
                 return Some(vec![]);
             }
             state.connection_error.clear();
-            state.runtime.connection_state = ConnectionState::NotConnected;
-            state.cache.state = MetadataState::NotLoaded;
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+            state.session.set_metadata_state(MetadataState::NotLoaded);
             state.modal.replace_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
         Action::RetryServiceConnection => {
-            if let Some(dsn) = state.runtime.dsn.clone() {
+            if let Some(dsn) = state.session.dsn.clone() {
                 state.connection_error.clear();
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                state.runtime.read_only = false;
+                state.session.begin_connecting(&dsn);
+                state.session.read_only = false;
                 state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {
@@ -85,7 +86,7 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.runtime.dsn = Some("service=mydb".to_string());
+            state.session.dsn = Some("service=mydb".to_string());
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());
@@ -96,7 +97,7 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+            state.session.dsn = Some("postgres://localhost/db".to_string());
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce(&mut state, &Action::ReenterConnectionSetup, Instant::now());

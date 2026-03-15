@@ -1,6 +1,7 @@
 ---
 paths:
   - "**/src/app/state.rs"
+  - "**/src/app/browse_session.rs"
   - "**/src/app/result_interaction.rs"
   - "**/src/app/services.rs"
   - "**/src/app/reducer.rs"
@@ -45,6 +46,26 @@ paths:
 - 新しい Result interaction state を追加したら、既存の transition メソッドへの統合を検討すること
 - `input_mode` の caller 責務: modal 遷移を伴う transition の後、caller が `input_mode` を適切に戻すこと（SAB-136 で統合予定）
 
+## BrowseSession aggregate
+
+`BrowseSession`（`app/browse_session.rs`）は接続・メタデータ・テーブル選択のライフサイクルを集約する。
+
+### Co-dependent fields（private）
+
+| グループ | フィールド | 遷移 API |
+|---------|-----------|----------|
+| 接続ライフサイクル | `connection_state`, `metadata_state` | `begin_connecting`, `mark_connected`, `mark_connection_failed` |
+| テーブル選択 | `current_table`, `table_detail`, `selection_generation` | `select_table`, `set_table_detail`, `clear_table_selection` |
+| ライフサイクル制約 | `metadata` | `mark_connected`, `restore_from_cache`, `reset` |
+
+### 不変条件
+
+- `connection_state` と `metadata_state` は常にペアで遷移すること。aggregate API（`begin_connecting`, `mark_connected`, `mark_connection_failed`）を優先し、raw setter は aggregate API が適合しないケース（ER refresh, reload 等）に限定する
+- テーブル選択の変更は `select_table` / `clear_table_selection` を通すこと。`selection_generation` は非同期結果の stale check に使われるため、選択解除でも bump が必要
+- `database_name` は `metadata` から導出される（single source of truth）。別フィールドとして持たない
+- `reset` / `restore_from_cache` は aggregate boundary を通すこと。reducer が raw setter を並べて手書き reset してはならない
+- `restore_from_cache` は `selection_generation = 0`, `is_reloading = false` にリセットして stale token 境界を閉じる
+
 ## pub フィールドの型設計
 
 - `pub` フィールドに **3 要素以上の匿名タプル** を使わないこと。名前付き構造体を定義する
@@ -69,7 +90,7 @@ paths:
 
 | 分類 | 配置先 | 例 |
 |------|--------|-----|
-| 純粋な状態 | `AppState` | `ui`, `cache`, `query`, `connections` |
+| 純粋な状態 | `AppState` | `ui`, `session`, `query`, `connections` |
 | Port trait 実装 | `AppServices` | `DdlGenerator`, `SqlDialect` |
 | I/O 用 Port | `EffectRunner` | `MetadataProvider`, `QueryExecutor` |
 

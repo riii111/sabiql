@@ -1,23 +1,20 @@
 use std::time::Instant;
 
 use crate::app::action::{Action, ConnectionTarget};
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
-use crate::domain::MetadataState;
 
-use super::helpers::{reset_connection_state, restore_cache, save_current_cache};
+use super::helpers::{restore_cache, save_current_cache};
 
 pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::TryConnect => {
-            if state.runtime.connection_state.is_not_connected()
+            if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
-                if let Some(dsn) = state.runtime.dsn.clone() {
-                    state.runtime.connection_state = ConnectionState::Connecting;
-                    state.cache.state = MetadataState::Loading;
+                if let Some(dsn) = state.session.dsn.clone() {
+                    state.session.begin_connecting(&dsn);
                     Some(vec![Effect::FetchMetadata { dsn }])
                 } else {
                     Some(vec![])
@@ -28,27 +25,28 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
         }
 
         Action::SwitchConnection(ConnectionTarget { id, dsn, name }) => {
-            if let Some(current_id) = state.runtime.active_connection_id.clone() {
+            if let Some(current_id) = state.session.active_connection_id.clone() {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
 
-            state.runtime.active_connection_id = Some(id.clone());
-            state.runtime.dsn = Some(dsn.clone());
-            state.runtime.active_connection_name = Some(name.clone());
-            state.runtime.read_only = false;
-
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached);
-                state.runtime.connection_state = ConnectionState::Connected;
-                state.cache.state = MetadataState::Loaded;
+                state.session.active_connection_id = Some(id.clone());
+                state.session.dsn = Some(dsn.clone());
+                state.session.active_connection_name = Some(name.clone());
+                state.session.read_only = false;
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
-                // No cache: fetch metadata
-                state.runtime.connection_state = ConnectionState::Connecting;
-                state.cache.state = MetadataState::Loading;
-                reset_connection_state(state);
+                // No cache: reset and fetch metadata
+                state.session.reset(&mut state.query);
+                state.result_interaction.reset_view();
+                state.ui.set_explorer_selection(None);
+                state.session.active_connection_id = Some(id.clone());
+                state.session.active_connection_name = Some(name.clone());
+                state.session.read_only = false;
+                state.session.begin_connecting(dsn);
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn: dsn.clone() },
@@ -64,6 +62,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
 mod tests {
     use super::*;
     use crate::app::connection_cache::ConnectionCache;
+    use crate::app::connection_state::ConnectionState;
     use crate::app::inspector_tab::InspectorTab;
     use crate::domain::ConnectionId;
 
@@ -81,7 +80,7 @@ mod tests {
         let current_id = ConnectionId::new();
         let new_id = ConnectionId::new();
 
-        state.runtime.active_connection_id = Some(current_id.clone());
+        state.session.active_connection_id = Some(current_id.clone());
         state.ui.explorer_selected = 5;
         state.ui.inspector_tab = InspectorTab::Indexes;
 
@@ -125,7 +124,10 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, Effect::FetchMetadata { .. }))
         );
-        assert_eq!(state.runtime.connection_state, ConnectionState::Connecting);
+        assert_eq!(
+            state.session.connection_state(),
+            ConnectionState::Connecting
+        );
     }
 
     #[test]
@@ -136,13 +138,13 @@ mod tests {
         let action = create_switch_action(&new_id, "target_db");
         reduce(&mut state, &action, Instant::now());
 
-        assert_eq!(state.runtime.active_connection_id, Some(new_id));
+        assert_eq!(state.session.active_connection_id, Some(new_id));
         assert_eq!(
-            state.runtime.dsn,
+            state.session.dsn,
             Some("postgres://localhost/target_db".to_string())
         );
         assert_eq!(
-            state.runtime.active_connection_name,
+            state.session.active_connection_name,
             Some("target_db".to_string())
         );
     }
@@ -159,7 +161,7 @@ mod tests {
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action, Instant::now());
 
-        assert_eq!(state.runtime.connection_state, ConnectionState::Connected);
+        assert_eq!(state.session.connection_state(), ConnectionState::Connected);
     }
 
     #[test]
@@ -202,12 +204,12 @@ mod tests {
     fn resets_read_only_on_switch() {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
-        state.runtime.read_only = true;
+        state.session.read_only = true;
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action, Instant::now());
 
-        assert!(!state.runtime.read_only);
+        assert!(!state.session.read_only);
     }
 
     #[test]

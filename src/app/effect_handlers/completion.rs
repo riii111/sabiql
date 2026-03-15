@@ -47,8 +47,8 @@ pub(crate) async fn run(
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare(content, cursor);
-                let missing =
-                    engine.missing_tables_prepared(&prep, state.cache.metadata.as_deref());
+                let missing = engine
+                    .missing_tables_prepared(&prep, state.session.metadata().map(|m| m.as_ref()));
                 (prep, missing)
             };
 
@@ -76,8 +76,8 @@ pub(crate) async fn run(
                     content,
                     cursor,
                     &prep,
-                    state.cache.metadata.as_deref(),
-                    state.cache.table_detail.as_ref(),
+                    state.session.metadata().map(|m| m.as_ref()),
+                    state.session.table_detail(),
                     &recent_cols,
                 );
                 let visible = !candidates.is_empty() && !content.trim().is_empty();

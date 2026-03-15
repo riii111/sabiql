@@ -49,7 +49,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Str
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ResultEnterCellEdit => {
-            if state.runtime.read_only {
+            if state.session.read_only {
                 state
                     .messages
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
@@ -159,7 +159,9 @@ mod tests {
         #[test]
         fn re_entering_same_cell_with_pending_draft_preserves_draft() {
             let mut state = preview_state_with_selection();
-            state.cache.table_detail = Some(minimal_users_table());
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
             state
                 .result_interaction
                 .begin_cell_edit(0, 1, "alice".to_string());
@@ -181,7 +183,9 @@ mod tests {
         #[test]
         fn entering_different_cell_resets_draft() {
             let mut state = preview_state_with_selection();
-            state.cache.table_detail = Some(minimal_users_table());
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
             state
                 .result_interaction
                 .begin_cell_edit(0, 99, "stale".to_string());
@@ -200,7 +204,7 @@ mod tests {
         #[test]
         fn stale_table_detail_blocks_cell_edit_entry() {
             let mut state = preview_state_with_selection();
-            state.cache.table_detail = Some(Table {
+            state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
                 owner: None,
@@ -212,7 +216,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: None,
                 comment: None,
-            });
+            }));
 
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
@@ -231,8 +235,10 @@ mod tests {
         #[test]
         fn read_only_blocks_cell_edit_entry() {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
-            state.cache.table_detail = Some(cell_edit_entry_guardrails::minimal_users_table());
-            state.runtime.read_only = true;
+            state
+                .session
+                .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
+            state.session.read_only = true;
 
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
