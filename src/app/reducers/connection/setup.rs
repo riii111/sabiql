@@ -232,6 +232,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state
                     .session
                     .set_connection_state(ConnectionState::Connecting);
+                state.session.set_metadata_state(MetadataState::Loading);
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.clone(),
@@ -265,6 +266,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.set_mode(InputMode::Normal);
             state.session.active_connection_id = Some(id.clone());
             state.session.active_connection_name = Some(name.clone());
+            state.session.read_only = false;
             state.session.begin_connecting(dsn);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
@@ -408,6 +410,51 @@ mod tests {
             );
 
             assert_eq!(state.connection_setup.cursor_position, 14);
+        }
+    }
+
+    mod connection_save {
+        use super::*;
+        use crate::app::action::ConnectionTarget;
+        use crate::app::connection_state::ConnectionState;
+        use crate::domain::MetadataState;
+
+        fn fill_valid_form(state: &mut AppState) {
+            state.connection_setup.name = "test".to_string();
+            state.connection_setup.host = "localhost".to_string();
+            state.connection_setup.port = "5432".to_string();
+            state.connection_setup.database = "db".to_string();
+            state.connection_setup.user = "user".to_string();
+            state.connection_setup.password = "pass".to_string();
+        }
+
+        #[test]
+        fn save_sets_connection_and_metadata_state_as_pair() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert_eq!(
+                state.session.connection_state(),
+                ConnectionState::Connecting
+            );
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn save_completed_resets_read_only() {
+            let mut state = AppState::new("test".to_string());
+            state.session.read_only = true;
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: crate::domain::ConnectionId::new(),
+                dsn: "postgres://localhost/new_db".to_string(),
+                name: "new_db".to_string(),
+            });
+            reduce(&mut state, &action, Instant::now());
+
+            assert!(!state.session.read_only);
         }
     }
 
