@@ -127,7 +127,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         // Query History Picker
         Action::OpenQueryHistoryPicker => {
-            // Guard: no-op when not connected, running, confirm dialog, or completion visible
             if state.runtime.active_connection_id.is_none() {
                 return Some(vec![]);
             }
@@ -143,12 +142,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 return Some(vec![]);
             }
 
-            let origin = state.ui.input_mode;
             state.query_history_picker.reset();
-            state.query_history_picker.origin_mode = Some(origin);
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            // Guard above ensures active_connection_id is Some
             let conn_id = state.runtime.active_connection_id.as_ref().unwrap();
             Some(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
@@ -156,17 +152,12 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }])
         }
         Action::CloseQueryHistoryPicker => {
-            let origin = state
-                .query_history_picker
-                .origin_mode
-                .unwrap_or(InputMode::Normal);
-            state.ui.input_mode = origin;
+            state.modal.pop_mode();
             state.query_history_picker.reset();
             Some(vec![])
         }
         Action::QueryHistoryLoaded(conn_id, entries) => {
-            // Only apply if the picker is still open for this connection
-            if state.ui.input_mode != InputMode::QueryHistoryPicker {
+            if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return Some(vec![]);
             }
             if state.runtime.active_connection_id.as_ref() != Some(conn_id) {
@@ -209,23 +200,17 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             let filtered = state.query_history_picker.filtered_entries();
             let selected = state.query_history_picker.clamped_selected();
             let query = filtered.get(selected).map(|f| f.entry.query.clone());
-            let origin = state
-                .query_history_picker
-                .origin_mode
-                .unwrap_or(InputMode::Normal);
+            let origin = state.modal.pop_mode();
 
             state.query_history_picker.reset();
 
             let Some(query) = query else {
-                // No entry selected (empty list or no match)
-                state.ui.input_mode = origin;
                 return Some(vec![]);
             };
 
             match origin {
                 InputMode::Normal => {
-                    // Open SqlModal and set content
-                    state.ui.input_mode = InputMode::SqlModal;
+                    state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
                     state.sql_modal.content = query;
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
@@ -234,15 +219,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.sql_modal.completion.selected_index = 0;
                 }
                 InputMode::SqlModal => {
-                    // Overwrite existing editor content
-                    state.ui.input_mode = InputMode::SqlModal;
                     state.sql_modal.content = query;
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
                 }
-                _ => {
-                    state.ui.input_mode = origin;
-                }
+                _ => {}
             }
             Some(vec![])
         }
@@ -566,11 +547,8 @@ mod tests {
             let effects =
                 reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::QueryHistoryPicker);
-            assert_eq!(
-                state.query_history_picker.origin_mode,
-                Some(InputMode::Normal)
-            );
+            assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
+            assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::LoadQueryHistory { .. }));
         }
@@ -578,20 +556,20 @@ mod tests {
         #[test]
         fn close_restores_origin_mode() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
-            state.query_history_picker.origin_mode = Some(InputMode::SqlModal);
+            state.modal.set_mode(InputMode::SqlModal);
+            state.modal.push_mode(InputMode::QueryHistoryPicker);
 
             let effects =
                 reduce_modal(&mut state, &Action::CloseQueryHistoryPicker, Instant::now()).unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert!(effects.is_empty());
         }
 
         #[test]
         fn loaded_stores_entries() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
             let conn_id = ConnectionId::from_string("test-conn");
             let entries = vec![QueryHistoryEntry::new(
                 "SELECT 1".to_string(),
@@ -613,7 +591,7 @@ mod tests {
         #[test]
         fn loaded_ignores_stale_connection() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
             let stale_conn = ConnectionId::from_string("old-conn");
             let entries = vec![QueryHistoryEntry::new(
                 "SELECT 1".to_string(),
@@ -634,7 +612,6 @@ mod tests {
         #[test]
         fn loaded_ignores_when_picker_closed() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::Normal;
             let conn_id = ConnectionId::from_string("test-conn");
             let entries = vec![QueryHistoryEntry::new(
                 "SELECT 1".to_string(),
@@ -685,11 +662,15 @@ mod tests {
             assert!(effects.is_empty());
         }
 
+        fn enter_query_history(state: &mut AppState, origin: InputMode) {
+            state.modal.set_mode(origin);
+            state.modal.push_mode(InputMode::QueryHistoryPicker);
+        }
+
         #[test]
         fn confirm_sets_cursor_to_char_count_not_byte_len() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
-            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+            enter_query_history(&mut state, InputMode::Normal);
             // 「SELECT 'あいう'」: 13 chars but 19 bytes
             let query = "SELECT '\u{3042}\u{3044}\u{3046}'".to_string();
             let expected_chars = query.chars().count(); // 13
@@ -713,8 +694,7 @@ mod tests {
         #[test]
         fn confirm_from_normal_opens_sql_modal_with_query() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
-            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+            enter_query_history(&mut state, InputMode::Normal);
             state.query_history_picker.entries = vec![QueryHistoryEntry::new(
                 "SELECT * FROM users".to_string(),
                 "2026-03-13T12:00:00Z".to_string(),
@@ -729,7 +709,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert_eq!(state.sql_modal.content, "SELECT * FROM users");
             assert!(effects.is_empty());
         }
@@ -737,8 +717,7 @@ mod tests {
         #[test]
         fn confirm_from_sql_modal_overwrites_editor_content() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
-            state.query_history_picker.origin_mode = Some(InputMode::SqlModal);
+            enter_query_history(&mut state, InputMode::SqlModal);
             state.sql_modal.content = "old query".to_string();
             state.query_history_picker.entries = vec![QueryHistoryEntry::new(
                 "new query".to_string(),
@@ -754,15 +733,14 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::SqlModal);
+            assert_eq!(state.input_mode(), InputMode::SqlModal);
             assert_eq!(state.sql_modal.content, "new query");
         }
 
         #[test]
         fn confirm_with_empty_entries_is_noop() {
             let mut state = connected_state();
-            state.ui.input_mode = InputMode::QueryHistoryPicker;
-            state.query_history_picker.origin_mode = Some(InputMode::Normal);
+            enter_query_history(&mut state, InputMode::Normal);
 
             reduce_modal(
                 &mut state,
@@ -771,7 +749,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.ui.input_mode, InputMode::Normal);
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
