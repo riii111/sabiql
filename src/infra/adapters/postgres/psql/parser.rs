@@ -481,7 +481,6 @@ impl PostgresAdapter {
         ) || s == "START TRANSACTION"
     }
 
-    /// Stage 1: Returns `None` if any line is an unknown `Other` (CSV bail-out).
     fn parse_all_tags(stdout: &str) -> Option<Vec<CommandTag>> {
         let mut tags = Vec::new();
         for line in stdout.lines() {
@@ -503,7 +502,6 @@ impl PostgresAdapter {
         Some(tags)
     }
 
-    /// Stage 2: Remove tags that were rolled back using a depth-based frame stack.
     fn discard_rolled_back(tags: &[CommandTag]) -> Vec<CommandTag> {
         let mut effective: Vec<CommandTag> = Vec::new();
         let mut frames: Vec<Vec<CommandTag>> = Vec::new();
@@ -562,33 +560,6 @@ impl PostgresAdapter {
         effective
     }
 
-    /// Stage 3: schema-modifying first → last needs_refresh → Rollback → last tag.
-    fn select_aggregate_tag(
-        all_tags: &[CommandTag],
-        effective: &[CommandTag],
-    ) -> Option<CommandTag> {
-        // 1. Schema-modifying takes priority
-        if let Some(tag) = effective.iter().find(|t| t.is_schema_modifying()) {
-            return Some(tag.clone());
-        }
-
-        // 2. Last needs_refresh tag
-        if let Some(tag) = effective.iter().rev().find(|t| t.needs_refresh()) {
-            return Some(tag.clone());
-        }
-
-        // 3. Effective empty, but original had modifying tags → Rollback
-        let had_modifying = all_tags.iter().any(|t| t.needs_refresh());
-        if had_modifying {
-            return Some(CommandTag::Rollback);
-        }
-
-        // 4. TCL-only → last tag
-        all_tags.last().cloned()
-    }
-
-    /// Split SQL text on `;` boundaries, respecting quoted strings, dollar-quoted
-    /// strings, and comments. Returns trimmed, non-empty slices.
     fn split_statements(sql: &str) -> Vec<&str> {
         let bytes = sql.as_bytes();
         let len = bytes.len();
@@ -787,11 +758,10 @@ impl PostgresAdapter {
         false
     }
 
-    /// Stage 1.5: Correct Select tags for CTAS/SELECT INTO using positional mapping.
     fn correct_ctas_tags(sql: &str, tags: Vec<CommandTag>) -> Vec<CommandTag> {
         let stmts = Self::split_statements(sql);
         if stmts.len() != tags.len() {
-            return tags; // safe fallback: no correction
+            return tags;
         }
         tags.into_iter()
             .zip(stmts.iter())
@@ -806,15 +776,47 @@ impl PostgresAdapter {
             .collect()
     }
 
-    /// Orchestrator: Stage 1→1.5→2→3. Returns `None` for CSV-like output.
     pub(in crate::infra::adapters::postgres) fn parse_aggregate_command_tag(
         stdout: &str,
         sql: &str,
     ) -> Option<CommandTag> {
-        let all_tags = Self::parse_all_tags(stdout)?;
-        let corrected = Self::correct_ctas_tags(sql, all_tags);
-        let effective = Self::discard_rolled_back(&corrected);
-        Self::select_aggregate_tag(&corrected, &effective)
+        ResolvedTags::resolve(stdout, sql)?.aggregate()
+    }
+}
+
+/// Read model for multi-statement command tag resolution.
+///
+/// Holds two views of the same execution:
+/// - `all`: tags after CTAS correction (what psql *meant* to report)
+/// - `effective`: tags that survived rollback filtering (what actually persisted)
+#[cfg_attr(test, derive(Debug))]
+pub(in crate::infra::adapters::postgres) struct ResolvedTags {
+    all: Vec<CommandTag>,
+    effective: Vec<CommandTag>,
+}
+
+impl ResolvedTags {
+    pub(in crate::infra::adapters::postgres) fn resolve(stdout: &str, sql: &str) -> Option<Self> {
+        let parsed = PostgresAdapter::parse_all_tags(stdout)?;
+        let all = PostgresAdapter::correct_ctas_tags(sql, parsed);
+        let effective = PostgresAdapter::discard_rolled_back(&all);
+        Some(Self { all, effective })
+    }
+
+    pub(in crate::infra::adapters::postgres) fn aggregate(&self) -> Option<CommandTag> {
+        if let Some(tag) = self.effective.iter().find(|t| t.is_schema_modifying()) {
+            return Some(tag.clone());
+        }
+
+        if let Some(tag) = self.effective.iter().rev().find(|t| t.needs_refresh()) {
+            return Some(tag.clone());
+        }
+
+        if self.all.iter().any(|t| t.needs_refresh()) {
+            return Some(CommandTag::Rollback);
+        }
+
+        self.all.last().cloned()
     }
 }
 
@@ -2165,25 +2167,28 @@ mod tests {
         }
     }
 
-    mod select_aggregate_tag {
+    mod resolved_tags_aggregate {
         use super::*;
+        use crate::infra::adapters::postgres::psql::parser::ResolvedTags;
+
+        fn resolved(all: Vec<CommandTag>, effective: Vec<CommandTag>) -> ResolvedTags {
+            ResolvedTags { all, effective }
+        }
 
         #[test]
         fn schema_modifying_takes_priority() {
-            let all = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
-            let effective = all.clone();
+            let tags = vec![CommandTag::Drop("TABLE".to_string()), CommandTag::Delete(1)];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Drop("TABLE".to_string()))
             );
         }
 
         #[test]
         fn last_needs_refresh() {
-            let all = vec![CommandTag::Insert(1), CommandTag::Update(2)];
-            let effective = all.clone();
+            let tags = vec![CommandTag::Insert(1), CommandTag::Update(2)];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Update(2))
             );
         }
@@ -2195,9 +2200,8 @@ mod tests {
                 CommandTag::Update(1),
                 CommandTag::Rollback,
             ];
-            let effective = vec![];
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(all, vec![]).aggregate(),
                 Some(CommandTag::Rollback)
             );
         }
@@ -2205,22 +2209,17 @@ mod tests {
         #[test]
         fn tcl_only_returns_last_tag() {
             let all = vec![CommandTag::Begin, CommandTag::Commit];
-            let effective = vec![];
-            assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
-                Some(CommandTag::Commit)
-            );
+            assert_eq!(resolved(all, vec![]).aggregate(), Some(CommandTag::Commit));
         }
 
         #[test]
         fn ddl_and_dml_mixed_schema_wins() {
-            let all = vec![
+            let tags = vec![
                 CommandTag::Create("TABLE".to_string()),
                 CommandTag::Insert(1),
             ];
-            let effective = all.clone();
             assert_eq!(
-                PostgresAdapter::select_aggregate_tag(&all, &effective),
+                resolved(tags.clone(), tags).aggregate(),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
