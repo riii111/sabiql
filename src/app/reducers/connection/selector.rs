@@ -1,13 +1,9 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
-use crate::domain::MetadataState;
-
-use super::helpers::reset_connection_state;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -51,14 +47,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::DeleteConnection(id) => Some(vec![Effect::DeleteConnection { id: id.clone() }]),
         Action::ConnectionDeleted(id) => {
             if state.session.active_connection_id.as_ref() == Some(id) {
-                reset_connection_state(state);
-                state.session.active_connection_id = None;
-                state.session.dsn = None;
-                state.session.active_connection_name = None;
-                state
-                    .session
-                    .set_connection_state(ConnectionState::NotConnected);
-                state.session.set_metadata_state(MetadataState::NotLoaded);
+                state.session.reset(&mut state.query);
+                state.result_interaction.reset_view();
+                state.ui.set_explorer_selection(None);
             }
 
             let id_clone = id.clone();
@@ -266,6 +257,7 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
+        use crate::app::connection_state::ConnectionState;
 
         #[test]
         fn removes_connection_from_list() {

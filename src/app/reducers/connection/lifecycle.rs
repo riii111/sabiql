@@ -7,7 +7,7 @@ use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 use crate::domain::MetadataState;
 
-use super::helpers::{reset_connection_state, restore_cache, save_current_cache};
+use super::helpers::{restore_cache, save_current_cache};
 
 pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -35,26 +35,23 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
                 state.connection_caches.save(&current_id, cache);
             }
 
-            state.session.active_connection_id = Some(id.clone());
-            state.session.dsn = Some(dsn.clone());
-            state.session.active_connection_name = Some(name.clone());
-            state.session.read_only = false;
-
             // Try to restore from cache
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached);
-                state
-                    .session
-                    .set_connection_state(ConnectionState::Connected);
-                state.session.set_metadata_state(MetadataState::Loaded);
+                state.session.active_connection_id = Some(id.clone());
+                state.session.dsn = Some(dsn.clone());
+                state.session.active_connection_name = Some(name.clone());
+                state.session.read_only = false;
                 Some(vec![Effect::ClearCompletionEngineCache])
             } else {
-                // No cache: fetch metadata
-                state
-                    .session
-                    .set_connection_state(ConnectionState::Connecting);
-                state.session.set_metadata_state(MetadataState::Loading);
-                reset_connection_state(state);
+                // No cache: reset and fetch metadata
+                state.session.reset(&mut state.query);
+                state.result_interaction.reset_view();
+                state.ui.set_explorer_selection(None);
+                state.session.active_connection_id = Some(id.clone());
+                state.session.active_connection_name = Some(name.clone());
+                state.session.read_only = false;
+                state.session.begin_connecting(dsn);
                 Some(vec![
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata { dsn: dsn.clone() },

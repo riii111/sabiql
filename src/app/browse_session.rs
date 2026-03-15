@@ -17,9 +17,13 @@ use crate::domain::{
 ///   (e.g. `begin_connecting` sets both to Connecting/Loading).
 /// - `current_table`, `table_detail`, and `selection_generation` change
 ///   together via `select_table` / `clear_table_selection`.
-/// - `metadata` is only set through `mark_connected`, `restore_from_cache`,
-///   or `reset`; never by direct assignment.
 /// - `database_name` is derived from `metadata` (single source of truth).
+///
+/// # Transitional raw setters
+///
+/// `set_metadata`, `set_table_detail_raw`, `set_current_table`, `set_connection_state`,
+/// `set_metadata_state` are exposed for reducers that have not yet migrated to
+/// aggregate API methods. These will be removed or narrowed in Phase 3.
 #[derive(Debug, Clone, Default)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
@@ -45,8 +49,6 @@ pub struct BrowseSession {
 impl BrowseSession {
     // ── Table selection ──────────────────────────────────────────────
 
-    /// Select a table, clearing stale detail and bumping the generation.
-    /// Also resets the given pagination state.
     /// Returns the new generation for use as a staleness token.
     pub fn select_table(
         &mut self,
@@ -63,8 +65,7 @@ impl BrowseSession {
         self.selection_generation
     }
 
-    /// Apply a fetched table detail if the generation still matches.
-    /// Returns `true` if accepted, `false` if stale.
+    /// Returns `false` if generation is stale (detail discarded).
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
             self.table_detail = Some(detail);
@@ -74,7 +75,6 @@ impl BrowseSession {
         }
     }
 
-    /// Clear the current table selection and reset pagination.
     pub fn clear_table_selection(&mut self, pagination: &mut PaginationState) {
         self.current_table = None;
         self.table_detail = None;
@@ -83,22 +83,20 @@ impl BrowseSession {
 
     // ── Connection lifecycle ─────────────────────────────────────────
 
-    /// Transition to Connecting/Loading state.
     pub fn begin_connecting(&mut self, dsn: &str) {
         self.dsn = Some(dsn.to_string());
         self.connection_state = ConnectionState::Connecting;
         self.metadata_state = MetadataState::Loading;
     }
 
-    /// Transition to Connected/Loaded state with metadata.
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
     }
 
-    /// Mark connection failure. If already Connected (reload failure),
-    /// keeps Connected but sets metadata_state to Error and clears is_reloading.
+    /// On reload failure (already Connected), keeps Connected to preserve
+    /// the current browse session while surfacing the error.
     pub fn mark_connection_failed(&mut self, error: String) {
         self.metadata_state = MetadataState::Error(error);
         self.is_reloading = false;
@@ -107,19 +105,16 @@ impl BrowseSession {
         }
     }
 
-    /// Start a metadata reload.
     pub fn begin_reload(&mut self) {
         self.is_reloading = true;
     }
 
-    /// Finish a metadata reload.
     pub fn finish_reload(&mut self) {
         self.is_reloading = false;
     }
 
     // ── Cache operations ─────────────────────────────────────────────
 
-    /// Snapshot current session state into a ConnectionCache.
     pub fn to_cache(
         &self,
         explorer_selected: usize,
@@ -138,22 +133,22 @@ impl BrowseSession {
         }
     }
 
-    /// Restore session state from a ConnectionCache.
-    /// Caller is responsible for `result_interaction.reset_view()` and UI state.
+    /// Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         self.metadata = cache.metadata.clone();
         self.table_detail = cache.table_detail.clone();
         self.current_table = cache.current_table.clone();
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
+        self.selection_generation = 0;
+        self.is_reloading = false;
         query.current_result = cache.query_result.clone();
         query.result_history = cache.result_history.clone();
         query.history_index = None;
     }
 
-    /// Reset all session state for a new connection.
-    /// Caller is responsible for `result_interaction.reset_view()` and UI state.
-    pub fn reset(&mut self, pagination: &mut PaginationState, query: &mut QueryExecution) {
+    /// Caller must also call `result_interaction.reset_view()` and restore UI state.
+    pub fn reset(&mut self, query: &mut QueryExecution) {
         self.metadata = None;
         self.table_detail = None;
         self.current_table = None;
@@ -165,7 +160,7 @@ impl BrowseSession {
         self.active_connection_name = None;
         self.read_only = false;
         self.is_reloading = false;
-        pagination.reset();
+        query.pagination.reset();
         query.current_result = None;
         query.result_history = Default::default();
         query.history_index = None;
@@ -212,40 +207,33 @@ impl BrowseSession {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 
-    // ── Mutable access for reducer orchestration ─────────────────────
+    // ── Transitional raw setters (Phase 3 will replace with aggregate API) ──
 
-    /// Direct mutable access to metadata_state for reducer use.
     pub fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
-    /// Direct mutable access to connection_state for reducer use.
     pub fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
     }
 
-    /// Direct mutable access to metadata for reducer use (e.g. MetadataLoaded).
     pub fn set_metadata(&mut self, metadata: Option<Arc<DatabaseMetadata>>) {
         self.metadata = metadata;
     }
 
-    /// Direct mutable access to table_detail for reducer use.
     pub fn set_table_detail_raw(&mut self, detail: Option<Table>) {
         self.table_detail = detail;
     }
 
-    /// Direct mutable access to current_table for reducer use.
     pub fn set_current_table(&mut self, table: Option<String>) {
         self.current_table = table;
     }
 
-    /// Bump selection_generation and return new value.
     pub fn bump_generation(&mut self) -> u64 {
         self.selection_generation += 1;
         self.selection_generation
     }
 
-    /// Direct set of selection_generation (for test setup or cache restore).
     pub fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }
@@ -508,6 +496,27 @@ mod tests {
         }
 
         #[test]
+        fn restore_resets_generation_and_reloading() {
+            let mut session = BrowseSession::default();
+            session.mark_connected(make_metadata("db"));
+            let mut pagination = PaginationState::default();
+            session.select_table("public", "users", &mut pagination);
+            session.is_reloading = true;
+            assert!(session.selection_generation() > 0);
+
+            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
+
+            let mut new_session = BrowseSession::default();
+            new_session.set_selection_generation(42);
+            new_session.is_reloading = true;
+            let mut query = QueryExecution::default();
+            new_session.restore_from_cache(&cache, &mut query);
+
+            assert_eq!(new_session.selection_generation(), 0);
+            assert!(!new_session.is_reloading);
+        }
+
+        #[test]
         fn restore_then_begin_reload_preserves_selection() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
@@ -548,20 +557,20 @@ mod tests {
             session.active_connection_name = Some("mydb".to_string());
             session.read_only = true;
             session.is_reloading = true;
-            let mut pagination = PaginationState {
-                current_page: 3,
-                total_rows_estimate: Some(1000),
-                reached_end: true,
-                schema: "public".to_string(),
-                table: "users".to_string(),
-            };
             let mut query = QueryExecution {
                 current_result: Some(make_query_result()),
+                pagination: PaginationState {
+                    current_page: 3,
+                    total_rows_estimate: Some(1000),
+                    reached_end: true,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
                 ..Default::default()
             };
             query.history_index = Some(2);
 
-            session.reset(&mut pagination, &mut query);
+            session.reset(&mut query);
 
             assert!(session.connection_state().is_not_connected());
             assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
@@ -575,7 +584,7 @@ mod tests {
             assert!(session.active_connection_name.is_none());
             assert!(!session.read_only);
             assert!(!session.is_reloading);
-            assert_eq!(pagination.current_page, 0);
+            assert_eq!(query.pagination.current_page, 0);
             assert!(query.current_result.is_none());
             assert!(query.history_index.is_none());
         }
@@ -603,9 +612,8 @@ mod tests {
         fn cleared_after_reset() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("mydb"));
-            let mut pagination = PaginationState::default();
             let mut query = QueryExecution::default();
-            session.reset(&mut pagination, &mut query);
+            session.reset(&mut query);
             assert!(session.database_name().is_none());
         }
 
