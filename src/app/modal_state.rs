@@ -46,8 +46,8 @@ impl ModalState {
         !matches!(self.mode, InputMode::Normal | InputMode::CellEdit)
     }
 
-    /// Internal method for bidirectional sync bridge.
-    /// Sets mode without clearing the stack.
+    /// Sync bridge only: sets mode without clearing the stack.
+    /// Removed when all writers migrate to ModalState API.
     pub fn set_mode_raw(&mut self, mode: InputMode) {
         self.mode = mode;
     }

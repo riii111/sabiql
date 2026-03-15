@@ -32,7 +32,18 @@ pub fn reduce(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
+    // Bidirectional sync: keeps ui.input_mode and modal in lockstep
+    // during incremental migration. Removed once all writers use ModalState.
+    state.modal.set_mode_raw(state.ui.input_mode);
+    let mode_before = state.modal.active_mode();
+
     let effects = reduce_inner(state, action, now, services);
+
+    if state.modal.active_mode() != mode_before {
+        state.ui.input_mode = state.modal.active_mode();
+    } else {
+        state.modal.set_mode_raw(state.ui.input_mode);
+    }
 
     if should_mark_dirty {
         state.mark_dirty();
