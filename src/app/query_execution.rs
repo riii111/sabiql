@@ -172,14 +172,10 @@ mod tests {
         #[test]
         fn history_entry_when_history_index_set() {
             let mut qe = QueryExecution::default();
-            qe.result_history
-                .push(make_result(QuerySource::Adhoc));
+            qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.history_index = Some(0);
 
-            assert_eq!(
-                qe.visible_result_kind(),
-                VisibleResultKind::HistoryEntry(0)
-            );
+            assert_eq!(qe.visible_result_kind(), VisibleResultKind::HistoryEntry(0));
         }
 
         #[test]
@@ -213,8 +209,7 @@ mod tests {
         #[test]
         fn returns_history_entry_when_history_index_set() {
             let mut qe = QueryExecution::default();
-            qe.result_history
-                .push(make_result(QuerySource::Adhoc));
+            qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.current_result = Some(make_result(QuerySource::Preview));
             qe.history_index = Some(0);
 
@@ -242,8 +237,7 @@ mod tests {
         #[test]
         fn returns_none_when_no_live_result_but_history_exists() {
             let mut qe = QueryExecution::default();
-            qe.result_history
-                .push(make_result(QuerySource::Adhoc));
+            qe.result_history.push(make_result(QuerySource::Adhoc));
 
             assert!(qe.visible_result().is_none());
         }
@@ -264,7 +258,9 @@ mod tests {
             };
             let empty = QueryExecution::default();
             let mut history = QueryExecution::default();
-            history.result_history.push(make_result(QuerySource::Preview));
+            history
+                .result_history
+                .push(make_result(QuerySource::Preview));
             history.history_index = Some(0);
 
             assert!(preview.can_edit_visible_result());
