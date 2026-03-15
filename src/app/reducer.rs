@@ -127,9 +127,8 @@ fn reduce_inner(
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     state.cache.current_table = Some(table.qualified_name());
     state.cache.table_detail = None;
-    state.result_interaction.clear_cell_edit();
+    state.result_interaction.discard_cell_edit();
     state.result_interaction.clear_staged_deletes();
-    state.result_interaction.clear_write_preview();
 
     state.cache.selection_generation += 1;
     let generation = state.cache.selection_generation;

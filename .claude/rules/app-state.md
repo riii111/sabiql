@@ -37,9 +37,9 @@ paths:
 
 ### 不変条件
 
-- 複数フィールドの同時リセットは aggregate の transition API（`reset_view`, `reset_interaction`, `exit_cell_to_row`, `exit_row_to_scroll`）を使うこと
-- 新しい Result interaction state を追加したら、上記 transition メソッドへの統合を検討すること
-- `exit_cell_to_row()` / `exit_row_to_scroll()` の後、caller が `input_mode` を `Normal` に戻す責務を持つ（SAB-136 で統合予定）
+- co-dependent fields の同時リセットは aggregate の transition boundary を通すこと。reducer が private fields の個別 clear を組み合わせてはならない
+- 新しい Result interaction state を追加したら、既存の transition メソッドへの統合を検討すること
+- `input_mode` の caller 責務: modal 遷移を伴う transition の後、caller が `input_mode` を適切に戻すこと（SAB-136 で統合予定）
 
 ## pub フィールドの型設計
 

@@ -99,6 +99,13 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
+    /// Discard the current cell edit session and its associated preview,
+    /// without changing selection or staged deletes.
+    pub fn discard_cell_edit(&mut self) {
+        self.cell_edit.clear();
+        self.pending_write_preview = None;
+    }
+
     pub fn reset_view(&mut self) {
         self.scroll_offset = 0;
         self.horizontal_offset = 0;
@@ -193,6 +200,23 @@ mod tests {
         assert_eq!(ri.horizontal_offset, 5);
         assert_eq!(ri.selection().mode(), ResultNavMode::Scroll);
         assert!(ri.staged_delete_rows().is_empty());
+    }
+
+    #[test]
+    fn discard_cell_edit_clears_edit_and_preview_only() {
+        let mut ri = ResultInteraction::default();
+        ri.enter_row(2);
+        ri.enter_cell(4);
+        ri.begin_cell_edit(2, 4, "val".to_string());
+        ri.set_write_preview(test_preview());
+        ri.stage_row(0);
+
+        ri.discard_cell_edit();
+
+        assert!(!ri.cell_edit().is_active());
+        assert!(ri.pending_write_preview().is_none());
+        assert_eq!(ri.selection().mode(), ResultNavMode::CellActive);
+        assert!(ri.staged_delete_rows().contains(&0));
     }
 
     #[test]

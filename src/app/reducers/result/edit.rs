@@ -57,9 +57,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
-                    if state.result_interaction.cell_edit().row != Some(row_idx) || state.result_interaction.cell_edit().col != Some(col_idx)
+                    if state.result_interaction.cell_edit().row != Some(row_idx)
+                        || state.result_interaction.cell_edit().col != Some(col_idx)
                     {
-                        state.result_interaction.begin_cell_edit(row_idx, col_idx, value);
+                        state
+                            .result_interaction
+                            .begin_cell_edit(row_idx, col_idx, value);
                         state.result_interaction.clear_write_preview();
                     }
                     state.modal.set_mode(InputMode::CellEdit);
@@ -77,13 +80,15 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ResultDiscardCellEdit => {
-            state.result_interaction.clear_cell_edit();
-            state.result_interaction.clear_write_preview();
+            state.result_interaction.discard_cell_edit();
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::ResultCellEditInput(c) => {
-            state.result_interaction.cell_edit_input_mut().insert_char(*c);
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .insert_char(*c);
             Some(vec![])
         }
         Action::ResultCellEditBackspace => {
@@ -95,7 +100,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ResultCellEditMoveCursor(m) => {
-            state.result_interaction.cell_edit_input_mut().move_cursor(*m);
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .move_cursor(*m);
             Some(vec![])
         }
         _ => None,
@@ -152,21 +160,31 @@ mod tests {
         fn re_entering_same_cell_with_pending_draft_preserves_draft() {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
-            state.result_interaction.begin_cell_edit(0, 1, "alice".to_string());
-            state.result_interaction.cell_edit_input_mut().set_content("modified".to_string());
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "alice".to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content("modified".to_string());
             state.modal.set_mode(InputMode::Normal);
 
             reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert_eq!(state.result_interaction.cell_edit().draft_value(), "modified");
+            assert_eq!(
+                state.result_interaction.cell_edit().draft_value(),
+                "modified"
+            );
         }
 
         #[test]
         fn entering_different_cell_resets_draft() {
             let mut state = preview_state_with_selection();
             state.cache.table_detail = Some(minimal_users_table());
-            state.result_interaction.begin_cell_edit(0, 99, "stale".to_string());
+            state
+                .result_interaction
+                .begin_cell_edit(0, 99, "stale".to_string());
             state
                 .result_interaction
                 .cell_edit_input_mut()
@@ -230,8 +248,13 @@ mod tests {
         fn state_in_cell_edit(content: &str, cursor: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
-            state.result_interaction.begin_cell_edit(0, 0, content.to_string());
-            state.result_interaction.cell_edit_input_mut().set_cursor(cursor);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 0, content.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_cursor(cursor);
             state
         }
 
