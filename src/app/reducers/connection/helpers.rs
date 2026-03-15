@@ -25,12 +25,7 @@ pub(super) fn restore_cache(state: &mut AppState, cache: &ConnectionCache) {
     state
         .ui
         .set_explorer_selection(Some(cache.explorer_selected));
-    state.ui.result_selection.reset();
-    state.ui.result_scroll_offset = 0;
-    state.ui.result_horizontal_offset = 0;
-    state.cell_edit.clear();
-    state.ui.staged_delete_rows.clear();
-    state.pending_write_preview = None;
+    state.result_interaction.reset_view();
 }
 
 pub(super) fn reset_connection_state(state: &mut AppState) {
@@ -42,10 +37,5 @@ pub(super) fn reset_connection_state(state: &mut AppState) {
     state.query.history_index = None;
     state.query.pagination.reset();
     state.ui.set_explorer_selection(None);
-    state.ui.result_selection.reset();
-    state.ui.result_scroll_offset = 0;
-    state.ui.result_horizontal_offset = 0;
-    state.cell_edit.clear();
-    state.ui.staged_delete_rows.clear();
-    state.pending_write_preview = None;
+    state.result_interaction.reset_view();
 }

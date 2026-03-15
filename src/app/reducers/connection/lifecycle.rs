@@ -170,14 +170,14 @@ mod tests {
         state
             .connection_caches
             .save(&target_id, ConnectionCache::default());
-        state.ui.result_selection.enter_row(3);
-        state.ui.result_selection.enter_cell(2);
+        state.result_interaction.enter_row(3);
+        state.result_interaction.enter_cell(2);
 
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action, Instant::now());
 
         assert_eq!(
-            state.ui.result_selection.mode(),
+            state.result_interaction.selection().mode(),
             crate::app::ui_state::ResultNavMode::Scroll
         );
     }
@@ -187,13 +187,13 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
 
-        state.ui.result_selection.enter_row(5);
+        state.result_interaction.enter_row(5);
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action, Instant::now());
 
         assert_eq!(
-            state.ui.result_selection.mode(),
+            state.result_interaction.selection().mode(),
             crate::app::ui_state::ResultNavMode::Scroll
         );
     }

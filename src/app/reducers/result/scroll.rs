@@ -27,22 +27,22 @@ pub(super) fn result_max_scroll(state: &AppState) -> usize {
 }
 
 fn ensure_row_visible(state: &mut AppState) {
-    if let Some(row) = state.ui.result_selection.row() {
+    if let Some(row) = state.result_interaction.selection().row() {
         let visible = state.result_visible_rows();
         if visible == 0 {
             return;
         }
-        if row < state.ui.result_scroll_offset {
-            state.ui.result_scroll_offset = row;
-        } else if row >= state.ui.result_scroll_offset + visible {
-            state.ui.result_scroll_offset = row - visible + 1;
+        if row < state.result_interaction.scroll_offset {
+            state.result_interaction.scroll_offset = row;
+        } else if row >= state.result_interaction.scroll_offset + visible {
+            state.result_interaction.scroll_offset = row - visible + 1;
         }
     }
 }
 
 fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOnce(&mut AppState)) {
-    if state.ui.result_selection.row().is_some() {
-        state.ui.result_selection.move_row(new_row);
+    if state.result_interaction.selection().row().is_some() {
+        state.result_interaction.move_row(new_row);
         ensure_row_visible(state);
     } else {
         scroll_fn(state);
@@ -53,14 +53,15 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::ResultScrollUp => {
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .and_then(|r| r.checked_sub(1));
             match new_row {
                 Some(r) => move_row_or_scroll(state, r, |_| {}),
-                None if state.ui.result_selection.row().is_none() => {
-                    state.ui.result_scroll_offset = state.ui.result_scroll_offset.saturating_sub(1);
+                None if state.result_interaction.selection().row().is_none() => {
+                    state.result_interaction.scroll_offset =
+                        state.result_interaction.scroll_offset.saturating_sub(1);
                 }
                 _ => {} // row == 0, no-op
             }
@@ -69,54 +70,58 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         Action::ResultScrollDown => {
             let max_row = result_row_count(state).saturating_sub(1);
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .map(|r| (r + 1).min(max_row))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
                 let max_scroll = result_max_scroll(s);
-                if s.ui.result_scroll_offset < max_scroll {
-                    s.ui.result_scroll_offset += 1;
+                if s.result_interaction.scroll_offset < max_scroll {
+                    s.result_interaction.scroll_offset += 1;
                 }
             });
             Some(vec![])
         }
         Action::ResultScrollTop => {
-            move_row_or_scroll(state, 0, |s| s.ui.result_scroll_offset = 0);
+            move_row_or_scroll(state, 0, |s| s.result_interaction.scroll_offset = 0);
             Some(vec![])
         }
         Action::ResultScrollBottom => {
             let max_row = result_row_count(state).saturating_sub(1);
             let max_scroll = result_max_scroll(state);
-            move_row_or_scroll(state, max_row, |s| s.ui.result_scroll_offset = max_scroll);
+            move_row_or_scroll(state, max_row, |s| {
+                s.result_interaction.scroll_offset = max_scroll
+            });
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
             let delta = (state.result_visible_rows() / 2).max(1);
             let max_row = result_row_count(state).saturating_sub(1);
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .map(|r| (r + delta).min(max_row))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
                 let max = result_max_scroll(s);
-                s.ui.result_scroll_offset = (s.ui.result_scroll_offset + delta).min(max);
+                s.result_interaction.scroll_offset =
+                    (s.result_interaction.scroll_offset + delta).min(max);
             });
             Some(vec![])
         }
         Action::ResultScrollHalfPageUp => {
             let delta = (state.result_visible_rows() / 2).max(1);
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .map(|r| r.saturating_sub(delta))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
-                s.ui.result_scroll_offset = s.ui.result_scroll_offset.saturating_sub(delta);
+                s.result_interaction.scroll_offset =
+                    s.result_interaction.scroll_offset.saturating_sub(delta);
             });
             Some(vec![])
         }
@@ -124,41 +129,43 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             let delta = state.result_visible_rows().max(1);
             let max_row = result_row_count(state).saturating_sub(1);
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .map(|r| (r + delta).min(max_row))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
                 let max = result_max_scroll(s);
-                s.ui.result_scroll_offset = (s.ui.result_scroll_offset + delta).min(max);
+                s.result_interaction.scroll_offset =
+                    (s.result_interaction.scroll_offset + delta).min(max);
             });
             Some(vec![])
         }
         Action::ResultScrollFullPageUp => {
             let delta = state.result_visible_rows().max(1);
             let new_row = state
-                .ui
-                .result_selection
+                .result_interaction
+                .selection()
                 .row()
                 .map(|r| r.saturating_sub(delta))
                 .unwrap_or(0);
             move_row_or_scroll(state, new_row, |s| {
-                s.ui.result_scroll_offset = s.ui.result_scroll_offset.saturating_sub(delta);
+                s.result_interaction.scroll_offset =
+                    s.result_interaction.scroll_offset.saturating_sub(delta);
             });
             Some(vec![])
         }
         Action::ResultScrollLeft => {
-            state.ui.result_horizontal_offset =
-                calculate_prev_column_offset(state.ui.result_horizontal_offset);
+            state.result_interaction.horizontal_offset =
+                calculate_prev_column_offset(state.result_interaction.horizontal_offset);
             Some(vec![])
         }
         Action::ResultScrollRight => {
             let plan = &state.ui.result_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
-            state.ui.result_horizontal_offset = calculate_next_column_offset(
+            state.result_interaction.horizontal_offset = calculate_next_column_offset(
                 all_widths_len,
-                state.ui.result_horizontal_offset,
+                state.result_interaction.horizontal_offset,
                 plan.column_count,
             );
             Some(vec![])
@@ -201,40 +208,40 @@ mod tests {
             let effects = reduce(&mut state, &Action::ResultScrollHalfPageDown);
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.result_scroll_offset, 10);
+            assert_eq!(state.result_interaction.scroll_offset, 10);
         }
 
         #[test]
         fn half_page_up_from_middle() {
             let mut state = state_with_result_rows(100, 25);
-            state.ui.result_scroll_offset = 50;
+            state.result_interaction.scroll_offset = 50;
 
             reduce(&mut state, &Action::ResultScrollHalfPageUp);
 
-            assert_eq!(state.ui.result_scroll_offset, 40);
+            assert_eq!(state.result_interaction.scroll_offset, 40);
         }
 
         #[test]
         fn full_page_down_clamped_at_max() {
             let mut state = state_with_result_rows(30, 25);
             // visible = 20, max_scroll = 30-20 = 10
-            state.ui.result_scroll_offset = 5;
+            state.result_interaction.scroll_offset = 5;
 
             reduce(&mut state, &Action::ResultScrollFullPageDown);
 
             // delta=20, 5+20=25, clamped to 10
-            assert_eq!(state.ui.result_scroll_offset, 10);
+            assert_eq!(state.result_interaction.scroll_offset, 10);
         }
 
         #[test]
         fn full_page_up_clamped_at_zero() {
             let mut state = state_with_result_rows(100, 25);
-            state.ui.result_scroll_offset = 5;
+            state.result_interaction.scroll_offset = 5;
 
             reduce(&mut state, &Action::ResultScrollFullPageUp);
 
             // delta=20, saturating_sub(5,20) = 0
-            assert_eq!(state.ui.result_scroll_offset, 0);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
         #[test]
@@ -243,7 +250,7 @@ mod tests {
             // visible = 0, delta = max(0/2,1) = 1
             reduce(&mut state, &Action::ResultScrollHalfPageDown);
 
-            assert_eq!(state.ui.result_scroll_offset, 1);
+            assert_eq!(state.result_interaction.scroll_offset, 1);
         }
     }
 }

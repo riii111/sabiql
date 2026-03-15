@@ -61,10 +61,7 @@ pub fn reduce_navigation(
     match action {
         Action::SetFocusedPane(pane) => {
             if *pane != FocusedPane::Result {
-                state.ui.result_selection.reset();
-                state.cell_edit.clear();
-                state.ui.staged_delete_rows.clear();
-                state.pending_write_preview = None;
+                state.result_interaction.reset_interaction();
                 if state.modal.active_mode() == InputMode::CellEdit {
                     state.modal.set_mode(InputMode::Normal);
                 }
@@ -76,10 +73,7 @@ pub fn reduce_navigation(
             let was_focus = state.ui.focus_mode;
             state.toggle_focus();
             if was_focus {
-                state.ui.result_selection.reset();
-                state.cell_edit.clear();
-                state.ui.staged_delete_rows.clear();
-                state.pending_write_preview = None;
+                state.result_interaction.reset_interaction();
             }
             Some(vec![])
         }
@@ -127,7 +121,10 @@ pub fn reduce_navigation(
             }
             InputMode::CellEdit => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.cell_edit.input.insert_str(&clean);
+                state
+                    .result_interaction
+                    .cell_edit_input_mut()
+                    .insert_str(&clean);
                 Some(vec![])
             }
             _ => None,

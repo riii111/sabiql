@@ -74,10 +74,10 @@ impl Footer {
 
                 let result_navigation =
                     state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
-                let nav_mode = state.ui.result_selection.mode();
+                let nav_mode = state.result_interaction.selection().mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
-                    if state.cell_edit.has_pending_draft() {
+                    if state.result_interaction.cell_edit().has_pending_draft() {
                         vec![
                             RESULT_ACTIVE_KEYS[idx::result_active::EDIT].as_hint(),
                             CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
@@ -99,7 +99,7 @@ impl Footer {
                         ]
                     }
                 } else if result_navigation && nav_mode == ResultNavMode::RowActive {
-                    if !state.ui.staged_delete_rows.is_empty() {
+                    if !state.result_interaction.staged_delete_rows().is_empty() {
                         // Staged-delete mode: actions relevant to committing/undoing the staged delete
                         // Actions → Navigation → Help → Close/Cancel → Quit
                         vec![
