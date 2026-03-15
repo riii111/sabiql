@@ -32,7 +32,7 @@ impl ResultPane {
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
 
-        let result = Self::current_result(state);
+        let result = state.query.visible_result();
         let title = Self::build_title(result, state);
 
         let block = panel_block_highlight(&title, is_focused, should_highlight);
@@ -45,10 +45,7 @@ impl ResultPane {
                 Self::render_empty(frame, area, block);
                 ViewportPlan::default()
             } else {
-                let history_bar = state.query.history_index.map(|idx| {
-                    let total = state.query.result_history.len();
-                    (idx, total)
-                });
+                let history_bar = state.query.history_bar();
                 Self::render_table(
                     frame,
                     area,
@@ -80,13 +77,6 @@ impl ResultPane {
         }
     }
 
-    fn current_result(state: &AppState) -> Option<&QueryResult> {
-        match state.query.history_index {
-            None => state.query.current_result.as_deref(),
-            Some(i) => state.query.result_history.get(i),
-        }
-    }
-
     fn build_title(result: Option<&QueryResult>, state: &AppState) -> String {
         match result {
             None => " [3] Result ".to_string(),
@@ -96,9 +86,7 @@ impl ResultPane {
                     QuerySource::Adhoc => "Result Query",
                 };
 
-                let history_hint = if state.query.history_index.is_none()
-                    && !state.query.result_history.is_empty()
-                {
+                let history_hint = if state.query.has_history_hint() {
                     " (history: ^H)"
                 } else {
                     ""

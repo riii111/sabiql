@@ -15,7 +15,6 @@ use crate::app::keybindings::{
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
-use crate::domain::QuerySource;
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
 use crate::ui::theme::Theme;
@@ -64,7 +63,7 @@ impl Footer {
 
         match state.input_mode() {
             InputMode::Normal => {
-                if state.query.history_index.is_some() {
+                if state.query.is_history_mode() {
                     return vec![
                         HISTORY_KEYS[idx::history::NAV].as_hint(),
                         GLOBAL_KEYS[idx::global::HELP].as_hint(),
@@ -129,20 +128,10 @@ impl Footer {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list =
                         vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];
-                    if state
-                        .query
-                        .current_result
-                        .as_ref()
-                        .is_some_and(|r| !r.is_error())
-                    {
+                    if state.query.visible_result().is_some_and(|r| !r.is_error()) {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
-                    if state
-                        .query
-                        .current_result
-                        .as_ref()
-                        .is_some_and(|r| r.source == QuerySource::Preview)
-                    {
+                    if state.query.can_paginate_visible_result() {
                         list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::HELP].as_hint());
@@ -170,12 +159,7 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
-                    if state
-                        .query
-                        .current_result
-                        .as_ref()
-                        .is_some_and(|r| !r.is_error())
-                    {
+                    if state.query.visible_result().is_some_and(|r| !r.is_error()) {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
@@ -187,12 +171,7 @@ impl Footer {
                     // Navigation
                     if state.ui.focused_pane == FocusedPane::Result {
                         list.push(RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint());
-                        if state
-                            .query
-                            .current_result
-                            .as_ref()
-                            .is_some_and(|r| r.source == QuerySource::Preview)
-                        {
+                        if state.query.can_paginate_visible_result() {
                             list.push(FOOTER_NAV_KEYS[idx::footer_nav::PAGE_NAV].as_hint());
                         }
                     }

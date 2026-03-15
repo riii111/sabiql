@@ -598,7 +598,7 @@ pub fn reduce_query(
 
         // ── CSV Export ──────────────────────────────────────────────
         Action::RequestCsvExport => {
-            let result = match &state.query.current_result {
+            let result = match state.query.visible_result() {
                 Some(r) if !r.is_error() => r,
                 _ => return Some(vec![]),
             };
@@ -723,12 +723,8 @@ pub fn reduce_query(
         }
 
         Action::ResultNextPage => {
-            let is_preview = state
-                .query
-                .current_result
-                .as_ref()
-                .is_some_and(|r| r.source == QuerySource::Preview);
-            if state.query.status != QueryStatus::Idle || !is_preview {
+            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
+            {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_next() {
@@ -755,12 +751,8 @@ pub fn reduce_query(
         }
 
         Action::ResultPrevPage => {
-            let is_preview = state
-                .query
-                .current_result
-                .as_ref()
-                .is_some_and(|r| r.source == QuerySource::Preview);
-            if state.query.status != QueryStatus::Idle || !is_preview {
+            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
+            {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_prev() {
