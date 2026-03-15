@@ -1,11 +1,9 @@
 use std::time::Instant;
 
 use crate::app::action::{Action, ConnectionTarget};
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
-use crate::domain::MetadataState;
 
 use super::helpers::{restore_cache, save_current_cache};
 
@@ -16,10 +14,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
                 && state.modal.active_mode() == InputMode::Normal
             {
                 if let Some(dsn) = state.session.dsn.clone() {
-                    state
-                        .session
-                        .set_connection_state(ConnectionState::Connecting);
-                    state.session.set_metadata_state(MetadataState::Loading);
+                    state.session.begin_connecting(&dsn);
                     Some(vec![Effect::FetchMetadata { dsn }])
                 } else {
                     Some(vec![])
@@ -67,6 +62,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
 mod tests {
     use super::*;
     use crate::app::connection_cache::ConnectionCache;
+    use crate::app::connection_state::ConnectionState;
     use crate::app::inspector_tab::InspectorTab;
     use crate::domain::ConnectionId;
 

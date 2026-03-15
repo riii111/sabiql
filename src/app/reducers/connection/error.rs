@@ -63,10 +63,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::RetryServiceConnection => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.connection_error.clear();
-                state
-                    .session
-                    .set_connection_state(ConnectionState::Connecting);
-                state.session.set_metadata_state(MetadataState::Loading);
+                state.session.begin_connecting(&dsn);
                 state.session.read_only = false;
                 state.modal.set_mode(InputMode::Normal);
                 Some(vec![Effect::FetchMetadata { dsn }])

@@ -21,9 +21,9 @@ use crate::domain::{
 ///
 /// # Transitional raw setters
 ///
-/// `set_metadata`, `set_table_detail_raw`, `set_current_table`, `set_connection_state`,
-/// `set_metadata_state` are exposed for reducers that have not yet migrated to
-/// aggregate API methods. These will be removed or narrowed in Phase 3.
+/// `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
+/// `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
+/// does not cover the exact semantics needed (e.g. ER refresh, reload).
 #[derive(Debug, Clone, Default)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
@@ -224,15 +224,6 @@ impl BrowseSession {
 
     pub(crate) fn set_table_detail_raw(&mut self, detail: Option<Table>) {
         self.table_detail = detail;
-    }
-
-    pub(crate) fn set_current_table(&mut self, table: Option<String>) {
-        self.current_table = table;
-    }
-
-    pub(crate) fn bump_generation(&mut self) -> u64 {
-        self.selection_generation += 1;
-        self.selection_generation
     }
 
     #[cfg(any(test, feature = "test-support"))]

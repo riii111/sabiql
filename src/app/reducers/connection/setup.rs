@@ -264,12 +264,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.connection_setup.is_first_run = false;
             state.modal.set_mode(InputMode::Normal);
             state.session.active_connection_id = Some(id.clone());
-            state.session.dsn = Some(dsn.clone());
             state.session.active_connection_name = Some(name.clone());
-            state
-                .session
-                .set_connection_state(ConnectionState::Connecting);
-            state.session.set_metadata_state(MetadataState::Loading);
+            state.session.begin_connecting(dsn);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(msg) => {

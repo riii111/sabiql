@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use crate::app::action::{Action, TableTarget};
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
@@ -56,11 +55,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
     match action {
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.tables.is_empty();
-            state.session.set_metadata(Some(Arc::clone(metadata)));
-            state.session.set_metadata_state(MetadataState::Loaded);
-            state
-                .session
-                .set_connection_state(ConnectionState::Connected);
+            state.session.mark_connected(Arc::clone(metadata));
 
             let mut effects = vec![];
 
@@ -103,10 +98,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         state
                             .ui
                             .set_explorer_selection(if has_tables { Some(0) } else { None });
-                        state.query.pagination.reset();
+                        state
+                            .session
+                            .clear_table_selection(&mut state.query.pagination);
                         state.query.current_result = None;
-                        state.session.set_table_detail_raw(None);
-                        state.session.set_current_table(None);
                     }
                 }
             } else {
@@ -139,12 +134,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::MetadataFailed(error) => {
             let error_info = ConnectionErrorInfo::new(error);
             state.connection_error.set_error(error_info);
-            state
-                .session
-                .set_metadata_state(MetadataState::Error(error.clone()));
-            state.session.is_reloading = false;
-            if !state.session.connection_state().is_connected() {
-                state.session.set_connection_state(ConnectionState::Failed);
+            let was_connected = state.session.connection_state().is_connected();
+            state.session.mark_connection_failed(error.clone());
+            if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status == ErStatus::Waiting {
@@ -153,8 +145,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             Some(vec![])
         }
         Action::TableDetailLoaded(detail, generation) => {
-            if *generation == state.session.selection_generation() {
-                state.session.set_table_detail_raw(Some(*detail.clone()));
+            if state.session.set_table_detail(*detail.clone(), *generation) {
                 state.ui.inspector_scroll_offset = 0;
             }
             Some(vec![])
@@ -192,8 +183,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::ReloadMetadata => {
-            if let Some(dsn) = &state.session.dsn {
-                state.session.is_reloading = true;
+            if let Some(dsn) = state.session.dsn.clone() {
+                state.session.begin_reload();
                 state.sql_modal.prefetch_started = false;
                 state.sql_modal.prefetch_queue.clear();
                 state.sql_modal.prefetching_tables.clear();
@@ -208,7 +199,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 Some(vec![Effect::Sequence(vec![
                     Effect::CacheInvalidate { dsn: dsn.clone() },
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
+                    Effect::FetchMetadata { dsn },
                 ])])
             } else {
                 Some(vec![])
@@ -773,11 +764,9 @@ mod tests {
         #[test]
         fn table_disappeared_clears_pagination_and_result() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state
+            let _ = state
                 .session
-                .set_current_table(Some("public.users".to_string()));
+                .select_table("public", "users", &mut state.query.pagination);
 
             let metadata = make_metadata(vec![("public", "orders")]);
             reduce_metadata(

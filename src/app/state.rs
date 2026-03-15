@@ -343,10 +343,12 @@ mod tests {
         let mut state = AppState::new("test".to_string());
 
         let gen1 = state.session.selection_generation();
-        state.session.bump_generation();
-        let gen2 = state.session.selection_generation();
-        state.session.bump_generation();
-        let gen3 = state.session.selection_generation();
+        let gen2 = state
+            .session
+            .select_table("public", "t1", &mut state.query.pagination);
+        let gen3 = state
+            .session
+            .select_table("public", "t2", &mut state.query.pagination);
 
         assert_eq!(gen1, 0);
         assert_eq!(gen2, 1);
@@ -358,8 +360,10 @@ mod tests {
         let mut state = AppState::new("test".to_string());
 
         let initial_gen = state.session.selection_generation();
-        state.session.bump_generation();
-        let current_gen = state.session.selection_generation();
+        let current_gen =
+            state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
 
         assert!(initial_gen < current_gen);
     }

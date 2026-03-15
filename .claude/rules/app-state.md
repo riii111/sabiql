@@ -60,7 +60,7 @@ paths:
 
 ### 不変条件
 
-- `connection_state` と `metadata_state` は常にペアで遷移すること。reducer が個別に `set_connection_state` / `set_metadata_state` を組み合わせてはならない（transitional raw setter は Phase 3 で除去予定）
+- `connection_state` と `metadata_state` は常にペアで遷移すること。aggregate API（`begin_connecting`, `mark_connected`, `mark_connection_failed`）を優先し、raw setter は aggregate API が適合しないケース（ER refresh, reload 等）に限定する
 - テーブル選択の変更は `select_table` / `clear_table_selection` を通すこと。`selection_generation` は非同期結果の stale check に使われるため、選択解除でも bump が必要
 - `database_name` は `metadata` から導出される（single source of truth）。別フィールドとして持たない
 - `reset` / `restore_from_cache` は aggregate boundary を通すこと。reducer が raw setter を並べて手書き reset してはならない

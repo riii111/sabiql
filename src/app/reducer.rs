@@ -125,14 +125,12 @@ fn reduce_inner(
 
 /// Reset view state and emit effects to load the selected table.
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
-    state
-        .session
-        .set_current_table(Some(table.qualified_name()));
-    state.session.set_table_detail_raw(None);
+    let generation =
+        state
+            .session
+            .select_table(&table.schema, &table.name, &mut state.query.pagination);
     state.result_interaction.reset_interaction();
 
-    state.session.bump_generation();
-    let generation = state.session.selection_generation();
     let schema = table.schema.clone();
     let table_name = table.name.clone();
 
