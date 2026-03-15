@@ -63,6 +63,7 @@ Skills（`.claude/skills/`）は手動で `/skill-name` で呼び出す。
 | **effect-runner** | `app/effect_runner.rs`, `app/effect_handlers/**`, `app/effect.rs` | Dispatcher パターン、依存注入、新 Effect 追加手順 |
 | **reducer-structure** | `app/reducer.rs`, `app/reducers/**` | Reducer feature 分割、Dispatcher パターン、passthrough、新 Action / ConfirmIntent 追加手順 |
 | **rollback-policy** | `infra/**/parser.rs` | command tag 集約の rollback 近似方針、false-positive-over-missed |
+| **command-tag-design** | `domain/command_tag.rs` | 単一 enum での display/refresh 兼用根拠、variant 追加チェックリスト |
 
 ### Available Skills
 
