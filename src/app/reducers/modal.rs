@@ -64,7 +64,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::OpenErTablePicker => {
-            if state.cache.metadata.is_none() {
+            if state.session.metadata().is_none() {
                 state.ui.pending_er_picker = true;
                 state.set_success("Waiting for metadata...".to_string());
                 return Some(vec![]);
@@ -127,7 +127,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         // Query History Picker
         Action::OpenQueryHistoryPicker => {
-            if state.runtime.active_connection_id.is_none() {
+            if state.session.active_connection_id.is_none() {
                 return Some(vec![]);
             }
             if matches!(state.query.status, QueryStatus::Running) {
@@ -145,7 +145,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.query_history_picker.reset();
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            let conn_id = state.runtime.active_connection_id.as_ref().unwrap();
+            let conn_id = state.session.active_connection_id.as_ref().unwrap();
             Some(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
                 connection_id: conn_id.clone(),
@@ -160,7 +160,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return Some(vec![]);
             }
-            if state.runtime.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id.as_ref() != Some(conn_id) {
                 return Some(vec![]);
             }
             state.query_history_picker.entries = entries.clone();
@@ -255,13 +255,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     sql,
                     blocked: false,
                 }) => {
-                    if let Some(dsn) = &state.runtime.dsn {
+                    if let Some(dsn) = &state.session.dsn {
                         state.query.status = QueryStatus::Running;
                         state.query.start_time = Some(now);
                         Some(vec![Effect::ExecuteWrite {
                             dsn: dsn.clone(),
                             query: sql,
-                            read_only: state.runtime.read_only,
+                            read_only: state.session.read_only,
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
@@ -273,7 +273,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     }
                 }
                 Some(ConfirmIntent::DisableReadOnly) => {
-                    state.runtime.read_only = false;
+                    state.session.read_only = false;
                     Some(vec![])
                 }
                 Some(ConfirmIntent::CsvExport {
@@ -281,13 +281,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     file_name,
                     row_count,
                 }) => {
-                    if let Some(dsn) = &state.runtime.dsn {
+                    if let Some(dsn) = &state.session.dsn {
                         Some(vec![Effect::ExportCsv {
                             dsn: dsn.clone(),
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.runtime.read_only,
+                            read_only: state.session.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -304,7 +304,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
                     state.connection_setup.reset();
-                    if !state.connections().is_empty() || state.runtime.dsn.is_some() {
+                    if !state.connections().is_empty() || state.session.dsn.is_some() {
                         state.connection_setup.is_first_run = false;
                     }
                     state.modal.pop_mode_override(InputMode::ConnectionSetup);
@@ -373,7 +373,7 @@ mod tests {
         fn execute_write_sets_running_state_and_returns_effect() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::CellEdit);
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: false,
@@ -393,7 +393,7 @@ mod tests {
         fn execute_write_no_dsn_sets_error() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.runtime.dsn = None;
+            state.session.dsn = None;
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: false,
@@ -463,7 +463,7 @@ mod tests {
         fn csv_export_returns_export_effect() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.confirm_dialog.intent = Some(ConfirmIntent::CsvExport {
                 export_query: "SELECT 1".to_string(),
                 file_name: "test.csv".to_string(),
@@ -480,14 +480,14 @@ mod tests {
         #[test]
         fn disable_read_only_confirm_sets_read_only_false() {
             let mut state = create_test_state();
-            state.runtime.read_only = true;
+            state.session.read_only = true;
             enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.intent = Some(ConfirmIntent::DisableReadOnly);
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
-            assert!(!state.runtime.read_only);
+            assert!(!state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(effects.is_empty());
         }
@@ -512,7 +512,7 @@ mod tests {
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
-            state.runtime.active_connection_id = Some(ConnectionId::from_string("test-conn"));
+            state.session.active_connection_id = Some(ConnectionId::from_string("test-conn"));
             state.runtime.project_name = "test-project".to_string();
             state
         }
@@ -520,7 +520,7 @@ mod tests {
         #[test]
         fn open_when_not_connected_is_noop() {
             let mut state = create_test_state();
-            state.runtime.active_connection_id = None;
+            state.session.active_connection_id = None;
 
             let effects =
                 reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();

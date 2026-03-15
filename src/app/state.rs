@@ -1,10 +1,10 @@
+use super::browse_session::BrowseSession;
 use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
 use super::input_mode::InputMode;
 use super::message_state::MessageState;
-use super::metadata_cache::MetadataCache;
 use super::modal_state::ModalState;
 use super::query_execution::QueryExecution;
 use super::query_history_state::QueryHistoryPickerState;
@@ -24,9 +24,9 @@ pub struct AppState {
     /// When true, a render is needed on the next event loop iteration.
     pub render_dirty: bool,
 
+    pub session: BrowseSession,
     pub runtime: RuntimeState,
     pub ui: UiState,
-    pub cache: MetadataCache,
     pub query: QueryExecution,
     pub sql_modal: SqlModalContext,
     pub messages: MessageState,
@@ -50,9 +50,9 @@ impl AppState {
             should_quit: false,
             command_line_input: String::new(),
             render_dirty: true,
+            session: BrowseSession::default(),
             runtime: RuntimeState::new(project_name),
             ui: UiState::new(),
-            cache: MetadataCache::default(),
             query: QueryExecution::default(),
             sql_modal: SqlModalContext::default(),
             messages: MessageState::default(),
@@ -123,14 +123,13 @@ impl AppState {
     }
 
     pub fn tables(&self) -> Vec<&TableSummary> {
-        self.cache.tables()
+        self.session.tables()
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.ui.filter_input.to_lowercase();
-        self.cache
-            .metadata
-            .as_ref()
+        self.session
+            .metadata()
             .map(|m| {
                 m.tables
                     .iter()
@@ -142,9 +141,8 @@ impl AppState {
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.ui.er_filter_input.to_lowercase();
-        self.cache
-            .metadata
-            .as_ref()
+        self.session
+            .metadata()
             .map(|m| {
                 m.tables
                     .iter()
@@ -276,7 +274,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_empty_filter_returns_all() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -284,7 +282,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
             fetched_at: std::time::Instant::now(),
-        }));
+        })));
         state.ui.filter_input = "".to_string();
 
         let filtered = state.filtered_tables();
@@ -295,7 +293,7 @@ mod tests {
     #[test]
     fn filtered_tables_with_matching_filter_returns_subset() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![
@@ -303,7 +301,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
             fetched_at: std::time::Instant::now(),
-        }));
+        })));
         state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
@@ -315,7 +313,7 @@ mod tests {
     #[test]
     fn filtered_tables_is_case_insensitive() {
         let mut state = AppState::new("test".to_string());
-        state.cache.metadata = Some(Arc::new(DatabaseMetadata {
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
             tables: vec![TableSummary::new(
@@ -325,7 +323,7 @@ mod tests {
                 false,
             )],
             fetched_at: std::time::Instant::now(),
-        }));
+        })));
         state.ui.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
@@ -337,18 +335,18 @@ mod tests {
     fn selection_generation_starts_at_zero() {
         let state = AppState::new("test".to_string());
 
-        assert_eq!(state.cache.selection_generation, 0);
+        assert_eq!(state.session.selection_generation(), 0);
     }
 
     #[test]
     fn selection_generation_increments_prevent_race_conditions() {
         let mut state = AppState::new("test".to_string());
 
-        let gen1 = state.cache.selection_generation;
-        state.cache.selection_generation += 1;
-        let gen2 = state.cache.selection_generation;
-        state.cache.selection_generation += 1;
-        let gen3 = state.cache.selection_generation;
+        let gen1 = state.session.selection_generation();
+        state.session.bump_generation();
+        let gen2 = state.session.selection_generation();
+        state.session.bump_generation();
+        let gen3 = state.session.selection_generation();
 
         assert_eq!(gen1, 0);
         assert_eq!(gen2, 1);
@@ -359,9 +357,9 @@ mod tests {
     fn selection_generation_can_detect_stale_responses() {
         let mut state = AppState::new("test".to_string());
 
-        let initial_gen = state.cache.selection_generation;
-        state.cache.selection_generation += 1;
-        let current_gen = state.cache.selection_generation;
+        let initial_gen = state.session.selection_generation();
+        state.session.bump_generation();
+        let current_gen = state.session.selection_generation();
 
         assert!(initial_gen < current_gen);
     }
@@ -573,7 +571,7 @@ mod tests {
             let state = AppState::new("test".to_string());
 
             assert_eq!(state.ui.inspector_scroll_offset, 0);
-            assert!(state.cache.table_detail.is_none());
+            assert!(state.session.table_detail().is_none());
         }
     }
 

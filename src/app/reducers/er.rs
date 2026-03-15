@@ -43,11 +43,11 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            let Some(dsn) = state.runtime.dsn.clone() else {
+            let Some(dsn) = state.session.dsn.clone() else {
                 state.set_error("No active connection".to_string());
                 return Some(vec![]);
             };
-            if state.cache.metadata.is_none() {
+            if state.session.metadata().is_none() {
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
             }
@@ -76,7 +76,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            state.cache.metadata = Some(Arc::clone(new_metadata));
+            state.session.set_metadata(Some(Arc::clone(new_metadata)));
             state.er_preparation.last_signatures = new_signatures.clone();
             state.er_preparation.total_tables = new_metadata.tables.len();
 
@@ -128,10 +128,10 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }
 
             if let Some(md) = new_metadata {
-                state.cache.metadata = Some(Arc::clone(md));
+                state.session.set_metadata(Some(Arc::clone(md)));
             }
 
-            let Some(metadata) = &state.cache.metadata else {
+            let Some(metadata) = &state.session.metadata() else {
                 state.er_preparation.status = ErStatus::Idle;
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
@@ -173,9 +173,8 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
             state.er_preparation.status = ErStatus::Rendering;
             let total_tables = state
-                .cache
-                .metadata
-                .as_ref()
+                .session
+                .metadata()
                 .map(|m| m.tables.len())
                 .unwrap_or(0);
 
@@ -199,7 +198,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.runtime.dsn = Some(dsn.to_string());
+        state.session.dsn = Some(dsn.to_string());
         state
     }
 
@@ -222,7 +221,7 @@ mod tests {
         #[test]
         fn emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
@@ -238,7 +237,7 @@ mod tests {
         #[test]
         fn increments_run_id_on_each_call() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(5));
+            state.session.set_metadata(Some(make_metadata(5)));
             state.er_preparation.run_id = 3;
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
@@ -254,7 +253,7 @@ mod tests {
         fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.prefetch_started = true;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
@@ -267,7 +266,7 @@ mod tests {
         #[test]
         fn no_dsn_returns_error() {
             let mut state = AppState::new("test".to_string());
-            state.cache.metadata = Some(make_metadata(5));
+            state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
@@ -315,12 +314,12 @@ mod tests {
         fn idle_status_returns_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Idle;
-            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables: vec![],
                 fetched_at: Instant::now(),
-            }));
+            })));
             state.er_preparation.target_tables = vec!["public.users".to_string()];
 
             let effects =
@@ -370,7 +369,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
@@ -396,7 +395,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
@@ -427,7 +426,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
@@ -453,7 +452,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
@@ -479,7 +478,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,
@@ -526,7 +525,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(0));
+            state.session.set_metadata(Some(make_metadata(0)));
 
             let new_sigs: HashMap<String, String> =
                 [("public.users".to_string(), "abc123".to_string())]
@@ -545,7 +544,7 @@ mod tests {
 
             reduce_er(&mut state, &action, Instant::now());
 
-            assert_eq!(state.cache.metadata.as_ref().unwrap().tables.len(), 5);
+            assert_eq!(state.session.metadata().as_ref().unwrap().tables.len(), 5);
             assert_eq!(state.er_preparation.last_signatures, new_sigs);
         }
     }
@@ -571,7 +570,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(5));
+            state.session.set_metadata(Some(make_metadata(5)));
             state
                 .er_preparation
                 .last_signatures
@@ -607,7 +606,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(10));
+            state.session.set_metadata(Some(make_metadata(10)));
             state.er_preparation.target_tables = vec!["public.t0".to_string()];
 
             let effects = reduce_er(
@@ -639,7 +638,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(5));
+            state.session.set_metadata(Some(make_metadata(5)));
 
             let effects = reduce_er(
                 &mut state,
@@ -682,7 +681,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
-            state.cache.metadata = Some(make_metadata(3));
+            state.session.set_metadata(Some(make_metadata(3)));
 
             let effects = reduce_er(
                 &mut state,
@@ -695,7 +694,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.cache.metadata.as_ref().unwrap().tables.len(), 20);
+            assert_eq!(state.session.metadata().as_ref().unwrap().tables.len(), 20);
             assert!(
                 effects
                     .iter()

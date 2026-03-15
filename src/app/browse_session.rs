@@ -5,7 +5,9 @@ use crate::app::connection_state::ConnectionState;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::query_execution::{PaginationState, QueryExecution};
 use crate::app::result_history::ResultHistory;
-use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary};
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary,
+};
 
 /// Aggregate for the browse-session lifecycle.
 ///
@@ -241,6 +243,11 @@ impl BrowseSession {
     pub fn bump_generation(&mut self) -> u64 {
         self.selection_generation += 1;
         self.selection_generation
+    }
+
+    /// Direct set of selection_generation (for test setup or cache restore).
+    pub fn set_selection_generation(&mut self, value: u64) {
+        self.selection_generation = value;
     }
 }
 
@@ -607,12 +614,7 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
 
-            let cache = session.to_cache(
-                0,
-                InspectorTab::Info,
-                None,
-                ResultHistory::default(),
-            );
+            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
 
             let mut new_session = BrowseSession::default();
             let mut query = QueryExecution::default();
@@ -652,15 +654,19 @@ mod tests {
 
         #[test]
         fn is_service_connection_detects_service_dsn() {
-            let mut session = BrowseSession::default();
-            session.dsn = Some("service=myservice".to_string());
+            let session = BrowseSession {
+                dsn: Some("service=myservice".to_string()),
+                ..Default::default()
+            };
             assert!(session.is_service_connection());
         }
 
         #[test]
         fn is_service_connection_false_for_normal_dsn() {
-            let mut session = BrowseSession::default();
-            session.dsn = Some("postgres://localhost/db".to_string());
+            let session = BrowseSession {
+                dsn: Some("postgres://localhost/db".to_string()),
+                ..Default::default()
+            };
             assert!(!session.is_service_connection());
         }
 

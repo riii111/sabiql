@@ -16,7 +16,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
     match action {
         Action::OpenConnectionSetup => {
             state.connection_setup.reset();
-            if !state.connections().is_empty() || state.runtime.dsn.is_some() {
+            if !state.connections().is_empty() || state.session.dsn.is_some() {
                 state.connection_setup.is_first_run = false;
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
@@ -229,7 +229,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.parse().unwrap_or(5432);
-                state.runtime.connection_state = ConnectionState::Connecting;
+                state
+                    .session
+                    .set_connection_state(ConnectionState::Connecting);
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.clone(),
@@ -261,16 +263,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         Action::ConnectionSaveCompleted(ConnectionTarget { id, dsn, name }) => {
             state.connection_setup.is_first_run = false;
             state.modal.set_mode(InputMode::Normal);
-            state.runtime.active_connection_id = Some(id.clone());
-            state.runtime.dsn = Some(dsn.clone());
-            state.runtime.active_connection_name = Some(name.clone());
-            state.runtime.connection_state = ConnectionState::Connecting;
-            state.cache.state = MetadataState::Loading;
+            state.session.active_connection_id = Some(id.clone());
+            state.session.dsn = Some(dsn.clone());
+            state.session.active_connection_name = Some(name.clone());
+            state
+                .session
+                .set_connection_state(ConnectionState::Connecting);
+            state.session.set_metadata_state(MetadataState::Loading);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(msg) => {
-            state.runtime.connection_state = ConnectionState::NotConnected;
-            state.cache.state = MetadataState::NotLoaded;
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+            state.session.set_metadata_state(MetadataState::NotLoaded);
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }
@@ -435,7 +441,7 @@ mod tests {
         #[test]
         fn is_first_run_false_when_already_connected() {
             let mut state = AppState::new("test".to_string());
-            state.runtime.dsn = Some("postgres://localhost/db".to_string());
+            state.session.dsn = Some("postgres://localhost/db".to_string());
 
             reduce(&mut state, &Action::OpenConnectionSetup, Instant::now());
 

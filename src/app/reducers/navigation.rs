@@ -13,9 +13,8 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     state
-        .cache
-        .table_detail
-        .as_ref()
+        .session
+        .table_detail()
         .map(|t| match state.ui.inspector_tab {
             InspectorTab::Info => 5,
             InspectorTab::Columns => t.columns.len(),
@@ -78,7 +77,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ToggleReadOnly => {
-            if state.runtime.read_only {
+            if state.session.read_only {
                 // RO→RW: confirm dialog (dangerous direction)
                 state.confirm_dialog.title = "Disable Read-Only".to_string();
                 state.confirm_dialog.message =
@@ -87,7 +86,7 @@ pub fn reduce_navigation(
                 state.modal.push_mode(InputMode::ConfirmDialog);
             } else {
                 // RW→RO: immediate (safe direction)
-                state.runtime.read_only = true;
+                state.session.read_only = true;
             }
             Some(vec![])
         }
@@ -469,7 +468,7 @@ pub fn reduce_navigation(
                 Some(ConnectionListItem::Profile(i)) => state
                     .connections()
                     .get(*i)
-                    .filter(|c| state.runtime.active_connection_id.as_ref() != Some(&c.id))
+                    .filter(|c| state.session.active_connection_id.as_ref() != Some(&c.id))
                     .map(|_| Effect::SwitchConnection {
                         connection_index: *i,
                     }),
@@ -518,7 +517,7 @@ mod tests {
         #[test]
         fn rw_to_ro_switches_immediately() {
             let mut state = AppState::new("test".to_string());
-            assert!(!state.runtime.read_only);
+            assert!(!state.session.read_only);
 
             reduce_navigation(
                 &mut state,
@@ -527,14 +526,14 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.runtime.read_only);
+            assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]
         fn ro_to_rw_opens_confirm_dialog() {
             let mut state = AppState::new("test".to_string());
-            state.runtime.read_only = true;
+            state.session.read_only = true;
 
             reduce_navigation(
                 &mut state,
@@ -543,7 +542,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.runtime.read_only);
+            assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent,
@@ -874,7 +873,7 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id.clone()),
             ]);
-            state.runtime.active_connection_id = Some(active_id);
+            state.session.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(1));
 
             let effects = reduce_navigation(
@@ -899,7 +898,7 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.runtime.active_connection_id = Some(active_id);
+            state.session.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(0));
 
             let effects = reduce_navigation(
@@ -938,7 +937,7 @@ mod tests {
                 create_test_profile_with_id("active", active_id.clone()),
                 create_test_profile_with_id("other", other_id.clone()),
             ]);
-            state.runtime.active_connection_id = Some(active_id);
+            state.session.active_connection_id = Some(active_id);
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(1));
 
@@ -966,7 +965,7 @@ mod tests {
                 "active",
                 active_id.clone(),
             )]);
-            state.runtime.active_connection_id = Some(active_id);
+            state.session.active_connection_id = Some(active_id);
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
 
@@ -1051,7 +1050,7 @@ mod tests {
                     ordinal_position: i as i32,
                 })
                 .collect();
-            state.cache.table_detail = Some(Table {
+            state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "test_table".to_string(),
                 owner: None,
@@ -1063,7 +1062,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: Some(0),
                 comment: None,
-            });
+            }));
             state
         }
 
@@ -1132,12 +1131,12 @@ mod tests {
                     TableSummary::new("public".to_string(), format!("table_{}", i), Some(0), false)
                 })
                 .collect();
-            state.cache.metadata = Some(Arc::new(DatabaseMetadata {
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
                 tables,
                 fetched_at: Instant::now(),
-            }));
+            })));
             state.ui.set_explorer_selection(Some(0));
             state
         }

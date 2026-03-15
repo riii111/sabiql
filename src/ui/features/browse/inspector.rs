@@ -73,7 +73,7 @@ impl Inspector {
     ) -> ViewportPlan {
         let block = panel_block(" [2] Inspector ", is_focused);
 
-        if let Some(table) = &state.cache.table_detail {
+        if let Some(table) = &state.session.table_detail() {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
