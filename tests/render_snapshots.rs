@@ -1235,7 +1235,9 @@ mod result_pane {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
             .result_interaction
             .cell_edit_input_mut()
@@ -1261,7 +1263,9 @@ mod result_pane {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state.result_interaction.cell_edit_input_mut().set_cursor(0);
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1284,7 +1288,9 @@ mod result_pane {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state.result_interaction.cell_edit_input_mut().set_cursor(7);
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1307,7 +1313,9 @@ mod result_pane {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::Normal);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
             .result_interaction
             .cell_edit_input_mut()
@@ -1527,7 +1535,9 @@ mod style_assertions {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::Normal);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
             .result_interaction
             .cell_edit_input_mut()
@@ -1559,7 +1569,9 @@ mod style_assertions {
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
         state.modal.set_mode(InputMode::CellEdit);
-        state.result_interaction.begin_cell_edit(1, 2, "bob@example.com".to_string());
+        state
+            .result_interaction
+            .begin_cell_edit(1, 2, "bob@example.com".to_string());
         state
             .result_interaction
             .cell_edit_input_mut()
