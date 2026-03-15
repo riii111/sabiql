@@ -15,7 +15,6 @@ use crate::app::keybindings::{
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
-use crate::domain::QuerySource;
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
 use crate::ui::theme::Theme;
