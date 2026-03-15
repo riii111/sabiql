@@ -1603,275 +1603,104 @@ mod tests {
 
     mod split_sql_statements {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn basic_split() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 1; SELECT 2"),
-                vec!["SELECT 1", "SELECT 2"]
-            );
+        #[rstest]
+        #[case::two_statements("SELECT 1; SELECT 2", vec!["SELECT 1", "SELECT 2"])]
+        #[case::single_statement("SELECT 1", vec!["SELECT 1"])]
+        #[case::trailing_semicolon("SELECT 1;", vec!["SELECT 1"])]
+        #[case::multi_statement_txn(
+            "BEGIN; CREATE TABLE t AS SELECT 1; COMMIT",
+            vec!["BEGIN", "CREATE TABLE t AS SELECT 1", "COMMIT"]
+        )]
+        #[case::escaped_single_quote(
+            "SELECT 'it''s'; SELECT 2",
+            vec!["SELECT 'it''s'", "SELECT 2"]
+        )]
+        fn valid_input_returns_split_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
+            assert_eq!(PostgresAdapter::split_sql_statements(sql), expected);
         }
 
-        #[test]
-        fn single_statement() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 1"),
-                vec!["SELECT 1"]
-            );
+        #[rstest]
+        #[case::single_quotes("SELECT 'a;b'", vec!["SELECT 'a;b'"])]
+        #[case::double_quotes(r#"SELECT "a;b""#, vec![r#"SELECT "a;b""#])]
+        #[case::dollar_quote("SELECT $$a;b$$", vec!["SELECT $$a;b$$"])]
+        #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
+        #[case::line_comment("SELECT 1 -- comment; here\n", vec!["SELECT 1 -- comment; here"])]
+        #[case::block_comment("SELECT /* ; */ 1", vec!["SELECT /* ; */ 1"])]
+        fn quoted_semicolon_returns_single_statement(
+            #[case] sql: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            assert_eq!(PostgresAdapter::split_sql_statements(sql), expected);
         }
 
-        #[test]
-        fn trailing_semicolon() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 1;"),
-                vec!["SELECT 1"]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_single_quotes() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 'a;b'"),
-                vec!["SELECT 'a;b'"]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_double_quotes() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements(r#"SELECT "a;b""#),
-                vec![r#"SELECT "a;b""#]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_dollar_quote() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT $$a;b$$"),
-                vec!["SELECT $$a;b$$"]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_tagged_dollar_quote() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT $tag$a;b$tag$"),
-                vec!["SELECT $tag$a;b$tag$"]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_line_comment() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 1 -- comment; here\n"),
-                vec!["SELECT 1 -- comment; here"]
-            );
-        }
-
-        #[test]
-        fn semicolon_in_block_comment() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT /* ; */ 1"),
-                vec!["SELECT /* ; */ 1"]
-            );
-        }
-
-        #[test]
-        fn empty_input() {
-            let result: Vec<&str> = PostgresAdapter::split_sql_statements("");
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn whitespace_only() {
-            let result: Vec<&str> = PostgresAdapter::split_sql_statements("   ");
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn escaped_single_quote() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("SELECT 'it''s'; SELECT 2"),
-                vec!["SELECT 'it''s'", "SELECT 2"]
-            );
-        }
-
-        #[test]
-        fn multi_statement_txn() {
-            assert_eq!(
-                PostgresAdapter::split_sql_statements("BEGIN; CREATE TABLE t AS SELECT 1; COMMIT"),
-                vec!["BEGIN", "CREATE TABLE t AS SELECT 1", "COMMIT"]
-            );
+        #[rstest]
+        #[case::empty("")]
+        #[case::whitespace_only("   ")]
+        fn blank_input_returns_empty(#[case] sql: &str) {
+            assert!(PostgresAdapter::split_sql_statements(sql).is_empty());
         }
     }
 
     mod detect_create_as_kind {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn ctas_basic() {
+        #[rstest]
+        #[case::basic("CREATE TABLE t AS SELECT 1", "TABLE")]
+        #[case::temp("CREATE TEMP TABLE t AS SELECT 1", "TABLE")]
+        #[case::temporary("CREATE TEMPORARY TABLE t AS SELECT 1", "TABLE")]
+        #[case::unlogged("CREATE UNLOGGED TABLE t AS SELECT 1", "TABLE")]
+        #[case::lowercase("create table t as select 1", "TABLE")]
+        #[case::materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1", "MATERIALIZED VIEW")]
+        fn create_as_returns_correct_tag(#[case] stmt: &str, #[case] object: &str) {
             assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE TABLE t AS SELECT 1"),
-                Some(CommandTag::Create("TABLE".to_string()))
+                PostgresAdapter::detect_create_as_kind(stmt),
+                Some(CommandTag::Create(object.to_string()))
             );
         }
 
-        #[test]
-        fn ctas_temp() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE TEMP TABLE t AS SELECT 1"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn ctas_temporary() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE TEMPORARY TABLE t AS SELECT 1"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn ctas_unlogged() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE UNLOGGED TABLE t AS SELECT 1"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn create_materialized_view() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE MATERIALIZED VIEW v AS SELECT 1"),
-                Some(CommandTag::Create("MATERIALIZED VIEW".to_string()))
-            );
-        }
-
-        #[test]
-        fn create_view_not_detected() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("CREATE VIEW v AS SELECT 1"),
-                None
-            );
-        }
-
-        #[test]
-        fn case_insensitive() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("create table t as select 1"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn plain_select_returns_none() {
-            assert_eq!(
-                PostgresAdapter::detect_create_as_kind("SELECT * FROM users"),
-                None
-            );
+        #[rstest]
+        #[case::create_view("CREATE VIEW v AS SELECT 1")]
+        #[case::plain_select("SELECT * FROM users")]
+        fn non_ctas_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_create_as_kind(stmt), None);
         }
     }
 
     mod detect_select_into_kind {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn select_into() {
+        #[rstest]
+        #[case::basic("SELECT * INTO t FROM users")]
+        #[case::with_columns("SELECT id, name INTO t FROM users")]
+        #[case::with_cte("WITH cte AS (SELECT 1) SELECT * INTO t FROM cte")]
+        fn select_into_returns_create_table(#[case] stmt: &str) {
             assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT * INTO t FROM users"),
+                PostgresAdapter::detect_select_into_kind(stmt),
                 Some(CommandTag::Create("TABLE".to_string()))
             );
         }
 
-        #[test]
-        fn select_into_columns() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT id, name INTO t FROM users"),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
+        #[rstest]
+        #[case::plain_select("SELECT * FROM users")]
+        #[case::insert_into("INSERT INTO users VALUES (1)")]
+        #[case::create_table("CREATE TABLE t AS SELECT 1")]
+        fn non_select_into_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_select_into_kind(stmt), None);
         }
 
-        #[test]
-        fn with_select_into() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind(
-                    "WITH cte AS (SELECT 1) SELECT * INTO t FROM cte"
-                ),
-                Some(CommandTag::Create("TABLE".to_string()))
-            );
-        }
-
-        #[test]
-        fn plain_select_not_detected() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT * FROM users"),
-                None
-            );
-        }
-
-        #[test]
-        fn insert_into_not_detected() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("INSERT INTO users VALUES (1)"),
-                None
-            );
-        }
-
-        #[test]
-        fn create_not_detected() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("CREATE TABLE t AS SELECT 1"),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_double_quotes() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind(r#"SELECT "into" FROM t"#),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_dollar_quote() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT $$into$$ FROM t"),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_tagged_dollar_quote() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT $x$into$x$ FROM t"),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_line_comment() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT 1 -- into\nFROM t"),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_block_comment() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT /* into */ 1 FROM t"),
-                None
-            );
-        }
-
-        #[test]
-        fn into_in_single_quote() {
-            assert_eq!(
-                PostgresAdapter::detect_select_into_kind("SELECT 'into' FROM t"),
-                None
-            );
+        #[rstest]
+        #[case::double_quotes(r#"SELECT "into" FROM t"#)]
+        #[case::dollar_quote("SELECT $$into$$ FROM t")]
+        #[case::tagged_dollar_quote("SELECT $x$into$x$ FROM t")]
+        #[case::line_comment("SELECT 1 -- into\nFROM t")]
+        #[case::block_comment("SELECT /* into */ 1 FROM t")]
+        #[case::single_quote("SELECT 'into' FROM t")]
+        fn quoted_into_returns_none(#[case] stmt: &str) {
+            assert_eq!(PostgresAdapter::detect_select_into_kind(stmt), None);
         }
     }
 
