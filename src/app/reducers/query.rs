@@ -721,12 +721,8 @@ pub fn reduce_query(
         }
 
         Action::ResultNextPage => {
-            let is_preview = state
-                .query
-                .current_result
-                .as_ref()
-                .is_some_and(|r| r.source == QuerySource::Preview);
-            if state.query.status != QueryStatus::Idle || !is_preview {
+            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
+            {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_next() {
@@ -753,12 +749,8 @@ pub fn reduce_query(
         }
 
         Action::ResultPrevPage => {
-            let is_preview = state
-                .query
-                .current_result
-                .as_ref()
-                .is_some_and(|r| r.source == QuerySource::Preview);
-            if state.query.status != QueryStatus::Idle || !is_preview {
+            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
+            {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_prev() {

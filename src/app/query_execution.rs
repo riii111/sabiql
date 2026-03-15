@@ -83,15 +83,15 @@ pub struct QueryExecution {
 
 impl QueryExecution {
     pub fn visible_result_kind(&self) -> VisibleResultKind {
-        match self.history_index {
-            Some(i) => VisibleResultKind::HistoryEntry(i),
-            None => match &self.current_result {
-                Some(r) => match r.source {
-                    QuerySource::Preview => VisibleResultKind::LivePreview,
-                    QuerySource::Adhoc => VisibleResultKind::LiveAdhoc,
-                },
-                None => VisibleResultKind::Empty,
+        if let Some(i) = self.history_index {
+            return VisibleResultKind::HistoryEntry(i);
+        }
+        match &self.current_result {
+            Some(r) => match r.source {
+                QuerySource::Preview => VisibleResultKind::LivePreview,
+                QuerySource::Adhoc => VisibleResultKind::LiveAdhoc,
             },
+            None => VisibleResultKind::Empty,
         }
     }
 

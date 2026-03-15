@@ -5,7 +5,9 @@ paths:
   - "**/src/app/reducer.rs"
   - "**/src/app/reducers/**/*.rs"
   - "**/src/app/query_execution.rs"
-  - "**/src/ui/**/*.rs"
+  - "**/src/ui/shell/footer.rs"
+  - "**/src/ui/features/browse/result.rs"
+  - "**/src/ui/event/**/*.rs"
 ---
 
 # AppState 不変条件
