@@ -195,7 +195,7 @@ impl SqlModal {
             SqlModalStatus::Running => {
                 let elapsed = state
                     .query
-                    .start_time
+                    .start_time()
                     .map(|t| t.elapsed())
                     .unwrap_or_default();
                 let spinner = spinner_char(elapsed.as_millis());

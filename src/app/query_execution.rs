@@ -69,8 +69,8 @@ pub enum PostDeleteRowSelection {
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
-    pub status: QueryStatus,
-    pub start_time: Option<Instant>,
+    status: QueryStatus,
+    start_time: Option<Instant>,
     pub current_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
     pub history_index: Option<usize>,
@@ -82,6 +82,32 @@ pub struct QueryExecution {
 }
 
 impl QueryExecution {
+    // ── Status / timing ────────────────────────────────────────────
+
+    pub fn begin_running(&mut self, now: Instant) {
+        self.status = QueryStatus::Running;
+        self.start_time = Some(now);
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.status = QueryStatus::Idle;
+        self.start_time = None;
+    }
+
+    pub fn status(&self) -> QueryStatus {
+        self.status
+    }
+
+    pub fn start_time(&self) -> Option<Instant> {
+        self.start_time
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.status == QueryStatus::Running
+    }
+
+    // ── Visible result ─────────────────────────────────────────────
+
     pub fn visible_result_kind(&self) -> VisibleResultKind {
         if let Some(i) = self.history_index {
             return VisibleResultKind::HistoryEntry(i);
@@ -350,8 +376,8 @@ mod tests {
     fn default_creates_idle_state() {
         let execution = QueryExecution::default();
 
-        assert_eq!(execution.status, QueryStatus::Idle);
-        assert!(execution.start_time.is_none());
+        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(execution.start_time().is_none());
         assert!(execution.current_result.is_none());
         assert!(execution.history_index.is_none());
     }

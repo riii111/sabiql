@@ -65,7 +65,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn.is_none() {
         return Err("No active connection".to_string());
     }
-    if state.query.status != crate::app::query_execution::QueryStatus::Idle {
+    if state.query.status() != crate::app::query_execution::QueryStatus::Idle {
         return Err("Write is unavailable while query is running".to_string());
     }
 

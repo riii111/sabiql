@@ -565,16 +565,14 @@ mod tests {
             session.active_connection_name = Some("mydb".to_string());
             session.read_only = true;
             session.is_reloading = true;
-            let mut query = QueryExecution {
-                current_result: Some(make_query_result()),
-                pagination: PaginationState {
-                    current_page: 3,
-                    total_rows_estimate: Some(1000),
-                    reached_end: true,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
-                ..Default::default()
+            let mut query = QueryExecution::default();
+            query.current_result = Some(make_query_result());
+            query.pagination = PaginationState {
+                current_page: 3,
+                total_rows_estimate: Some(1000),
+                reached_end: true,
+                schema: "public".to_string(),
+                table: "users".to_string(),
             };
             query.history_index = Some(2);
 

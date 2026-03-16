@@ -6,7 +6,6 @@ use crate::app::action::Action;
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::QueryStatus;
 use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
@@ -130,7 +129,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.session.active_connection_id.is_none() {
                 return Some(vec![]);
             }
-            if matches!(state.query.status, QueryStatus::Running) {
+            if state.query.is_running() {
                 return Some(vec![]);
             }
             if state.modal.active_mode() == InputMode::ConfirmDialog {
@@ -256,8 +255,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     blocked: false,
                 }) => {
                     if let Some(dsn) = &state.session.dsn {
-                        state.query.status = QueryStatus::Running;
-                        state.query.start_time = Some(now);
+                        state.query.begin_running(now);
                         Some(vec![Effect::ExecuteWrite {
                             dsn: dsn.clone(),
                             query: sql,
@@ -383,8 +381,8 @@ mod tests {
             let effects = reduce_modal(&mut state, &Action::ConfirmDialogConfirm, now).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
-            assert!(matches!(state.query.status, QueryStatus::Running));
-            assert!(state.query.start_time.is_some());
+            assert!(state.query.is_running());
+            assert!(state.query.start_time().is_some());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
         }
@@ -532,7 +530,7 @@ mod tests {
         #[test]
         fn open_when_running_is_noop() {
             let mut state = connected_state();
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(Instant::now());
 
             let effects =
                 reduce_modal(&mut state, &Action::OpenQueryHistoryPicker, Instant::now()).unwrap();

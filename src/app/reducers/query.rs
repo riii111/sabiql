@@ -7,7 +7,7 @@ use crate::app::action::{Action, TableTarget};
 use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
+use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::app::services::AppServices;
 use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::state::AppState;
@@ -184,8 +184,7 @@ pub fn reduce_query(
             target_page,
         } => {
             if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.status = QueryStatus::Idle;
-                state.query.start_time = None;
+                state.query.mark_idle();
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
@@ -251,8 +250,7 @@ pub fn reduce_query(
         }
         Action::QueryFailed(error, generation) => {
             if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.status = QueryStatus::Idle;
-                state.query.start_time = None;
+                state.query.mark_idle();
                 let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
                     state.result_interaction.reset_view();
@@ -308,8 +306,7 @@ pub fn reduce_query(
             generation,
         }) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
 
                 // Initialize pagination for this preview
                 state.query.pagination.reset();
@@ -349,8 +346,7 @@ pub fn reduce_query(
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 Some(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
@@ -385,7 +381,7 @@ pub fn reduce_query(
                     .set_error_at("No active cell edit session".to_string(), now);
                 return Some(vec![]);
             }
-            if state.query.status != QueryStatus::Idle {
+            if state.query.is_running() {
                 state.messages.set_error_at(
                     "Write is unavailable while query is running".to_string(),
                     now,
@@ -463,8 +459,7 @@ pub fn reduce_query(
                 return Some(vec![]);
             }
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 // read_only is always false here (early return above); kept as defense-in-depth
                 Some(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
@@ -480,8 +475,7 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWriteSucceeded { affected_rows } => {
-            state.query.status = QueryStatus::Idle;
-            state.query.start_time = None;
+            state.query.mark_idle();
             let operation = state
                 .result_interaction
                 .pending_write_preview()
@@ -507,8 +501,7 @@ pub fn reduce_query(
 
                     if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
-                        state.query.status = QueryStatus::Running;
-                        state.query.start_time = Some(now);
+                        state.query.begin_running(now);
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
@@ -557,8 +550,7 @@ pub fn reduce_query(
                         .unwrap_or(PostDeleteRowSelection::Clear);
 
                     if let Some(dsn) = &state.session.dsn {
-                        state.query.status = QueryStatus::Running;
-                        state.query.start_time = Some(now);
+                        state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
@@ -578,8 +570,7 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWriteFailed(error) => {
-            state.query.status = QueryStatus::Idle;
-            state.query.start_time = None;
+            state.query.mark_idle();
             let operation = state
                 .result_interaction
                 .pending_write_preview()
@@ -722,8 +713,7 @@ pub fn reduce_query(
         }
 
         Action::ResultNextPage => {
-            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
-            {
+            if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_next() {
@@ -731,8 +721,7 @@ pub fn reduce_query(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
@@ -750,8 +739,7 @@ pub fn reduce_query(
         }
 
         Action::ResultPrevPage => {
-            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
-            {
+            if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_prev() {
@@ -759,8 +747,7 @@ pub fn reduce_query(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 // When going back, the page is not at the end anymore
                 state.query.pagination.reached_end = false;
@@ -786,7 +773,7 @@ pub fn reduce_query(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::query_execution::PaginationState;
+    use crate::app::query_execution::{PaginationState, QueryStatus};
     use crate::domain::{
         Column, CommandTag, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming,
     };
@@ -1036,7 +1023,7 @@ mod tests {
         fn noop_when_running() {
             let mut state = create_test_state();
             state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(Instant::now());
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -1482,7 +1469,7 @@ mod tests {
         #[test]
         fn write_requires_idle_query_status() {
             let mut state = editable_state();
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(Instant::now());
 
             let effects = reduce_query(
                 &mut state,
@@ -1603,8 +1590,8 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status, QueryStatus::Running);
-            assert!(state.query.start_time.is_some());
+            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.start_time().is_some());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::ExecutePreview {
