@@ -455,8 +455,8 @@ mod tests {
 
         assert_eq!(execution.status(), QueryStatus::Idle);
         assert!(execution.start_time().is_none());
-        assert!(execution.current_result.is_none());
-        assert!(execution.history_index.is_none());
+        assert!(execution.current_result().is_none());
+        assert!(execution.history_index().is_none());
     }
 
     #[test]

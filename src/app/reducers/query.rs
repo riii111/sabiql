@@ -286,7 +286,8 @@ pub fn reduce_query(
                 Action::OpenSqlModal => {
                     state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.set_status(SqlModalStatus::Editing);
-                    if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
+                    if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some()
+                    {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
                     } else {
                         vec![]
@@ -2130,7 +2131,7 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -2150,7 +2151,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
             assert!(state.session.table_detail().is_none());
         }
@@ -2319,7 +2320,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert!(
                 effects
                     .iter()

@@ -82,7 +82,7 @@ pub struct SqlModalContext {
     pub prefetch_queue: VecDeque<String>,
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    pub prefetch_started: bool,
+    prefetch_started: bool,
 }
 
 impl SqlModalContext {
@@ -109,6 +109,10 @@ impl SqlModalContext {
         self.prefetch_started = false;
     }
 
+    pub fn is_prefetch_started(&self) -> bool {
+        self.prefetch_started
+    }
+
     // ── Adhoc status ────────────────────────────────────────────────
 
     pub fn mark_adhoc_error(&mut self, error: String) {
@@ -123,7 +127,12 @@ impl SqlModalContext {
         self.last_adhoc_error = None;
     }
 
+    /// For non-adhoc transitions only. Use `mark_adhoc_error`/`mark_adhoc_success` for adhoc completion.
     pub fn set_status(&mut self, status: SqlModalStatus) {
+        debug_assert!(
+            !matches!(status, SqlModalStatus::Error | SqlModalStatus::Success),
+            "adhoc completion must use mark_adhoc_error/mark_adhoc_success to maintain mutual exclusion"
+        );
         self.status = status;
     }
 
@@ -172,15 +181,13 @@ mod tests {
         assert_eq!(ctx.cursor, 0);
         assert_eq!(ctx.status, SqlModalStatus::Editing);
         assert!(!ctx.completion.visible);
-        assert!(!ctx.prefetch_started);
+        assert!(!ctx.is_prefetch_started());
     }
 
     #[test]
     fn reset_prefetch_clears_all_prefetch_state() {
-        let mut ctx = SqlModalContext {
-            prefetch_started: true,
-            ..Default::default()
-        };
+        let mut ctx = SqlModalContext::default();
+        ctx.begin_prefetch();
         ctx.prefetch_queue.push_back("public.users".to_string());
         ctx.prefetching_tables.insert("public.posts".to_string());
         ctx.failed_prefetch_tables.insert(
@@ -194,7 +201,7 @@ mod tests {
 
         ctx.reset_prefetch();
 
-        assert!(!ctx.prefetch_started);
+        assert!(!ctx.is_prefetch_started());
         assert!(ctx.prefetch_queue.is_empty());
         assert!(ctx.prefetching_tables.is_empty());
         assert!(ctx.failed_prefetch_tables.is_empty());

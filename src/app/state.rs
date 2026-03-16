@@ -399,7 +399,7 @@ mod tests {
         let state = AppState::new("test".to_string());
 
         assert!(state.sql_modal.prefetch_queue.is_empty());
-        assert!(!state.sql_modal.prefetch_started);
+        assert!(!state.sql_modal.is_prefetch_started());
     }
 
     #[test]
@@ -499,7 +499,7 @@ mod tests {
         #[test]
         fn clears_prefetch_state() {
             let mut state = AppState::new("test".to_string());
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -520,7 +520,7 @@ mod tests {
             // Simulate ReloadMetadata reset using reset_prefetch()
             state.sql_modal.reset_prefetch();
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
             assert!(state.sql_modal.prefetching_tables.is_empty());
             assert!(state.sql_modal.failed_prefetch_tables.is_empty());

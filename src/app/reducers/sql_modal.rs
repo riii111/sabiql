@@ -187,7 +187,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
-            if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
+            if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
                 ])])

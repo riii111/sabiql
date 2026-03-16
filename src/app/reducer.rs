@@ -918,7 +918,7 @@ mod tests {
                 tables: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .er_preparation
                 .pending_tables
@@ -928,7 +928,7 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -943,12 +943,12 @@ mod tests {
                 tables: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -975,7 +975,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1990,7 +1990,7 @@ mod tests {
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
@@ -2009,7 +2009,7 @@ mod tests {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 1;
             state.er_preparation.fk_expanded = true;
@@ -2041,7 +2041,7 @@ mod tests {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 2;
             state.er_preparation.fk_expanded = true;
