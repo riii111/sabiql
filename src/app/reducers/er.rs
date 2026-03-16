@@ -19,7 +19,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         }) => {
             state.er_preparation.status = ErStatus::Idle;
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
-            state.sql_modal.prefetch_started = false;
+            state.sql_modal.invalidate_prefetch();
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
@@ -52,7 +52,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            state.sql_modal.prefetch_started = false;
+            state.sql_modal.invalidate_prefetch();
             state.er_preparation.run_id += 1;
             state.er_preparation.status = ErStatus::Waiting;
             state.set_success("Checking for schema changes...".to_string());
