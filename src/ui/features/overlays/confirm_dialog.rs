@@ -48,45 +48,44 @@ impl ConfirmDialog {
         let full_area = frame.area();
         let max_modal_width = full_area.width.saturating_sub(2).max(20);
         let message_max_line = dialog
-            .message
+            .message()
             .lines()
             .map(|line| line.chars().count() as u16)
             .max()
             .unwrap_or(0);
         let hint_width = hint.chars().count() as u16;
-        let title_width = dialog.title.chars().count() as u16;
+        let title_width = dialog.title().chars().count() as u16;
         let content_width = message_max_line.max(hint_width).max(title_width);
         let preferred_width = content_width.saturating_add(6).max(40);
         let modal_width = preferred_width.min(max_modal_width);
 
         let message_width = modal_width.saturating_sub(4).max(1);
-        let message_height = Self::wrapped_line_count(&dialog.message, message_width);
+        let message_height = Self::wrapped_line_count(dialog.message(), message_width);
         let max_modal_height = full_area.height.saturating_sub(2).max(6);
         let modal_height = (message_height + 2).clamp(6, max_modal_height);
 
-        let title = format!(" {} ", dialog.title);
-        let (_, modal_inner) =
-            if let Some(color) = Self::intent_border_color(dialog.intent.as_ref()) {
-                render_modal_with_border_color(
-                    frame,
-                    Constraint::Length(modal_width),
-                    Constraint::Length(modal_height),
-                    &title,
-                    hint,
-                    color,
-                )
-            } else {
-                render_modal(
-                    frame,
-                    Constraint::Length(modal_width),
-                    Constraint::Length(modal_height),
-                    &title,
-                    hint,
-                )
-            };
+        let title = format!(" {} ", dialog.title());
+        let (_, modal_inner) = if let Some(color) = Self::intent_border_color(dialog.intent()) {
+            render_modal_with_border_color(
+                frame,
+                Constraint::Length(modal_width),
+                Constraint::Length(modal_height),
+                &title,
+                hint,
+                color,
+            )
+        } else {
+            render_modal(
+                frame,
+                Constraint::Length(modal_width),
+                Constraint::Length(modal_height),
+                &title,
+                hint,
+            )
+        };
 
         let inner = modal_inner.inner(Margin::new(1, 0));
-        let message_para = Paragraph::new(dialog.message.clone())
+        let message_para = Paragraph::new(dialog.message().to_owned())
             .style(Style::default().fg(Theme::TEXT_PRIMARY))
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
@@ -100,7 +99,7 @@ impl ConfirmDialog {
         } else {
             " Enter: Confirm │ Esc: Cancel "
         };
-        let title = format!(" {} ", state.confirm_dialog.title);
+        let title = format!(" {} ", state.confirm_dialog.title());
 
         let mut content_lines: Vec<Line> = Vec::new();
 

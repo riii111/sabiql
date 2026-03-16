@@ -79,10 +79,11 @@ pub fn reduce_navigation(
         Action::ToggleReadOnly => {
             if state.session.read_only {
                 // RO→RW: confirm dialog (dangerous direction)
-                state.confirm_dialog.title = "Disable Read-Only".to_string();
-                state.confirm_dialog.message =
-                    "Switch to read-write mode? Write operations will be allowed.".to_string();
-                state.confirm_dialog.intent = Some(ConfirmIntent::DisableReadOnly);
+                state.confirm_dialog.open(
+                    "Disable Read-Only",
+                    "Switch to read-write mode? Write operations will be allowed.",
+                    ConfirmIntent::DisableReadOnly,
+                );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             } else {
                 // RW→RO: immediate (safe direction)
@@ -545,7 +546,7 @@ mod tests {
             assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
-                state.confirm_dialog.intent,
+                state.confirm_dialog.intent(),
                 Some(crate::app::confirm_dialog_state::ConfirmIntent::DisableReadOnly)
             ));
         }

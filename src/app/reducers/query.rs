@@ -7,7 +7,7 @@ use crate::app::action::{Action, TableTarget};
 use crate::app::command::{command_to_action, parse_command};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus};
+use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::app::services::AppServices;
 use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::state::AppState;
@@ -145,10 +145,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         // Skip ExecutePreview here: the selected table may have been
         // dropped. MetadataLoaded handles preview refresh after
         // metadata arrives.
-        state.sql_modal.prefetch_started = false;
-        state.sql_modal.prefetch_queue.clear();
-        state.sql_modal.prefetching_tables.clear();
-        state.sql_modal.failed_prefetch_tables.clear();
+        state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
@@ -184,23 +181,24 @@ pub fn reduce_query(
             target_page,
         } => {
             if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.status = QueryStatus::Idle;
-                state.query.start_time = None;
+                state.query.mark_idle();
 
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
                     state.result_interaction.reset_view();
-                    state.query.result_highlight_until = Some(now + Duration::from_millis(500));
-                    state.query.history_index = None;
+                    state
+                        .query
+                        .set_result_highlight(now + Duration::from_millis(500));
+                    state.query.exit_history();
                 }
 
                 if result.source == QuerySource::Adhoc {
                     if result.is_error() {
-                        state.sql_modal.status = SqlModalStatus::Error;
-                        state.sql_modal.last_adhoc_error = result.error.clone();
+                        state
+                            .sql_modal
+                            .mark_adhoc_error(result.error.clone().unwrap_or_default());
                     } else {
-                        state.sql_modal.status = SqlModalStatus::Success;
-                        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+                        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
                             command_tag: result.command_tag.clone(),
                             row_count: result.row_count,
                             execution_time_ms: result.execution_time_ms,
@@ -220,11 +218,11 @@ pub fn reduce_query(
                 }
 
                 if !result.is_error() || result.source != QuerySource::Adhoc {
-                    state.query.current_result = Some(Arc::clone(result));
+                    state.query.set_current_result(Arc::clone(result));
                 }
 
                 if result.source == QuerySource::Preview {
-                    match state.query.post_delete_row_selection {
+                    match state.query.post_delete_row_selection() {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
                             state.result_interaction.exit_row_to_scroll();
@@ -241,7 +239,9 @@ pub fn reduce_query(
                             }
                         }
                     }
-                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
+                    state
+                        .query
+                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
                 Some(try_adhoc_refresh(state, result))
@@ -251,18 +251,18 @@ pub fn reduce_query(
         }
         Action::QueryFailed(error, generation) => {
             if *generation == 0 || *generation == state.session.selection_generation() {
-                state.query.status = QueryStatus::Idle;
-                state.query.start_time = None;
+                state.query.mark_idle();
                 let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
                     state.result_interaction.reset_view();
-                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
-                    state.query.pending_delete_refresh_target = None;
+                    state
+                        .query
+                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
+                    state.query.clear_delete_refresh_target();
                 }
                 state.set_error(error.clone());
                 if is_adhoc {
-                    state.sql_modal.status = SqlModalStatus::Error;
-                    state.sql_modal.last_adhoc_error = Some(error.clone());
+                    state.sql_modal.mark_adhoc_error(error.clone());
                 }
             }
             Some(vec![])
@@ -285,8 +285,9 @@ pub fn reduce_query(
                 }
                 Action::OpenSqlModal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.status = SqlModalStatus::Editing;
-                    if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
+                    state.sql_modal.set_status(SqlModalStatus::Editing);
+                    if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some()
+                    {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
                     } else {
                         vec![]
@@ -308,8 +309,7 @@ pub fn reduce_query(
             generation,
         }) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
 
                 // Initialize pagination for this preview
                 state.query.pagination.reset();
@@ -349,8 +349,7 @@ pub fn reduce_query(
 
         Action::ExecuteAdhoc(query) => {
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 Some(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
@@ -366,8 +365,11 @@ pub fn reduce_query(
                 match build_bulk_delete_preview(state, services) {
                     Ok((preview, target_page, target_row)) => {
                         let staged_count = state.result_interaction.staged_delete_rows().len();
-                        state.query.pending_delete_refresh_target =
-                            Some((target_page, target_row, staged_count));
+                        state.query.set_delete_refresh_target(
+                            target_page,
+                            target_row,
+                            staged_count,
+                        );
                         return Some(vec![Effect::DispatchActions(vec![
                             Action::OpenWritePreviewConfirm(Box::new(preview)),
                         ])]);
@@ -385,7 +387,7 @@ pub fn reduce_query(
                     .set_error_at("No active cell edit session".to_string(), now);
                 return Some(vec![]);
             }
-            if state.query.status != QueryStatus::Idle {
+            if state.query.is_running() {
                 state.messages.set_error_at(
                     "Write is unavailable while query is running".to_string(),
                     now,
@@ -418,15 +420,14 @@ pub fn reduce_query(
             let operation = preview.operation;
             let title = match operation {
                 WriteOperation::Update => {
-                    state.query.pending_delete_refresh_target = None;
+                    state.query.clear_delete_refresh_target();
                     format!("Confirm UPDATE: {}", preview.target_summary.table)
                 }
                 WriteOperation::Delete => {
                     let n = state
                         .query
-                        .pending_delete_refresh_target
-                        .as_ref()
-                        .map(|(_, _, count)| *count)
+                        .pending_delete_refresh_target()
+                        .map(|(_, _, count)| count)
                         .unwrap_or(1);
                     format!(
                         "Confirm DELETE: {} {} from {}",
@@ -437,9 +438,9 @@ pub fn reduce_query(
                 }
             };
 
-            state.confirm_dialog.title = title;
-            state.confirm_dialog.message = build_write_preview_fallback_message(preview);
-            state.confirm_dialog.intent = Some(
+            state.confirm_dialog.open(
+                title,
+                build_write_preview_fallback_message(preview),
                 crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                     sql: preview.sql.clone(),
                     blocked: preview.guardrail.blocked,
@@ -463,8 +464,7 @@ pub fn reduce_query(
                 return Some(vec![]);
             }
             if let Some(dsn) = &state.session.dsn {
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 // read_only is always false here (early return above); kept as defense-in-depth
                 Some(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
@@ -480,8 +480,7 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWriteSucceeded { affected_rows } => {
-            state.query.status = QueryStatus::Idle;
-            state.query.start_time = None;
+            state.query.mark_idle();
             let operation = state
                 .result_interaction
                 .pending_write_preview()
@@ -507,8 +506,7 @@ pub fn reduce_query(
 
                     if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
-                        state.query.status = QueryStatus::Running;
-                        state.query.start_time = Some(now);
+                        state.query.begin_running(now);
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
@@ -526,8 +524,7 @@ pub fn reduce_query(
                 WriteOperation::Delete => {
                     let (target_page, target_row, expected) = state
                         .query
-                        .pending_delete_refresh_target
-                        .take()
+                        .take_delete_refresh_target()
                         .unwrap_or((state.query.pagination.current_page, None, 1));
 
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
@@ -552,13 +549,14 @@ pub fn reduce_query(
                     state.result_interaction.clear_staged_deletes();
                     state.modal.set_mode(InputMode::Normal);
 
-                    state.query.post_delete_row_selection = target_row
-                        .map(PostDeleteRowSelection::Select)
-                        .unwrap_or(PostDeleteRowSelection::Clear);
+                    state.query.set_post_delete_selection(
+                        target_row
+                            .map(PostDeleteRowSelection::Select)
+                            .unwrap_or(PostDeleteRowSelection::Clear),
+                    );
 
                     if let Some(dsn) = &state.session.dsn {
-                        state.query.status = QueryStatus::Running;
-                        state.query.start_time = Some(now);
+                        state.query.begin_running(now);
                         state.query.pagination.reached_end = false;
                         Some(vec![Effect::ExecutePreview {
                             dsn: dsn.clone(),
@@ -578,15 +576,14 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWriteFailed(error) => {
-            state.query.status = QueryStatus::Idle;
-            state.query.start_time = None;
+            state.query.mark_idle();
             let operation = state
                 .result_interaction
                 .pending_write_preview()
                 .map(|p| p.operation)
                 .unwrap_or(WriteOperation::Update);
             state.result_interaction.clear_write_preview();
-            state.query.pending_delete_refresh_target = None;
+            state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.clone(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
@@ -653,14 +650,15 @@ pub fn reduce_query(
                     Some(n) => format!("Export {} rows to CSV? This may take a while.", n),
                     None => "Row count unknown. Export to CSV?".to_string(),
                 };
-                state.confirm_dialog.title = "Confirm CSV Export".to_string();
-                state.confirm_dialog.message = msg;
-                state.confirm_dialog.intent =
-                    Some(crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
+                state.confirm_dialog.open(
+                    "Confirm CSV Export",
+                    msg,
+                    crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
-                    });
+                    },
+                );
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
@@ -722,8 +720,7 @@ pub fn reduce_query(
         }
 
         Action::ResultNextPage => {
-            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
-            {
+            if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_next() {
@@ -731,8 +728,7 @@ pub fn reduce_query(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 Some(vec![Effect::ExecutePreview {
                     dsn,
@@ -750,8 +746,7 @@ pub fn reduce_query(
         }
 
         Action::ResultPrevPage => {
-            if state.query.status != QueryStatus::Idle || !state.query.can_paginate_visible_result()
-            {
+            if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return Some(vec![]);
             }
             if !state.query.pagination.can_prev() {
@@ -759,8 +754,7 @@ pub fn reduce_query(
             }
             if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
-                state.query.status = QueryStatus::Running;
-                state.query.start_time = Some(now);
+                state.query.begin_running(now);
                 state.result_interaction.reset_view();
                 // When going back, the page is not at the end anymore
                 state.query.pagination.reached_end = false;
@@ -786,7 +780,7 @@ pub fn reduce_query(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::query_execution::PaginationState;
+    use crate::app::query_execution::{PaginationState, QueryStatus};
     use crate::domain::{
         Column, CommandTag, Index, IndexType, Table, Trigger, TriggerEvent, TriggerTiming,
     };
@@ -965,7 +959,9 @@ mod tests {
         #[test]
         fn emits_effect_with_correct_offset() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 0,
                 total_rows_estimate: Some(1500),
@@ -1000,7 +996,7 @@ mod tests {
         #[test]
         fn noop_when_reached_end() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(100));
+            state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
             let now = Instant::now();
 
@@ -1018,7 +1014,7 @@ mod tests {
         #[test]
         fn noop_for_adhoc() {
             let mut state = create_test_state();
-            state.query.current_result = Some(adhoc_result());
+            state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -1035,8 +1031,10 @@ mod tests {
         #[test]
         fn noop_when_running() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
-            state.query.status = QueryStatus::Running;
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.begin_running(Instant::now());
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -1053,7 +1051,7 @@ mod tests {
         #[test]
         fn noop_preserves_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(100));
+            state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
             state.result_interaction.enter_row(2);
             state.result_interaction.stage_row(2);
@@ -1072,7 +1070,9 @@ mod tests {
         #[test]
         fn transition_resets_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 0,
                 total_rows_estimate: Some(1500),
@@ -1101,7 +1101,9 @@ mod tests {
         #[test]
         fn emits_effect_with_correct_offset() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 2,
                 total_rows_estimate: Some(1500),
@@ -1136,7 +1138,9 @@ mod tests {
         #[test]
         fn noop_on_first_page() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
             let now = Instant::now();
 
@@ -1154,7 +1158,9 @@ mod tests {
         #[test]
         fn noop_preserves_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
             state.result_interaction.enter_row(1);
             state.result_interaction.stage_row(1);
@@ -1298,10 +1304,10 @@ mod tests {
             assert_eq!(state.query.result_history.len(), 1);
             // history_index must stay None — setting it would trigger
             // the history-browsing footer mode and break pane switching
-            assert_eq!(state.query.history_index, None);
-            assert!(state.query.current_result.is_some());
+            assert_eq!(state.query.history_index(), None);
+            assert!(state.query.current_result().is_some());
             assert_eq!(
-                state.query.current_result.as_ref().unwrap().source,
+                state.query.current_result().unwrap().source,
                 QuerySource::Adhoc,
             );
             // View state must be fully reset so the new result is visible from the top
@@ -1315,7 +1321,7 @@ mod tests {
         fn adhoc_error_preserves_current_result_and_view_state() {
             let mut state = create_test_state();
             // Set a pre-existing preview result with scroll state
-            state.query.current_result = Some(preview_result(5));
+            state.query.set_current_result(preview_result(5));
             state.result_interaction.scroll_offset = 20;
             state.result_interaction.horizontal_offset = 5;
             state.result_interaction.enter_row(3);
@@ -1333,10 +1339,10 @@ mod tests {
             );
 
             assert!(state.query.result_history.is_empty());
-            assert_eq!(state.query.history_index, None);
+            assert_eq!(state.query.history_index(), None);
             // Previous preview result and view state must be preserved
             assert_eq!(
-                state.query.current_result.as_ref().unwrap().source,
+                state.query.current_result().unwrap().source,
                 QuerySource::Preview,
             );
             assert_eq!(state.result_interaction.scroll_offset, 20);
@@ -1349,7 +1355,7 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.query.result_history.push(adhoc_result());
-            state.query.history_index = Some(0);
+            state.query.enter_history(0);
 
             reduce_query(
                 &mut state,
@@ -1362,8 +1368,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.history_index, None);
-            assert!(state.query.current_result.is_some());
+            assert_eq!(state.query.history_index(), None);
+            assert!(state.query.current_result().is_some());
         }
     }
 
@@ -1443,7 +1449,7 @@ mod tests {
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.query.current_result = Some(editable_preview_result());
+            state.query.set_current_result(editable_preview_result());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
@@ -1482,7 +1488,7 @@ mod tests {
         #[test]
         fn write_requires_idle_query_status() {
             let mut state = editable_state();
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(Instant::now());
 
             let effects = reduce_query(
                 &mut state,
@@ -1577,7 +1583,7 @@ mod tests {
                     .map(|p| p.sql.as_str()),
                 Some(expected_sql.as_str())
             );
-            match &state.confirm_dialog.intent {
+            match state.confirm_dialog.intent() {
                 Some(crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                     sql,
                     blocked,
@@ -1603,8 +1609,8 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status, QueryStatus::Running);
-            assert!(state.query.start_time.is_some());
+            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.start_time().is_some());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::ExecutePreview {
@@ -1683,7 +1689,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
-                state.confirm_dialog.title,
+                state.confirm_dialog.title(),
                 "Confirm DELETE: 1 row from users"
             );
         }
@@ -1693,7 +1699,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.query.pending_delete_refresh_target = Some((1, Some(499), 1));
+            state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
@@ -1706,7 +1712,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Select(499)
             );
             assert_eq!(
@@ -1772,7 +1778,9 @@ mod tests {
         fn query_completed_restores_pending_row_selection() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
-            state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(1000));
 
             reduce_query(
                 &mut state,
@@ -1787,7 +1795,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
         }
@@ -1797,7 +1805,9 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.result_interaction.enter_row(0);
-            state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Clear);
 
             reduce_query(
                 &mut state,
@@ -1812,7 +1822,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
         }
@@ -1830,7 +1840,7 @@ mod tests {
         #[test]
         fn request_with_preview_result_emits_count_effect() {
             let mut state = export_test_state();
-            state.query.current_result = Some(preview_result(10));
+            state.query.set_current_result(preview_result(10));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
             state.query.pagination.total_rows_estimate = Some(100);
@@ -1861,7 +1871,7 @@ mod tests {
         #[test]
         fn request_with_adhoc_result_uses_original_query() {
             let mut state = create_test_state();
-            state.query.current_result = Some(adhoc_result());
+            state.query.set_current_result(adhoc_result());
 
             let effects = reduce_query(
                 &mut state,
@@ -1888,7 +1898,7 @@ mod tests {
         #[test]
         fn request_without_result_is_noop() {
             let mut state = create_test_state();
-            state.query.current_result = None;
+            state.query.clear_current_result();
 
             let effects = reduce_query(
                 &mut state,
@@ -1939,7 +1949,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.title.contains("CSV Export"));
+            assert!(state.confirm_dialog.title().contains("CSV Export"));
         }
 
         #[test]
@@ -1960,7 +1970,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message.contains("unknown"));
+            assert!(state.confirm_dialog.message().contains("unknown"));
         }
 
         #[test]
@@ -2017,7 +2027,7 @@ mod tests {
         #[test]
         fn request_with_error_result_is_noop() {
             let mut state = create_test_state();
-            state.query.current_result = Some(Arc::new(QueryResult::error(
+            state.query.set_current_result(Arc::new(QueryResult::error(
                 "SELECT 1".to_string(),
                 "error".to_string(),
                 10,
@@ -2121,7 +2131,7 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .sql_modal
                 .prefetch_queue
@@ -2141,7 +2151,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert!(state.sql_modal.prefetch_queue.is_empty());
             assert!(state.session.table_detail().is_none());
         }
@@ -2288,7 +2298,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            let stored = state.query.current_result.as_ref().unwrap();
+            let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
             assert_eq!(stored.row_count, 5);
         }
@@ -2310,7 +2320,7 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert!(
                 effects
                     .iter()
@@ -2339,7 +2349,7 @@ mod tests {
         #[test]
         fn ddl_drop_then_metadata_loaded_without_table_clears_selection() {
             let mut state = state_with_table("public", "users");
-            state.query.current_result = Some(preview_result(3));
+            state.query.set_current_result(preview_result(3));
 
             // Step 1: DROP TABLE
             let effects = reduce_query(
@@ -2369,7 +2379,7 @@ mod tests {
             );
 
             assert!(state.query.pagination.table.is_empty());
-            assert!(state.query.current_result.is_none());
+            assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
         }
@@ -2396,7 +2406,7 @@ mod tests {
                     .any(|e| matches!(e, Effect::ExecutePreview { .. }))
             );
             assert_eq!(
-                state.sql_modal.status,
+                *state.sql_modal.status(),
                 crate::app::sql_modal_context::SqlModalStatus::Success
             );
         }
@@ -2419,8 +2429,7 @@ mod tests {
 
             let saved_tag = state
                 .sql_modal
-                .last_adhoc_success
-                .as_ref()
+                .last_adhoc_success()
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
@@ -2439,8 +2448,7 @@ mod tests {
             // last_adhoc_success must still hold the DDL result — not cleared by preview
             let tag_after = state
                 .sql_modal
-                .last_adhoc_success
-                .as_ref()
+                .last_adhoc_success()
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(tag_after, Some(CommandTag::Alter(_))));
         }

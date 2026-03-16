@@ -22,8 +22,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
 
     let result = state
         .query
-        .current_result
-        .as_ref()
+        .current_result()
         .map(|r| r.as_ref())
         .ok_or_else(|| "No result to edit".to_string())?;
     if result.source != QuerySource::Preview || result.is_error() {
@@ -65,7 +64,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn.is_none() {
         return Err("No active connection".to_string());
     }
-    if state.query.status != crate::app::query_execution::QueryStatus::Idle {
+    if state.query.status() != crate::app::query_execution::QueryStatus::Idle {
         return Err("Write is unavailable while query is running".to_string());
     }
 

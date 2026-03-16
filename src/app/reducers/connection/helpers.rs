@@ -5,7 +5,7 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     state.session.to_cache(
         state.ui.explorer_selected,
         state.ui.inspector_tab,
-        state.query.current_result.clone(),
+        state.query.current_result().cloned(),
         state.query.result_history.clone(),
     )
 }

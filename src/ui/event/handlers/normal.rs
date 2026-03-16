@@ -1014,7 +1014,7 @@ mod tests {
                     .result_history
                     .push(make_result(&format!("SELECT {}", i + 1)));
             }
-            state.query.current_result = Some(make_result("SELECT latest"));
+            state.query.set_current_result(make_result("SELECT latest"));
             state
         }
 
@@ -1030,7 +1030,7 @@ mod tests {
         #[test]
         fn bracket_left_navigates_history_older() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(2);
+            state.query.enter_history(2);
 
             let result = handle_normal_mode(combo(Key::Char('[')), &state);
 
@@ -1040,7 +1040,7 @@ mod tests {
         #[test]
         fn bracket_right_navigates_history_newer() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(0);
+            state.query.enter_history(0);
 
             let result = handle_normal_mode(combo(Key::Char(']')), &state);
 
@@ -1050,7 +1050,7 @@ mod tests {
         #[test]
         fn ctrl_h_exits_history_when_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
 
@@ -1060,7 +1060,7 @@ mod tests {
         #[test]
         fn help_allowed_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
 
             let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
@@ -1077,7 +1077,7 @@ mod tests {
         #[case(Key::Esc, "Esc")]
         fn blocked_keys_are_noop_in_history_mode(#[case] key: Key, #[case] label: &str) {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
 
             let result = handle_normal_mode(combo(key), &state);
 
@@ -1092,7 +1092,7 @@ mod tests {
         #[test]
         fn scroll_keys_allowed_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
             state.ui.focus_mode = true;
 
             assert!(matches!(
@@ -1124,7 +1124,7 @@ mod tests {
         #[test]
         fn ctrl_o_blocked_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
 
@@ -1137,7 +1137,7 @@ mod tests {
         #[test]
         fn ctrl_p_and_ctrl_k_blocked_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
 
             let p = handle_normal_mode(combo_ctrl(Key::Char('p')), &state);
             let k = handle_normal_mode(combo_ctrl(Key::Char('k')), &state);
@@ -1155,7 +1155,7 @@ mod tests {
         #[test]
         fn ctrl_scroll_allowed_in_history_mode() {
             let mut state = state_with_history(3);
-            state.query.history_index = Some(1);
+            state.query.enter_history(1);
             state.ui.focus_mode = true;
 
             assert!(matches!(

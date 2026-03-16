@@ -74,19 +74,20 @@ impl CompletionState {
 pub struct SqlModalContext {
     pub content: String,
     pub cursor: usize,
-    pub status: SqlModalStatus,
-    pub last_adhoc_success: Option<AdhocSuccessSnapshot>,
-    pub last_adhoc_error: Option<String>,
+    status: SqlModalStatus,
+    last_adhoc_success: Option<AdhocSuccessSnapshot>,
+    last_adhoc_error: Option<String>,
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    pub prefetch_started: bool,
+    prefetch_started: bool,
 }
 
-#[cfg(test)]
 impl SqlModalContext {
+    // ── Prefetch lifecycle ──────────────────────────────────────────
+
     pub fn reset_prefetch(&mut self) {
         self.prefetch_started = false;
         self.prefetch_queue.clear();
@@ -94,6 +95,66 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
+    // Preserves `prefetching_tables` so in-flight requests drain naturally.
+    pub fn begin_prefetch(&mut self) {
+        self.prefetch_started = true;
+        self.prefetch_queue.clear();
+        self.failed_prefetch_tables.clear();
+    }
+
+    pub fn invalidate_prefetch(&mut self) {
+        self.prefetch_started = false;
+    }
+
+    pub fn is_prefetch_started(&self) -> bool {
+        self.prefetch_started
+    }
+
+    // ── Adhoc status ────────────────────────────────────────────────
+
+    pub fn mark_adhoc_error(&mut self, error: String) {
+        self.status = SqlModalStatus::Error;
+        self.last_adhoc_error = Some(error);
+        self.last_adhoc_success = None;
+    }
+
+    pub fn mark_adhoc_success(&mut self, snapshot: AdhocSuccessSnapshot) {
+        self.status = SqlModalStatus::Success;
+        self.last_adhoc_success = Some(snapshot);
+        self.last_adhoc_error = None;
+    }
+
+    pub fn set_status(&mut self, status: SqlModalStatus) {
+        debug_assert!(
+            !matches!(status, SqlModalStatus::Error | SqlModalStatus::Success),
+            "adhoc completion must use mark_adhoc_error/mark_adhoc_success to maintain mutual exclusion"
+        );
+        self.status = status;
+    }
+
+    pub fn status(&self) -> &SqlModalStatus {
+        &self.status
+    }
+
+    pub fn last_adhoc_error(&self) -> Option<&str> {
+        self.last_adhoc_error.as_deref()
+    }
+
+    pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
+        self.last_adhoc_success.as_ref()
+    }
+
+    pub fn confirming_high_input_mut(&mut self) -> Option<&mut TextInputState> {
+        if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = self.status {
+            Some(input)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+impl SqlModalContext {
     pub fn clear_content(&mut self) {
         self.content.clear();
         self.cursor = 0;
@@ -114,15 +175,13 @@ mod tests {
         assert_eq!(ctx.cursor, 0);
         assert_eq!(ctx.status, SqlModalStatus::Editing);
         assert!(!ctx.completion.visible);
-        assert!(!ctx.prefetch_started);
+        assert!(!ctx.is_prefetch_started());
     }
 
     #[test]
     fn reset_prefetch_clears_all_prefetch_state() {
-        let mut ctx = SqlModalContext {
-            prefetch_started: true,
-            ..Default::default()
-        };
+        let mut ctx = SqlModalContext::default();
+        ctx.begin_prefetch();
         ctx.prefetch_queue.push_back("public.users".to_string());
         ctx.prefetching_tables.insert("public.posts".to_string());
         ctx.failed_prefetch_tables.insert(
@@ -136,7 +195,7 @@ mod tests {
 
         ctx.reset_prefetch();
 
-        assert!(!ctx.prefetch_started);
+        assert!(!ctx.is_prefetch_started());
         assert!(ctx.prefetch_queue.is_empty());
         assert!(ctx.prefetching_tables.is_empty());
         assert!(ctx.failed_prefetch_tables.is_empty());

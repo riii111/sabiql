@@ -19,9 +19,38 @@ pub enum ConfirmIntent {
 
 #[derive(Debug, Clone)]
 pub struct ConfirmDialogState {
-    pub title: String,
-    pub message: String,
-    pub intent: Option<ConfirmIntent>,
+    title: String,
+    message: String,
+    intent: Option<ConfirmIntent>,
+}
+
+impl ConfirmDialogState {
+    pub fn open(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+        intent: ConfirmIntent,
+    ) {
+        self.title = title.into();
+        self.message = message.into();
+        self.intent = Some(intent);
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn intent(&self) -> Option<&ConfirmIntent> {
+        self.intent.as_ref()
+    }
+
+    pub fn take_intent(&mut self) -> Option<ConfirmIntent> {
+        self.intent.take()
+    }
 }
 
 impl Default for ConfirmDialogState {

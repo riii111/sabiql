@@ -17,7 +17,7 @@ pub struct SqlModal;
 
 impl SqlModal {
     pub fn render(frame: &mut Frame, state: &AppState) {
-        let (area, inner) = match &state.sql_modal.status {
+        let (area, inner) = match state.sql_modal.status() {
             SqlModalStatus::Confirming(decision) => {
                 let title = format!(
                     " SQL \u{2500}\u{2500} \u{26a0} {} ",
@@ -68,7 +68,7 @@ impl SqlModal {
         };
 
         let status_height = if matches!(
-            state.sql_modal.status,
+            state.sql_modal.status(),
             SqlModalStatus::ConfirmingHigh { .. }
         ) {
             3 // warning line + input prompt line + bottom margin
@@ -83,7 +83,7 @@ impl SqlModal {
         Self::render_status(frame, status_area, state);
 
         let is_confirming = matches!(
-            state.sql_modal.status,
+            state.sql_modal.status(),
             SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
         );
         if !is_confirming
@@ -99,7 +99,7 @@ impl SqlModal {
 
         // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
         if matches!(
-            state.sql_modal.status,
+            state.sql_modal.status(),
             SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
         ) {
             let lines: Vec<Line> = content
@@ -171,13 +171,13 @@ impl SqlModal {
             decision,
             input,
             target_name,
-        } = &state.sql_modal.status
+        } = state.sql_modal.status()
         {
             Self::render_confirming_high_status(frame, area, decision, input, target_name);
             return;
         }
 
-        let (status_text, status_style) = match state.sql_modal.status {
+        let (status_text, status_style) = match state.sql_modal.status() {
             SqlModalStatus::Editing => {
                 ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
             }
@@ -195,7 +195,7 @@ impl SqlModal {
             SqlModalStatus::Running => {
                 let elapsed = state
                     .query
-                    .start_time
+                    .start_time()
                     .map(|t| t.elapsed())
                     .unwrap_or_default();
                 let spinner = spinner_char(elapsed.as_millis());
@@ -310,7 +310,7 @@ impl SqlModal {
     }
 
     fn success_status_message(state: &AppState) -> String {
-        let Some(snapshot) = state.sql_modal.last_adhoc_success.as_ref() else {
+        let Some(snapshot) = state.sql_modal.last_adhoc_success() else {
             return "\u{2713} OK".to_string();
         };
         let time_secs = snapshot.execution_time_ms as f64 / 1000.0;
@@ -333,8 +333,7 @@ impl SqlModal {
     fn error_status_message(state: &AppState) -> String {
         state
             .sql_modal
-            .last_adhoc_error
-            .as_ref()
+            .last_adhoc_error()
             .and_then(|e| e.lines().next())
             .map(|line| format!("\u{2717} {}", line))
             .unwrap_or_else(|| "\u{2717} Error".to_string())

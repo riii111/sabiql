@@ -9,31 +9,31 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             if len == 0 {
                 return Some(vec![]);
             }
-            state.query.history_index = Some(len - 1);
+            state.query.enter_history(len - 1);
             state.result_interaction.reset_view();
             Some(vec![])
         }
         Action::HistoryOlder => {
-            if let Some(idx) = state.query.history_index
+            if let Some(idx) = state.query.history_index()
                 && idx > 0
             {
-                state.query.history_index = Some(idx - 1);
+                state.query.enter_history(idx - 1);
                 state.result_interaction.reset_view();
             }
             Some(vec![])
         }
         Action::HistoryNewer => {
-            if let Some(idx) = state.query.history_index {
+            if let Some(idx) = state.query.history_index() {
                 let len = state.query.result_history.len();
                 if idx + 1 < len {
-                    state.query.history_index = Some(idx + 1);
+                    state.query.enter_history(idx + 1);
                     state.result_interaction.reset_view();
                 }
             }
             Some(vec![])
         }
         Action::ExitResultHistory => {
-            state.query.history_index = None;
+            state.query.exit_history();
             state.result_interaction.reset_view();
             Some(vec![])
         }
@@ -65,7 +65,7 @@ mod tests {
                 .result_history
                 .push(make_result(&format!("SELECT {}", i + 1)));
         }
-        state.query.current_result = Some(make_result("SELECT latest"));
+        state.query.set_current_result(make_result("SELECT latest"));
         state
     }
 
@@ -75,7 +75,7 @@ mod tests {
 
         reduce(&mut state, &Action::OpenResultHistory);
 
-        assert_eq!(state.query.history_index, Some(2));
+        assert_eq!(state.query.history_index(), Some(2));
     }
 
     #[test]
@@ -84,57 +84,57 @@ mod tests {
 
         reduce(&mut state, &Action::OpenResultHistory);
 
-        assert_eq!(state.query.history_index, None);
+        assert_eq!(state.query.history_index(), None);
     }
 
     #[test]
     fn older_decrements_index() {
         let mut state = state_with_history(3);
-        state.query.history_index = Some(2);
+        state.query.enter_history(2);
 
         reduce(&mut state, &Action::HistoryOlder);
 
-        assert_eq!(state.query.history_index, Some(1));
+        assert_eq!(state.query.history_index(), Some(1));
     }
 
     #[test]
     fn older_clamps_at_zero() {
         let mut state = state_with_history(3);
-        state.query.history_index = Some(0);
+        state.query.enter_history(0);
 
         reduce(&mut state, &Action::HistoryOlder);
 
-        assert_eq!(state.query.history_index, Some(0));
+        assert_eq!(state.query.history_index(), Some(0));
     }
 
     #[test]
     fn newer_increments_index() {
         let mut state = state_with_history(3);
-        state.query.history_index = Some(0);
+        state.query.enter_history(0);
 
         reduce(&mut state, &Action::HistoryNewer);
 
-        assert_eq!(state.query.history_index, Some(1));
+        assert_eq!(state.query.history_index(), Some(1));
     }
 
     #[test]
     fn newer_at_last_is_noop() {
         let mut state = state_with_history(3);
-        state.query.history_index = Some(2);
+        state.query.enter_history(2);
 
         reduce(&mut state, &Action::HistoryNewer);
 
-        assert_eq!(state.query.history_index, Some(2));
+        assert_eq!(state.query.history_index(), Some(2));
     }
 
     #[test]
     fn exit_clears_index() {
         let mut state = state_with_history(3);
-        state.query.history_index = Some(1);
+        state.query.enter_history(1);
 
         reduce(&mut state, &Action::ExitResultHistory);
 
-        assert_eq!(state.query.history_index, None);
+        assert_eq!(state.query.history_index(), None);
     }
 
     #[test]

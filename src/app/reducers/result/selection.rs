@@ -120,7 +120,7 @@ mod tests {
             state.query.pagination.current_page = current_page;
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.query.current_result = Some(Arc::new(QueryResult {
+            state.query.set_current_result(Arc::new(QueryResult {
                 query: "SELECT * FROM public.users".to_string(),
                 columns: vec!["id".to_string(), "name".to_string()],
                 row_count: rows.len(),

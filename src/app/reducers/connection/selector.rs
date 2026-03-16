@@ -26,20 +26,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 let name = connection.name.as_str().to_string();
                 let is_active = state.session.active_connection_id.as_ref() == Some(&id);
 
-                state.confirm_dialog.title = "Delete Connection".to_string();
-
-                if is_active {
-                    state.confirm_dialog.message = format!(
+                let message = if is_active {
+                    format!(
                         "Delete \"{}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
                         name
-                    );
+                    )
                 } else {
-                    state.confirm_dialog.message =
-                        format!("Delete \"{}\"?\n\nThis action cannot be undone.", name);
-                }
-
-                state.confirm_dialog.intent =
-                    Some(crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id));
+                    format!("Delete \"{}\"?\n\nThis action cannot be undone.", name)
+                };
+                state.confirm_dialog.open(
+                    "Delete Connection",
+                    message,
+                    crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id),
+                );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
             Some(vec![])
@@ -158,12 +157,12 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert_eq!(state.confirm_dialog.title, "Delete Connection");
-            assert!(state.confirm_dialog.message.contains("Production"));
+            assert_eq!(state.confirm_dialog.title(), "Delete Connection");
+            assert!(state.confirm_dialog.message().contains("Production"));
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This action cannot be undone")
             );
         }
@@ -186,13 +185,13 @@ mod tests {
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This is the active connection")
             );
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("You will be disconnected")
             );
         }
@@ -213,7 +212,7 @@ mod tests {
             assert!(
                 !state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This is the active connection")
             );
         }
@@ -313,7 +312,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted
-            state.query.history_index = Some(2);
+            state.query.enter_history(2);
             state.query.pagination.current_page = 3;
             state.result_interaction.enter_row(5);
             state.result_interaction.scroll_offset = 10;
@@ -326,7 +325,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.query.history_index.is_none());
+            assert!(state.query.history_index().is_none());
             assert_eq!(state.query.pagination.current_page, 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),

@@ -60,7 +60,9 @@ mod table_explorer {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -77,7 +79,9 @@ mod table_explorer {
             .session
             .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -95,7 +99,9 @@ mod table_explorer {
             .session
             .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.ui.set_explorer_selection(Some(0));
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focus_mode = true;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -134,7 +140,9 @@ mod table_explorer {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::empty_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::empty_query_result(now)));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -157,7 +165,7 @@ mod overlays {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FROM us".to_string();
         state.sql_modal.cursor = 16;
-        state.sql_modal.status = SqlModalStatus::Editing;
+        state.sql_modal.set_status(SqlModalStatus::Editing);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -172,7 +180,7 @@ mod overlays {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 0;
-        state.sql_modal.status = SqlModalStatus::Editing;
+        state.sql_modal.set_status(SqlModalStatus::Editing);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -187,7 +195,7 @@ mod overlays {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 4;
-        state.sql_modal.status = SqlModalStatus::Editing;
+        state.sql_modal.set_status(SqlModalStatus::Editing);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -202,7 +210,7 @@ mod overlays {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT 1".to_string();
         state.sql_modal.cursor = 8;
-        state.sql_modal.status = SqlModalStatus::Editing;
+        state.sql_modal.set_status(SqlModalStatus::Editing);
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -217,26 +225,27 @@ mod overlays {
 
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FROM users".to_string();
-        state.sql_modal.status = SqlModalStatus::Success;
-        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
             command_tag: None,
             row_count: 2,
             execution_time_ms: 15,
         });
-        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
-            query: "SELECT * FROM users".to_string(),
-            columns: vec!["id".to_string(), "name".to_string()],
-            rows: vec![
-                vec!["1".to_string(), "Alice".to_string()],
-                vec!["2".to_string(), "Bob".to_string()],
-            ],
-            row_count: 2,
-            execution_time_ms: 15,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: None,
-        }));
+        state
+            .query
+            .set_current_result(Arc::new(sabiql::domain::QueryResult {
+                query: "SELECT * FROM users".to_string(),
+                columns: vec!["id".to_string(), "name".to_string()],
+                rows: vec![
+                    vec!["1".to_string(), "Alice".to_string()],
+                    vec!["2".to_string(), "Bob".to_string()],
+                ],
+                row_count: 2,
+                execution_time_ms: 15,
+                executed_at: now,
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: None,
+            }));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -251,23 +260,24 @@ mod overlays {
 
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
-        state.sql_modal.status = SqlModalStatus::Success;
-        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
             command_tag: Some(CommandTag::Delete(3)),
             row_count: 3,
             execution_time_ms: 12,
         });
-        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
-            query: "DELETE FROM users WHERE id = 1".to_string(),
-            columns: vec![],
-            rows: vec![],
-            row_count: 3,
-            execution_time_ms: 12,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: Some(CommandTag::Delete(3)),
-        }));
+        state
+            .query
+            .set_current_result(Arc::new(sabiql::domain::QueryResult {
+                query: "DELETE FROM users WHERE id = 1".to_string(),
+                columns: vec![],
+                rows: vec![],
+                row_count: 3,
+                execution_time_ms: 12,
+                executed_at: now,
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: Some(CommandTag::Delete(3)),
+            }));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -282,23 +292,24 @@ mod overlays {
 
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "CREATE TABLE backup AS SELECT * FROM users".to_string();
-        state.sql_modal.status = SqlModalStatus::Success;
-        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
             command_tag: Some(CommandTag::Create("TABLE".to_string())),
             row_count: 0,
             execution_time_ms: 45,
         });
-        state.query.current_result = Some(Arc::new(sabiql::domain::QueryResult {
-            query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
-            columns: vec![],
-            rows: vec![],
-            row_count: 0,
-            execution_time_ms: 45,
-            executed_at: now,
-            source: QuerySource::Adhoc,
-            error: None,
-            command_tag: Some(CommandTag::Create("TABLE".to_string())),
-        }));
+        state
+            .query
+            .set_current_result(Arc::new(sabiql::domain::QueryResult {
+                query: "CREATE TABLE backup AS SELECT * FROM users".to_string(),
+                columns: vec![],
+                rows: vec![],
+                row_count: 0,
+                execution_time_ms: 45,
+                executed_at: now,
+                source: QuerySource::Adhoc,
+                error: None,
+                command_tag: Some(CommandTag::Create("TABLE".to_string())),
+            }));
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -312,8 +323,7 @@ mod overlays {
 
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FORM users".to_string();
-        state.sql_modal.status = SqlModalStatus::Error;
-        state.sql_modal.last_adhoc_error = Some("ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^".to_string());
+        state.sql_modal.mark_adhoc_error("ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^".to_string());
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -912,11 +922,11 @@ mod connection_management {
 
         let connection_id = ConnectionId::new();
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Delete Connection".to_string();
-        state.confirm_dialog.message =
-            "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id));
+        state.confirm_dialog.open(
+            "Delete Connection",
+            "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id),
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -930,11 +940,11 @@ mod connection_management {
 
         let target_id = ConnectionId::new();
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Delete Connection".to_string();
-        state.confirm_dialog.message =
-            "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id));
+        state.confirm_dialog.open(
+            "Delete Connection",
+            "Delete \"Staging\"?\n\nThis action cannot be undone.",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id),
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -951,11 +961,11 @@ mod confirm_dialogs {
         let mut terminal = create_test_terminal();
 
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm".to_string();
-        state.confirm_dialog.message =
-            "No connection configured.\nAre you sure you want to quit?".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
+        state.confirm_dialog.open(
+            "Confirm",
+            "No connection configured.\nAre you sure you want to quit?",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection,
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -975,14 +985,14 @@ mod confirm_dialogs {
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
-        state.confirm_dialog.message =
-            "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+        state.confirm_dialog.open(
+            "Confirm UPDATE: users",
+            "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string(),
                 blocked: false,
-            });
+            },
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1026,10 +1036,9 @@ mod confirm_dialogs {
             },
         });
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
-        state.confirm_dialog.message =
-            "email: \"bob@example.com\" -> \"new@example.com\"".to_string();
-        state.confirm_dialog.intent = Some(
+        state.confirm_dialog.open(
+            "Confirm UPDATE: users",
+            "email: \"bob@example.com\" -> \"new@example.com\"",
             sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql,
                 blocked: false,
@@ -1072,9 +1081,9 @@ mod confirm_dialogs {
             },
         });
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm DELETE: users".to_string();
-        state.confirm_dialog.message = String::new();
-        state.confirm_dialog.intent = Some(
+        state.confirm_dialog.open(
+            "Confirm DELETE: users",
+            "",
             sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql,
                 blocked: false,
@@ -1237,7 +1246,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
 
@@ -1259,7 +1270,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1282,7 +1295,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1313,7 +1328,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1341,7 +1358,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1369,7 +1388,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1400,7 +1421,9 @@ mod result_pane {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
         state.result_interaction.stage_row(1);
@@ -1443,7 +1466,9 @@ mod result_history {
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
         // Current result is Preview, but history has adhoc entries
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state
             .query
             .result_history
@@ -1473,8 +1498,10 @@ mod result_history {
                 .result_history
                 .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
         }
-        state.query.current_result = Some(Arc::new(adhoc_result(now, "SELECT 3")));
-        state.query.history_index = Some(1); // viewing 2/3
+        state
+            .query
+            .set_current_result(Arc::new(adhoc_result(now, "SELECT 3")));
+        state.query.enter_history(1); // viewing 2/3
         state.ui.focused_pane = FocusedPane::Result;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1514,8 +1541,10 @@ mod result_history {
                 .result_history
                 .push(Arc::new(wide_adhoc_result(now, &format!("SELECT {}", i))));
         }
-        state.query.current_result = Some(Arc::new(wide_adhoc_result(now, long_query)));
-        state.query.history_index = Some(2); // viewing 3/3
+        state
+            .query
+            .set_current_result(Arc::new(wide_adhoc_result(now, long_query)));
+        state.query.enter_history(2); // viewing 3/3
         state.ui.focus_mode = true;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1541,7 +1570,9 @@ mod result_history {
                 .result_history
                 .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
         }
-        state.query.current_result = Some(Arc::new(adhoc_result(now, "SELECT 2")));
+        state
+            .query
+            .set_current_result(Arc::new(adhoc_result(now, "SELECT 2")));
         state.ui.focused_pane = FocusedPane::Result;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1566,8 +1597,10 @@ mod result_history {
                 .result_history
                 .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
         }
-        state.query.current_result = Some(Arc::new(adhoc_result(now, "SELECT 3")));
-        state.query.history_index = Some(0); // viewing 1/3
+        state
+            .query
+            .set_current_result(Arc::new(adhoc_result(now, "SELECT 3")));
+        state.query.enter_history(0); // viewing 1/3
         state.ui.focus_mode = true;
 
         let output = render_to_string(&mut terminal, &mut state);
@@ -1604,7 +1637,9 @@ mod style_assertions {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1641,7 +1676,9 @@ mod style_assertions {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(1);
         state.result_interaction.enter_cell(2);
@@ -1678,7 +1715,9 @@ mod style_assertions {
         let _ = state
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
-        state.query.current_result = Some(Arc::new(fixtures::sample_query_result(now)));
+        state
+            .query
+            .set_current_result(Arc::new(fixtures::sample_query_result(now)));
         state.ui.focused_pane = FocusedPane::Result;
         state.result_interaction.enter_row(0);
         state.result_interaction.stage_row(1);

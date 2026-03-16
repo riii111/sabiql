@@ -28,7 +28,7 @@ impl ResultPane {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
             .query
-            .result_highlight_until
+            .result_highlight_until()
             .map(|t| Instant::now() < t)
             .unwrap_or(false);
 

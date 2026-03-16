@@ -918,7 +918,7 @@ mod tests {
                 tables: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .er_preparation
                 .pending_tables
@@ -928,7 +928,7 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -943,12 +943,12 @@ mod tests {
                 tables: vec![],
                 fetched_at: Instant::now(),
             })));
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
@@ -975,7 +975,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1265,8 +1265,8 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
-                state.confirm_dialog.intent,
-                Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
+                state.confirm_dialog.intent(),
+                Some(&crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
             ));
             assert!(effects.is_empty());
         }
@@ -1299,7 +1299,9 @@ mod tests {
         fn confirm_quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConfirmDialog);
-            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
+            state
+                .confirm_dialog
+                .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
             reduce(
@@ -1310,14 +1312,16 @@ mod tests {
             );
 
             assert!(state.should_quit);
-            assert!(state.confirm_dialog.intent.is_none());
+            assert!(state.confirm_dialog.intent().is_none());
         }
 
         #[test]
         fn cancel_quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConfirmDialog);
-            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
+            state
+                .confirm_dialog
+                .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1327,7 +1331,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.confirm_dialog.intent.is_none());
+            assert!(state.confirm_dialog.intent().is_none());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
@@ -1359,11 +1363,15 @@ mod tests {
                     target_summary: None,
                 },
             });
-            state.query.pending_delete_refresh_target = Some((0, Some(499), 1));
-            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
-                sql: delete_sql,
-                blocked: false,
-            });
+            state.query.set_delete_refresh_target(0, Some(499), 1);
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: delete_sql,
+                    blocked: false,
+                },
+            );
 
             let now = Instant::now();
             let effects = reduce(
@@ -1375,7 +1383,7 @@ mod tests {
 
             // Preview must survive confirm for ExecuteWriteSucceeded to detect Delete
             assert!(state.result_interaction.pending_write_preview().is_some());
-            assert!(state.query.pending_delete_refresh_target.is_some());
+            assert!(state.query.pending_delete_refresh_target().is_some());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
 
@@ -1427,10 +1435,14 @@ mod tests {
                     target_summary: None,
                 },
             });
-            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
-                sql: "DELETE FROM t WHERE id='1'".to_string(),
-                blocked: false,
-            });
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: "DELETE FROM t WHERE id='1'".to_string(),
+                    blocked: false,
+                },
+            );
 
             let now = Instant::now();
             reduce(
@@ -1990,7 +2002,7 @@ mod tests {
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.target_tables = vec!["public.users".to_string()];
             let now = Instant::now();
 
@@ -2009,7 +2021,7 @@ mod tests {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 1;
             state.er_preparation.fk_expanded = true;
@@ -2041,7 +2053,7 @@ mod tests {
             use crate::app::er_state::ErStatus;
 
             let mut state = state_with_metadata();
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.total_tables = 2;
             state.er_preparation.fk_expanded = true;

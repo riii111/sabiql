@@ -69,19 +69,122 @@ pub enum PostDeleteRowSelection {
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
-    pub status: QueryStatus,
-    pub start_time: Option<Instant>,
-    pub current_result: Option<Arc<QueryResult>>,
+    status: QueryStatus,
+    start_time: Option<Instant>,
+    current_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
-    pub history_index: Option<usize>,
-    pub result_highlight_until: Option<Instant>,
+    history_index: Option<usize>,
+    result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
     /// (target_page, target_row, expected_delete_count)
-    pub pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
-    pub post_delete_row_selection: PostDeleteRowSelection,
+    pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
+    post_delete_row_selection: PostDeleteRowSelection,
 }
 
 impl QueryExecution {
+    // ── Status / timing ────────────────────────────────────────────
+
+    pub fn begin_running(&mut self, now: Instant) {
+        self.status = QueryStatus::Running;
+        self.start_time = Some(now);
+    }
+
+    pub fn mark_idle(&mut self) {
+        self.status = QueryStatus::Idle;
+        self.start_time = None;
+    }
+
+    pub fn status(&self) -> QueryStatus {
+        self.status
+    }
+
+    pub fn start_time(&self) -> Option<Instant> {
+        self.start_time
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.status == QueryStatus::Running
+    }
+
+    // ── Current result ──────────────────────────────────────────────
+
+    pub fn set_current_result(&mut self, result: Arc<QueryResult>) {
+        self.current_result = Some(result);
+    }
+
+    pub fn clear_current_result(&mut self) {
+        self.current_result = None;
+    }
+
+    pub fn current_result(&self) -> Option<&Arc<QueryResult>> {
+        self.current_result.as_ref()
+    }
+
+    // ── Result highlight ────────────────────────────────────────────
+
+    pub fn set_result_highlight(&mut self, until: Instant) {
+        self.result_highlight_until = Some(until);
+    }
+
+    pub fn clear_expired_highlight(&mut self, now: Instant) {
+        if let Some(until) = self.result_highlight_until
+            && now >= until
+        {
+            self.result_highlight_until = None;
+        }
+    }
+
+    pub fn result_highlight_until(&self) -> Option<Instant> {
+        self.result_highlight_until
+    }
+
+    // ── History navigation ──────────────────────────────────────────
+
+    pub fn enter_history(&mut self, idx: usize) {
+        self.history_index = Some(idx);
+    }
+
+    pub fn exit_history(&mut self) {
+        self.history_index = None;
+    }
+
+    pub fn history_index(&self) -> Option<usize> {
+        self.history_index
+    }
+
+    // ── Delete lifecycle ─────────────────────────────────────────────
+
+    pub fn set_delete_refresh_target(&mut self, page: usize, row: Option<usize>, count: usize) {
+        self.pending_delete_refresh_target = Some((page, row, count));
+    }
+
+    pub fn take_delete_refresh_target(&mut self) -> Option<(usize, Option<usize>, usize)> {
+        self.pending_delete_refresh_target.take()
+    }
+
+    pub fn clear_delete_refresh_target(&mut self) {
+        self.pending_delete_refresh_target = None;
+    }
+
+    pub fn pending_delete_refresh_target(&self) -> Option<(usize, Option<usize>, usize)> {
+        self.pending_delete_refresh_target
+    }
+
+    pub fn set_post_delete_selection(&mut self, sel: PostDeleteRowSelection) {
+        self.post_delete_row_selection = sel;
+    }
+
+    pub fn post_delete_row_selection(&self) -> PostDeleteRowSelection {
+        self.post_delete_row_selection
+    }
+
+    pub fn reset_delete_state(&mut self) {
+        self.pending_delete_refresh_target = None;
+        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
+    }
+
+    // ── Visible result ─────────────────────────────────────────────
+
     pub fn visible_result_kind(&self) -> VisibleResultKind {
         if let Some(i) = self.history_index {
             return VisibleResultKind::HistoryEntry(i);
@@ -350,10 +453,10 @@ mod tests {
     fn default_creates_idle_state() {
         let execution = QueryExecution::default();
 
-        assert_eq!(execution.status, QueryStatus::Idle);
-        assert!(execution.start_time.is_none());
-        assert!(execution.current_result.is_none());
-        assert!(execution.history_index.is_none());
+        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(execution.start_time().is_none());
+        assert!(execution.current_result().is_none());
+        assert!(execution.history_index().is_none());
     }
 
     #[test]

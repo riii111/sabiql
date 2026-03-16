@@ -145,9 +145,12 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
         self.is_reloading = false;
-        query.current_result = cache.query_result.clone();
+        match &cache.query_result {
+            Some(r) => query.set_current_result(r.clone()),
+            None => query.clear_current_result(),
+        }
         query.result_history = cache.result_history.clone();
-        query.history_index = None;
+        query.exit_history();
     }
 
     /// Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -164,9 +167,9 @@ impl BrowseSession {
         self.read_only = false;
         self.is_reloading = false;
         query.pagination.reset();
-        query.current_result = None;
+        query.clear_current_result();
         query.result_history = Default::default();
-        query.history_index = None;
+        query.exit_history();
     }
 
     // ── Getters ──────────────────────────────────────────────────────
@@ -498,9 +501,9 @@ mod tests {
             assert_eq!(new_session.current_table(), Some("public.users"));
             assert!(new_session.connection_state().is_connected());
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
-            assert!(query.current_result.is_some());
+            assert!(query.current_result().is_some());
             assert_eq!(query.result_history.len(), 1);
-            assert!(query.history_index.is_none());
+            assert!(query.history_index().is_none());
         }
 
         #[test]
@@ -565,18 +568,16 @@ mod tests {
             session.active_connection_name = Some("mydb".to_string());
             session.read_only = true;
             session.is_reloading = true;
-            let mut query = QueryExecution {
-                current_result: Some(make_query_result()),
-                pagination: PaginationState {
-                    current_page: 3,
-                    total_rows_estimate: Some(1000),
-                    reached_end: true,
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                },
-                ..Default::default()
+            let mut query = QueryExecution::default();
+            query.set_current_result(make_query_result());
+            query.pagination = PaginationState {
+                current_page: 3,
+                total_rows_estimate: Some(1000),
+                reached_end: true,
+                schema: "public".to_string(),
+                table: "users".to_string(),
             };
-            query.history_index = Some(2);
+            query.enter_history(2);
 
             session.reset(&mut query);
 
@@ -593,8 +594,8 @@ mod tests {
             assert!(!session.read_only);
             assert!(!session.is_reloading);
             assert_eq!(query.pagination.current_page, 0);
-            assert!(query.current_result.is_none());
-            assert!(query.history_index.is_none());
+            assert!(query.current_result().is_none());
+            assert!(query.history_index().is_none());
         }
     }
 

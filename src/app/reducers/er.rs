@@ -19,7 +19,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         }) => {
             state.er_preparation.status = ErStatus::Idle;
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
-            state.sql_modal.prefetch_started = false;
+            state.sql_modal.invalidate_prefetch();
             state.set_success(format!(
                 "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
                 path, table_count, total_tables
@@ -52,7 +52,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 return Some(vec![]);
             }
 
-            state.sql_modal.prefetch_started = false;
+            state.sql_modal.invalidate_prefetch();
             state.er_preparation.run_id += 1;
             state.er_preparation.status = ErStatus::Waiting;
             state.set_success("Checking for schema changes...".to_string());
@@ -252,12 +252,12 @@ mod tests {
         #[test]
         fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 
-            assert!(!state.sql_modal.prefetch_started);
+            assert!(!state.sql_modal.is_prefetch_started());
             assert_eq!(state.er_preparation.status, ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
@@ -297,7 +297,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now()).unwrap();
 

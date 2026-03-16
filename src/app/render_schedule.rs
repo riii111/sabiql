@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
-use crate::app::query_execution::QueryStatus;
 use crate::app::state::AppState;
 
 /// Interval for spinner animation updates (150ms for smooth animation at ~6.7 FPS)
@@ -38,7 +37,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(expires_at));
     }
 
-    if let Some(highlight_until) = state.query.result_highlight_until {
+    if let Some(highlight_until) = state.query.result_highlight_until() {
         earliest = min_instant(earliest, Some(highlight_until));
     }
 
@@ -60,7 +59,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
 
 /// Returns true if a spinner animation is currently active.
 fn has_active_spinner(state: &AppState) -> bool {
-    state.query.status == QueryStatus::Running || state.er_preparation.status == ErStatus::Waiting
+    state.query.is_running() || state.er_preparation.status == ErStatus::Waiting
 }
 
 /// Returns true if the current input mode has a blinking cursor.
@@ -106,8 +105,8 @@ mod tests {
         #[test]
         fn query_running_returns_spinner_interval() {
             let mut state = create_test_state();
-            state.query.status = QueryStatus::Running;
             let now = Instant::now();
+            state.query.begin_running(now);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -146,7 +145,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let highlight_until = now + Duration::from_millis(500);
-            state.query.result_highlight_until = Some(highlight_until);
+            state.query.set_result_highlight(highlight_until);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -196,8 +195,8 @@ mod tests {
         fn spinner_takes_priority_over_cursor_blink() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::SqlModal);
-            state.query.status = QueryStatus::Running;
             let now = Instant::now();
+            state.query.begin_running(now);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -209,8 +208,8 @@ mod tests {
         #[test]
         fn earlier_message_timeout_takes_priority() {
             let mut state = create_test_state();
-            state.query.status = QueryStatus::Running;
             let now = Instant::now();
+            state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
             state.messages.expires_at = Some(expires_at);
@@ -225,9 +224,11 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
 
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(now);
             state.messages.expires_at = Some(now + Duration::from_secs(2));
-            state.query.result_highlight_until = Some(now + Duration::from_millis(100));
+            state
+                .query
+                .set_result_highlight(now + Duration::from_millis(100));
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -261,7 +262,7 @@ mod tests {
         #[test]
         fn running_query_returns_true() {
             let mut state = create_test_state();
-            state.query.status = QueryStatus::Running;
+            state.query.begin_running(Instant::now());
 
             assert!(has_active_spinner(&state));
         }

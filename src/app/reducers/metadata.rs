@@ -101,7 +101,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         state
                             .session
                             .clear_table_selection(&mut state.query.pagination);
-                        state.query.current_result = None;
+                        state.query.clear_current_result();
                     }
                 }
             } else {
@@ -117,7 +117,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.session.is_reloading = false;
             }
 
-            if state.modal.active_mode() == InputMode::SqlModal && !state.sql_modal.prefetch_started
+            if state.modal.active_mode() == InputMode::SqlModal
+                && !state.sql_modal.is_prefetch_started()
             {
                 effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
             }
@@ -185,10 +186,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::ReloadMetadata => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.session.begin_reload();
-                state.sql_modal.prefetch_started = false;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.prefetching_tables.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+                state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
                 state.ui.er_selected_tables.clear();
                 state.ui.pending_er_picker = false;
@@ -207,12 +205,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::StartPrefetchAll => {
-            if !state.sql_modal.prefetch_started
+            if !state.sql_modal.is_prefetch_started()
                 && let Some(metadata) = state.session.metadata()
             {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+                state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -242,10 +238,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::StartPrefetchScoped { tables } => {
-            if !state.sql_modal.prefetch_started {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+            if !state.sql_modal.is_prefetch_started() {
+                state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -484,7 +478,7 @@ mod tests {
         #[test]
         fn backoff_table_requeued_at_tail_with_process_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             // Insert a recently failed entry (retry_count=1, just failed)
             state.sql_modal.failed_prefetch_tables.insert(
@@ -519,7 +513,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_gives_up_and_calls_on_table_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             state
                 .er_preparation
@@ -551,7 +545,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.fk_expanded = true;
             let qualified = "public.users".to_string();
@@ -590,7 +584,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.fk_expanded = true;
             let failed = "public.users".to_string();
@@ -632,7 +626,7 @@ mod tests {
         #[test]
         fn expired_backoff_proceeds_normally() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
             // Failed 10 seconds ago with retry_count=1 (backoff = 2s, already expired)
             state.sql_modal.failed_prefetch_tables.insert(
@@ -776,7 +770,7 @@ mod tests {
             );
 
             assert!(state.query.pagination.table.is_empty());
-            assert!(state.query.current_result.is_none());
+            assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.current_table().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
@@ -917,7 +911,7 @@ mod tests {
         #[test]
         fn second_call_while_running_is_ignored() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state
                 .er_preparation
                 .pending_tables
@@ -1058,7 +1052,7 @@ mod tests {
         fn phase2_table_retry_limit_triggers_completion() {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.sql_modal.prefetch_started = true;
+            state.sql_modal.begin_prefetch();
             state.er_preparation.status = ErStatus::Waiting;
             state.er_preparation.fk_expanded = true;
             let neighbor = "public.posts".to_string();
