@@ -187,7 +187,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
-            if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+            if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
                 ])])
@@ -215,7 +215,7 @@ pub fn reduce_sql_modal(
                         label,
                     };
                     // In read-only mode, block non-Immediate (write) queries
-                    if state.runtime.read_only
+                    if state.session.read_only
                         && !matches!(risk.confirmation, ConfirmationType::Immediate)
                     {
                         state.sql_modal.status = SqlModalStatus::Error;
@@ -306,11 +306,11 @@ pub fn reduce_sql_modal(
             if matched {
                 let query = state.sql_modal.content.trim().to_string();
                 state.sql_modal.status = SqlModalStatus::Running;
-                if let Some(dsn) = &state.runtime.dsn {
+                if let Some(dsn) = &state.session.dsn {
                     return Some(vec![Effect::ExecuteAdhoc {
                         dsn: dsn.clone(),
                         query,
-                        read_only: state.runtime.read_only,
+                        read_only: state.session.read_only,
                     }]);
                 }
             }
@@ -378,11 +378,11 @@ fn multi_statement_label(sql: &str) -> &'static str {
 }
 
 fn adhoc_effects(state: &AppState, query: String) -> Vec<Effect> {
-    match &state.runtime.dsn {
+    match &state.session.dsn {
         Some(dsn) => vec![Effect::ExecuteAdhoc {
             dsn: dsn.clone(),
             query,
-            read_only: state.runtime.read_only,
+            read_only: state.session.read_only,
         }],
         None => vec![],
     }
@@ -633,7 +633,7 @@ mod tests {
         #[test]
         fn high_risk_confirm_executes_on_match() {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
-            state.runtime.dsn = Some("postgres://test".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -794,7 +794,7 @@ mod tests {
             let full_name = "my_schema.very_long_table_name";
             let mut state =
                 confirming_high_state(&format!("DROP TABLE {}", full_name), Some(full_name));
-            state.runtime.dsn = Some("postgres://test".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
             for c in full_name.chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -825,8 +825,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.runtime.read_only = true;
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.read_only = true;
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
@@ -847,8 +847,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = "SELECT 1".to_string();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
-            state.runtime.read_only = true;
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.read_only = true;
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
@@ -866,7 +866,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.content = query.to_string();
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
         }
 

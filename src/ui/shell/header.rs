@@ -11,13 +11,13 @@ pub struct Header;
 
 impl Header {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
-        let db_name = state.runtime.database_name.as_deref().unwrap_or("-");
-        let table = state.cache.current_table.as_deref().unwrap_or("-");
+        let db_name = state.session.database_name().unwrap_or("-");
+        let table = state.session.current_table().unwrap_or("-");
 
-        let (status_text, status_color) = if state.runtime.dsn.is_none() {
+        let (status_text, status_color) = if state.session.dsn.is_none() {
             ("no dsn", Color::Red)
         } else {
-            match &state.cache.state {
+            match &state.session.metadata_state() {
                 MetadataState::Loaded => ("connected", Color::Green),
                 MetadataState::Loading => ("loading...", Color::Yellow),
                 MetadataState::Error(_) => ("error", Color::Red),
@@ -26,7 +26,7 @@ impl Header {
         };
 
         let connection_name = state
-            .runtime
+            .session
             .active_connection_name
             .as_deref()
             .unwrap_or("-");
@@ -45,7 +45,7 @@ impl Header {
             Span::styled(" | ", Style::default().fg(Color::DarkGray)),
             Span::styled(connection_name, Style::default().fg(Color::Gray)),
         ]);
-        if state.runtime.read_only {
+        if state.session.read_only {
             line.push_span(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
             line.push_span(Span::styled(
                 "READ-ONLY",

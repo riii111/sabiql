@@ -20,7 +20,7 @@ pub fn test_instant() -> Instant {
 pub fn create_test_state() -> AppState {
     let mut state = AppState::new("test_project".to_string());
     // Set a default connection name for consistent test snapshots
-    state.runtime.active_connection_name = Some("localhost:5432/test".to_string());
+    state.session.active_connection_name = Some("localhost:5432/test".to_string());
     state
 }
 

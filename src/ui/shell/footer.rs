@@ -153,7 +153,7 @@ impl Footer {
                     if state.connection_error.error_info.is_some() {
                         list.push(OVERLAY_KEYS[idx::overlay::ERROR_OPEN].as_hint());
                     }
-                    if state.runtime.read_only {
+                    if state.session.read_only {
                         list.push(GLOBAL_KEYS[idx::global::EXIT_READ_ONLY].as_hint());
                     } else {
                         list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
@@ -245,7 +245,7 @@ impl Footer {
                 CONNECTION_SETUP_KEYS[idx::conn_setup::ESC_CANCEL].as_hint(),
             ],
             InputMode::ConnectionError => {
-                let first = if state.runtime.is_service_connection() {
+                let first = if state.session.is_service_connection() {
                     CONNECTION_ERROR_ROWS[idx::conn_error::RETRY].as_hint()
                 } else {
                     CONNECTION_ERROR_ROWS[idx::conn_error::EDIT].as_hint()

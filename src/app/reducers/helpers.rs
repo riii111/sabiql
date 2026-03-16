@@ -35,9 +35,8 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
     }
 
     let table_detail = state
-        .cache
-        .table_detail
-        .as_ref()
+        .session
+        .table_detail()
         .ok_or_else(|| "Table metadata not loaded".to_string())?;
 
     if table_detail.schema != state.query.pagination.schema
@@ -63,7 +62,7 @@ pub fn build_bulk_delete_preview(
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err("No rows staged for deletion".to_string());
     }
-    if state.runtime.dsn.is_none() {
+    if state.session.dsn.is_none() {
         return Err("No active connection".to_string());
     }
     if state.query.status != crate::app::query_execution::QueryStatus::Idle {
