@@ -222,74 +222,26 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::SelectFirst => {
-            match state.modal.active_mode() {
-                InputMode::TablePicker | InputMode::CommandPalette => {
-                    state.ui.reset_picker_selection();
-                }
-                InputMode::ErTablePicker => {
-                    state.ui.reset_er_picker_selection();
-                }
-                InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty()
-                    {
-                        state.ui.set_explorer_selection(Some(0));
-                    }
-                }
-                _ => {}
+            if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
+                state.ui.set_explorer_selection(Some(0));
             }
             Some(vec![])
         }
         Action::SelectLast => {
-            match state.modal.active_mode() {
-                InputMode::TablePicker => {
-                    let max = state.filtered_tables().len().saturating_sub(1);
-                    state.ui.set_picker_selection(max);
+            if state.ui.focused_pane == FocusedPane::Explorer {
+                let len = state.tables().len();
+                if len > 0 {
+                    state.ui.set_explorer_selection(Some(len - 1));
                 }
-                InputMode::ErTablePicker => {
-                    let max = state.er_filtered_tables().len().saturating_sub(1);
-                    state.ui.set_er_picker_selection(max);
-                }
-                InputMode::CommandPalette => {
-                    state.ui.set_picker_selection(palette_command_count() - 1);
-                }
-                InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
-                        let len = state.tables().len();
-                        if len > 0 {
-                            state.ui.set_explorer_selection(Some(len - 1));
-                        }
-                    }
-                }
-                _ => {}
             }
             Some(vec![])
         }
         Action::SelectMiddle => {
-            match state.modal.active_mode() {
-                InputMode::TablePicker => {
-                    let len = state.filtered_tables().len();
-                    if len > 0 {
-                        state.ui.set_picker_selection(len / 2);
-                    }
+            if state.ui.focused_pane == FocusedPane::Explorer {
+                let len = explorer_item_count(state);
+                if len > 0 {
+                    state.ui.set_explorer_selection(Some(len / 2));
                 }
-                InputMode::ErTablePicker => {
-                    let len = state.er_filtered_tables().len();
-                    if len > 0 {
-                        state.ui.set_er_picker_selection(len / 2);
-                    }
-                }
-                InputMode::CommandPalette => {
-                    state.ui.set_picker_selection(palette_command_count() / 2);
-                }
-                InputMode::Normal => {
-                    if state.ui.focused_pane == FocusedPane::Explorer {
-                        let len = explorer_item_count(state);
-                        if len > 0 {
-                            state.ui.set_explorer_selection(Some(len / 2));
-                        }
-                    }
-                }
-                _ => {}
             }
             Some(vec![])
         }
