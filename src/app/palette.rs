@@ -1,6 +1,11 @@
 use super::action::Action;
 use super::keybindings::{GLOBAL_KEYS, KeyBinding, idx};
 
+// - PALETTE: opening the palette from inside itself makes no sense
+// - COMMAND_LINE: command-line mode is a separate entry mechanism
+// - EXIT_FOCUS: duplicate of FOCUS (same key, context-dependent label)
+// - PANE_SWITCH: Action::None — not executable
+// - INSPECTOR_TABS: Action::None — not executable
 const EXCLUDED_GLOBAL_INDICES: &[usize] = &[
     idx::global::PALETTE,
     idx::global::COMMAND_LINE,

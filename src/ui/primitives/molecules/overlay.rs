@@ -12,6 +12,8 @@ pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect 
     area
 }
 
+// Uses DIM + dark foreground to suppress background borders
+// that would otherwise appear adjacent to modal borders.
 pub fn render_scrim(frame: &mut Frame) {
     let buf = frame.buffer_mut();
     let area = buf.area;
