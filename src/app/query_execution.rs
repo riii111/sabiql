@@ -77,8 +77,8 @@ pub struct QueryExecution {
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
     /// (target_page, target_row, expected_delete_count)
-    pub pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
-    pub post_delete_row_selection: PostDeleteRowSelection,
+    pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
+    post_delete_row_selection: PostDeleteRowSelection,
 }
 
 impl QueryExecution {
@@ -150,6 +150,37 @@ impl QueryExecution {
 
     pub fn history_index(&self) -> Option<usize> {
         self.history_index
+    }
+
+    // ── Delete lifecycle ─────────────────────────────────────────────
+
+    pub fn set_delete_refresh_target(&mut self, page: usize, row: Option<usize>, count: usize) {
+        self.pending_delete_refresh_target = Some((page, row, count));
+    }
+
+    pub fn take_delete_refresh_target(&mut self) -> Option<(usize, Option<usize>, usize)> {
+        self.pending_delete_refresh_target.take()
+    }
+
+    pub fn clear_delete_refresh_target(&mut self) {
+        self.pending_delete_refresh_target = None;
+    }
+
+    pub fn pending_delete_refresh_target(&self) -> Option<(usize, Option<usize>, usize)> {
+        self.pending_delete_refresh_target
+    }
+
+    pub fn set_post_delete_selection(&mut self, sel: PostDeleteRowSelection) {
+        self.post_delete_row_selection = sel;
+    }
+
+    pub fn post_delete_row_selection(&self) -> PostDeleteRowSelection {
+        self.post_delete_row_selection
+    }
+
+    pub fn reset_delete_state(&mut self) {
+        self.pending_delete_refresh_target = None;
+        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
     }
 
     // ── Visible result ─────────────────────────────────────────────

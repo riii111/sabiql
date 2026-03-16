@@ -247,7 +247,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
                 Some(ConfirmIntent::ExecuteWrite { blocked: true, .. }) => {
                     state.result_interaction.clear_write_preview();
-                    state.query.pending_delete_refresh_target = None;
+                    state.query.clear_delete_refresh_target();
                     Some(vec![])
                 }
                 Some(ConfirmIntent::ExecuteWrite {
@@ -263,7 +263,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
-                        state.query.pending_delete_refresh_target = None;
+                        state.query.clear_delete_refresh_target();
                         state
                             .messages
                             .set_error_at("No active connection".to_string(), now);
@@ -297,7 +297,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         Action::ConfirmDialogCancel => {
             let intent = state.confirm_dialog.intent.take();
             state.result_interaction.clear_write_preview();
-            state.query.pending_delete_refresh_target = None;
+            state.query.clear_delete_refresh_target();
 
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
@@ -445,7 +445,7 @@ mod tests {
                     },
                 },
             );
-            state.query.pending_delete_refresh_target = Some((0, None, 1));
+            state.query.set_delete_refresh_target(0, None, 1);
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE t SET x=1".to_string(),
                 blocked: true,
@@ -454,7 +454,7 @@ mod tests {
             reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
 
             assert!(state.result_interaction.pending_write_preview().is_none());
-            assert!(state.query.pending_delete_refresh_target.is_none());
+            assert!(state.query.pending_delete_refresh_target().is_none());
         }
 
         #[test]

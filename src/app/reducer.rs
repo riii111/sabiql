@@ -1359,7 +1359,7 @@ mod tests {
                     target_summary: None,
                 },
             });
-            state.query.pending_delete_refresh_target = Some((0, Some(499), 1));
+            state.query.set_delete_refresh_target(0, Some(499), 1);
             state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
                 sql: delete_sql,
                 blocked: false,
@@ -1375,7 +1375,7 @@ mod tests {
 
             // Preview must survive confirm for ExecuteWriteSucceeded to detect Delete
             assert!(state.result_interaction.pending_write_preview().is_some());
-            assert!(state.query.pending_delete_refresh_target.is_some());
+            assert!(state.query.pending_delete_refresh_target().is_some());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
 

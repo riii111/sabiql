@@ -225,7 +225,7 @@ pub fn reduce_query(
                 }
 
                 if result.source == QuerySource::Preview {
-                    match state.query.post_delete_row_selection {
+                    match state.query.post_delete_row_selection() {
                         PostDeleteRowSelection::Keep => {}
                         PostDeleteRowSelection::Clear => {
                             state.result_interaction.exit_row_to_scroll();
@@ -242,7 +242,9 @@ pub fn reduce_query(
                             }
                         }
                     }
-                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
+                    state
+                        .query
+                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
                 }
 
                 Some(try_adhoc_refresh(state, result))
@@ -256,8 +258,10 @@ pub fn reduce_query(
                 let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
                 if !is_adhoc {
                     state.result_interaction.reset_view();
-                    state.query.post_delete_row_selection = PostDeleteRowSelection::Keep;
-                    state.query.pending_delete_refresh_target = None;
+                    state
+                        .query
+                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
+                    state.query.clear_delete_refresh_target();
                 }
                 state.set_error(error.clone());
                 if is_adhoc {
@@ -364,8 +368,11 @@ pub fn reduce_query(
                 match build_bulk_delete_preview(state, services) {
                     Ok((preview, target_page, target_row)) => {
                         let staged_count = state.result_interaction.staged_delete_rows().len();
-                        state.query.pending_delete_refresh_target =
-                            Some((target_page, target_row, staged_count));
+                        state.query.set_delete_refresh_target(
+                            target_page,
+                            target_row,
+                            staged_count,
+                        );
                         return Some(vec![Effect::DispatchActions(vec![
                             Action::OpenWritePreviewConfirm(Box::new(preview)),
                         ])]);
@@ -416,15 +423,14 @@ pub fn reduce_query(
             let operation = preview.operation;
             let title = match operation {
                 WriteOperation::Update => {
-                    state.query.pending_delete_refresh_target = None;
+                    state.query.clear_delete_refresh_target();
                     format!("Confirm UPDATE: {}", preview.target_summary.table)
                 }
                 WriteOperation::Delete => {
                     let n = state
                         .query
-                        .pending_delete_refresh_target
-                        .as_ref()
-                        .map(|(_, _, count)| *count)
+                        .pending_delete_refresh_target()
+                        .map(|(_, _, count)| count)
                         .unwrap_or(1);
                     format!(
                         "Confirm DELETE: {} {} from {}",
@@ -521,8 +527,7 @@ pub fn reduce_query(
                 WriteOperation::Delete => {
                     let (target_page, target_row, expected) = state
                         .query
-                        .pending_delete_refresh_target
-                        .take()
+                        .take_delete_refresh_target()
                         .unwrap_or((state.query.pagination.current_page, None, 1));
 
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
@@ -547,9 +552,11 @@ pub fn reduce_query(
                     state.result_interaction.clear_staged_deletes();
                     state.modal.set_mode(InputMode::Normal);
 
-                    state.query.post_delete_row_selection = target_row
-                        .map(PostDeleteRowSelection::Select)
-                        .unwrap_or(PostDeleteRowSelection::Clear);
+                    state.query.set_post_delete_selection(
+                        target_row
+                            .map(PostDeleteRowSelection::Select)
+                            .unwrap_or(PostDeleteRowSelection::Clear),
+                    );
 
                     if let Some(dsn) = &state.session.dsn {
                         state.query.begin_running(now);
@@ -579,7 +586,7 @@ pub fn reduce_query(
                 .map(|p| p.operation)
                 .unwrap_or(WriteOperation::Update);
             state.result_interaction.clear_write_preview();
-            state.query.pending_delete_refresh_target = None;
+            state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.clone(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
@@ -1694,7 +1701,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
-            state.query.pending_delete_refresh_target = Some((1, Some(499), 1));
+            state.query.set_delete_refresh_target(1, Some(499), 1);
             state.result_interaction.set_write_preview(delete_preview());
 
             let effects = reduce_query(
@@ -1707,7 +1714,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Select(499)
             );
             assert_eq!(
@@ -1773,7 +1780,9 @@ mod tests {
         fn query_completed_restores_pending_row_selection() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
-            state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(1000));
 
             reduce_query(
                 &mut state,
@@ -1788,7 +1797,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
         }
@@ -1798,7 +1807,9 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.result_interaction.enter_row(0);
-            state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Clear);
 
             reduce_query(
                 &mut state,
@@ -1813,7 +1824,7 @@ mod tests {
 
             assert_eq!(state.result_interaction.selection().row(), None);
             assert_eq!(
-                state.query.post_delete_row_selection,
+                state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
         }
