@@ -249,11 +249,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionSetupCancel => {
             if state.connection_setup.is_first_run {
-                state.confirm_dialog.title = "Confirm".to_string();
-                state.confirm_dialog.message =
-                    "No connection configured.\nAre you sure you want to quit?".to_string();
-                state.confirm_dialog.intent =
-                    Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
+                state.confirm_dialog.open(
+                    "Confirm",
+                    "No connection configured.\nAre you sure you want to quit?",
+                    crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection,
+                );
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {

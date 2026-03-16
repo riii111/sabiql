@@ -437,9 +437,9 @@ pub fn reduce_query(
                 }
             };
 
-            state.confirm_dialog.title = title;
-            state.confirm_dialog.message = build_write_preview_fallback_message(preview);
-            state.confirm_dialog.intent = Some(
+            state.confirm_dialog.open(
+                title,
+                build_write_preview_fallback_message(preview),
                 crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                     sql: preview.sql.clone(),
                     blocked: preview.guardrail.blocked,
@@ -649,14 +649,15 @@ pub fn reduce_query(
                     Some(n) => format!("Export {} rows to CSV? This may take a while.", n),
                     None => "Row count unknown. Export to CSV?".to_string(),
                 };
-                state.confirm_dialog.title = "Confirm CSV Export".to_string();
-                state.confirm_dialog.message = msg;
-                state.confirm_dialog.intent =
-                    Some(crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
+                state.confirm_dialog.open(
+                    "Confirm CSV Export",
+                    msg,
+                    crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
-                    });
+                    },
+                );
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {

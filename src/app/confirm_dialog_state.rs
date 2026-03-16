@@ -24,6 +24,19 @@ pub struct ConfirmDialogState {
     pub intent: Option<ConfirmIntent>,
 }
 
+impl ConfirmDialogState {
+    pub fn open(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+        intent: ConfirmIntent,
+    ) {
+        self.title = title.into();
+        self.message = message.into();
+        self.intent = Some(intent);
+    }
+}
+
 impl Default for ConfirmDialogState {
     fn default() -> Self {
         Self {

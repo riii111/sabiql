@@ -922,11 +922,11 @@ mod connection_management {
 
         let connection_id = ConnectionId::new();
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Delete Connection".to_string();
-        state.confirm_dialog.message =
-            "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id));
+        state.confirm_dialog.open(
+            "Delete Connection",
+            "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id),
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -940,11 +940,11 @@ mod connection_management {
 
         let target_id = ConnectionId::new();
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Delete Connection".to_string();
-        state.confirm_dialog.message =
-            "Delete \"Staging\"?\n\nThis action cannot be undone.".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id));
+        state.confirm_dialog.open(
+            "Delete Connection",
+            "Delete \"Staging\"?\n\nThis action cannot be undone.",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id),
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -961,11 +961,11 @@ mod confirm_dialogs {
         let mut terminal = create_test_terminal();
 
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm".to_string();
-        state.confirm_dialog.message =
-            "No connection configured.\nAre you sure you want to quit?".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection);
+        state.confirm_dialog.open(
+            "Confirm",
+            "No connection configured.\nAre you sure you want to quit?",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection,
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -985,14 +985,14 @@ mod confirm_dialogs {
             .session
             .set_table_detail(fixtures::sample_table_detail(), 0);
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
-        state.confirm_dialog.message =
-            "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string();
-        state.confirm_dialog.intent =
-            Some(sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+        state.confirm_dialog.open(
+            "Confirm UPDATE: users",
+            "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';",
+            sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql: "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string(),
                 blocked: false,
-            });
+            },
+        );
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -1036,10 +1036,9 @@ mod confirm_dialogs {
             },
         });
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm UPDATE: users".to_string();
-        state.confirm_dialog.message =
-            "email: \"bob@example.com\" -> \"new@example.com\"".to_string();
-        state.confirm_dialog.intent = Some(
+        state.confirm_dialog.open(
+            "Confirm UPDATE: users",
+            "email: \"bob@example.com\" -> \"new@example.com\"",
             sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql,
                 blocked: false,
@@ -1082,9 +1081,9 @@ mod confirm_dialogs {
             },
         });
         state.modal.set_mode(InputMode::ConfirmDialog);
-        state.confirm_dialog.title = "Confirm DELETE: users".to_string();
-        state.confirm_dialog.message = String::new();
-        state.confirm_dialog.intent = Some(
+        state.confirm_dialog.open(
+            "Confirm DELETE: users",
+            "",
             sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                 sql,
                 blocked: false,
