@@ -101,7 +101,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         state
                             .session
                             .clear_table_selection(&mut state.query.pagination);
-                        state.query.current_result = None;
+                        state.query.clear_current_result();
                     }
                 }
             } else {
@@ -776,7 +776,7 @@ mod tests {
             );
 
             assert!(state.query.pagination.table.is_empty());
-            assert!(state.query.current_result.is_none());
+            assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert!(state.session.current_table().is_none());
             assert_eq!(state.ui.explorer_selected, 0);

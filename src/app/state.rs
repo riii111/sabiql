@@ -102,11 +102,7 @@ impl AppState {
     /// Clear all expired timers (messages, highlight, etc.)
     pub fn clear_expired_timers(&mut self, now: std::time::Instant) {
         self.messages.clear_expired();
-        if let Some(until) = self.query.result_highlight_until
-            && now >= until
-        {
-            self.query.result_highlight_until = None;
-        }
+        self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
     }
 

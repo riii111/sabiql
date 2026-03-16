@@ -22,8 +22,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
 
     let result = state
         .query
-        .current_result
-        .as_ref()
+        .current_result()
         .map(|r| r.as_ref())
         .ok_or_else(|| "No result to edit".to_string())?;
     if result.source != QuerySource::Preview || result.is_error() {

@@ -138,7 +138,7 @@ mod tests {
 
         pub(super) fn preview_state_with_selection() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.query.current_result = Some(Arc::new(QueryResult {
+            state.query.set_current_result(Arc::new(QueryResult {
                 query: String::new(),
                 columns: vec!["id".to_string(), "name".to_string()],
                 rows: vec![vec!["1".to_string(), "alice".to_string()]],

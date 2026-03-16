@@ -6,8 +6,7 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state
         .query
-        .current_result
-        .as_ref()
+        .current_result()
         .map(|r| r.rows.len())
         .unwrap_or(0)
 }
@@ -15,8 +14,7 @@ pub(super) fn result_row_count(state: &AppState) -> usize {
 pub(super) fn result_col_count(state: &AppState) -> usize {
     state
         .query
-        .current_result
-        .as_ref()
+        .current_result()
         .map(|r| r.columns.len())
         .unwrap_or(0)
 }
@@ -187,17 +185,19 @@ mod tests {
             state.ui.result_pane_height = pane_height;
             let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
             let row_count = result_rows.len();
-            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
-                query: String::new(),
-                columns: vec!["id".to_string()],
-                rows: result_rows,
-                row_count,
-                execution_time_ms: 1,
-                executed_at: std::time::Instant::now(),
-                source: crate::domain::QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(crate::domain::QueryResult {
+                    query: String::new(),
+                    columns: vec!["id".to_string()],
+                    rows: result_rows,
+                    row_count,
+                    execution_time_ms: 1,
+                    executed_at: std::time::Instant::now(),
+                    source: crate::domain::QuerySource::Preview,
+                    error: None,
+                    command_tag: None,
+                }));
             state
         }
 

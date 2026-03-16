@@ -313,7 +313,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted
-            state.query.history_index = Some(2);
+            state.query.enter_history(2);
             state.query.pagination.current_page = 3;
             state.result_interaction.enter_row(5);
             state.result_interaction.scroll_offset = 10;
@@ -326,7 +326,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.query.history_index.is_none());
+            assert!(state.query.history_index().is_none());
             assert_eq!(state.query.pagination.current_page, 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),

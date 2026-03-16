@@ -71,10 +71,10 @@ pub enum PostDeleteRowSelection {
 pub struct QueryExecution {
     status: QueryStatus,
     start_time: Option<Instant>,
-    pub current_result: Option<Arc<QueryResult>>,
+    current_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
-    pub history_index: Option<usize>,
-    pub result_highlight_until: Option<Instant>,
+    history_index: Option<usize>,
+    result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
     /// (target_page, target_row, expected_delete_count)
     pub pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
@@ -104,6 +104,52 @@ impl QueryExecution {
 
     pub fn is_running(&self) -> bool {
         self.status == QueryStatus::Running
+    }
+
+    // ── Current result ──────────────────────────────────────────────
+
+    pub fn set_current_result(&mut self, result: Arc<QueryResult>) {
+        self.current_result = Some(result);
+    }
+
+    pub fn clear_current_result(&mut self) {
+        self.current_result = None;
+    }
+
+    pub fn current_result(&self) -> Option<&Arc<QueryResult>> {
+        self.current_result.as_ref()
+    }
+
+    // ── Result highlight ────────────────────────────────────────────
+
+    pub fn set_result_highlight(&mut self, until: Instant) {
+        self.result_highlight_until = Some(until);
+    }
+
+    pub fn clear_expired_highlight(&mut self, now: Instant) {
+        if let Some(until) = self.result_highlight_until
+            && now >= until
+        {
+            self.result_highlight_until = None;
+        }
+    }
+
+    pub fn result_highlight_until(&self) -> Option<Instant> {
+        self.result_highlight_until
+    }
+
+    // ── History navigation ──────────────────────────────────────────
+
+    pub fn enter_history(&mut self, idx: usize) {
+        self.history_index = Some(idx);
+    }
+
+    pub fn exit_history(&mut self) {
+        self.history_index = None;
+    }
+
+    pub fn history_index(&self) -> Option<usize> {
+        self.history_index
     }
 
     // ── Visible result ─────────────────────────────────────────────

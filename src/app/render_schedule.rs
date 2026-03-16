@@ -37,7 +37,7 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
         earliest = min_instant(earliest, Some(expires_at));
     }
 
-    if let Some(highlight_until) = state.query.result_highlight_until {
+    if let Some(highlight_until) = state.query.result_highlight_until() {
         earliest = min_instant(earliest, Some(highlight_until));
     }
 
@@ -145,7 +145,7 @@ mod tests {
             let mut state = create_test_state();
             let now = Instant::now();
             let highlight_until = now + Duration::from_millis(500);
-            state.query.result_highlight_until = Some(highlight_until);
+            state.query.set_result_highlight(highlight_until);
 
             let deadline = next_animation_deadline(&state, now);
 
@@ -226,7 +226,9 @@ mod tests {
 
             state.query.begin_running(now);
             state.messages.expires_at = Some(now + Duration::from_secs(2));
-            state.query.result_highlight_until = Some(now + Duration::from_millis(100));
+            state
+                .query
+                .set_result_highlight(now + Duration::from_millis(100));
 
             let deadline = next_animation_deadline(&state, now);
 

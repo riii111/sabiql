@@ -189,8 +189,10 @@ pub fn reduce_query(
                 let is_adhoc_error = result.source == QuerySource::Adhoc && result.is_error();
                 if !is_adhoc_error {
                     state.result_interaction.reset_view();
-                    state.query.result_highlight_until = Some(now + Duration::from_millis(500));
-                    state.query.history_index = None;
+                    state
+                        .query
+                        .set_result_highlight(now + Duration::from_millis(500));
+                    state.query.exit_history();
                 }
 
                 if result.source == QuerySource::Adhoc {
@@ -219,7 +221,7 @@ pub fn reduce_query(
                 }
 
                 if !result.is_error() || result.source != QuerySource::Adhoc {
-                    state.query.current_result = Some(Arc::clone(result));
+                    state.query.set_current_result(Arc::clone(result));
                 }
 
                 if result.source == QuerySource::Preview {
@@ -952,7 +954,9 @@ mod tests {
         #[test]
         fn emits_effect_with_correct_offset() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 0,
                 total_rows_estimate: Some(1500),
@@ -987,7 +991,7 @@ mod tests {
         #[test]
         fn noop_when_reached_end() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(100));
+            state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
             let now = Instant::now();
 
@@ -1005,7 +1009,7 @@ mod tests {
         #[test]
         fn noop_for_adhoc() {
             let mut state = create_test_state();
-            state.query.current_result = Some(adhoc_result());
+            state.query.set_current_result(adhoc_result());
             let now = Instant::now();
 
             let effects = reduce_query(
@@ -1022,7 +1026,9 @@ mod tests {
         #[test]
         fn noop_when_running() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.begin_running(Instant::now());
             let now = Instant::now();
 
@@ -1040,7 +1046,7 @@ mod tests {
         #[test]
         fn noop_preserves_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(100));
+            state.query.set_current_result(preview_result(100));
             state.query.pagination.reached_end = true;
             state.result_interaction.enter_row(2);
             state.result_interaction.stage_row(2);
@@ -1059,7 +1065,9 @@ mod tests {
         #[test]
         fn transition_resets_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 0,
                 total_rows_estimate: Some(1500),
@@ -1088,7 +1096,9 @@ mod tests {
         #[test]
         fn emits_effect_with_correct_offset() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination = PaginationState {
                 current_page: 2,
                 total_rows_estimate: Some(1500),
@@ -1123,7 +1133,9 @@ mod tests {
         #[test]
         fn noop_on_first_page() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
             let now = Instant::now();
 
@@ -1141,7 +1153,9 @@ mod tests {
         #[test]
         fn noop_preserves_view_state() {
             let mut state = create_test_state();
-            state.query.current_result = Some(preview_result(PREVIEW_PAGE_SIZE));
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
             state.query.pagination.current_page = 0;
             state.result_interaction.enter_row(1);
             state.result_interaction.stage_row(1);
@@ -1285,10 +1299,10 @@ mod tests {
             assert_eq!(state.query.result_history.len(), 1);
             // history_index must stay None — setting it would trigger
             // the history-browsing footer mode and break pane switching
-            assert_eq!(state.query.history_index, None);
-            assert!(state.query.current_result.is_some());
+            assert_eq!(state.query.history_index(), None);
+            assert!(state.query.current_result().is_some());
             assert_eq!(
-                state.query.current_result.as_ref().unwrap().source,
+                state.query.current_result().unwrap().source,
                 QuerySource::Adhoc,
             );
             // View state must be fully reset so the new result is visible from the top
@@ -1302,7 +1316,7 @@ mod tests {
         fn adhoc_error_preserves_current_result_and_view_state() {
             let mut state = create_test_state();
             // Set a pre-existing preview result with scroll state
-            state.query.current_result = Some(preview_result(5));
+            state.query.set_current_result(preview_result(5));
             state.result_interaction.scroll_offset = 20;
             state.result_interaction.horizontal_offset = 5;
             state.result_interaction.enter_row(3);
@@ -1320,10 +1334,10 @@ mod tests {
             );
 
             assert!(state.query.result_history.is_empty());
-            assert_eq!(state.query.history_index, None);
+            assert_eq!(state.query.history_index(), None);
             // Previous preview result and view state must be preserved
             assert_eq!(
-                state.query.current_result.as_ref().unwrap().source,
+                state.query.current_result().unwrap().source,
                 QuerySource::Preview,
             );
             assert_eq!(state.result_interaction.scroll_offset, 20);
@@ -1336,7 +1350,7 @@ mod tests {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
             state.query.result_history.push(adhoc_result());
-            state.query.history_index = Some(0);
+            state.query.enter_history(0);
 
             reduce_query(
                 &mut state,
@@ -1349,8 +1363,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.history_index, None);
-            assert!(state.query.current_result.is_some());
+            assert_eq!(state.query.history_index(), None);
+            assert!(state.query.current_result().is_some());
         }
     }
 
@@ -1430,7 +1444,7 @@ mod tests {
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.query.current_result = Some(editable_preview_result());
+            state.query.set_current_result(editable_preview_result());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));
@@ -1817,7 +1831,7 @@ mod tests {
         #[test]
         fn request_with_preview_result_emits_count_effect() {
             let mut state = export_test_state();
-            state.query.current_result = Some(preview_result(10));
+            state.query.set_current_result(preview_result(10));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
             state.query.pagination.total_rows_estimate = Some(100);
@@ -1848,7 +1862,7 @@ mod tests {
         #[test]
         fn request_with_adhoc_result_uses_original_query() {
             let mut state = create_test_state();
-            state.query.current_result = Some(adhoc_result());
+            state.query.set_current_result(adhoc_result());
 
             let effects = reduce_query(
                 &mut state,
@@ -1875,7 +1889,7 @@ mod tests {
         #[test]
         fn request_without_result_is_noop() {
             let mut state = create_test_state();
-            state.query.current_result = None;
+            state.query.clear_current_result();
 
             let effects = reduce_query(
                 &mut state,
@@ -2004,7 +2018,7 @@ mod tests {
         #[test]
         fn request_with_error_result_is_noop() {
             let mut state = create_test_state();
-            state.query.current_result = Some(Arc::new(QueryResult::error(
+            state.query.set_current_result(Arc::new(QueryResult::error(
                 "SELECT 1".to_string(),
                 "error".to_string(),
                 10,
@@ -2275,7 +2289,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            let stored = state.query.current_result.as_ref().unwrap();
+            let stored = state.query.current_result().unwrap();
             assert_eq!(stored.source, QuerySource::Preview);
             assert_eq!(stored.row_count, 5);
         }
@@ -2326,7 +2340,7 @@ mod tests {
         #[test]
         fn ddl_drop_then_metadata_loaded_without_table_clears_selection() {
             let mut state = state_with_table("public", "users");
-            state.query.current_result = Some(preview_result(3));
+            state.query.set_current_result(preview_result(3));
 
             // Step 1: DROP TABLE
             let effects = reduce_query(
@@ -2356,7 +2370,7 @@ mod tests {
             );
 
             assert!(state.query.pagination.table.is_empty());
-            assert!(state.query.current_result.is_none());
+            assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
         }

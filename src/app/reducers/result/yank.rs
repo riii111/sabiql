@@ -21,8 +21,7 @@ pub fn reduce(
             ) {
                 let content = state
                     .query
-                    .current_result
-                    .as_ref()
+                    .current_result()
                     .and_then(|r| r.rows.get(row_idx))
                     .and_then(|row| row.get(col_idx))
                     .cloned();
@@ -71,8 +70,7 @@ pub fn reduce(
             if let Some(row_idx) = state.result_interaction.selection().row() {
                 let content = state
                     .query
-                    .current_result
-                    .as_ref()
+                    .current_result()
                     .and_then(|r| r.rows.get(row_idx))
                     .map(|row| {
                         row.iter()
@@ -134,17 +132,19 @@ mod tests {
                 .map(|r| (0..cols).map(|c| format!("r{}c{}", r, c)).collect())
                 .collect();
             let row_count = result_rows.len();
-            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
-                query: String::new(),
-                columns,
-                rows: result_rows,
-                row_count,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: crate::domain::QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(crate::domain::QueryResult {
+                    query: String::new(),
+                    columns,
+                    rows: result_rows,
+                    row_count,
+                    execution_time_ms: 1,
+                    executed_at: Instant::now(),
+                    source: crate::domain::QuerySource::Preview,
+                    error: None,
+                    command_tag: None,
+                }));
             state
         }
 
@@ -231,17 +231,19 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{}", c)).collect();
             let rows = vec![values.iter().map(|v| v.to_string()).collect()];
-            state.query.current_result = Some(Arc::new(crate::domain::QueryResult {
-                query: String::new(),
-                columns,
-                rows,
-                row_count: 1,
-                execution_time_ms: 1,
-                executed_at: Instant::now(),
-                source: crate::domain::QuerySource::Preview,
-                error: None,
-                command_tag: None,
-            }));
+            state
+                .query
+                .set_current_result(Arc::new(crate::domain::QueryResult {
+                    query: String::new(),
+                    columns,
+                    rows,
+                    row_count: 1,
+                    execution_time_ms: 1,
+                    executed_at: Instant::now(),
+                    source: crate::domain::QuerySource::Preview,
+                    error: None,
+                    command_tag: None,
+                }));
             state
         }
 

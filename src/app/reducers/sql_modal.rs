@@ -219,13 +219,14 @@ pub fn reduce_sql_modal(
                         && !matches!(risk.confirmation, ConfirmationType::Immediate)
                     {
                         state.sql_modal.status = SqlModalStatus::Error;
-                        state.query.current_result =
-                            Some(std::sync::Arc::new(crate::domain::QueryResult::error(
+                        state.query.set_current_result(std::sync::Arc::new(
+                            crate::domain::QueryResult::error(
                                 query,
                                 "Read-only mode: write operations are disabled".to_string(),
                                 0,
                                 crate::domain::QuerySource::Adhoc,
-                            )));
+                            ),
+                        ));
                         return Some(vec![]);
                     }
                     match risk.confirmation {
@@ -833,13 +834,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.sql_modal.status, SqlModalStatus::Error);
-            assert!(
-                state
-                    .query
-                    .current_result
-                    .as_ref()
-                    .is_some_and(|r| r.is_error())
-            );
+            assert!(state.query.current_result().is_some_and(|r| r.is_error()));
         }
 
         #[test]
