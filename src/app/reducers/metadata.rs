@@ -207,9 +207,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             if !state.sql_modal.prefetch_started
                 && let Some(metadata) = state.session.metadata()
             {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+                state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
@@ -240,9 +238,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
         Action::StartPrefetchScoped { tables } => {
             if !state.sql_modal.prefetch_started {
-                state.sql_modal.prefetch_started = true;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+                state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();

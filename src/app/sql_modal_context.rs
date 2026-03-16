@@ -96,6 +96,13 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
+    /// Unlike `reset_prefetch()`, preserves `prefetching_tables` so in-flight requests drain naturally.
+    pub fn begin_prefetch(&mut self) {
+        self.prefetch_started = true;
+        self.prefetch_queue.clear();
+        self.failed_prefetch_tables.clear();
+    }
+
     /// Soft invalidation: only clears `prefetch_started` to allow re-evaluation.
     /// Queue/inflight/failed state is preserved (ER flow, schema-modifying adhoc).
     pub fn invalidate_prefetch(&mut self) {

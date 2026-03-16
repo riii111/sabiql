@@ -217,15 +217,9 @@ pub fn reduce_sql_modal(
                     if state.session.read_only
                         && !matches!(risk.confirmation, ConfirmationType::Immediate)
                     {
-                        state.sql_modal.set_status(SqlModalStatus::Error);
-                        state.query.set_current_result(std::sync::Arc::new(
-                            crate::domain::QueryResult::error(
-                                query,
-                                "Read-only mode: write operations are disabled".to_string(),
-                                0,
-                                crate::domain::QuerySource::Adhoc,
-                            ),
-                        ));
+                        state.sql_modal.mark_adhoc_error(
+                            "Read-only mode: write operations are disabled".to_string(),
+                        );
                         return Some(vec![]);
                     }
                     match risk.confirmation {
@@ -835,7 +829,36 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
-            assert!(state.query.current_result().is_some_and(|r| r.is_error()));
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("Read-only mode: write operations are disabled")
+            );
+        }
+
+        #[test]
+        fn read_only_reject_clears_prior_success() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state.session.read_only = true;
+
+            // Simulate a prior adhoc success
+            state.sql_modal.mark_adhoc_success(
+                crate::app::sql_modal_context::AdhocSuccessSnapshot {
+                    command_tag: None,
+                    row_count: 5,
+                    execution_time_ms: 10,
+                },
+            );
+            assert!(state.sql_modal.last_adhoc_success().is_some());
+
+            // Now submit a write query in read-only mode
+            state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(state.sql_modal.last_adhoc_success().is_none());
+            assert!(state.sql_modal.last_adhoc_error().is_some());
         }
 
         #[test]
