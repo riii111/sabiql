@@ -19,9 +19,9 @@ impl Explorer {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let is_error = matches!(state.cache.state, MetadataState::Error(_));
+        let is_error = matches!(state.session.metadata_state(), MetadataState::Error(_));
         let has_cached_data =
-            !is_error && state.cache.metadata.is_some() && !state.tables().is_empty();
+            !is_error && state.session.metadata().is_some() && !state.tables().is_empty();
         Self::render_tables_section(frame, inner, state, has_cached_data);
     }
 
@@ -54,7 +54,7 @@ impl Explorer {
                 })
                 .collect()
         } else {
-            match &state.cache.state {
+            match &state.session.metadata_state() {
                 MetadataState::Loading => {
                     vec![ListItem::new(" Loading metadata...")]
                 }

@@ -52,7 +52,7 @@ pub fn reduce(
         }
         Action::DdlYank => {
             if state.ui.inspector_tab == InspectorTab::Ddl
-                && let Some(table) = state.cache.table_detail.as_ref()
+                && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
                 return Some(vec![Effect::CopyToClipboard {
@@ -378,7 +378,7 @@ mod tests {
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Ddl;
-            state.cache.table_detail = Some(Table {
+            state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 owner: None,
@@ -399,7 +399,7 @@ mod tests {
                 triggers: vec![],
                 row_count_estimate: Some(0),
                 comment: None,
-            });
+            }));
             state
         }
 

@@ -85,7 +85,7 @@ impl ConnectionError {
             Span::styled("Hint: ", Style::default().fg(Theme::TEXT_ACCENT)),
             Span::styled(hint.to_string(), Style::default().fg(Theme::TEXT_SECONDARY)),
         ];
-        if state.runtime.is_service_connection()
+        if state.session.is_service_connection()
             && let Some(ref path) = state.runtime.service_file_path
         {
             spans.push(Span::styled(
@@ -146,7 +146,7 @@ impl ConnectionError {
             Style::default().fg(Theme::TEXT_MUTED),
         )];
 
-        if state.runtime.is_service_connection() {
+        if state.session.is_service_connection() {
             spans.push(key_chip("r"));
             spans.push(Span::raw(" Retry  "));
         } else {

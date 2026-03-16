@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use crate::app::action::{Action, TableTarget};
 use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
@@ -56,9 +55,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
     match action {
         Action::MetadataLoaded(metadata) => {
             let has_tables = !metadata.tables.is_empty();
-            state.cache.metadata = Some(Arc::clone(metadata));
-            state.cache.state = MetadataState::Loaded;
-            state.runtime.connection_state = ConnectionState::Connected;
+            state.session.mark_connected(Arc::clone(metadata));
 
             let mut effects = vec![];
 
@@ -74,9 +71,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         state.ui.set_explorer_selection(Some(idx));
                         // Refresh preview and detail: DDL or reload may have changed
                         // data/schema even though the table still exists.
-                        if let Some(dsn) = &state.runtime.dsn {
+                        if let Some(dsn) = &state.session.dsn {
                             let page = state.query.pagination.current_page;
-                            let generation = state.cache.selection_generation;
+                            let generation = state.session.selection_generation();
                             effects.push(Effect::ExecutePreview {
                                 dsn: dsn.clone(),
                                 schema: state.query.pagination.schema.clone(),
@@ -85,7 +82,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                                 limit: PREVIEW_PAGE_SIZE,
                                 offset: page * PREVIEW_PAGE_SIZE,
                                 target_page: page,
-                                read_only: state.runtime.read_only,
+                                read_only: state.session.read_only,
                             });
                             effects.push(Effect::FetchTableDetail {
                                 dsn: dsn.clone(),
@@ -101,10 +98,10 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         state
                             .ui
                             .set_explorer_selection(if has_tables { Some(0) } else { None });
-                        state.query.pagination.reset();
+                        state
+                            .session
+                            .clear_table_selection(&mut state.query.pagination);
                         state.query.current_result = None;
-                        state.cache.table_detail = None;
-                        state.cache.current_table = None;
                     }
                 }
             } else {
@@ -115,9 +112,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             state.connection_error.clear();
 
-            if state.runtime.is_reloading {
+            if state.session.is_reloading {
                 state.messages.set_success_at("Reloaded!".to_string(), now);
-                state.runtime.is_reloading = false;
+                state.session.is_reloading = false;
             }
 
             if state.modal.active_mode() == InputMode::SqlModal && !state.sql_modal.prefetch_started
@@ -137,10 +134,9 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::MetadataFailed(error) => {
             let error_info = ConnectionErrorInfo::new(error);
             state.connection_error.set_error(error_info);
-            state.cache.state = MetadataState::Error(error.clone());
-            state.runtime.is_reloading = false;
-            if !state.runtime.connection_state.is_connected() {
-                state.runtime.connection_state = ConnectionState::Failed;
+            let was_connected = state.session.connection_state().is_connected();
+            state.session.mark_connection_failed(error.clone());
+            if !was_connected {
                 state.modal.replace_mode(InputMode::ConnectionError);
             }
             if state.er_preparation.status == ErStatus::Waiting {
@@ -149,23 +145,22 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             Some(vec![])
         }
         Action::TableDetailLoaded(detail, generation) => {
-            if *generation == state.cache.selection_generation {
-                state.cache.table_detail = Some(*detail.clone());
+            if state.session.set_table_detail(*detail.clone(), *generation) {
                 state.ui.inspector_scroll_offset = 0;
             }
             Some(vec![])
         }
         Action::TableDetailFailed(error, generation) => {
-            if *generation == state.cache.selection_generation {
+            if *generation == state.session.selection_generation() {
                 state.set_error(error.clone());
             }
             Some(vec![])
         }
 
         Action::LoadMetadata => {
-            if let Some(dsn) = &state.runtime.dsn {
-                state.cache.state = MetadataState::Loading;
-                Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
+            if let Some(dsn) = state.session.dsn.clone() {
+                state.session.set_metadata_state(MetadataState::Loading);
+                Some(vec![Effect::FetchMetadata { dsn }])
             } else {
                 Some(vec![])
             }
@@ -175,7 +170,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = &state.session.dsn {
                 Some(vec![Effect::FetchTableDetail {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
@@ -188,8 +183,8 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::ReloadMetadata => {
-            if let Some(dsn) = &state.runtime.dsn {
-                state.runtime.is_reloading = true;
+            if let Some(dsn) = state.session.dsn.clone() {
+                state.session.begin_reload();
                 state.sql_modal.prefetch_started = false;
                 state.sql_modal.prefetch_queue.clear();
                 state.sql_modal.prefetching_tables.clear();
@@ -204,7 +199,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 Some(vec![Effect::Sequence(vec![
                     Effect::CacheInvalidate { dsn: dsn.clone() },
                     Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn: dsn.clone() },
+                    Effect::FetchMetadata { dsn },
                 ])])
             } else {
                 Some(vec![])
@@ -213,7 +208,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
         Action::StartPrefetchAll => {
             if !state.sql_modal.prefetch_started
-                && let Some(metadata) = &state.cache.metadata
+                && let Some(metadata) = state.session.metadata()
             {
                 state.sql_modal.prefetch_started = true;
                 state.sql_modal.prefetch_queue.clear();
@@ -370,7 +365,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 .fetching_tables
                 .insert(qualified_name.clone());
 
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = &state.session.dsn {
                 Some(vec![Effect::PrefetchTableDetail {
                     dsn: dsn.clone(),
                     schema: schema.clone(),
@@ -478,7 +473,7 @@ mod tests {
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
-        state.runtime.dsn = Some(dsn.to_string());
+        state.session.dsn = Some(dsn.to_string());
         state
     }
 
@@ -769,9 +764,9 @@ mod tests {
         #[test]
         fn table_disappeared_clears_pagination_and_result() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
-            state.cache.current_table = Some("public.users".to_string());
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query.pagination);
 
             let metadata = make_metadata(vec![("public", "orders")]);
             reduce_metadata(
@@ -782,8 +777,8 @@ mod tests {
 
             assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result.is_none());
-            assert!(state.cache.table_detail.is_none());
-            assert!(state.cache.current_table.is_none());
+            assert!(state.session.table_detail().is_none());
+            assert!(state.session.current_table().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
         }
 
@@ -878,7 +873,7 @@ mod tests {
         #[test]
         fn large_db_emits_resize_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(530));
+            state.session.set_metadata(Some(make_metadata(530)));
 
             let effects =
                 reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
@@ -893,7 +888,7 @@ mod tests {
         #[test]
         fn small_db_uses_floor_capacity() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(50));
+            state.session.set_metadata(Some(make_metadata(50)));
 
             let effects =
                 reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now()).unwrap();
@@ -908,7 +903,7 @@ mod tests {
         #[test]
         fn sets_fk_expanded_true() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            state.cache.metadata = Some(make_metadata(10));
+            state.session.set_metadata(Some(make_metadata(10)));
 
             reduce_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
 

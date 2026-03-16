@@ -132,7 +132,7 @@ fn render_service_item(
 /// Shared rendering logic for connection list (used by ConnectionSelector).
 pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.connection_list_pane_height = area.height;
-    let active_id = state.runtime.active_connection_id.as_ref();
+    let active_id = state.session.active_connection_id.as_ref();
 
     // highlight_symbol "> " takes 2 columns
     let content_width = area.width.saturating_sub(2) as usize;

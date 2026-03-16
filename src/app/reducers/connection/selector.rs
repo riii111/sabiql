@@ -1,13 +1,9 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
-use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
-use crate::domain::MetadataState;
-
-use super::helpers::reset_connection_state;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -28,7 +24,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             if let Some(connection) = state.connections().get(profile_idx) {
                 let id = connection.id.clone();
                 let name = connection.name.as_str().to_string();
-                let is_active = state.runtime.active_connection_id.as_ref() == Some(&id);
+                let is_active = state.session.active_connection_id.as_ref() == Some(&id);
 
                 state.confirm_dialog.title = "Delete Connection".to_string();
 
@@ -50,13 +46,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::DeleteConnection(id) => Some(vec![Effect::DeleteConnection { id: id.clone() }]),
         Action::ConnectionDeleted(id) => {
-            if state.runtime.active_connection_id.as_ref() == Some(id) {
-                reset_connection_state(state);
-                state.runtime.active_connection_id = None;
-                state.runtime.dsn = None;
-                state.runtime.active_connection_name = None;
-                state.runtime.connection_state = ConnectionState::NotConnected;
-                state.cache.state = MetadataState::NotLoaded;
+            if state.session.active_connection_id.as_ref() == Some(id) {
+                state.session.reset(&mut state.query);
+                state.result_interaction.reset_view();
+                state.ui.set_explorer_selection(None);
             }
 
             let id_clone = id.clone();
@@ -182,7 +175,7 @@ mod tests {
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
             state.ui.connection_list_selected = 0;
-            state.runtime.active_connection_id = Some(profile_id);
+            state.session.active_connection_id = Some(profile_id);
 
             reduce(
                 &mut state,
@@ -264,6 +257,7 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
+        use crate::app::connection_state::ConnectionState;
 
         #[test]
         fn removes_connection_from_list() {
@@ -289,9 +283,11 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.runtime.active_connection_id = Some(profile_id.clone());
-            state.runtime.dsn = Some("postgres://localhost/db".to_string());
-            state.runtime.connection_state = ConnectionState::Connected;
+            state.session.active_connection_id = Some(profile_id.clone());
+            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
 
             reduce(
                 &mut state,
@@ -299,9 +295,9 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.runtime.active_connection_id.is_none());
-            assert!(state.runtime.dsn.is_none());
-            assert!(state.runtime.connection_state.is_not_connected());
+            assert!(state.session.active_connection_id.is_none());
+            assert!(state.session.dsn.is_none());
+            assert!(state.session.connection_state().is_not_connected());
         }
 
         #[test]
@@ -310,9 +306,11 @@ mod tests {
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
             state.set_connections(vec![profile]);
-            state.runtime.active_connection_id = Some(profile_id.clone());
-            state.runtime.dsn = Some("postgres://localhost/db".to_string());
-            state.runtime.connection_state = ConnectionState::Connected;
+            state.session.active_connection_id = Some(profile_id.clone());
+            state.session.dsn = Some("postgres://localhost/db".to_string());
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
 
             // Set state that was previously not reset by ConnectionDeleted
             state.query.history_index = Some(2);

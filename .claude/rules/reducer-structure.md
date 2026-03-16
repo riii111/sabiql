@@ -21,7 +21,7 @@ src/app/
     │   ├── setup.rs     # フォーム入力 + Paste(ConnectionSetup) + Save/Cancel
     │   ├── error.rs     # エラー表示・スクロール・コピー・リトライ
     │   ├── selector.rs  # OpenConnectionSelector, 削除・編集
-    │   └── helpers.rs   # cache 操作・状態リセット (pub(super))
+    │   └── helpers.rs   # cache save/restore ヘルパー (pub(super))。状態リセットは BrowseSession::reset() を使う
     ├── result/
     │   ├── mod.rs       # Dispatcher のみ
     │   ├── scroll.rs    # ResultScroll* + 共有ヘルパー

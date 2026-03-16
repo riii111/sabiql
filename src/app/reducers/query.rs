@@ -135,7 +135,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
     if !tag.needs_refresh() {
         return vec![];
     }
-    let Some(dsn) = state.runtime.dsn.clone() else {
+    let Some(dsn) = state.session.dsn.clone() else {
         return vec![];
     };
 
@@ -149,7 +149,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         state.sql_modal.prefetch_queue.clear();
         state.sql_modal.prefetching_tables.clear();
         state.sql_modal.failed_prefetch_tables.clear();
-        state.cache.table_detail = None;
+        state.session.set_table_detail_raw(None);
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
@@ -160,11 +160,11 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
             dsn,
             schema: state.query.pagination.schema.clone(),
             table: state.query.pagination.table.clone(),
-            generation: state.cache.selection_generation,
+            generation: state.session.selection_generation(),
             limit: PREVIEW_PAGE_SIZE,
             offset: page * PREVIEW_PAGE_SIZE,
             target_page: page,
-            read_only: state.runtime.read_only,
+            read_only: state.session.read_only,
         });
     }
 
@@ -183,7 +183,7 @@ pub fn reduce_query(
             generation,
             target_page,
         } => {
-            if *generation == 0 || *generation == state.cache.selection_generation {
+            if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
 
@@ -250,7 +250,7 @@ pub fn reduce_query(
             }
         }
         Action::QueryFailed(error, generation) => {
-            if *generation == 0 || *generation == state.cache.selection_generation {
+            if *generation == 0 || *generation == state.session.selection_generation() {
                 state.query.status = QueryStatus::Idle;
                 state.query.start_time = None;
                 let is_adhoc = state.modal.active_mode() == InputMode::SqlModal;
@@ -286,7 +286,7 @@ pub fn reduce_query(
                 Action::OpenSqlModal => {
                     state.modal.set_mode(InputMode::SqlModal);
                     state.sql_modal.status = SqlModalStatus::Editing;
-                    if !state.sql_modal.prefetch_started && state.cache.metadata.is_some() {
+                    if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
                     } else {
                         vec![]
@@ -307,7 +307,7 @@ pub fn reduce_query(
             table,
             generation,
         }) => {
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = &state.session.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
 
@@ -318,9 +318,8 @@ pub fn reduce_query(
 
                 // Look up row_count_estimate from table detail or table summaries
                 let row_estimate = state
-                    .cache
-                    .table_detail
-                    .as_ref()
+                    .session
+                    .table_detail()
                     .and_then(|d| d.row_count_estimate)
                     .or_else(|| {
                         state.tables().iter().find_map(|t| {
@@ -341,7 +340,7 @@ pub fn reduce_query(
                     limit: PREVIEW_PAGE_SIZE,
                     offset: 0,
                     target_page: 0,
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -349,13 +348,13 @@ pub fn reduce_query(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = &state.session.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
                 Some(vec![Effect::ExecuteAdhoc {
                     dsn: dsn.clone(),
                     query: query.clone(),
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -406,7 +405,7 @@ pub fn reduce_query(
         }
 
         Action::OpenWritePreviewConfirm(preview) => {
-            if state.runtime.read_only {
+            if state.session.read_only {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
@@ -456,21 +455,21 @@ pub fn reduce_query(
         }
 
         Action::ExecuteWrite(query) => {
-            if state.runtime.read_only {
+            if state.session.read_only {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),
                     now,
                 );
                 return Some(vec![]);
             }
-            if let Some(dsn) = &state.runtime.dsn {
+            if let Some(dsn) = &state.session.dsn {
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
                 // read_only is always false here (early return above); kept as defense-in-depth
                 Some(vec![Effect::ExecuteWrite {
                     dsn: dsn.clone(),
                     query: query.clone(),
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             } else {
                 state
@@ -506,7 +505,7 @@ pub fn reduce_query(
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
-                    if let Some(dsn) = &state.runtime.dsn {
+                    if let Some(dsn) = &state.session.dsn {
                         let page = state.query.pagination.current_page;
                         state.query.status = QueryStatus::Running;
                         state.query.start_time = Some(now);
@@ -514,11 +513,11 @@ pub fn reduce_query(
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
-                            generation: state.cache.selection_generation,
+                            generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: page * PREVIEW_PAGE_SIZE,
                             target_page: page,
-                            read_only: state.runtime.read_only,
+                            read_only: state.session.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -557,7 +556,7 @@ pub fn reduce_query(
                         .map(PostDeleteRowSelection::Select)
                         .unwrap_or(PostDeleteRowSelection::Clear);
 
-                    if let Some(dsn) = &state.runtime.dsn {
+                    if let Some(dsn) = &state.session.dsn {
                         state.query.status = QueryStatus::Running;
                         state.query.start_time = Some(now);
                         state.query.pagination.reached_end = false;
@@ -565,11 +564,11 @@ pub fn reduce_query(
                             dsn: dsn.clone(),
                             schema: state.query.pagination.schema.clone(),
                             table: state.query.pagination.table.clone(),
-                            generation: state.cache.selection_generation,
+                            generation: state.session.selection_generation(),
                             limit: PREVIEW_PAGE_SIZE,
                             offset: target_page * PREVIEW_PAGE_SIZE,
                             target_page,
-                            read_only: state.runtime.read_only,
+                            read_only: state.session.read_only,
                         }])
                     } else {
                         Some(vec![])
@@ -602,7 +601,7 @@ pub fn reduce_query(
                 Some(r) if !r.is_error() => r,
                 _ => return Some(vec![]),
             };
-            let dsn = match &state.runtime.dsn {
+            let dsn = match &state.session.dsn {
                 Some(d) => d.clone(),
                 None => return Some(vec![]),
             };
@@ -633,7 +632,7 @@ pub fn reduce_query(
                 count_query,
                 export_query,
                 file_name,
-                read_only: state.runtime.read_only,
+                read_only: state.session.read_only,
             }])
         }
 
@@ -665,7 +664,7 @@ pub fn reduce_query(
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
             } else {
-                let dsn = match &state.runtime.dsn {
+                let dsn = match &state.session.dsn {
                     Some(d) => d.clone(),
                     None => return Some(vec![]),
                 };
@@ -674,7 +673,7 @@ pub fn reduce_query(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             }
         }
@@ -684,7 +683,7 @@ pub fn reduce_query(
             file_name,
             row_count,
         } => {
-            let dsn = match &state.runtime.dsn {
+            let dsn = match &state.session.dsn {
                 Some(d) => d.clone(),
                 None => return Some(vec![]),
             };
@@ -693,7 +692,7 @@ pub fn reduce_query(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.runtime.read_only,
+                read_only: state.session.read_only,
             }])
         }
 
@@ -730,7 +729,7 @@ pub fn reduce_query(
             if !state.query.pagination.can_next() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = state.runtime.dsn.clone() {
+            if let Some(dsn) = state.session.dsn.clone() {
                 let next_page = state.query.pagination.current_page + 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
@@ -739,11 +738,11 @@ pub fn reduce_query(
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
-                    generation: state.cache.selection_generation,
+                    generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: next_page * PREVIEW_PAGE_SIZE,
                     target_page: next_page,
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -758,7 +757,7 @@ pub fn reduce_query(
             if !state.query.pagination.can_prev() {
                 return Some(vec![]);
             }
-            if let Some(dsn) = state.runtime.dsn.clone() {
+            if let Some(dsn) = state.session.dsn.clone() {
                 let prev_page = state.query.pagination.current_page - 1;
                 state.query.status = QueryStatus::Running;
                 state.query.start_time = Some(now);
@@ -769,11 +768,11 @@ pub fn reduce_query(
                     dsn,
                     schema: state.query.pagination.schema.clone(),
                     table: state.query.pagination.table.clone(),
-                    generation: state.cache.selection_generation,
+                    generation: state.session.selection_generation(),
                     limit: PREVIEW_PAGE_SIZE,
                     offset: prev_page * PREVIEW_PAGE_SIZE,
                     target_page: prev_page,
-                    read_only: state.runtime.read_only,
+                    read_only: state.session.read_only,
                 }])
             } else {
                 Some(vec![])
@@ -794,7 +793,7 @@ mod tests {
 
     fn create_test_state() -> AppState {
         let mut state = AppState::new("test_project".to_string());
-        state.runtime.dsn = Some("postgres://localhost/test".to_string());
+        state.session.dsn = Some("postgres://localhost/test".to_string());
         state
     }
 
@@ -1211,7 +1210,7 @@ mod tests {
         #[test]
         fn sets_page_and_reached_end() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             let result = preview_result(100); // Less than PAGE_SIZE
             let now = Instant::now();
 
@@ -1233,7 +1232,7 @@ mod tests {
         #[test]
         fn does_not_set_reached_end_for_full_page() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             let result = preview_result(PREVIEW_PAGE_SIZE);
             let now = Instant::now();
 
@@ -1348,7 +1347,7 @@ mod tests {
         #[test]
         fn preview_clears_history_index() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             state.query.result_history.push(adhoc_result());
             state.query.history_index = Some(0);
 
@@ -1375,7 +1374,7 @@ mod tests {
         #[test]
         fn resets_result_selection_and_offsets() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             state.result_interaction.enter_row(5);
             state.result_interaction.enter_cell(2);
             state.result_interaction.scroll_offset = 10;
@@ -1443,9 +1442,11 @@ mod tests {
 
         fn editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state.query.current_result = Some(editable_preview_result());
-            state.cache.table_detail = Some(users_table_detail());
+            state
+                .session
+                .set_table_detail_raw(Some(users_table_detail()));
             state.query.pagination.schema = "public".to_string();
             state.query.pagination.table = "users".to_string();
             state.modal.set_mode(InputMode::CellEdit);
@@ -1499,8 +1500,9 @@ mod tests {
         #[test]
         fn write_rejects_stale_table_detail() {
             let mut state = editable_state();
-            if let Some(detail) = state.cache.table_detail.as_mut() {
+            if let Some(mut detail) = state.session.table_detail().cloned() {
                 detail.name = "posts".to_string();
+                state.session.set_table_detail_raw(Some(detail));
             }
 
             let effects = reduce_query(
@@ -1769,7 +1771,7 @@ mod tests {
         #[test]
         fn query_completed_restores_pending_row_selection() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             state.query.post_delete_row_selection = PostDeleteRowSelection::Select(1000);
 
             reduce_query(
@@ -1793,7 +1795,7 @@ mod tests {
         #[test]
         fn query_completed_clears_selection_when_requested() {
             let mut state = create_test_state();
-            state.cache.selection_generation = 1;
+            state.session.set_selection_generation(1);
             state.result_interaction.enter_row(0);
             state.query.post_delete_row_selection = PostDeleteRowSelection::Clear;
 
@@ -1821,7 +1823,7 @@ mod tests {
 
         fn export_test_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            state.runtime.dsn = Some("postgres://localhost/test".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
             state
         }
 
@@ -2124,7 +2126,9 @@ mod tests {
                 .sql_modal
                 .prefetch_queue
                 .push_back("public.users".to_string());
-            state.cache.table_detail = Some(users_table_detail());
+            state
+                .session
+                .set_table_detail_raw(Some(users_table_detail()));
 
             reduce_query(
                 &mut state,
@@ -2139,7 +2143,7 @@ mod tests {
 
             assert!(!state.sql_modal.prefetch_started);
             assert!(state.sql_modal.prefetch_queue.is_empty());
-            assert!(state.cache.table_detail.is_none());
+            assert!(state.session.table_detail().is_none());
         }
 
         #[test]
@@ -2366,7 +2370,7 @@ mod tests {
 
             assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result.is_none());
-            assert!(state.cache.table_detail.is_none());
+            assert!(state.session.table_detail().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
         }
 

@@ -141,7 +141,7 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
-            if let Some(conn_id) = &_state.runtime.active_connection_id {
+            if let Some(conn_id) = &_state.session.active_connection_id {
                 save_query_history(
                     query_history_store,
                     action_tx,
@@ -177,7 +177,7 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
-            if let Some(conn_id) = &_state.runtime.active_connection_id {
+            if let Some(conn_id) = &_state.session.active_connection_id {
                 save_query_history(
                     query_history_store,
                     action_tx,
