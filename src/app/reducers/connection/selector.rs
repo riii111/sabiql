@@ -157,12 +157,12 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert_eq!(state.confirm_dialog.title, "Delete Connection");
-            assert!(state.confirm_dialog.message.contains("Production"));
+            assert_eq!(state.confirm_dialog.title(), "Delete Connection");
+            assert!(state.confirm_dialog.message().contains("Production"));
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This action cannot be undone")
             );
         }
@@ -185,13 +185,13 @@ mod tests {
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This is the active connection")
             );
             assert!(
                 state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("You will be disconnected")
             );
         }
@@ -212,7 +212,7 @@ mod tests {
             assert!(
                 !state
                     .confirm_dialog
-                    .message
+                    .message()
                     .contains("This is the active connection")
             );
         }

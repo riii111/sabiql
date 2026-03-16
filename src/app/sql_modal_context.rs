@@ -88,7 +88,6 @@ pub struct SqlModalContext {
 impl SqlModalContext {
     // ── Prefetch lifecycle ──────────────────────────────────────────
 
-    /// Full reset: clears all prefetch state (ReloadMetadata, connection switch).
     pub fn reset_prefetch(&mut self) {
         self.prefetch_started = false;
         self.prefetch_queue.clear();
@@ -96,15 +95,12 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
-    /// Unlike `reset_prefetch()`, preserves `prefetching_tables` so in-flight requests drain naturally.
     pub fn begin_prefetch(&mut self) {
         self.prefetch_started = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
     }
 
-    /// Soft invalidation: only clears `prefetch_started` to allow re-evaluation.
-    /// Queue/inflight/failed state is preserved (ER flow, schema-modifying adhoc).
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
     }
@@ -127,7 +123,6 @@ impl SqlModalContext {
         self.last_adhoc_error = None;
     }
 
-    /// For non-adhoc transitions only. Use `mark_adhoc_error`/`mark_adhoc_success` for adhoc completion.
     pub fn set_status(&mut self, status: SqlModalStatus) {
         debug_assert!(
             !matches!(status, SqlModalStatus::Error | SqlModalStatus::Success),
@@ -148,8 +143,6 @@ impl SqlModalContext {
         self.last_adhoc_success.as_ref()
     }
 
-    /// Mutable access to the `TextInputState` inside `ConfirmingHigh`.
-    /// Returns `None` if the current status is not `ConfirmingHigh`.
     pub fn confirming_high_input_mut(&mut self) -> Option<&mut TextInputState> {
         if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = self.status {
             Some(input)

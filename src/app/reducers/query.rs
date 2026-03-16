@@ -1583,7 +1583,7 @@ mod tests {
                     .map(|p| p.sql.as_str()),
                 Some(expected_sql.as_str())
             );
-            match &state.confirm_dialog.intent {
+            match state.confirm_dialog.intent() {
                 Some(crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
                     sql,
                     blocked,
@@ -1689,7 +1689,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert_eq!(state.modal.return_destination(), InputMode::Normal);
             assert_eq!(
-                state.confirm_dialog.title,
+                state.confirm_dialog.title(),
                 "Confirm DELETE: 1 row from users"
             );
         }
@@ -1949,7 +1949,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.title.contains("CSV Export"));
+            assert!(state.confirm_dialog.title().contains("CSV Export"));
         }
 
         #[test]
@@ -1970,7 +1970,7 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
-            assert!(state.confirm_dialog.message.contains("unknown"));
+            assert!(state.confirm_dialog.message().contains("unknown"));
         }
 
         #[test]

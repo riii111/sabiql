@@ -1265,8 +1265,8 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
-                state.confirm_dialog.intent,
-                Some(crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
+                state.confirm_dialog.intent(),
+                Some(&crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
             ));
             assert!(effects.is_empty());
         }
@@ -1299,7 +1299,9 @@ mod tests {
         fn confirm_quit_no_connection_sets_should_quit() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConfirmDialog);
-            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
+            state
+                .confirm_dialog
+                .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
             reduce(
@@ -1310,14 +1312,16 @@ mod tests {
             );
 
             assert!(state.should_quit);
-            assert!(state.confirm_dialog.intent.is_none());
+            assert!(state.confirm_dialog.intent().is_none());
         }
 
         #[test]
         fn cancel_quit_no_connection_restores_connection_setup_synchronously() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConfirmDialog);
-            state.confirm_dialog.intent = Some(ConfirmIntent::QuitNoConnection);
+            state
+                .confirm_dialog
+                .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
             let effects = reduce(
@@ -1327,7 +1331,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.confirm_dialog.intent.is_none());
+            assert!(state.confirm_dialog.intent().is_none());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
             assert!(effects.is_empty());
         }
@@ -1360,10 +1364,14 @@ mod tests {
                 },
             });
             state.query.set_delete_refresh_target(0, Some(499), 1);
-            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
-                sql: delete_sql,
-                blocked: false,
-            });
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: delete_sql,
+                    blocked: false,
+                },
+            );
 
             let now = Instant::now();
             let effects = reduce(
@@ -1427,10 +1435,14 @@ mod tests {
                     target_summary: None,
                 },
             });
-            state.confirm_dialog.intent = Some(ConfirmIntent::ExecuteWrite {
-                sql: "DELETE FROM t WHERE id='1'".to_string(),
-                blocked: false,
-            });
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: "DELETE FROM t WHERE id='1'".to_string(),
+                    blocked: false,
+                },
+            );
 
             let now = Instant::now();
             reduce(

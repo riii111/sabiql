@@ -546,7 +546,7 @@ mod tests {
             assert!(state.session.read_only);
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
-                state.confirm_dialog.intent,
+                state.confirm_dialog.intent(),
                 Some(crate::app::confirm_dialog_state::ConfirmIntent::DisableReadOnly)
             ));
         }
