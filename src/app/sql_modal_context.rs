@@ -95,6 +95,7 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
+    // Preserves `prefetching_tables` so in-flight requests drain naturally.
     pub fn begin_prefetch(&mut self) {
         self.prefetch_started = true;
         self.prefetch_queue.clear();
