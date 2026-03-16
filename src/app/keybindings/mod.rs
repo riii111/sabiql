@@ -259,6 +259,7 @@ pub mod idx {
 // Help Overlay Layout
 // =============================================================================
 
+// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
     // Dedup pairs collapsed into one line by HelpOverlay::push_dedup:
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)

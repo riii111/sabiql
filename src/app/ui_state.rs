@@ -6,8 +6,10 @@ use super::inspector_tab::InspectorTab;
 use super::keybindings::help_content_line_count;
 use super::viewport::ViewportPlan;
 
+// header (1) + scroll indicators (2), used by rendering (border already excluded)
 pub const RESULT_INNER_OVERHEAD: u16 = 3;
 
+// border (2) + inner overhead, used by scroll limit calculation
 pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +26,7 @@ pub struct YankFlash {
     pub until: Instant,
 }
 
+// Invariant: `cell` is `Some` only when `row` is `Some`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultSelection {
     row: Option<usize>,

@@ -6,6 +6,7 @@ pub enum WriteOperation {
     Delete,
 }
 
+// Variant order matters: derives `Ord` for risk comparison (Low < Medium < High).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RiskLevel {
     Low,

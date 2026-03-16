@@ -1,3 +1,7 @@
+// State transitions:
+// NotConnected → Connecting → Connected
+//                           → Failed → NotConnected
+// Connected → NotConnected (re-entering connection setup)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionState {
     #[default]

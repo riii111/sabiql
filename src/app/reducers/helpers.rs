@@ -11,6 +11,9 @@ pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY K
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
 
+// Entry checks in navigation and submit-time checks in query should both use this.
+// Row/column selection source is intentionally left to each caller:
+// navigation uses live selection, query submit uses cell_edit state.
 pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String]), String> {
     if state.query.is_history_mode() {
         return Err("Editing is unavailable while browsing history".to_string());

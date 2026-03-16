@@ -1,3 +1,9 @@
+// Pure reducer: state transitions only, no I/O.
+// The reducer MUST NOT:
+// - Call `Instant::now()` (time is passed as `now` parameter)
+// - Perform I/O operations
+// - Spawn async tasks
+
 use std::time::Instant;
 
 use crate::app::action::{Action, TableTarget};

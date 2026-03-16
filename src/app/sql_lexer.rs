@@ -38,6 +38,7 @@ pub struct CteDefinition {
 pub struct SqlContext {
     pub tables: Vec<TableReference>,
     pub ctes: Vec<CteDefinition>,
+    // Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
     pub target_table: Option<TableReference>,
 }
 

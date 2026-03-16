@@ -234,6 +234,8 @@ fn select_dynamic_columns(
     (indices, widths)
 }
 
+// Uses ideal_widths primarily so scrolling is enabled when content exceeds viewport,
+// even if headers (min_widths) would fit.
 pub fn calculate_viewport_column_count(
     ideal_widths: &[u16],
     min_widths: &[u16],

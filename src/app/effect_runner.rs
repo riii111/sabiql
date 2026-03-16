@@ -1,3 +1,6 @@
+// RefCell Borrow Safety: when effects need data from `completion_engine`,
+// the borrow MUST be dropped before any await point.
+
 use std::cell::RefCell;
 use std::sync::Arc;
 
