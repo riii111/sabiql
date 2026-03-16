@@ -1,6 +1,5 @@
 use super::ConnectionId;
 
-/// Prefix used to construct a ConnectionId for service-based connections.
 const SERVICE_ID_PREFIX: &str = "service:";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,17 +12,14 @@ pub struct ServiceEntry {
 }
 
 impl ServiceEntry {
-    /// Build the DSN string for psql (e.g. `service=mydb`).
     pub fn to_dsn(&self) -> String {
         format!("service={}", self.service_name)
     }
 
-    /// Build a deterministic ConnectionId for this service entry.
     pub fn connection_id(&self) -> ConnectionId {
         ConnectionId::from_string(format!("{}{}", SERVICE_ID_PREFIX, self.service_name))
     }
 
-    /// Uniform accessor for the display name (mirrors `ConnectionProfile::display_name()`).
     pub fn display_name(&self) -> &str {
         &self.service_name
     }

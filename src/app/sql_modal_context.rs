@@ -5,7 +5,7 @@ use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::AdhocRiskDecision;
 use crate::domain::CommandTag;
 
-/// Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
+// Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
 pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
 
 #[derive(Debug, Clone)]
@@ -26,11 +26,9 @@ pub struct AdhocSuccessSnapshot {
 pub enum SqlModalStatus {
     #[default]
     Editing,
-    /// Awaiting explicit Enter confirmation before executing a write statement.
-    /// Holds the risk assessment so the UI can show an appropriate warning.
     Confirming(AdhocRiskDecision),
-    /// HIGH risk confirmation requiring the user to type the target table name.
-    /// `target_name: None` means extraction failed — execution is permanently blocked.
+    // HIGH risk confirmation requiring the user to type the target table name.
+    // `target_name: None` means extraction failed — execution is permanently blocked.
     ConfirmingHigh {
         decision: AdhocRiskDecision,
         input: TextInputState,

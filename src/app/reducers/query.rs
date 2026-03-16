@@ -1,5 +1,3 @@
-//! Query sub-reducer: query execution and command line.
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -123,8 +121,6 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     lines.join("\n")
 }
 
-/// Handles query execution and command line actions.
-/// Returns Some(effects) if action was handled, None otherwise.
 fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
     if result.source != QuerySource::Adhoc || result.is_error() {
         return vec![];

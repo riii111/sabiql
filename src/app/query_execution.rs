@@ -76,7 +76,7 @@ pub struct QueryExecution {
     history_index: Option<usize>,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
-    /// (target_page, target_row, expected_delete_count)
+    // (target_page, target_row, expected_delete_count)
     pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
     post_delete_row_selection: PostDeleteRowSelection,
 }

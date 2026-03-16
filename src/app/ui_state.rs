@@ -6,10 +6,10 @@ use super::inspector_tab::InspectorTab;
 use super::keybindings::help_content_line_count;
 use super::viewport::ViewportPlan;
 
-/// header (1) + scroll indicators (2), used by rendering (border already excluded)
+// header (1) + scroll indicators (2), used by rendering (border already excluded)
 pub const RESULT_INNER_OVERHEAD: u16 = 3;
 
-/// border (2) + inner overhead, used by scroll limit calculation
+// border (2) + inner overhead, used by scroll limit calculation
 pub const RESULT_PANE_OVERHEAD: u16 = 2 + RESULT_INNER_OVERHEAD;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,7 +19,6 @@ pub enum ResultNavMode {
     CellActive,
 }
 
-/// Flash target for yank feedback. `col: None` = whole row, `col: Some(c)` = single cell.
 #[derive(Debug, Clone, Copy)]
 pub struct YankFlash {
     pub row: usize,
@@ -27,7 +26,7 @@ pub struct YankFlash {
     pub until: Instant,
 }
 
-/// Invariant: `cell` is `Some` only when `row` is `Some`.
+// Invariant: `cell` is `Some` only when `row` is `Some`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultSelection {
     row: Option<usize>,
@@ -56,7 +55,6 @@ impl ResultSelection {
         self.cell = None;
     }
 
-    /// Move row cursor while preserving the current cell selection.
     pub fn move_row(&mut self, row: usize) {
         self.row = Some(row);
     }
@@ -156,7 +154,6 @@ impl UiState {
         self.inspector_pane_height.saturating_sub(5) as usize
     }
 
-    /// Visible items in Explorer list (height minus 2 borders minus 1 scrollbar row)
     pub fn explorer_visible_items(&self) -> usize {
         self.explorer_pane_height.saturating_sub(3) as usize
     }
@@ -177,8 +174,6 @@ impl UiState {
         self.inspector_pane_height.saturating_sub(3) as usize
     }
 
-    /// Estimate max scroll for help overlay based on terminal height.
-    /// Modal is 80% height with 2-line border, so viewport ≈ terminal_height * 0.8 - 2
     pub fn help_max_scroll(&self) -> usize {
         let viewport = (self.terminal_height as usize * 80 / 100).saturating_sub(2);
         help_content_line_count().saturating_sub(viewport)
@@ -198,7 +193,6 @@ impl UiState {
         true
     }
 
-    /// `None` resets both selected index and scroll offset.
     pub fn set_explorer_selection(&mut self, index: Option<usize>) {
         match index {
             Some(i) => {
@@ -216,7 +210,6 @@ impl UiState {
         }
     }
 
-    /// `None` resets both selected index and scroll offset.
     pub fn set_connection_list_selection(&mut self, index: Option<usize>) {
         match index {
             Some(i) => {
@@ -263,10 +256,6 @@ impl UiState {
     }
 }
 
-/// Adjusts `current_offset` just enough to keep `selected` visible, without
-/// snapping selected to an edge when it is already in view.
-/// - Scrolls down only when selected falls below the bottom edge.
-/// - Scrolls up only when selected rises above the top edge.
 pub fn clamp_scroll_offset(selected: usize, current_offset: usize, viewport: usize) -> usize {
     if viewport == 0 {
         return 0;
@@ -283,8 +272,6 @@ pub fn clamp_scroll_offset(selected: usize, current_offset: usize, viewport: usi
     }
 }
 
-/// Returns the scroll offset that places `selected` at the bottom of the viewport.
-/// Used for scrollbar position calculation.
 pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
     selected.saturating_sub(viewport.saturating_sub(1))
 }

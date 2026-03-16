@@ -6,18 +6,15 @@ use super::text_input::TextInputState;
 use super::ui_state::{ResultSelection, YankFlash};
 use super::write_guardrails::WritePreview;
 
-/// Aggregate for all Result-pane interaction state.
-///
-/// # Invariants
-///
-/// - `selection`, `cell_edit`, `staged_delete_rows`, and `pending_write_preview`
-///   must be reset together during mode transitions. Use the aggregate transition
-///   API (`reset_view`, `reset_interaction`, `exit_cell_to_row`, `exit_row_to_scroll`)
-///   instead of manipulating these fields individually.
-///
-/// - After calling `exit_cell_to_row()` or `exit_row_to_scroll()`, the caller is
-///   responsible for setting `input_mode` back to `Normal` if it was `CellEdit`.
-///   Full `InputMode` integration is deferred to SAB-136.
+// # Invariants
+//
+// - `selection`, `cell_edit`, `staged_delete_rows`, and `pending_write_preview`
+//   must be reset together during mode transitions. Use the aggregate transition
+//   API (`reset_view`, `reset_interaction`, `exit_cell_to_row`, `exit_row_to_scroll`)
+//   instead of manipulating these fields individually.
+//
+// - After calling `exit_cell_to_row()` or `exit_row_to_scroll()`, the caller is
+//   responsible for setting `input_mode` back to `Normal` if it was `CellEdit`.
 #[derive(Debug, Clone, Default)]
 pub struct ResultInteraction {
     pub scroll_offset: usize,
@@ -99,8 +96,6 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
-    /// Discard the current cell edit session and its associated preview,
-    /// without changing selection or staged deletes.
     pub fn discard_cell_edit(&mut self) {
         self.cell_edit.clear();
         self.pending_write_preview = None;
@@ -122,17 +117,17 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
-    /// Preserves `staged_delete_rows`: cell edit is orthogonal to delete staging,
-    /// so returning to row-active should not discard a partially-staged batch.
-    ///
-    /// Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
+    // Preserves `staged_delete_rows`: cell edit is orthogonal to delete staging,
+    // so returning to row-active should not discard a partially-staged batch.
+    //
+    // Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
     pub fn exit_cell_to_row(&mut self) {
         self.selection.exit_to_row();
         self.cell_edit.clear();
         self.pending_write_preview = None;
     }
 
-    /// Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
+    // Caller must set `input_mode` to `Normal` if it was `CellEdit` (SAB-136).
     pub fn exit_row_to_scroll(&mut self) {
         self.selection.reset();
         self.cell_edit.clear();

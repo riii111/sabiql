@@ -11,7 +11,6 @@ use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
 use crate::domain::query_history::QueryHistoryEntry;
 
-/// Convert days since Unix epoch to (year, month, day) in UTC.
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
     let z = days + 719468;

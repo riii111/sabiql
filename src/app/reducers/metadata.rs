@@ -1,5 +1,3 @@
-//! Metadata sub-reducer: metadata loading, table detail, and prefetch.
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -49,8 +47,6 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
     }]
 }
 
-/// Handles metadata loading, table detail, and prefetch actions.
-/// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::MetadataLoaded(metadata) => {

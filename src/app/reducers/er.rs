@@ -1,5 +1,3 @@
-//! ER diagram sub-reducer.
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,8 +6,6 @@ use crate::app::effect::Effect;
 use crate::app::er_state::ErStatus;
 use crate::app::state::AppState;
 
-/// Handles ER diagram actions.
-/// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ErDiagramOpened(ErDiagramInfo {

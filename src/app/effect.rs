@@ -1,5 +1,3 @@
-//! Side effects returned by the reducer, executed by EffectRunner.
-
 use crate::app::action::Action;
 use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
@@ -32,14 +30,14 @@ pub enum Effect {
     FetchMetadata {
         dsn: String,
     },
-    /// Updates state.table_detail on completion
+    // Updates state.table_detail on completion
     FetchTableDetail {
         dsn: String,
         schema: String,
         table: String,
         generation: u64,
     },
-    /// Only caches in completion_engine, does NOT update state.table_detail
+    // Only caches in completion_engine, does NOT update state.table_detail
     PrefetchTableDetail {
         dsn: String,
         schema: String,
@@ -96,7 +94,6 @@ pub enum Effect {
     ResizeCompletionCache {
         capacity: usize,
     },
-    /// Triggers completion: fetches missing tables and updates candidates
     TriggerCompletion,
 
     GenerateErDiagramFromCache {
@@ -129,10 +126,9 @@ pub enum Effect {
         connection_id: crate::domain::ConnectionId,
     },
 
-    /// Executes effects in order. Each effect awaits before starting the next,
-    /// but spawned async tasks (e.g., FetchMetadata) may complete out of order.
+    // Executes effects in order (each awaits before the next),
+    // but spawned async tasks (e.g. FetchMetadata) may complete out of order.
     Sequence(Vec<Effect>),
-    /// Dispatch actions to be processed by the reducer
     DispatchActions(Vec<Action>),
     SwitchConnection {
         connection_index: usize,

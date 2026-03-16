@@ -1,13 +1,8 @@
-//! Pure reducer: state transitions only, no I/O.
-//!
-//! # Purity Rules
-//!
-//! The reducer MUST NOT:
-//! - Call `Instant::now()` (time is passed as `now` parameter)
-//! - Perform I/O operations
-//! - Spawn async tasks
-//!
-//! This keeps the reducer testable without mocking time or I/O.
+// Pure reducer: state transitions only, no I/O.
+// The reducer MUST NOT:
+// - Call `Instant::now()` (time is passed as `now` parameter)
+// - Perform I/O operations
+// - Spawn async tasks
 
 use std::time::Instant;
 
@@ -123,7 +118,6 @@ fn reduce_inner(
     }
 }
 
-/// Reset view state and emit effects to load the selected table.
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let generation =
         state
@@ -2092,8 +2086,6 @@ mod tests {
         use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
         use std::sync::Arc;
 
-        /// Set up a state with metadata loaded, a table selected via
-        /// ConfirmSelection, and a preview result completed.
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());

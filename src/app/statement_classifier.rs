@@ -1,10 +1,7 @@
-/// SQL statement kind. Based on PostgreSQL lexical rules.
-/// May move behind a Port + Adapter boundary if MySQL support is added.
-///
-/// - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
-///   (e.g. GRANT, COPY, DO). Treated as High risk in the confirmation flow.
-/// - `Other`: no statement keyword was found (e.g. empty input, comment-only, multi-statement).
-///   Treated as High risk in the confirmation flow; hard-blocking per statement is SAB-102 scope.
+// - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
+//   (e.g. GRANT, COPY, DO). Treated as High risk in the confirmation flow.
+// - `Other`: no statement keyword was found (e.g. empty input, comment-only, multi-statement).
+//   Treated as High risk in the confirmation flow; hard-blocking per statement is SAB-102 scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -20,8 +17,6 @@ pub enum StatementKind {
     Other,
 }
 
-/// Classifies a SQL statement. Falls back to `Other` when ambiguous.
-/// Multi-statement input (`;` separated) returns `Other` (SAB-102 scope).
 pub fn classify(sql: &str) -> StatementKind {
     let lower = sql.trim().to_lowercase();
     if lower.is_empty() {
@@ -31,9 +26,6 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
-/// Extracts the target table name for high-risk confirmation.
-/// Returns `None` when extraction fails or the statement targets multiple tables,
-/// both of which callers must treat as blocked.
 pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let original_trimmed = sql.trim();
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
@@ -400,7 +392,6 @@ fn has_non_whitespace_after(lower: &str, byte_pos: usize) -> bool {
         .unwrap_or(false)
 }
 
-/// Collects top-level tokens (original case). Commas are captured as `","` entries.
 fn collect_top_level_tokens(original: &str, chars: &[(usize, char)]) -> Vec<(usize, String)> {
     let mut tokens = Vec::new();
     let mut i = 0;

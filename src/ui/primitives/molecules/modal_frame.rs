@@ -7,7 +7,6 @@ use crate::ui::primitives::molecules::overlay::{
     centered_rect, modal_block_with_hint, modal_block_with_hint_color, render_scrim,
 };
 
-/// Returns (outer_area, inner_area) for modals that need to position popups relative to the modal bounds.
 pub fn render_modal(
     frame: &mut Frame,
     width: Constraint,

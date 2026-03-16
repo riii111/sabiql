@@ -3,11 +3,6 @@ use ratatui::text::Span;
 
 use crate::ui::theme::Theme;
 
-/// Build a sequence of `Span`s that render text with a block cursor.
-///
-/// - `viewport_offset` / `visible_width` slice the content to a viewport window.
-/// - Pass `viewport_offset = 0, visible_width = usize::MAX` for no-viewport mode.
-/// - `visible_width == 0` returns an empty vec.
 pub fn text_cursor_spans(
     content: &str,
     cursor: usize,

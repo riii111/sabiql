@@ -200,7 +200,6 @@ pub enum Action {
         table: String,
         error: String,
     },
-    /// Notifies that table was already cached (no data update needed)
     TableDetailAlreadyCached {
         schema: String,
         table: String,

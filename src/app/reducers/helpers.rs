@@ -11,10 +11,9 @@ pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY K
 pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
     "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
 
-/// Shared prerequisites for preview-cell write operations.
-/// Entry checks in navigation and submit-time checks in query should both use this.
-/// Row/column selection source is intentionally left to each caller:
-/// navigation uses live selection, query submit uses cell_edit state.
+// Entry checks in navigation and submit-time checks in query should both use this.
+// Row/column selection source is intentionally left to each caller:
+// navigation uses live selection, query submit uses cell_edit state.
 pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String]), String> {
     if state.query.is_history_mode() {
         return Err("Editing is unavailable while browsing history".to_string());
@@ -127,10 +126,6 @@ pub fn build_bulk_delete_preview(
     ))
 }
 
-/// Computes the cursor target after bulk-deleting rows from a page.
-///
-/// `deleted_indices` is a sorted set of page-relative row indices that were deleted.
-/// Returns `(target_page, target_row)` — same sentinel convention as `deletion_refresh_target`.
 pub fn deletion_refresh_target_bulk(
     row_count: usize,
     deleted_count: usize,

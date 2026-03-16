@@ -1,6 +1,3 @@
-/// SQL identifier and literal quoting utilities for PostgreSQL.
-///
-/// These functions follow PostgreSQL's quoting rules for safe SQL interpolation.
 pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }

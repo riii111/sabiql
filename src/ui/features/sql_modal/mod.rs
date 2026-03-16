@@ -444,7 +444,6 @@ impl SqlModal {
         frame.render_widget(list, popup_area);
     }
 
-    /// NOTE: O(n) on every render — acceptable for typical SQL lengths.
     fn cursor_to_position(content: &str, cursor_pos: usize) -> (usize, usize) {
         let mut row = 0;
         let mut col = 0;

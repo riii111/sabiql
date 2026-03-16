@@ -1,6 +1,3 @@
-//! Centralized keybinding definitions.
-//! Single source of truth for key/description used by Footer, Help, and Palette.
-
 mod connections;
 mod editors;
 mod normal;
@@ -24,9 +21,7 @@ pub struct KeyBinding {
     pub key: &'static str,
     pub desc_short: &'static str,
     pub description: &'static str,
-    /// `Action::None` = display-only (footer/help hint, not resolved by keymap).
     pub action: Action,
-    /// Empty for `Action::None` entries; display text comes from `key_short`/`key`.
     pub combos: &'static [KeyCombo],
 }
 
@@ -59,7 +54,6 @@ impl ModeRow {
     }
 }
 
-/// Unified mode bindings backed by `ModeRow` slices.
 pub struct ModeBindings {
     pub rows: &'static [ModeRow],
 }
@@ -265,7 +259,7 @@ pub mod idx {
 // Help Overlay Layout
 // =============================================================================
 
-/// Must match the section order in `HelpOverlay::render()`.
+// Must match the section order in `HelpOverlay::render()`.
 pub const fn help_content_line_count() -> usize {
     // Dedup pairs collapsed into one line by HelpOverlay::push_dedup:
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)

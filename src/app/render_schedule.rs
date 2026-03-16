@@ -1,31 +1,13 @@
-//! Pure functions for calculating animation deadlines.
-//!
-//! These functions are I/O-free and deterministic, suitable for use in the app layer.
-//! The UI layer uses the returned deadlines to schedule wake-ups.
-
 use std::time::{Duration, Instant};
 
 use crate::app::er_state::ErStatus;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 
-/// Interval for spinner animation updates (150ms for smooth animation at ~6.7 FPS)
 const SPINNER_INTERVAL: Duration = Duration::from_millis(150);
 
-/// Interval for cursor blink updates (500ms for standard blink rate)
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
-/// Calculates the next wake deadline based on the current state.
-///
-/// Returns `Some(Instant)` when a timed event needs processing.
-/// Returns `None` when no timers are active (caller can wait indefinitely for input).
-///
-/// # Wake sources:
-/// - Spinner animation (query running, ER preparing)
-/// - Message timeout expiration
-/// - Result highlight expiration
-/// - Completion debounce trigger
-/// - Cursor blink (only if no faster timers)
 pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant> {
     let mut earliest: Option<Instant> = None;
 
@@ -57,12 +39,10 @@ pub fn next_animation_deadline(state: &AppState, now: Instant) -> Option<Instant
     earliest
 }
 
-/// Returns true if a spinner animation is currently active.
 fn has_active_spinner(state: &AppState) -> bool {
     state.query.is_running() || state.er_preparation.status == ErStatus::Waiting
 }
 
-/// Returns true if the current input mode has a blinking cursor.
 fn has_blinking_cursor(state: &AppState) -> bool {
     matches!(
         state.input_mode(),

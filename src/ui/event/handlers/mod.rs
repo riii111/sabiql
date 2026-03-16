@@ -64,7 +64,6 @@ mod tests {
         KeyCombo::plain(k)
     }
 
-    /// Smoke tests for mode dispatch: verify handle_key_event routes to correct handler
     mod mode_dispatch {
         use super::*;
 

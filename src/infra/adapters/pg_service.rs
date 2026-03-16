@@ -22,8 +22,6 @@ impl ServiceFileReader for PgServiceFileReader {
     }
 }
 
-/// Resolves pg_service.conf path following PostgreSQL's lookup order:
-/// $PGSERVICEFILE → ~/.pg_service.conf → $(pg_config --sysconfdir)/pg_service.conf
 fn find_service_file() -> Result<PathBuf, ServiceFileError> {
     if let Ok(val) = std::env::var("PGSERVICEFILE") {
         let path = PathBuf::from(&val);

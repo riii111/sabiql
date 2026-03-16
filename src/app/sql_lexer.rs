@@ -1,15 +1,3 @@
-//! Lightweight SQL lexer for completion context detection.
-//!
-//! Handles standard and extended SQL syntax including:
-//! - Dollar-quoted strings ($tag$...$tag$)
-//! - Escape strings (E'...')
-//! - Line comments (--)
-//! - Block comments (/* */)
-//! - Cast operator (::)
-//! - Array access ([])
-//!
-//! Currently optimized for PostgreSQL but most constructs are standard SQL.
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Keyword(String),
@@ -50,7 +38,7 @@ pub struct CteDefinition {
 pub struct SqlContext {
     pub tables: Vec<TableReference>,
     pub ctes: Vec<CteDefinition>,
-    /// Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
+    // Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
     pub target_table: Option<TableReference>,
 }
 
@@ -502,7 +490,6 @@ impl SqlLexer {
         }
     }
 
-    /// Like `is_in_string_or_comment` but uses pre-computed tokens.
     pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
         tokens.iter().any(|t| {
             t.start < cursor_pos
@@ -851,8 +838,6 @@ impl SqlLexer {
         }
     }
 
-    /// Finds semicolon positions in the token stream
-    /// Returns a list of indices where semicolons appear
     fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
         tokens
             .iter()
@@ -867,8 +852,6 @@ impl SqlLexer {
             .collect()
     }
 
-    /// Determines which statement (delimited by semicolons) the cursor belongs to
-    /// Returns (start_token_index, end_token_index) of the statement
     fn find_statement_range(&self, tokens: &[Token], cursor_pos: usize) -> (usize, usize) {
         let semicolons = self.find_semicolon_positions(tokens);
 
@@ -895,9 +878,6 @@ impl SqlLexer {
         (start, tokens.len())
     }
 
-    /// Extracts the target table for UPDATE/DELETE/INSERT statements
-    /// Handles WITH clauses by scanning for statement-level mutation keywords
-    /// Now scans only the statement where cursor_pos is located
     fn extract_target_table(&self, tokens: &[Token], cursor_pos: usize) -> Option<TableReference> {
         // Find the range of tokens for the statement containing the cursor
         let (start_idx, end_idx) = self.find_statement_range(tokens, cursor_pos);

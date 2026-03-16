@@ -9,21 +9,19 @@ use crate::domain::{
     ConnectionId, DatabaseMetadata, MetadataState, QueryResult, Table, TableSummary,
 };
 
-/// Aggregate for the browse-session lifecycle.
-///
-/// # Invariants
-///
-/// - `connection_state` and `metadata_state` always transition as a pair
-///   (e.g. `begin_connecting` sets both to Connecting/Loading).
-/// - `current_table`, `table_detail`, and `selection_generation` change
-///   together via `select_table` / `clear_table_selection`.
-/// - `database_name` is derived from `metadata` (single source of truth).
-///
-/// # Transitional raw setters
-///
-/// `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
-/// `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
-/// does not cover the exact semantics needed (e.g. ER refresh, reload).
+// # Invariants
+//
+// - `connection_state` and `metadata_state` always transition as a pair
+//   (e.g. `begin_connecting` sets both to Connecting/Loading).
+// - `current_table`, `table_detail`, and `selection_generation` change
+//   together via `select_table` / `clear_table_selection`.
+// - `database_name` is derived from `metadata` (single source of truth).
+//
+// # Transitional raw setters
+//
+// `set_metadata`, `set_table_detail_raw`, `set_connection_state`,
+// `set_metadata_state` are `pub(crate)` for reducers where the aggregate API
+// does not cover the exact semantics needed (e.g. ER refresh, reload).
 #[derive(Debug, Clone, Default)]
 pub struct BrowseSession {
     // -- co-dependent: connection lifecycle --
@@ -49,7 +47,6 @@ pub struct BrowseSession {
 impl BrowseSession {
     // ── Table selection ──────────────────────────────────────────────
 
-    /// Returns the new generation for use as a staleness token.
     #[must_use]
     pub fn select_table(
         &mut self,
@@ -66,7 +63,6 @@ impl BrowseSession {
         self.selection_generation
     }
 
-    /// Returns `false` if generation is stale (detail discarded).
     #[must_use]
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
@@ -98,8 +94,8 @@ impl BrowseSession {
         self.metadata = Some(metadata);
     }
 
-    /// On reload failure (already Connected), keeps Connected to preserve
-    /// the current browse session while surfacing the error.
+    // On reload failure (already Connected), keeps Connected to preserve
+    // the current browse session while surfacing the error.
     pub fn mark_connection_failed(&mut self, error: String) {
         self.metadata_state = MetadataState::Error(error);
         self.is_reloading = false;
@@ -136,7 +132,7 @@ impl BrowseSession {
         }
     }
 
-    /// Caller must also call `result_interaction.reset_view()` and restore UI state.
+    // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         self.metadata = cache.metadata.clone();
         self.table_detail = cache.table_detail.clone();
@@ -153,7 +149,7 @@ impl BrowseSession {
         query.exit_history();
     }
 
-    /// Caller must also call `result_interaction.reset_view()` and restore UI state.
+    // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
         self.metadata = None;
         self.table_detail = None;

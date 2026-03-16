@@ -6,7 +6,7 @@ pub enum WriteOperation {
     Delete,
 }
 
-/// Variant order matters: derives `Ord` for risk comparison (Low < Medium < High).
+// Variant order matters: derives `Ord` for risk comparison (Low < Medium < High).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RiskLevel {
     Low,
@@ -70,7 +70,7 @@ pub struct WritePreview {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdhocRiskDecision {
     pub risk_level: RiskLevel,
-    /// All values are string literals, so `&'static str` avoids allocation and keeps `Copy`.
+    // All values are string literals, so `&'static str` avoids allocation and keeps `Copy`.
     pub label: &'static str,
 }
 

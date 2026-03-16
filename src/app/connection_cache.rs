@@ -1,7 +1,3 @@
-//! Per-connection state cache for seamless switching.
-//!
-//! Preserves user context (selected table, query results, etc.) across connection switches.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 

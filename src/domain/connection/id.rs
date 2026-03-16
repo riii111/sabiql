@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Unique identifier for a connection profile
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ConnectionId(String);
 

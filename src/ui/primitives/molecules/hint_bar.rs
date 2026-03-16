@@ -4,11 +4,6 @@ use ratatui::text::{Line, Span};
 use crate::ui::primitives::atoms::{key_chip, key_text};
 use crate::ui::theme::Theme;
 
-/// Creates a hint line for footer display.
-/// Format: "key1 desc1  key2 desc2  ..."
-///
-/// # Arguments
-/// * `hints` - Slice of (key, description) tuples
 pub fn hint_line(hints: &[(&str, &str)]) -> Line<'static> {
     let mut spans = Vec::new();
 
@@ -23,12 +18,6 @@ pub fn hint_line(hints: &[(&str, &str)]) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Creates a chip-style hint line for help overlay.
-/// Format: "  [key]  description"
-///
-/// # Arguments
-/// * `key` - Key binding (will be displayed as a chip)
-/// * `desc` - Description text
 pub fn chip_hint_line(key: &str, desc: &str) -> Line<'static> {
     let chip = key_chip(key);
     let padding_len = 15usize.saturating_sub(key.len() + 4);

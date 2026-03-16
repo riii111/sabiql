@@ -1,11 +1,7 @@
-/// Connection lifecycle state for lazy connection management.
-///
-/// State transitions:
-/// - NotConnected → Connecting (when entering Main screen with dsn)
-/// - Connecting → Connected (on successful metadata fetch)
-/// - Connecting → Failed (on connection error)
-/// - Failed → NotConnected (when re-entering connection setup)
-/// - Connected → NotConnected (when re-entering connection setup)
+// State transitions:
+// NotConnected → Connecting → Connected
+//                           → Failed → NotConnected
+// Connected → NotConnected (re-entering connection setup)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionState {
     #[default]

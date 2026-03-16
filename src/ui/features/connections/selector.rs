@@ -14,12 +14,8 @@ use crate::ui::primitives::atoms::scroll_indicator::{
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
-/// Display width of the active/inactive prefix ("● " or "  ").
-/// Both are exactly 2 terminal columns; using a constant avoids
-/// byte-length vs display-width mismatches for the multibyte "●".
 const PREFIX_DISPLAY_WIDTH: usize = 2;
 
-/// Percentage of content width allocated to the service name label column.
 const SERVICE_LABEL_COL_PERCENT: usize = 40;
 
 pub struct ConnectionSelector;
@@ -129,7 +125,6 @@ fn render_service_item(
     ListItem::new(line)
 }
 
-/// Shared rendering logic for connection list (used by ConnectionSelector).
 pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.connection_list_pane_height = area.height;
     let active_id = state.session.active_connection_id.as_ref();

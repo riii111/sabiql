@@ -41,8 +41,6 @@ impl PostgresAdapter {
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 
-    /// Merges the read-only session parameter into PGOPTIONS,
-    /// preserving any existing user-set options.
     fn apply_read_only_pgoptions(cmd: &mut Command) {
         let merged = match std::env::var("PGOPTIONS") {
             Ok(existing) => format!("{} {}", Self::PGOPTIONS_READ_ONLY, existing),

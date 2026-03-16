@@ -341,8 +341,6 @@ impl PostgresAdapter {
         )
     }
 
-    /// Light query that fetches only columns + foreign keys (used by prefetch
-    /// for CompletionEngine and ER diagrams).
     pub(in crate::infra::adapters::postgres) fn table_detail_light_query(
         schema: &str,
         table: &str,
@@ -359,12 +357,6 @@ impl PostgresAdapter {
         )
     }
 
-    /// Combined query that fetches all 6 table detail categories in a single
-    /// `json_build_object(...)` call, reducing 6 psql spawns to 1.
-    ///
-    /// Each sub-query is embedded as a scalar subquery. `rls_query` and
-    /// `table_info_query` return a single row (not `json_agg`), which is safe
-    /// because `(pg_namespace.nspname, pg_class.relname)` is unique per table.
     pub(in crate::infra::adapters::postgres) fn table_detail_query(
         schema: &str,
         table: &str,

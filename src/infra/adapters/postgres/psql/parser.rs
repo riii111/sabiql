@@ -357,8 +357,6 @@ impl PostgresAdapter {
             .collect())
     }
 
-    /// Parse the combined JSON from `table_detail_query()`.
-    /// Strictly requires all 6 keys; missing/unknown keys cause an error.
     pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
         json: &str,
     ) -> Result<TableDetailCombined, MetadataError> {
@@ -392,8 +390,6 @@ impl PostgresAdapter {
         Ok((columns, indexes, foreign_keys, rls, triggers, table_info))
     }
 
-    /// Parse the light JSON from `table_detail_light_query()`.
-    /// Returns only columns and foreign keys.
     pub(in crate::infra::adapters::postgres) fn parse_table_detail_light(
         json: &str,
     ) -> Result<(Vec<Column>, Vec<ForeignKey>), MetadataError> {
@@ -702,11 +698,6 @@ impl PostgresAdapter {
     }
 }
 
-/// Read model for multi-statement command tag resolution.
-///
-/// Holds two views of the same execution:
-/// - `all`: tags after CTAS correction (what psql *meant* to report)
-/// - `effective`: tags that survived rollback filtering (what actually persisted)
 #[cfg_attr(test, derive(Debug))]
 pub(in crate::infra::adapters::postgres) struct ResolvedTags {
     all: Vec<CommandTag>,

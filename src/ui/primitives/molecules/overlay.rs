@@ -6,24 +6,14 @@ use ratatui::widgets::{Block, Borders};
 
 use crate::ui::theme::Theme;
 
-/// Creates a centered rectangle within the given area.
-///
-/// # Arguments
-/// * `area` - The parent area to center within
-/// * `width` - Width constraint for the centered rect
-/// * `height` - Height constraint for the centered rect
-///
-/// # Returns
-/// A `Rect` centered horizontally and vertically within `area`
 pub fn centered_rect(area: Rect, width: Constraint, height: Constraint) -> Rect {
     let [area] = Layout::horizontal([width]).flex(Flex::Center).areas(area);
     let [area] = Layout::vertical([height]).flex(Flex::Center).areas(area);
     area
 }
 
-/// Dims the background to make the modal "float" visually.
-/// Uses DIM + dark foreground to suppress background borders
-/// that would otherwise appear adjacent to modal borders.
+// Uses DIM + dark foreground to suppress background borders
+// that would otherwise appear adjacent to modal borders.
 pub fn render_scrim(frame: &mut Frame) {
     let buf = frame.buffer_mut();
     let area = buf.area;

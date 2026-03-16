@@ -30,7 +30,6 @@ impl ResultHistory {
         self.entries.push_back(result);
     }
 
-    /// Get a result by index (0 = oldest, len-1 = newest)
     pub fn get(&self, index: usize) -> Option<&QueryResult> {
         self.entries.get(index).map(|arc| &**arc)
     }

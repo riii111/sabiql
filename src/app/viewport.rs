@@ -89,8 +89,6 @@ fn apply_slack_to_rightmost(widths: &mut [u16], available_width: u16) {
     }
 }
 
-/// Attempts to add a bonus column if slack space allows.
-/// Returns true if bonus column was added.
 fn try_add_bonus_column(
     config: &ColumnWidthConfig,
     indices: &mut Vec<usize>,
@@ -141,7 +139,6 @@ pub fn select_viewport_columns(
     (indices, widths)
 }
 
-/// At right edge, drops leftmost column if shrinking isn't enough to preserve rightmost.
 fn select_fixed_columns(
     config: &ColumnWidthConfig,
     ctx: &SelectionContext,
@@ -237,9 +234,8 @@ fn select_dynamic_columns(
     (indices, widths)
 }
 
-/// Finds max N where ALL consecutive N-column windows fit using sliding window.
-/// Uses ideal_widths primarily so scrolling is enabled when content exceeds viewport,
-/// even if headers (min_widths) would fit.
+// Uses ideal_widths primarily so scrolling is enabled when content exceeds viewport,
+// even if headers (min_widths) would fit.
 pub fn calculate_viewport_column_count(
     ideal_widths: &[u16],
     min_widths: &[u16],
@@ -1011,17 +1007,9 @@ mod tests {
         }
     }
 
-    /// Integration tests that simulate the full workflow as used in Result/Inspector.
-    /// These tests verify that the plan → selection → width calculation pipeline
-    /// produces correct results, particularly at edge cases.
     mod integration {
         use super::*;
 
-        /// Simulates the workflow in Result/Inspector:
-        /// 1. Calculate ViewportPlan from ideal/min widths
-        /// 2. Use plan to create SelectionContext
-        /// 3. Select viewport columns
-        /// 4. Verify widths are correct
         fn run_full_pipeline(
             ideal_widths: &[u16],
             min_widths: &[u16],
