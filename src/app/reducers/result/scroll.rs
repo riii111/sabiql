@@ -93,6 +93,21 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             });
             Some(vec![])
         }
+        Action::ResultScrollMiddle => {
+            let visible = state.result_visible_rows();
+            let mid_viewport = visible / 2;
+            let mid_row = state.result_interaction.scroll_offset + mid_viewport;
+            let max_row = result_row_count(state).saturating_sub(1);
+            let target = mid_row.min(max_row);
+            move_row_or_scroll(state, target, |s| {
+                let total = result_row_count(s);
+                let v = s.result_visible_rows();
+                let ideal = total / 2;
+                let max_s = total.saturating_sub(v);
+                s.result_interaction.scroll_offset = ideal.saturating_sub(v / 2).min(max_s);
+            });
+            Some(vec![])
+        }
         Action::ResultScrollHalfPageDown => {
             let delta = (state.result_visible_rows() / 2).max(1);
             let max_row = result_row_count(state).saturating_sub(1);
@@ -251,6 +266,28 @@ mod tests {
             reduce(&mut state, &Action::ResultScrollHalfPageDown);
 
             assert_eq!(state.result_interaction.scroll_offset, 1);
+        }
+
+        #[test]
+        fn scroll_middle_centers_viewport() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible = 20, scroll starts at 0
+
+            reduce(&mut state, &Action::ResultScrollMiddle);
+
+            // ideal = 50, v/2 = 10, offset = 40, max = 80 → 40
+            assert_eq!(state.result_interaction.scroll_offset, 40);
+        }
+
+        #[test]
+        fn scroll_middle_moves_row_to_viewport_center_in_row_active() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
+            state.result_interaction.enter_row(0);
+
+            reduce(&mut state, &Action::ResultScrollMiddle);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(10));
         }
     }
 }

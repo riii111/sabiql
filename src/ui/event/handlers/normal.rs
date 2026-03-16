@@ -95,7 +95,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             | Key::Left
             | Key::Right
             | Key::Char('g')
-            | Key::Char('G') => {}
+            | Key::Char('G')
+            | Key::Char('M') => {}
             _ => return Action::None,
         }
     }
@@ -170,6 +171,15 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::InspectorScrollBottom
             } else {
                 Action::SelectLast
+            }
+        }
+        Key::Char('M') => {
+            if result_navigation {
+                Action::ResultScrollMiddle
+            } else if inspector_navigation {
+                Action::InspectorScrollMiddle
+            } else {
+                Action::SelectMiddle
             }
         }
 
@@ -798,6 +808,33 @@ mod tests {
         assert!(matches!(result, Action::None));
     }
 
+    #[test]
+    fn m_key_returns_select_middle_when_explorer_focused() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+        assert!(matches!(result, Action::SelectMiddle));
+    }
+
+    #[test]
+    fn m_key_returns_result_scroll_middle_when_result_focused() {
+        let state = result_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+        assert!(matches!(result, Action::ResultScrollMiddle));
+    }
+
+    #[test]
+    fn m_key_returns_result_scroll_middle_in_focus_mode() {
+        let state = focus_mode_state();
+
+        let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+        assert!(matches!(result, Action::ResultScrollMiddle));
+    }
+
     fn inspector_focused_state() -> AppState {
         let mut state = browse_state();
         state.ui.focused_pane = FocusedPane::Inspector;
@@ -824,6 +861,15 @@ mod tests {
         let result = handle_normal_mode(combo(code), &state);
 
         assert!(matches!(result, Action::InspectorScrollBottom));
+    }
+
+    #[test]
+    fn m_key_returns_inspector_scroll_middle_when_inspector_focused() {
+        let state = inspector_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('M')), &state);
+
+        assert!(matches!(result, Action::InspectorScrollMiddle));
     }
 
     #[test]
@@ -1118,6 +1164,10 @@ mod tests {
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('G')), &state),
                 Action::ResultScrollBottom
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('M')), &state),
+                Action::ResultScrollMiddle
             ));
         }
 
