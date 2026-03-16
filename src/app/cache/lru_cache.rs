@@ -31,7 +31,6 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.get(key)
     }
 
-    /// Returns a reference without updating LRU order
     pub fn peek<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,

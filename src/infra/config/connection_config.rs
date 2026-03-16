@@ -6,7 +6,6 @@ use crate::domain::connection::{
 
 pub const CURRENT_VERSION: u32 = 2;
 
-/// Version-only struct for detecting config file version before full parse.
 #[derive(Debug, Deserialize)]
 pub struct ConfigVersionCheck {
     pub version: u32,

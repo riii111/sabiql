@@ -1,18 +1,3 @@
-//! Executes side effects returned by the reducer.
-//!
-//! # RefCell Borrow Safety
-//!
-//! When effects need data from `completion_engine` (a `RefCell`), the borrow
-//! MUST be dropped before any await point:
-//!
-//! ```ignore
-//! let tables = {
-//!     let engine = completion_engine.borrow();
-//!     engine.table_details_iter().map(|...| ...).collect()
-//! };  // borrow dropped here
-//! some_async_operation(tables).await;  // safe
-//! ```
-
 use std::cell::RefCell;
 use std::sync::Arc;
 

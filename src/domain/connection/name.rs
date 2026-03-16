@@ -50,7 +50,6 @@ impl ConnectionName {
         &self.0
     }
 
-    /// For case-insensitive uniqueness comparison.
     pub fn normalized(&self) -> String {
         self.0.to_lowercase()
     }

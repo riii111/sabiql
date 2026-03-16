@@ -11,8 +11,6 @@ pub struct HorizontalScrollParams {
     pub total_items: usize,
 }
 
-/// Render a horizontal scroll indicator at the bottom of an area.
-/// NOTE: `area` should be the INNER area (without border).
 pub fn render_horizontal_scroll_indicator(
     frame: &mut Frame,
     area: Rect,
@@ -107,8 +105,6 @@ pub struct VerticalScrollParams {
     pub total_items: usize,
 }
 
-/// Render a vertical scrollbar on the right side of an area.
-/// NOTE: `area` should be the INNER area (without border).
 pub fn render_vertical_scroll_indicator_bar(
     frame: &mut Frame,
     area: Rect,

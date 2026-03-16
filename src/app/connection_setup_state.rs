@@ -127,7 +127,6 @@ impl Default for ConnectionSetupState {
 }
 
 impl ConnectionSetupState {
-    /// Generates default name from database@host format.
     pub fn default_name(&self) -> String {
         if self.database.is_empty() {
             self.host.clone()

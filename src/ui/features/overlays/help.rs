@@ -176,8 +176,6 @@ impl HelpOverlay {
         ])
     }
 
-    /// Footer uses paired entries (e.g. Focus/Exit Focus) for context-dependent
-    /// labels, but Help should show one line per physical key.
     fn push_dedup(lines: &mut Vec<Line<'static>>, bindings: &[KeyBinding]) {
         let mut i = 0;
         while i < bindings.len() {

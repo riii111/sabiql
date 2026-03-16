@@ -1,5 +1,3 @@
-//! SQL modal sub-reducer: SQL editing and completion.
-
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove};
@@ -13,8 +11,6 @@ use crate::app::statement_classifier;
 use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_adhoc_risk};
 
-/// Handles SQL modal editing and completion actions.
-/// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
@@ -357,7 +353,6 @@ pub fn reduce_sql_modal(
     }
 }
 
-/// Pick the label from the highest-risk individual statement for the confirmation UI.
 fn multi_statement_label(sql: &str) -> &'static str {
     use crate::app::adhoc_risk::split_statements;
     let mut worst_level = RiskLevel::Low;

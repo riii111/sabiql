@@ -2,10 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::connection::ConnectionId;
 
-/// ISO-8601 formatted UTC timestamp (e.g., `"2026-03-13T12:00:00Z"`).
-///
-/// Wraps a `String` to make the format contract explicit at the type level.
-/// The inner value is always ASCII, so byte-level slicing is safe.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Iso8601Timestamp(String);

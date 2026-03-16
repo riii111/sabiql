@@ -19,7 +19,6 @@ pub struct ErTableInfo {
     pub foreign_keys: Vec<ErFkInfo>,
 }
 
-/// Deterministic filename for ER diagram output.
 pub fn er_output_filename(selected: &[String], total: usize) -> String {
     if selected.is_empty() || selected.len() == total {
         "er_full.dot".to_string()
@@ -45,8 +44,6 @@ pub fn er_output_filename(selected: &[String], total: usize) -> String {
     }
 }
 
-/// Outgoing FK targets of seed tables that are not already cached.
-/// Operates on a partial cache (only seed tables must be present).
 pub fn fk_neighbors_of_seeds(
     cached_seeds: &[ErTableInfo],
     seed_names: &HashSet<&str>,
@@ -68,7 +65,6 @@ pub fn fk_neighbors_of_seeds(
     result.into_iter().collect()
 }
 
-/// Union of per-seed BFS results. Empty seeds → empty vec.
 pub fn fk_reachable_tables_multi(
     tables: &[ErTableInfo],
     seeds: &[String],
@@ -88,7 +84,6 @@ pub fn fk_reachable_tables_multi(
         .collect()
 }
 
-/// BFS from seed on bidirectional FK graph with depth limit.
 pub fn fk_reachable_tables(
     tables: &[ErTableInfo],
     seed: &str,

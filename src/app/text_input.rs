@@ -18,7 +18,6 @@ impl TextInputState {
         }
     }
 
-    /// Test helper: construct with explicit viewport_offset
     pub fn with_viewport(
         content: impl Into<String>,
         cursor: usize,
@@ -45,7 +44,6 @@ impl TextInputState {
         self.viewport_offset
     }
 
-    /// Set cursor position directly (clamped to char_count, viewport_offset reset to 0)
     pub fn set_cursor(&mut self, pos: usize) {
         self.cursor = pos.min(self.char_count());
         self.viewport_offset = 0;

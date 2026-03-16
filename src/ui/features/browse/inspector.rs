@@ -759,9 +759,6 @@ impl Inspector {
     }
 }
 
-/// Returns (clamped_widths, true_total_width)
-/// - clamped_widths: widths clamped to MIN/MAX for rendering
-/// - true_total_width: sum of unclamped widths (for scroll detection)
 fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> (Vec<u16>, u16) {
     let mut true_total: u16 = 0;
     let clamped: Vec<u16> = headers

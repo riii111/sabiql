@@ -367,7 +367,6 @@ impl ResultPane {
     }
 }
 
-/// Calculate ideal widths for all columns (no scaling, just content-based).
 fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
     const SAMPLE_ROWS: usize = 50;
 

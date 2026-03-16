@@ -1,5 +1,3 @@
-//! Modal sub-reducer: modal/overlay toggles and confirm dialog.
-
 use std::time::Instant;
 
 use crate::app::action::Action;
@@ -9,8 +7,6 @@ use crate::app::input_mode::InputMode;
 use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
-/// Handles modal/overlay toggles and confirm dialog actions.
-/// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::OpenTablePicker => {

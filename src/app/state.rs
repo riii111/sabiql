@@ -21,7 +21,6 @@ pub struct AppState {
     pub should_quit: bool,
     pub command_line_input: String,
 
-    /// When true, a render is needed on the next event loop iteration.
     pub render_dirty: bool,
 
     pub session: BrowseSession,
@@ -38,7 +37,6 @@ pub struct AppState {
     pub query_history_picker: QueryHistoryPickerState,
     pub modal: ModalState,
     pub connection_caches: ConnectionCacheStore,
-    /// Cached list of saved connections (for Explorer Connections mode).
     connections: Vec<ConnectionProfile>,
     service_entries: Vec<ServiceEntry>,
     connection_list_items: Vec<ConnectionListItem>,
@@ -74,14 +72,11 @@ impl AppState {
         self.modal.active_mode()
     }
 
-    /// Mark the state as needing a render.
-    /// Call this after any state change that affects the UI.
     #[inline]
     pub fn mark_dirty(&mut self) {
         self.render_dirty = true;
     }
 
-    /// Clear the dirty flag after rendering.
     #[inline]
     pub fn clear_dirty(&mut self) {
         self.render_dirty = false;
@@ -99,7 +94,6 @@ impl AppState {
         self.messages.clear_expired();
     }
 
-    /// Clear all expired timers (messages, highlight, etc.)
     pub fn clear_expired_timers(&mut self, now: std::time::Instant) {
         self.messages.clear_expired();
         self.query.clear_expired_highlight(now);

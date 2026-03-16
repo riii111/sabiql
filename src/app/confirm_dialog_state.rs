@@ -4,7 +4,6 @@ use crate::domain::ConnectionId;
 pub enum ConfirmIntent {
     QuitNoConnection,
     DeleteConnection(ConnectionId),
-    /// blocked=true disables the confirm button in UI
     ExecuteWrite {
         sql: String,
         blocked: bool,

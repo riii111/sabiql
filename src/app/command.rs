@@ -10,7 +10,6 @@ pub enum Command {
     Unknown(String),
 }
 
-/// Parse a command string into a Command enum
 pub fn parse_command(input: &str) -> Command {
     match input.trim() {
         "q" | "quit" => Command::Quit,
@@ -22,7 +21,6 @@ pub fn parse_command(input: &str) -> Command {
     }
 }
 
-/// Convert a Command into an Action
 pub fn command_to_action(cmd: Command) -> Action {
     match cmd {
         Command::Quit => Action::Quit,

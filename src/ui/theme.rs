@@ -2,14 +2,12 @@ use ratatui::style::Color;
 
 use crate::app::write_guardrails::RiskLevel;
 
-/// Base color palette
 pub struct Palette;
 
 impl Palette {
     pub const CATPPUCCIN_MOCHA: Color = Color::Rgb(0x1e, 0x1e, 0x2e);
 }
 
-/// Application color theme constants
 pub struct Theme;
 
 impl Theme {

@@ -144,7 +144,6 @@ fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
     chars[offset..end].iter().collect()
 }
 
-/// Returns character count (not byte length)
 fn char_count(s: &str) -> usize {
     s.chars().count()
 }

@@ -9,24 +9,16 @@ use crate::domain::{DatabaseMetadata, Table};
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 const TABLE_CACHE_CAPACITY: usize = 500;
 
-/// Context detected from SQL text at cursor position
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompletionContext {
-    /// Start of statement or unknown context → keywords
     Keyword,
-    /// After FROM/JOIN → table names
     Table,
-    /// After SELECT/WHERE/ON or table reference → column names
     Column,
-    /// After "schema." → tables in that schema
     SchemaQualified(String),
-    /// After "alias." → columns of that aliased table
     AliasColumn(String),
-    /// CTE or table names (in FROM clause with CTEs defined)
     CteOrTable,
 }
 
-/// Pre-computed tokenization and context for a single completion trigger.
 pub struct PreparedCompletion {
     pub(crate) tokens: Vec<Token>,
     pub(crate) context: SqlContext,
@@ -150,12 +142,10 @@ impl CompletionEngine {
         self.table_detail_cache.resize(new_capacity);
     }
 
-    /// Returns an iterator over cached table details for graph building
     pub fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
         self.table_detail_cache.iter()
     }
 
-    /// Returns qualified table names referenced in SQL but not cached (max 10)
     pub fn missing_tables(
         &self,
         content: &str,
@@ -189,7 +179,6 @@ impl CompletionEngine {
         self.extract_current_token(&before_cursor).chars().count()
     }
 
-    /// Tokenize + build context once for reuse across missing_tables / get_candidates.
     pub fn prepare(&self, content: &str, cursor_pos: usize) -> PreparedCompletion {
         let tokens = self.lexer.tokenize(content, content.len());
         let context = self.lexer.build_context(&tokens, cursor_pos);
@@ -509,7 +498,6 @@ impl CompletionEngine {
         before_cursor[start..].to_string()
     }
 
-    /// Check if cursor is after "schema." pattern
     fn detect_schema_prefix(&self, before_cursor: &str, current_token: &str) -> Option<String> {
         let prefix_end = before_cursor.len().saturating_sub(current_token.len());
         let prefix = &before_cursor[..prefix_end];
@@ -592,8 +580,6 @@ impl CompletionEngine {
             .collect()
     }
 
-    /// Primary SQL clause keywords that should always appear in Column context
-    /// These get high score (200) to ensure they appear above column candidates
     fn primary_clause_keywords(&self, prefix: &str) -> Vec<CompletionCandidate> {
         const PRIMARY_KEYWORDS: &[&str] = &[
             "FROM",

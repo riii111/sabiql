@@ -1,5 +1,3 @@
-/// Application-level key code, independent of the terminal backend.
-/// Only includes keys that sabiql actually uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Char(char),
@@ -18,12 +16,10 @@ pub enum Key {
     PageUp,
     PageDown,
     F(u8),
-    /// Exhaustive-match catch-alls for key_translator; never matched in handlers.
     Null,
     Other,
 }
 
-/// Modifier flags for a key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Modifiers {
     pub ctrl: bool,
@@ -54,7 +50,6 @@ impl Modifiers {
     };
 }
 
-/// A key + modifier combination, used as the app-layer abstraction for input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
     pub key: Key,

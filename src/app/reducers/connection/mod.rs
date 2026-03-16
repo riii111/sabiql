@@ -10,8 +10,6 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::state::AppState;
 
-/// Handles connection lifecycle, setup form, and error handling.
-/// Returns Some(effects) if action was handled, None otherwise.
 pub fn reduce_connection(
     state: &mut AppState,
     action: &Action,
