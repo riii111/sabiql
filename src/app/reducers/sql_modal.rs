@@ -55,7 +55,7 @@ pub fn reduce_sql_modal(
         // Clipboard paste
         Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
             if matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ) {
                 return Some(vec![]);
@@ -66,13 +66,13 @@ pub fn reduce_sql_modal(
             state.sql_modal.cursor += normalized.chars().count();
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             Some(vec![])
         }
 
         // Text editing
         Action::SqlModalInput(c) => {
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, *c);
             state.sql_modal.cursor += 1;
@@ -80,7 +80,7 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalBackspace => {
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             if state.sql_modal.cursor > 0 {
                 state.sql_modal.cursor -= 1;
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
@@ -90,7 +90,7 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalDelete => {
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             let total_chars = char_count(&state.sql_modal.content);
             if state.sql_modal.cursor < total_chars {
                 let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
@@ -100,7 +100,7 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalNewLine => {
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, '\n');
             state.sql_modal.cursor += 1;
@@ -108,7 +108,7 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalTab => {
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert_str(byte_idx, "    ");
             state.sql_modal.cursor += 4;
@@ -182,7 +182,7 @@ pub fn reduce_sql_modal(
         // Modal open/submit
         Action::OpenSqlModal => {
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.status = SqlModalStatus::Editing;
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
@@ -204,8 +204,7 @@ pub fn reduce_sql_modal(
 
             match evaluate_multi_statement(&query) {
                 MultiStatementDecision::Block { reason } => {
-                    state.sql_modal.status = SqlModalStatus::Error;
-                    state.sql_modal.last_adhoc_error = Some(reason);
+                    state.sql_modal.mark_adhoc_error(reason);
                     Some(vec![])
                 }
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -218,7 +217,7 @@ pub fn reduce_sql_modal(
                     if state.session.read_only
                         && !matches!(risk.confirmation, ConfirmationType::Immediate)
                     {
-                        state.sql_modal.status = SqlModalStatus::Error;
+                        state.sql_modal.set_status(SqlModalStatus::Error);
                         state.query.set_current_result(std::sync::Arc::new(
                             crate::domain::QueryResult::error(
                                 query,
@@ -231,19 +230,21 @@ pub fn reduce_sql_modal(
                     }
                     match risk.confirmation {
                         ConfirmationType::Immediate => {
-                            state.sql_modal.status = SqlModalStatus::Running;
+                            state.sql_modal.set_status(SqlModalStatus::Running);
                             Some(adhoc_effects(state, query))
                         }
                         ConfirmationType::Enter => {
-                            state.sql_modal.status = SqlModalStatus::Confirming(decision);
+                            state
+                                .sql_modal
+                                .set_status(SqlModalStatus::Confirming(decision));
                             Some(vec![])
                         }
                         ConfirmationType::TableNameInput { target } => {
-                            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+                            state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                                 decision,
                                 input: TextInputState::default(),
                                 target_name: Some(target),
-                            };
+                            });
                             Some(vec![])
                         }
                     }
@@ -251,9 +252,9 @@ pub fn reduce_sql_modal(
             }
         }
         Action::SqlModalConfirmExecute => {
-            if matches!(state.sql_modal.status, SqlModalStatus::Confirming(_)) {
+            if matches!(state.sql_modal.status(), SqlModalStatus::Confirming(_)) {
                 let query = state.sql_modal.content.trim().to_string();
-                state.sql_modal.status = SqlModalStatus::Running;
+                state.sql_modal.set_status(SqlModalStatus::Running);
                 Some(adhoc_effects(state, query))
             } else {
                 None
@@ -261,10 +262,10 @@ pub fn reduce_sql_modal(
         }
         Action::SqlModalCancelConfirm => {
             if matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
             ) {
-                state.sql_modal.status = SqlModalStatus::Editing;
+                state.sql_modal.set_status(SqlModalStatus::Editing);
                 Some(vec![])
             } else {
                 None
@@ -273,21 +274,21 @@ pub fn reduce_sql_modal(
 
         // HIGH risk confirmation input
         Action::SqlModalHighRiskInput(c) => {
-            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.insert_char(*c);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::SqlModalHighRiskBackspace => {
-            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.backspace();
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
         Action::SqlModalHighRiskMoveCursor(movement) => {
-            if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = state.sql_modal.status {
+            if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.move_cursor(*movement);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
@@ -297,16 +298,16 @@ pub fn reduce_sql_modal(
             // `matches!` + flag instead of `if let` because the immutable borrow
             // from pattern matching must end before we can mutate `state.sql_modal.status`.
             let matched = matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    ref target_name,
-                    ref input,
+                    target_name,
+                    input,
                     ..
                 } if target_name.as_ref().is_some_and(|n| input.content() == n)
             );
             if matched {
                 let query = state.sql_modal.content.trim().to_string();
-                state.sql_modal.status = SqlModalStatus::Running;
+                state.sql_modal.set_status(SqlModalStatus::Running);
                 if let Some(dsn) = &state.session.dsn {
                     return Some(vec![Effect::ExecuteAdhoc {
                         dsn: dsn.clone(),
@@ -485,14 +486,14 @@ mod tests {
         fn paste_in_confirming_high_is_ignored() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "DROP TABLE users".to_string();
-            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+            state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                 decision: crate::app::write_guardrails::AdhocRiskDecision {
                     risk_level: RiskLevel::High,
                     label: "DROP",
                 },
                 input: TextInputState::default(),
                 target_name: Some("users".to_string()),
-            };
+            });
 
             reduce_sql_modal(
                 &mut state,
@@ -502,7 +503,7 @@ mod tests {
 
             assert_eq!(state.sql_modal.content, "DROP TABLE users");
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ));
         }
@@ -521,14 +522,14 @@ mod tests {
         fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
             let mut state = sql_modal_state();
             state.sql_modal.content = content.to_string();
-            state.sql_modal.status = SqlModalStatus::ConfirmingHigh {
+            state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                 decision: AdhocRiskDecision {
                     risk_level: RiskLevel::High,
                     label: "DROP",
                 },
                 input: TextInputState::default(),
                 target_name: target.map(|s| s.to_string()),
-            };
+            });
             state
         }
 
@@ -540,9 +541,9 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(ref name),
+                    target_name: Some(name),
                     ..
                 } if name == "users"
             ));
@@ -556,8 +557,8 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
-                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
+                state.sql_modal.status(),
+                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
             ));
         }
 
@@ -569,8 +570,8 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
-                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::High
+                state.sql_modal.status(),
+                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
             ));
         }
 
@@ -582,8 +583,8 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
-                SqlModalStatus::Confirming(ref d) if d.risk_level == RiskLevel::Medium
+                state.sql_modal.status(),
+                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::Medium
             ));
         }
 
@@ -597,7 +598,7 @@ mod tests {
                 Instant::now(),
             );
 
-            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+            if let SqlModalStatus::ConfirmingHigh { input, .. } = state.sql_modal.status() {
                 assert_eq!(input.content(), "u");
             } else {
                 panic!("expected ConfirmingHigh");
@@ -624,7 +625,7 @@ mod tests {
                 Instant::now(),
             );
 
-            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+            if let SqlModalStatus::ConfirmingHigh { input, .. } = state.sql_modal.status() {
                 assert_eq!(input.content(), "a");
             } else {
                 panic!("expected ConfirmingHigh");
@@ -649,7 +650,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(matches!(state.sql_modal.status, SqlModalStatus::Running));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
                 effects
                     .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
@@ -672,7 +673,7 @@ mod tests {
             );
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ));
         }
@@ -688,7 +689,7 @@ mod tests {
             );
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
             ));
         }
@@ -699,7 +700,7 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
-            assert!(matches!(state.sql_modal.status, SqlModalStatus::Editing));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Editing));
         }
 
         #[test]
@@ -719,7 +720,7 @@ mod tests {
                 Instant::now(),
             );
 
-            if let SqlModalStatus::ConfirmingHigh { ref input, .. } = state.sql_modal.status {
+            if let SqlModalStatus::ConfirmingHigh { input, .. } = state.sql_modal.status() {
                 assert_eq!(input.cursor(), 1);
             } else {
                 panic!("expected ConfirmingHigh");
@@ -734,9 +735,9 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(ref name),
+                    target_name: Some(name),
                     ..
                 } if name == "users"
             ));
@@ -750,9 +751,9 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(ref name),
+                    target_name: Some(name),
                     ..
                 } if name == "users"
             ));
@@ -766,9 +767,9 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(ref name),
+                    target_name: Some(name),
                     ..
                 } if name == "users"
             ));
@@ -782,9 +783,9 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh {
-                    target_name: Some(ref name),
+                    target_name: Some(name),
                     ..
                 } if name == "my_schema.very_long_table_name"
             ));
@@ -810,7 +811,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(matches!(state.sql_modal.status, SqlModalStatus::Running));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
             assert!(
                 effects
                     .is_some_and(|e| e.iter().any(|ef| matches!(ef, Effect::ExecuteAdhoc { .. })))
@@ -833,7 +834,7 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.sql_modal.status, SqlModalStatus::Error);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
             assert!(state.query.current_result().is_some_and(|r| r.is_error()));
         }
 
@@ -849,7 +850,7 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
             assert!(!effects.is_empty());
-            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
     }
 
@@ -872,7 +873,7 @@ mod tests {
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
-            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert!(
                 effects
                     .iter()
@@ -888,7 +889,7 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
             assert!(matches!(
-                state.sql_modal.status,
+                state.sql_modal.status(),
                 SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::Low
             ));
             assert!(effects.is_empty());
@@ -901,8 +902,8 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
-                state.sql_modal.status,
-                SqlModalStatus::ConfirmingHigh { ref decision, .. }
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingHigh { decision, .. }
                     if decision.risk_level == RiskLevel::High
             ));
         }
@@ -916,7 +917,7 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
                     .unwrap();
 
-            assert_eq!(state.sql_modal.status, SqlModalStatus::Running);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert!(
                 effects
                     .iter()
@@ -931,7 +932,7 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
-            assert_eq!(state.sql_modal.status, SqlModalStatus::Editing);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Editing);
         }
 
         #[test]

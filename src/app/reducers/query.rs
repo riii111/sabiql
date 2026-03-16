@@ -145,10 +145,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> 
         // Skip ExecutePreview here: the selected table may have been
         // dropped. MetadataLoaded handles preview refresh after
         // metadata arrives.
-        state.sql_modal.prefetch_started = false;
-        state.sql_modal.prefetch_queue.clear();
-        state.sql_modal.prefetching_tables.clear();
-        state.sql_modal.failed_prefetch_tables.clear();
+        state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
 
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
@@ -197,11 +194,11 @@ pub fn reduce_query(
 
                 if result.source == QuerySource::Adhoc {
                     if result.is_error() {
-                        state.sql_modal.status = SqlModalStatus::Error;
-                        state.sql_modal.last_adhoc_error = result.error.clone();
+                        state
+                            .sql_modal
+                            .mark_adhoc_error(result.error.clone().unwrap_or_default());
                     } else {
-                        state.sql_modal.status = SqlModalStatus::Success;
-                        state.sql_modal.last_adhoc_success = Some(AdhocSuccessSnapshot {
+                        state.sql_modal.mark_adhoc_success(AdhocSuccessSnapshot {
                             command_tag: result.command_tag.clone(),
                             row_count: result.row_count,
                             execution_time_ms: result.execution_time_ms,
@@ -265,8 +262,7 @@ pub fn reduce_query(
                 }
                 state.set_error(error.clone());
                 if is_adhoc {
-                    state.sql_modal.status = SqlModalStatus::Error;
-                    state.sql_modal.last_adhoc_error = Some(error.clone());
+                    state.sql_modal.mark_adhoc_error(error.clone());
                 }
             }
             Some(vec![])
@@ -289,7 +285,7 @@ pub fn reduce_query(
                 }
                 Action::OpenSqlModal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.status = SqlModalStatus::Editing;
+                    state.sql_modal.set_status(SqlModalStatus::Editing);
                     if !state.sql_modal.prefetch_started && state.session.metadata().is_some() {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]
                     } else {
@@ -2408,7 +2404,7 @@ mod tests {
                     .any(|e| matches!(e, Effect::ExecutePreview { .. }))
             );
             assert_eq!(
-                state.sql_modal.status,
+                *state.sql_modal.status(),
                 crate::app::sql_modal_context::SqlModalStatus::Success
             );
         }
@@ -2431,8 +2427,7 @@ mod tests {
 
             let saved_tag = state
                 .sql_modal
-                .last_adhoc_success
-                .as_ref()
+                .last_adhoc_success()
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
@@ -2451,8 +2446,7 @@ mod tests {
             // last_adhoc_success must still hold the DDL result — not cleared by preview
             let tag_after = state
                 .sql_modal
-                .last_adhoc_success
-                .as_ref()
+                .last_adhoc_success()
                 .and_then(|s| s.command_tag.clone());
             assert!(matches!(tag_after, Some(CommandTag::Alter(_))));
         }

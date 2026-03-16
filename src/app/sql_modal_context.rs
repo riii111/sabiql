@@ -74,9 +74,9 @@ impl CompletionState {
 pub struct SqlModalContext {
     pub content: String,
     pub cursor: usize,
-    pub status: SqlModalStatus,
-    pub last_adhoc_success: Option<AdhocSuccessSnapshot>,
-    pub last_adhoc_error: Option<String>,
+    status: SqlModalStatus,
+    last_adhoc_success: Option<AdhocSuccessSnapshot>,
+    last_adhoc_error: Option<String>,
     pub completion: CompletionState,
     pub completion_debounce: Option<Instant>,
     pub prefetch_queue: VecDeque<String>,
@@ -85,8 +85,10 @@ pub struct SqlModalContext {
     pub prefetch_started: bool,
 }
 
-#[cfg(test)]
 impl SqlModalContext {
+    // ── Prefetch lifecycle ──────────────────────────────────────────
+
+    /// Full reset: clears all prefetch state (ReloadMetadata, connection switch).
     pub fn reset_prefetch(&mut self) {
         self.prefetch_started = false;
         self.prefetch_queue.clear();
@@ -94,6 +96,55 @@ impl SqlModalContext {
         self.failed_prefetch_tables.clear();
     }
 
+    /// Soft invalidation: only clears `prefetch_started` to allow re-evaluation.
+    /// Queue/inflight/failed state is preserved (ER flow, schema-modifying adhoc).
+    pub fn invalidate_prefetch(&mut self) {
+        self.prefetch_started = false;
+    }
+
+    // ── Adhoc status ────────────────────────────────────────────────
+
+    pub fn mark_adhoc_error(&mut self, error: String) {
+        self.status = SqlModalStatus::Error;
+        self.last_adhoc_error = Some(error);
+        self.last_adhoc_success = None;
+    }
+
+    pub fn mark_adhoc_success(&mut self, snapshot: AdhocSuccessSnapshot) {
+        self.status = SqlModalStatus::Success;
+        self.last_adhoc_success = Some(snapshot);
+        self.last_adhoc_error = None;
+    }
+
+    pub fn set_status(&mut self, status: SqlModalStatus) {
+        self.status = status;
+    }
+
+    pub fn status(&self) -> &SqlModalStatus {
+        &self.status
+    }
+
+    pub fn last_adhoc_error(&self) -> Option<&str> {
+        self.last_adhoc_error.as_deref()
+    }
+
+    pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
+        self.last_adhoc_success.as_ref()
+    }
+
+    /// Mutable access to the `TextInputState` inside `ConfirmingHigh`.
+    /// Returns `None` if the current status is not `ConfirmingHigh`.
+    pub fn confirming_high_input_mut(&mut self) -> Option<&mut TextInputState> {
+        if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = self.status {
+            Some(input)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+impl SqlModalContext {
     pub fn clear_content(&mut self) {
         self.content.clear();
         self.cursor = 0;

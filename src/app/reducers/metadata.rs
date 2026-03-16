@@ -185,10 +185,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         Action::ReloadMetadata => {
             if let Some(dsn) = state.session.dsn.clone() {
                 state.session.begin_reload();
-                state.sql_modal.prefetch_started = false;
-                state.sql_modal.prefetch_queue.clear();
-                state.sql_modal.prefetching_tables.clear();
-                state.sql_modal.failed_prefetch_tables.clear();
+                state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
                 state.ui.er_selected_tables.clear();
                 state.ui.pending_er_picker = false;

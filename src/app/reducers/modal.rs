@@ -210,7 +210,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             match origin {
                 InputMode::Normal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                    state
+                        .sql_modal
+                        .set_status(crate::app::sql_modal_context::SqlModalStatus::Editing);
                     state.sql_modal.content = query;
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state.sql_modal.completion.visible = false;
@@ -220,7 +222,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 InputMode::SqlModal => {
                     state.sql_modal.content = query;
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
-                    state.sql_modal.status = crate::app::sql_modal_context::SqlModalStatus::Editing;
+                    state
+                        .sql_modal
+                        .set_status(crate::app::sql_modal_context::SqlModalStatus::Editing);
                 }
                 _ => {}
             }
