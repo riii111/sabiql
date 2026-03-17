@@ -13,6 +13,8 @@ use crate::ui::theme::Theme;
 const TIMESTAMP_WIDTH: usize = 14;
 const STATUS_WIDTH: usize = 2;
 const LIST_MIN_HEIGHT: u16 = 5;
+const LIST_MAX_HEIGHT: u16 = 15;
+const PREVIEW_MIN_HEIGHT: u16 = 6;
 const MIN_INNER_FOR_PREVIEW: u16 = 10;
 
 const MONTH_ABBR: [&str; 12] = [
@@ -51,9 +53,9 @@ fn compute_preview_height(inner_height: u16) -> u16 {
         return 0;
     }
     // filter takes 1 row
-    let available_for_list_and_preview = inner_height.saturating_sub(1);
-    let desired = (inner_height * 30 / 100).max(4);
-    let max_preview = available_for_list_and_preview.saturating_sub(LIST_MIN_HEIGHT);
+    let available = inner_height.saturating_sub(1);
+    let desired = (inner_height * 30 / 100).max(PREVIEW_MIN_HEIGHT);
+    let max_preview = available.saturating_sub(LIST_MIN_HEIGHT);
     desired.min(max_preview)
 }
 
@@ -86,10 +88,14 @@ impl QueryHistoryPicker {
         };
 
         let max_height = (frame.area().height * 70 / 100).max(MIN_INNER_FOR_PREVIEW + 2);
-        // border(2) + filter(1) + entries + preview(~6) + preview_border(1)
-        let estimated_preview = if grouped_count > 0 { 7 } else { 0 };
-        let desired_inner = 1 + (grouped_count as u16).max(1) + estimated_preview;
-        let desired_height = (desired_inner + 2).min(max_height); // +2 for modal border
+        let list_rows = (grouped_count as u16).clamp(1, LIST_MAX_HEIGHT);
+        let preview_est = if grouped_count > 0 {
+            PREVIEW_MIN_HEIGHT + 1 // +1 for border
+        } else {
+            0
+        };
+        // border(2) + filter(1) + list + preview
+        let desired_height = (2 + 1 + list_rows + preview_est).min(max_height);
 
         let (_, inner) = render_modal(
             frame,
@@ -108,8 +114,8 @@ impl QueryHistoryPicker {
         let areas = if show_preview {
             let [filter_area, list_area, preview_area] = Layout::vertical([
                 Constraint::Length(1),
-                Constraint::Min(1),
-                Constraint::Length(preview_h),
+                Constraint::Max(LIST_MAX_HEIGHT),
+                Constraint::Min(preview_h),
             ])
             .areas(inner);
             (filter_area, list_area, Some(preview_area))
