@@ -63,12 +63,13 @@ fn reduce_inner(
 
     match action {
         Action::None => vec![],
-        Action::PendingZ => {
-            state.ui.pending_z = true;
+        Action::BeginKeySequence(prefix) => {
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(prefix);
             vec![]
         }
-        Action::ClearPendingZ => {
-            state.ui.pending_z = false;
+        Action::CancelKeySequence => {
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
             vec![]
         }
         Action::Quit => {

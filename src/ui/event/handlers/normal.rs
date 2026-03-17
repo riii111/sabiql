@@ -1,6 +1,7 @@
 use crate::app::action::Action;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
+use crate::app::key_sequence::Prefix;
 use crate::app::keybindings::{self as kb, Key, KeyCombo};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
@@ -79,42 +80,44 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
     }
 
-    // Pending z-prefix: two-key sequences (zz, zt, zb)
+    // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before history whitelist and global actions so that
-    // the second key (t, b, z) is never swallowed and pending_z is always cleared.
-    if state.ui.pending_z {
+    // the second key (t, b, z) is never swallowed and the sequence is always cleared.
+    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
         if combo.modifiers.ctrl || combo.modifiers.alt {
-            return Action::ClearPendingZ;
+            return Action::CancelKeySequence;
         }
-        return match combo.key {
-            Key::Char('z') => {
-                if result_navigation {
-                    Action::ResultScrollCursorCenter
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorCenter
+        return match prefix {
+            Prefix::Z => match combo.key {
+                Key::Char('z') => {
+                    if result_navigation {
+                        Action::ResultScrollCursorCenter
+                    } else if inspector_navigation {
+                        Action::CancelKeySequence
+                    } else {
+                        Action::ScrollCursorCenter
+                    }
                 }
-            }
-            Key::Char('t') => {
-                if result_navigation {
-                    Action::ResultScrollCursorTop
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorTop
+                Key::Char('t') => {
+                    if result_navigation {
+                        Action::ResultScrollCursorTop
+                    } else if inspector_navigation {
+                        Action::CancelKeySequence
+                    } else {
+                        Action::ScrollCursorTop
+                    }
                 }
-            }
-            Key::Char('b') => {
-                if result_navigation {
-                    Action::ResultScrollCursorBottom
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorBottom
+                Key::Char('b') => {
+                    if result_navigation {
+                        Action::ResultScrollCursorBottom
+                    } else if inspector_navigation {
+                        Action::CancelKeySequence
+                    } else {
+                        Action::ScrollCursorBottom
+                    }
                 }
-            }
-            _ => Action::ClearPendingZ,
+                _ => Action::CancelKeySequence,
+            },
         };
     }
 
@@ -351,7 +354,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::OpenConnectionSelector
         }
 
-        Key::Char('z') => Action::PendingZ,
+        Key::Char('z') => Action::BeginKeySequence(Prefix::Z),
 
         Key::Enter => {
             if state.connection_error.error_info.is_some() {
@@ -1340,22 +1343,23 @@ mod tests {
         }
     }
 
-    mod pending_z {
+    mod key_sequence {
         use super::*;
 
         #[test]
-        fn z_key_returns_pending_z() {
+        fn z_key_returns_begin_key_sequence() {
             let state = browse_state();
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::PendingZ));
+            assert!(matches!(result, Action::BeginKeySequence(Prefix::Z)));
         }
 
         #[test]
         fn z_then_z_returns_scroll_cursor_center_for_explorer() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1365,7 +1369,8 @@ mod tests {
         #[test]
         fn z_then_t_returns_scroll_cursor_top_for_explorer() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1375,7 +1380,8 @@ mod tests {
         #[test]
         fn z_then_b_returns_scroll_cursor_bottom_for_explorer() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1383,19 +1389,21 @@ mod tests {
         }
 
         #[test]
-        fn z_then_unknown_returns_clear_pending_z() {
+        fn z_then_unknown_returns_cancel_key_sequence() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('x')), &state);
 
-            assert!(matches!(result, Action::ClearPendingZ));
+            assert!(matches!(result, Action::CancelKeySequence));
         }
 
         #[test]
         fn z_then_z_returns_result_scroll_cursor_center_for_result() {
             let mut state = result_focused_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1405,7 +1413,8 @@ mod tests {
         #[test]
         fn z_then_t_returns_result_scroll_cursor_top_for_result() {
             let mut state = result_focused_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1415,7 +1424,8 @@ mod tests {
         #[test]
         fn z_then_b_returns_result_scroll_cursor_bottom_for_result() {
             let mut state = result_focused_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1423,28 +1433,30 @@ mod tests {
         }
 
         #[test]
-        fn z_then_z_returns_clear_pending_z_for_inspector() {
+        fn z_then_z_returns_cancel_key_sequence_for_inspector() {
             let mut state = inspector_focused_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::ClearPendingZ));
+            assert!(matches!(result, Action::CancelKeySequence));
         }
 
         #[test]
-        fn z_key_returns_pending_z_in_focus_mode() {
+        fn z_key_returns_begin_key_sequence_in_focus_mode() {
             let state = focus_mode_state();
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::PendingZ));
+            assert!(matches!(result, Action::BeginKeySequence(Prefix::Z)));
         }
 
         #[test]
         fn z_then_z_returns_result_scroll_cursor_center_in_focus_mode() {
             let mut state = focus_mode_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1452,38 +1464,41 @@ mod tests {
         }
 
         #[test]
-        fn pending_z_resolved_before_global_actions() {
+        fn key_sequence_resolved_before_global_actions() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
-            // '?' is a global action (OpenHelp), but with pending_z it should
-            // clear the prefix instead of opening help
+            // '?' is a global action (OpenHelp), but with active key sequence it should
+            // cancel the sequence instead of opening help
             let result = handle_normal_mode(combo(Key::Char('?')), &state);
 
-            assert!(matches!(result, Action::ClearPendingZ));
+            assert!(matches!(result, Action::CancelKeySequence));
         }
 
         #[test]
-        fn ctrl_modifier_clears_pending_z() {
+        fn ctrl_modifier_cancels_key_sequence() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('t')), &state);
 
-            assert!(matches!(result, Action::ClearPendingZ));
+            assert!(matches!(result, Action::CancelKeySequence));
         }
 
         #[test]
-        fn alt_modifier_clears_pending_z() {
+        fn alt_modifier_cancels_key_sequence() {
             let mut state = browse_state();
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(KeyCombo::alt(Key::Char('b')), &state);
 
-            assert!(matches!(result, Action::ClearPendingZ));
+            assert!(matches!(result, Action::CancelKeySequence));
         }
 
-        fn history_mode_state_with_pending_z() -> AppState {
+        fn history_mode_state_with_key_sequence() -> AppState {
             use crate::domain::{QueryResult, QuerySource};
             use std::sync::Arc;
 
@@ -1498,13 +1513,14 @@ mod tests {
             state.query.result_history.push(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
             state
         }
 
         #[test]
         fn zt_works_in_history_mode() {
-            let state = history_mode_state_with_pending_z();
+            let state = history_mode_state_with_key_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1513,7 +1529,7 @@ mod tests {
 
         #[test]
         fn zb_works_in_history_mode() {
-            let state = history_mode_state_with_pending_z();
+            let state = history_mode_state_with_key_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1713,9 +1729,9 @@ mod tests {
         #[case("result_cell_active", Key::Char('z'), Action::ResultScrollCursorCenter)]
         #[case("result_cell_active", Key::Char('t'), Action::ResultScrollCursorTop)]
         #[case("result_cell_active", Key::Char('b'), Action::ResultScrollCursorBottom)]
-        #[case("inspector", Key::Char('z'), Action::ClearPendingZ)]
-        #[case("inspector", Key::Char('t'), Action::ClearPendingZ)]
-        #[case("inspector", Key::Char('b'), Action::ClearPendingZ)]
+        #[case("inspector", Key::Char('z'), Action::CancelKeySequence)]
+        #[case("inspector", Key::Char('t'), Action::CancelKeySequence)]
+        #[case("inspector", Key::Char('b'), Action::CancelKeySequence)]
         #[case("history_focus", Key::Char('z'), Action::ResultScrollCursorCenter)]
         #[case("history_focus", Key::Char('t'), Action::ResultScrollCursorTop)]
         #[case("history_focus", Key::Char('b'), Action::ResultScrollCursorBottom)]
@@ -1737,7 +1753,8 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            state.ui.pending_z = true;
+            state.ui.key_sequence =
+                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
             let key_label = format!("{:?}", key);
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
@@ -1751,9 +1768,9 @@ mod tests {
         #[case("inspector", inspector_ctx())]
         #[case("history_focus", history_focus_ctx())]
         #[case("focus_mode", focus_mode_ctx())]
-        fn z_prefix_returns_pending_z(#[case] ctx_name: &str, #[case] state: AppState) {
+        fn z_prefix_returns_begin_key_sequence(#[case] ctx_name: &str, #[case] state: AppState) {
             let actual = handle_normal_mode(combo(Key::Char('z')), &state);
-            assert_action(actual, Action::PendingZ, ctx_name, "z");
+            assert_action(actual, Action::BeginKeySequence(Prefix::Z), ctx_name, "z");
         }
 
         mod history_pane_edges {
@@ -1809,12 +1826,13 @@ mod tests {
             #[test]
             fn history_zz_explorer_scrolls_cursor() {
                 let mut state = history_explorer_ctx();
-                state.ui.pending_z = true;
+                state.ui.key_sequence =
+                    crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
                     Action::ScrollCursorCenter,
-                    "history+explorer+pending_z",
+                    "history+explorer+key_sequence",
                     "z",
                 );
             }
@@ -1822,12 +1840,13 @@ mod tests {
             #[test]
             fn history_zz_inspector_clears() {
                 let mut state = history_inspector_ctx();
-                state.ui.pending_z = true;
+                state.ui.key_sequence =
+                    crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
-                    Action::ClearPendingZ,
-                    "history+inspector+pending_z",
+                    Action::CancelKeySequence,
+                    "history+inspector+key_sequence",
                     "z",
                 );
             }

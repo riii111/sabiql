@@ -282,7 +282,7 @@ pub fn reduce_navigation(
 
         // Explorer scroll-to-cursor (zz/zt/zb)
         Action::ScrollCursorCenter => {
-            state.ui.pending_z = false;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -294,7 +294,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ScrollCursorTop => {
-            state.ui.pending_z = false;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -305,7 +305,7 @@ pub fn reduce_navigation(
             Some(vec![])
         }
         Action::ScrollCursorBottom => {
-            state.ui.pending_z = false;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
             if len > 0 && visible > 0 {
@@ -1606,7 +1606,9 @@ mod tests {
             // visible = 20, select item 30
             state.ui.explorer_selected = 30;
             state.ui.explorer_scroll_offset = 30;
-            state.ui.pending_z = true;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
+                crate::app::key_sequence::Prefix::Z,
+            );
 
             reduce_navigation(
                 &mut state,
@@ -1617,7 +1619,10 @@ mod tests {
 
             // selected=30, visible=20, offset=30-10=20, max_offset=30, → 20
             assert_eq!(state.ui.explorer_scroll_offset, 20);
-            assert!(!state.ui.pending_z);
+            assert_eq!(
+                state.ui.key_sequence,
+                crate::app::key_sequence::KeySequenceState::Idle
+            );
         }
 
         #[test]
@@ -1625,7 +1630,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.explorer_selected = 15;
             state.ui.explorer_scroll_offset = 0;
-            state.ui.pending_z = true;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
+                crate::app::key_sequence::Prefix::Z,
+            );
 
             reduce_navigation(
                 &mut state,
@@ -1636,7 +1643,10 @@ mod tests {
 
             // selected=15, max_offset=30, → 15
             assert_eq!(state.ui.explorer_scroll_offset, 15);
-            assert!(!state.ui.pending_z);
+            assert_eq!(
+                state.ui.key_sequence,
+                crate::app::key_sequence::KeySequenceState::Idle
+            );
         }
 
         #[test]
@@ -1644,7 +1654,9 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             state.ui.explorer_selected = 25;
             state.ui.explorer_scroll_offset = 25;
-            state.ui.pending_z = true;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
+                crate::app::key_sequence::Prefix::Z,
+            );
 
             reduce_navigation(
                 &mut state,
@@ -1655,7 +1667,10 @@ mod tests {
 
             // selected=25, visible=20, offset=25-19=6, max_offset=30, → 6
             assert_eq!(state.ui.explorer_scroll_offset, 6);
-            assert!(!state.ui.pending_z);
+            assert_eq!(
+                state.ui.key_sequence,
+                crate::app::key_sequence::KeySequenceState::Idle
+            );
         }
 
         #[test]
@@ -1664,7 +1679,9 @@ mod tests {
             // visible=20, max_offset=30
             state.ui.explorer_selected = 45;
             state.ui.explorer_scroll_offset = 30;
-            state.ui.pending_z = true;
+            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
+                crate::app::key_sequence::Prefix::Z,
+            );
 
             reduce_navigation(
                 &mut state,
@@ -1675,7 +1692,10 @@ mod tests {
 
             // selected=45, but max_offset=30, clamped to 30
             assert_eq!(state.ui.explorer_scroll_offset, 30);
-            assert!(!state.ui.pending_z);
+            assert_eq!(
+                state.ui.key_sequence,
+                crate::app::key_sequence::KeySequenceState::Idle
+            );
         }
     }
 }

@@ -20,6 +20,7 @@ pub mod er_task;
 pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;
+pub mod key_sequence;
 pub mod keybindings;
 pub mod keymap;
 pub mod message_state;
