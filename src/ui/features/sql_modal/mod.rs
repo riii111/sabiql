@@ -67,13 +67,22 @@ impl SqlModal {
                 " SQL Editor ",
                 " \u{2325}Enter: Run \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal ",
             ),
-            _ => render_modal(
+            SqlModalStatus::Running => render_modal(
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
                 " SQL Editor ",
-                " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close ",
+                " Running\u{2026} ",
             ),
+            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => {
+                render_modal(
+                    frame,
+                    Constraint::Percentage(80),
+                    Constraint::Percentage(60),
+                    " SQL Editor ",
+                    " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close ",
+                )
+            }
         };
 
         let status_height = if matches!(
@@ -256,7 +265,7 @@ impl SqlModal {
                 let elapsed_secs = elapsed.as_secs_f32();
                 let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
                 (
-                    "[INSERT]",
+                    "[RUNNING]",
                     Style::default().fg(Theme::TEXT_ACCENT),
                     status,
                     Style::default().fg(Theme::TEXT_ACCENT),

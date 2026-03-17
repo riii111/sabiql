@@ -239,7 +239,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::QueryHistoryYank => {
             let grouped = state.query_history_picker.grouped_filtered_entries();
-            let selected = state.query_history_picker.clamped_selected();
+            let selected = if grouped.is_empty() {
+                0
+            } else {
+                state.query_history_picker.selected.min(grouped.len() - 1)
+            };
             let query = grouped.get(selected).map(|g| g.entry.query.clone());
             match query {
                 Some(q) if !q.is_empty() => Some(vec![Effect::CopyToClipboard {

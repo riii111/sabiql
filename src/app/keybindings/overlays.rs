@@ -340,9 +340,6 @@ pub const QUERY_HISTORY_FILTER_ROWS: &[ModeRow] = &[
     },
 ];
 
-// Keep the old name as an alias for backward compatibility in help overlay line count
-pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = QUERY_HISTORY_NORMAL_ROWS;
-
 // =============================================================================
 // Command Palette
 // =============================================================================
