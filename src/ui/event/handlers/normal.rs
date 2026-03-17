@@ -88,36 +88,35 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             return Action::CancelKeySequence;
         }
         return match prefix {
-            Prefix::Z => match combo.key {
-                Key::Char('z') => {
-                    if result_navigation {
-                        Action::ResultScrollCursorCenter
-                    } else if inspector_navigation {
-                        Action::CancelKeySequence
-                    } else {
-                        Action::ScrollCursorCenter
-                    }
+            Prefix::Z => {
+                if inspector_navigation {
+                    return Action::CancelKeySequence;
                 }
-                Key::Char('t') => {
-                    if result_navigation {
-                        Action::ResultScrollCursorTop
-                    } else if inspector_navigation {
-                        Action::CancelKeySequence
-                    } else {
-                        Action::ScrollCursorTop
+                match combo.key {
+                    Key::Char('z') => {
+                        if result_navigation {
+                            Action::ResultScrollCursorCenter
+                        } else {
+                            Action::ScrollCursorCenter
+                        }
                     }
-                }
-                Key::Char('b') => {
-                    if result_navigation {
-                        Action::ResultScrollCursorBottom
-                    } else if inspector_navigation {
-                        Action::CancelKeySequence
-                    } else {
-                        Action::ScrollCursorBottom
+                    Key::Char('t') => {
+                        if result_navigation {
+                            Action::ResultScrollCursorTop
+                        } else {
+                            Action::ScrollCursorTop
+                        }
                     }
+                    Key::Char('b') => {
+                        if result_navigation {
+                            Action::ResultScrollCursorBottom
+                        } else {
+                            Action::ScrollCursorBottom
+                        }
+                    }
+                    _ => Action::CancelKeySequence,
                 }
-                _ => Action::CancelKeySequence,
-            },
+            }
         };
     }
 
