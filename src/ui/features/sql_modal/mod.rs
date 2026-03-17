@@ -65,14 +65,14 @@ impl SqlModal {
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
                 " SQL Editor ",
-                " \u{2325}Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Ctrl+O: History \u{2502} Esc: Normal ",
+                " \u{2325}Enter: Run \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal ",
             ),
             _ => render_modal(
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
                 " SQL Editor ",
-                " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} Ctrl+O: History \u{2502} Enter: Insert \u{2502} Esc: Close ",
+                " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close ",
             ),
         };
 

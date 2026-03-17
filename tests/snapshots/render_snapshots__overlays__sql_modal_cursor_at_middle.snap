@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ [INSERT]                                               Ready │       │
-│       ╰ ⌥Enter: Run │ Ctrl+L: Clear │ Ctrl+O: History │ Esc: Normal ─╯       │
+│       ╰ ⌥Enter: Run │ ^L: Clear │ ^O: Hist │ Esc: Normal ────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
