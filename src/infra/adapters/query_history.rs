@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_mixed_old_and_new_format_entries() {
+    async fn load_entries_with_affected_rows_and_malformed_lines() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
