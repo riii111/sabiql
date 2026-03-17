@@ -86,7 +86,7 @@ pub fn classify_sql(query: &str) -> SqlCategory {
 fn skip_comments_and_first_word(s: &str) -> String {
     let mut chars = s.chars().peekable();
     loop {
-        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
             chars.next();
         }
         if chars.peek() == Some(&'-') {

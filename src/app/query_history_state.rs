@@ -72,11 +72,12 @@ impl QueryHistoryPickerState {
         let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
 
         for fe in filtered {
-            if let Some(last) = groups.last_mut() {
-                if last.entry.query == fe.entry.query {
-                    last.count += 1;
-                    continue;
-                }
+            if let Some(last) = groups
+                .last_mut()
+                .filter(|g| g.entry.query == fe.entry.query)
+            {
+                last.count += 1;
+                continue;
             }
             groups.push(GroupedEntry {
                 entry: fe.entry,
@@ -225,5 +226,134 @@ mod tests {
         let filtered = state.filtered_entries();
 
         assert!(filtered.is_empty());
+    }
+
+    mod grouping {
+        use super::*;
+
+        #[test]
+        fn three_consecutive_identical_entries_become_one_group() {
+            let state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+            ]);
+
+            let grouped = state.grouped_filtered_entries();
+
+            assert_eq!(grouped.len(), 1);
+            assert_eq!(grouped[0].entry.query, "SELECT 1");
+            assert_eq!(grouped[0].count, 3);
+        }
+
+        #[test]
+        fn non_consecutive_same_query_stays_separate() {
+            let state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 2"),
+                make_entry("SELECT 1"),
+            ]);
+
+            let grouped = state.grouped_filtered_entries();
+
+            assert_eq!(grouped.len(), 3);
+        }
+
+        #[test]
+        fn mixed_consecutive_and_unique() {
+            let state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+                make_entry("SELECT 2"),
+                make_entry("SELECT 3"),
+                make_entry("SELECT 3"),
+                make_entry("SELECT 3"),
+            ]);
+
+            // Reversed: [3,3,3,2,1,1] -> groups: [3(×3), 2(×1), 1(×2)]
+            let grouped = state.grouped_filtered_entries();
+
+            assert_eq!(grouped.len(), 3);
+            assert_eq!(grouped[0].entry.query, "SELECT 3");
+            assert_eq!(grouped[0].count, 3);
+            assert_eq!(grouped[1].entry.query, "SELECT 2");
+            assert_eq!(grouped[1].count, 1);
+            assert_eq!(grouped[2].entry.query, "SELECT 1");
+            assert_eq!(grouped[2].count, 2);
+        }
+
+        #[test]
+        fn filter_removes_separator_merging_groups() {
+            let mut state = make_state(vec![
+                make_entry("SELECT * FROM users"),
+                make_entry("INSERT INTO orders VALUES (1)"),
+                make_entry("SELECT * FROM users"),
+                make_entry("SELECT * FROM users"),
+            ]);
+            state.filter_input.set_content("users".to_string());
+
+            let grouped = state.grouped_filtered_entries();
+
+            // orders is filtered out, remaining 3 users become one group
+            assert_eq!(grouped.len(), 1);
+            assert_eq!(grouped[0].count, 3);
+        }
+
+        #[test]
+        fn filter_preserves_non_consecutive_groups() {
+            let mut state = make_state(vec![
+                make_entry("SELECT * FROM users WHERE id=1"),
+                make_entry("SELECT * FROM users WHERE id=2"),
+                make_entry("INSERT INTO orders VALUES (1)"),
+                make_entry("SELECT * FROM users WHERE id=1"),
+            ]);
+            state.filter_input.set_content("users".to_string());
+
+            let grouped = state.grouped_filtered_entries();
+
+            // Reversed + filtered: [id=1, id=2, id=1] -> 3 separate groups
+            assert_eq!(grouped.len(), 3);
+        }
+
+        #[test]
+        fn grouped_count_reflects_groups() {
+            let state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+                make_entry("SELECT 2"),
+            ]);
+
+            assert_eq!(state.grouped_count(), 2);
+        }
+
+        #[test]
+        fn clamped_selected_uses_grouped_count() {
+            let state = QueryHistoryPickerState {
+                entries: vec![
+                    make_entry("SELECT 1"),
+                    make_entry("SELECT 1"),
+                    make_entry("SELECT 1"),
+                ],
+                selected: 5,
+                ..Default::default()
+            };
+
+            assert_eq!(state.clamped_selected(), 0);
+        }
+
+        #[test]
+        fn confirm_gets_representative_entry() {
+            let state = make_state(vec![
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+                make_entry("SELECT 1"),
+            ]);
+
+            let grouped = state.grouped_filtered_entries();
+            let selected = state.clamped_selected();
+            let query = grouped.get(selected).map(|g| g.entry.query.clone());
+
+            assert_eq!(query, Some("SELECT 1".to_string()));
+        }
     }
 }

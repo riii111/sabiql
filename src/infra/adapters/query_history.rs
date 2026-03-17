@@ -242,7 +242,6 @@ mod tests {
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
 
-        // Write some entries
         for i in 0..5 {
             store
                 .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
@@ -250,10 +249,61 @@ mod tests {
                 .unwrap();
         }
 
-        // Verify all entries are preserved
         let entries = store.load("test", &conn_id).await.unwrap();
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].query, "SELECT 0");
         assert_eq!(entries[4].query, "SELECT 4");
+    }
+
+    #[tokio::test]
+    async fn load_mixed_old_and_new_format_entries() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+
+        let history_dir = tmp.path().join("history");
+        std::fs::create_dir_all(&history_dir).unwrap();
+        let path = history_dir.join(format!("{}.jsonl", conn_id));
+
+        use std::io::Write;
+        let mut file = std::fs::File::create(&path).unwrap();
+        // Old format (no result_status/affected_rows)
+        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn"}}"#).unwrap();
+        // New format
+        writeln!(file, r#"{{"query":"UPDATE t SET x=1","executed_at":"2026-03-13T12:01:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":5}}"#).unwrap();
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].query, "SELECT 1");
+        assert_eq!(entries[0].result_status, None);
+        assert_eq!(entries[0].affected_rows, None);
+        assert_eq!(entries[1].query, "UPDATE t SET x=1");
+        assert_eq!(
+            entries[1].result_status,
+            Some(crate::domain::query_history::QueryResultStatus::Success)
+        );
+        assert_eq!(entries[1].affected_rows, Some(5));
+    }
+
+    #[tokio::test]
+    async fn new_format_entries_with_unknown_fields_are_loaded() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+
+        let history_dir = tmp.path().join("history");
+        std::fs::create_dir_all(&history_dir).unwrap();
+        let path = history_dir.join(format!("{}.jsonl", conn_id));
+
+        use std::io::Write;
+        let mut file = std::fs::File::create(&path).unwrap();
+        // Entry with an extra unknown field
+        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","future_field":"whatever"}}"#).unwrap();
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].query, "SELECT 1");
     }
 }
