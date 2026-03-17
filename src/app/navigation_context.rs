@@ -110,6 +110,23 @@ mod tests {
     }
 
     #[test]
+    fn result_nav_mode_defaults_to_scroll() {
+        let state = default_state();
+        let ctx = NavigationContext::from_state(&state);
+
+        assert_eq!(ctx.result_nav_mode, ResultNavMode::Scroll);
+    }
+
+    #[test]
+    fn result_nav_mode_reflects_row_active() {
+        let mut state = default_state();
+        state.result_interaction.enter_row(0);
+        let ctx = NavigationContext::from_state(&state);
+
+        assert_eq!(ctx.result_nav_mode, ResultNavMode::RowActive);
+    }
+
+    #[test]
     fn pending_z_reflected() {
         let mut state = default_state();
         state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
