@@ -85,10 +85,16 @@ impl QueryHistoryPicker {
             raw_selected.min(grouped_count - 1)
         };
 
+        let max_height = (frame.area().height * 70 / 100).max(MIN_INNER_FOR_PREVIEW + 2);
+        // border(2) + filter(1) + entries + preview(~6) + preview_border(1)
+        let estimated_preview = if grouped_count > 0 { 7 } else { 0 };
+        let desired_inner = 1 + (grouped_count as u16).max(1) + estimated_preview;
+        let desired_height = (desired_inner + 2).min(max_height); // +2 for modal border
+
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
-            Constraint::Percentage(70),
+            Constraint::Max(desired_height),
             " Query History ",
             &format!(
                 " {} entries \u{2502} \u{2191}\u{2193} Navigate \u{2502} Enter Select ",
@@ -295,7 +301,7 @@ fn render_preview(frame: &mut Frame, area: ratatui::layout::Rect, pd: &PreviewDa
         ));
     }
     meta_spans.push(Span::styled(
-        format!("  \u{2502} {}", pd.executed_at),
+        format!("  \u{2502} {}", format_short_timestamp(&pd.executed_at)),
         Style::default().fg(Theme::TEXT_DIM),
     ));
     lines.push(Line::from(meta_spans));
