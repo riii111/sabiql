@@ -7,7 +7,6 @@ use crate::app::action::Action;
 // =============================================================================
 
 pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
-    // idx 0: TAB_NAV
     KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
@@ -16,7 +15,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 1: TAB_NEXT
     KeyBinding {
         key_short: "Tab",
         key: "Tab",
@@ -25,7 +23,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: TAB_PREV
     KeyBinding {
         key_short: "⇧Tab",
         key: "⇧Tab",
@@ -34,7 +31,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 3: SAVE
     KeyBinding {
         key_short: "^S",
         key: "Ctrl+S",
@@ -43,7 +39,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::ConnectionSetupSave,
         combos: &[KeyCombo::ctrl(Key::Char('s'))],
     },
-    // idx 4: ESC_CANCEL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -52,7 +47,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::ConnectionSetupCancel,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // idx 5: ENTER_DROPDOWN
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -61,7 +55,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
         action: Action::ConnectionSetupToggleDropdown,
         combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 6: DROPDOWN_NAV
     KeyBinding {
         key_short: "↑↓",
         key: "↑↓",
@@ -77,7 +70,6 @@ pub const CONNECTION_SETUP_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
-    // idx 0: EDIT
     ModeRow {
         key_short: "e",
         key: "e",
@@ -88,7 +80,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('e'))],
         }],
     },
-    // idx 1: SWITCH
     ModeRow {
         key_short: "s",
         key: "s",
@@ -99,7 +90,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('s'))],
         }],
     },
-    // idx 2: DETAILS
     ModeRow {
         key_short: "d",
         key: "d",
@@ -110,7 +100,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('d'))],
         }],
     },
-    // idx 3: COPY
     ModeRow {
         key_short: "c",
         key: "c",
@@ -121,7 +110,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('c'))],
         }],
     },
-    // idx 4: SCROLL
     ModeRow {
         key_short: "j/k",
         key: "j/k",
@@ -138,7 +126,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 5: ESC_CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -149,7 +136,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
-    // idx 6: RETRY (for service connections)
     ModeRow {
         key_short: "r",
         key: "r",
@@ -167,7 +153,6 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
-    // idx 0: CONFIRM
     ModeRow {
         key_short: "Enter",
         key: "Enter",
@@ -178,7 +163,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
     },
-    // idx 1: SELECT
     ModeRow {
         key_short: "↑/↓",
         key: "↑ / ↓ / j / k",
@@ -195,7 +179,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 2: NEW
     ModeRow {
         key_short: "n",
         key: "n",
@@ -206,7 +189,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('n'))],
         }],
     },
-    // idx 3: EDIT
     ModeRow {
         key_short: "e",
         key: "e",
@@ -217,7 +199,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('e'))],
         }],
     },
-    // idx 4: DELETE
     ModeRow {
         key_short: "d",
         key: "d",
@@ -228,7 +209,6 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char('d'))],
         }],
     },
-    // idx 5: CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
