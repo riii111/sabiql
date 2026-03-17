@@ -79,6 +79,42 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
     }
 
+    // Pending z-prefix: two-key sequences (zz, zt, zb)
+    // Must be resolved before history whitelist and global actions so that
+    // the second key (t, b, z) is never swallowed and pending_z is always cleared.
+    if state.ui.pending_z {
+        return match combo.key {
+            Key::Char('z') => {
+                if result_navigation {
+                    Action::ResultScrollCursorCenter
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorCenter
+                }
+            }
+            Key::Char('t') => {
+                if result_navigation {
+                    Action::ResultScrollCursorTop
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorTop
+                }
+            }
+            Key::Char('b') => {
+                if result_navigation {
+                    Action::ResultScrollCursorBottom
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorBottom
+                }
+            }
+            _ => Action::ClearPendingZ,
+        };
+    }
+
     // History mode: whitelist — only history nav, help, and scroll allowed
     if state.query.is_history_mode() {
         match combo.key {
@@ -119,40 +155,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
     if kb::is_focus_toggle(&combo) {
         return Action::ToggleFocus;
-    }
-
-    // Pending z-prefix: two-key sequences (zz, zt, zb)
-    if state.ui.pending_z {
-        return match combo.key {
-            Key::Char('z') => {
-                if result_navigation {
-                    Action::ResultScrollCursorCenter
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorCenter
-                }
-            }
-            Key::Char('t') => {
-                if result_navigation {
-                    Action::ResultScrollCursorTop
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorTop
-                }
-            }
-            Key::Char('b') => {
-                if result_navigation {
-                    Action::ResultScrollCursorBottom
-                } else if inspector_navigation {
-                    Action::ClearPendingZ
-                } else {
-                    Action::ScrollCursorBottom
-                }
-            }
-            _ => Action::ClearPendingZ,
-        };
     }
 
     match combo.key {
@@ -1451,6 +1453,41 @@ mod tests {
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
             assert!(matches!(result, Action::ResultScrollCursorCenter));
+        }
+
+        #[test]
+        fn pending_z_resolved_before_global_actions() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            // '?' is a global action (OpenHelp), but with pending_z it should
+            // clear the prefix instead of opening help
+            let result = handle_normal_mode(combo(Key::Char('?')), &state);
+
+            assert!(matches!(result, Action::ClearPendingZ));
+        }
+
+        #[test]
+        fn zt_works_in_history_mode() {
+            use crate::domain::{QueryResult, QuerySource};
+            use std::sync::Arc;
+
+            let mut state = browse_state();
+            let qr = Arc::new(QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["col".to_string()],
+                vec![vec!["val".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            ));
+            state.query.result_history.push(qr.clone());
+            state.query.set_current_result(qr);
+            state.query.enter_history(0);
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('t')), &state);
+
+            assert!(matches!(result, Action::ScrollCursorTop));
         }
     }
 }
