@@ -93,7 +93,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             });
             Some(vec![])
         }
-        Action::ResultScrollMiddle => {
+        Action::ResultScrollViewportMiddle => {
             let visible = state.result_visible_rows();
             let mid_viewport = visible / 2;
             let mid_row = state.result_interaction.scroll_offset + mid_viewport;
@@ -105,6 +105,22 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 let ideal = total / 2;
                 let max_s = total.saturating_sub(v);
                 s.result_interaction.scroll_offset = ideal.saturating_sub(v / 2).min(max_s);
+            });
+            Some(vec![])
+        }
+        Action::ResultScrollViewportTop => {
+            let target = state.result_interaction.scroll_offset;
+            move_row_or_scroll(state, target, |_| {});
+            Some(vec![])
+        }
+        Action::ResultScrollViewportBottom => {
+            let visible = state.result_visible_rows();
+            let max_row = result_row_count(state).saturating_sub(1);
+            let target =
+                (state.result_interaction.scroll_offset + visible.saturating_sub(1)).min(max_row);
+            move_row_or_scroll(state, target, |s| {
+                let max_scroll = result_max_scroll(s);
+                s.result_interaction.scroll_offset = max_scroll;
             });
             Some(vec![])
         }
@@ -273,7 +289,7 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             // visible = 20, scroll starts at 0
 
-            reduce(&mut state, &Action::ResultScrollMiddle);
+            reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
             // ideal = 50, v/2 = 10, offset = 40, max = 80 → 40
             assert_eq!(state.result_interaction.scroll_offset, 40);
@@ -285,7 +301,7 @@ mod tests {
             // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
             state.result_interaction.enter_row(0);
 
-            reduce(&mut state, &Action::ResultScrollMiddle);
+            reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
             assert_eq!(state.result_interaction.selection().row(), Some(10));
         }

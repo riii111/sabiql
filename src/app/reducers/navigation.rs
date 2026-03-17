@@ -236,18 +236,36 @@ pub fn reduce_navigation(
             }
             Some(vec![])
         }
-        Action::SelectMiddle => {
+        Action::SelectViewportMiddle => {
+            if state.ui.focused_pane == FocusedPane::Explorer {
+                let len = explorer_item_count(state);
+                let visible = state.ui.explorer_visible_items();
+                if len > 0 && visible > 0 {
+                    let target =
+                        (state.ui.explorer_scroll_offset + visible / 2).min(len.saturating_sub(1));
+                    state.ui.set_explorer_selection(Some(target));
+                }
+            }
+            Some(vec![])
+        }
+        Action::SelectViewportTop => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
-                    let target = len / 2;
+                    let target = state.ui.explorer_scroll_offset.min(len.saturating_sub(1));
                     state.ui.set_explorer_selection(Some(target));
-                    let visible = state.ui.explorer_visible_items();
-                    if visible > 0 {
-                        let max_offset = len.saturating_sub(visible);
-                        state.ui.explorer_scroll_offset =
-                            target.saturating_sub(visible / 2).min(max_offset);
-                    }
+                }
+            }
+            Some(vec![])
+        }
+        Action::SelectViewportBottom => {
+            if state.ui.focused_pane == FocusedPane::Explorer {
+                let len = explorer_item_count(state);
+                let visible = state.ui.explorer_visible_items();
+                if len > 0 {
+                    let target = (state.ui.explorer_scroll_offset + visible.saturating_sub(1))
+                        .min(len.saturating_sub(1));
+                    state.ui.set_explorer_selection(Some(target));
                 }
             }
             Some(vec![])
@@ -321,9 +339,17 @@ pub fn reduce_navigation(
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
-        Action::InspectorScrollMiddle => {
+        Action::InspectorScrollViewportMiddle => {
             let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset = max / 2;
+            Some(vec![])
+        }
+        Action::InspectorScrollViewportTop => {
+            state.ui.inspector_scroll_offset = 0;
+            Some(vec![])
+        }
+        Action::InspectorScrollViewportBottom => {
+            state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
         Action::InspectorScrollHalfPageDown => {
@@ -1224,19 +1250,83 @@ mod tests {
         }
 
         #[test]
-        fn select_middle_moves_to_center() {
+        fn select_middle_moves_to_viewport_center() {
             let mut state = state_with_tables(50, 23);
-            // visible = 20, len = 50, target = 25
-            // scroll_offset = 25 - 10 = 15
+            // visible = 20, scroll_offset = 0, target = 0 + 10 = 10
             reduce_navigation(
                 &mut state,
-                &Action::SelectMiddle,
+                &Action::SelectViewportMiddle,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 10);
+            assert_eq!(state.ui.explorer_scroll_offset, 0);
+        }
+
+        #[test]
+        fn select_middle_respects_scroll_offset() {
+            let mut state = state_with_tables(50, 23);
+            // Scroll down first
+            state.ui.explorer_scroll_offset = 15;
+            state.ui.explorer_selected = 15;
+            // visible = 20, target = 15 + 10 = 25
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportMiddle,
                 &AppServices::stub(),
                 Instant::now(),
             );
 
             assert_eq!(state.ui.explorer_selected, 25);
             assert_eq!(state.ui.explorer_scroll_offset, 15);
+        }
+
+        #[test]
+        fn select_viewport_top_moves_to_first_visible_item() {
+            let mut state = state_with_tables(50, 23);
+            state.ui.explorer_scroll_offset = 10;
+            state.ui.explorer_selected = 20;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportTop,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 10);
+        }
+
+        #[test]
+        fn select_viewport_bottom_moves_to_last_visible_item() {
+            let mut state = state_with_tables(50, 23);
+            // visible = 20, scroll_offset = 10, target = 10 + 19 = 29
+            state.ui.explorer_scroll_offset = 10;
+            state.ui.explorer_selected = 15;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 29);
+        }
+
+        #[test]
+        fn select_viewport_bottom_clamps_to_last_item() {
+            let mut state = state_with_tables(10, 23);
+            // visible = 20, scroll_offset = 0, target = min(0 + 19, 9) = 9
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 9);
         }
     }
 }

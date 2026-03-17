@@ -96,6 +96,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             | Key::Right
             | Key::Char('g')
             | Key::Char('G')
+            | Key::Char('H')
+            | Key::Char('L')
             | Key::Char('M') => {}
             _ => return Action::None,
         }
@@ -173,13 +175,31 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 Action::SelectLast
             }
         }
+        Key::Char('H') => {
+            if result_navigation {
+                Action::ResultScrollViewportTop
+            } else if inspector_navigation {
+                Action::InspectorScrollViewportTop
+            } else {
+                Action::SelectViewportTop
+            }
+        }
         Key::Char('M') => {
             if result_navigation {
-                Action::ResultScrollMiddle
+                Action::ResultScrollViewportMiddle
             } else if inspector_navigation {
-                Action::InspectorScrollMiddle
+                Action::InspectorScrollViewportMiddle
             } else {
-                Action::SelectMiddle
+                Action::SelectViewportMiddle
+            }
+        }
+        Key::Char('L') => {
+            if result_navigation {
+                Action::ResultScrollViewportBottom
+            } else if inspector_navigation {
+                Action::InspectorScrollViewportBottom
+            } else {
+                Action::SelectViewportBottom
             }
         }
 
@@ -809,12 +829,39 @@ mod tests {
     }
 
     #[test]
+    fn h_key_returns_select_viewport_top_when_explorer_focused() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo(Key::Char('H')), &state);
+
+        assert!(matches!(result, Action::SelectViewportTop));
+    }
+
+    #[test]
     fn m_key_returns_select_middle_when_explorer_focused() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::SelectMiddle));
+        assert!(matches!(result, Action::SelectViewportMiddle));
+    }
+
+    #[test]
+    fn l_key_returns_select_viewport_bottom_when_explorer_focused() {
+        let state = browse_state();
+
+        let result = handle_normal_mode(combo(Key::Char('L')), &state);
+
+        assert!(matches!(result, Action::SelectViewportBottom));
+    }
+
+    #[test]
+    fn h_key_returns_result_scroll_viewport_top_when_result_focused() {
+        let state = result_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('H')), &state);
+
+        assert!(matches!(result, Action::ResultScrollViewportTop));
     }
 
     #[test]
@@ -823,7 +870,16 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::ResultScrollMiddle));
+        assert!(matches!(result, Action::ResultScrollViewportMiddle));
+    }
+
+    #[test]
+    fn l_key_returns_result_scroll_viewport_bottom_when_result_focused() {
+        let state = result_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('L')), &state);
+
+        assert!(matches!(result, Action::ResultScrollViewportBottom));
     }
 
     #[test]
@@ -832,7 +888,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::ResultScrollMiddle));
+        assert!(matches!(result, Action::ResultScrollViewportMiddle));
     }
 
     fn inspector_focused_state() -> AppState {
@@ -864,12 +920,30 @@ mod tests {
     }
 
     #[test]
+    fn h_key_returns_inspector_scroll_viewport_top_when_inspector_focused() {
+        let state = inspector_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('H')), &state);
+
+        assert!(matches!(result, Action::InspectorScrollViewportTop));
+    }
+
+    #[test]
     fn m_key_returns_inspector_scroll_middle_when_inspector_focused() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::InspectorScrollMiddle));
+        assert!(matches!(result, Action::InspectorScrollViewportMiddle));
+    }
+
+    #[test]
+    fn l_key_returns_inspector_scroll_viewport_bottom_when_inspector_focused() {
+        let state = inspector_focused_state();
+
+        let result = handle_normal_mode(combo(Key::Char('L')), &state);
+
+        assert!(matches!(result, Action::InspectorScrollViewportBottom));
     }
 
     #[test]
@@ -1167,7 +1241,7 @@ mod tests {
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('M')), &state),
-                Action::ResultScrollMiddle
+                Action::ResultScrollViewportMiddle
             ));
         }
 
