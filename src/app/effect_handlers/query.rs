@@ -160,10 +160,16 @@ pub(crate) async fn run(
                         if result.is_error() {
                             let error_text = result
                                 .rows
-                                .first()
-                                .and_then(|r| r.first())
+                                .iter()
+                                .filter_map(|row| row.first())
                                 .cloned()
-                                .unwrap_or_else(|| "EXPLAIN failed".to_string());
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let error_text = if error_text.is_empty() {
+                                "EXPLAIN failed".to_string()
+                            } else {
+                                error_text
+                            };
                             tx.send(Action::ExplainFailed(error_text)).await.ok();
                         } else {
                             let plan_text = result
