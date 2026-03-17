@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
-│           ╰ 3 entries │ ↑↓ Navigate │ Enter Select ──────────────╯           │
+│           ╰ 3 entries │ y: Yank │ /: Filter │ Enter Select ──────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

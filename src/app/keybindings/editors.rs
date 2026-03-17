@@ -52,6 +52,24 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         action: Action::CloseSqlModal,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
+    // idx 5: CLEAR
+    KeyBinding {
+        key_short: "^L",
+        key: "Ctrl+L",
+        desc_short: "Clear",
+        description: "Clear editor",
+        action: Action::SqlModalClear,
+        combos: &[KeyCombo::ctrl(Key::Char('l'))],
+    },
+    // idx 6: QUERY_HISTORY
+    KeyBinding {
+        key_short: "^O",
+        key: "Ctrl+O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenQueryHistoryPicker,
+        combos: &[KeyCombo::ctrl(Key::Char('o'))],
+    },
 ];
 
 // =============================================================================

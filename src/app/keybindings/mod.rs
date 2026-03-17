@@ -137,6 +137,8 @@ pub mod idx {
         pub const ENTER_INSERT: usize = 2;
         pub const MOVE: usize = 3;
         pub const CLOSE: usize = 4;
+        pub const CLEAR: usize = 5;
+        pub const QUERY_HISTORY: usize = 6;
     }
 
     pub mod sql_modal {
@@ -402,6 +404,8 @@ mod tests {
         assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
         assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::CLEAR < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::QUERY_HISTORY < SQL_MODAL_NORMAL_KEYS.len());
 
         // SQL_MODAL_KEYS
         assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());

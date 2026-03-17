@@ -96,15 +96,23 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
+        let border_footer = match state.query_history_picker.mode {
+            QueryHistoryPickerMode::Normal => format!(
+                " {} entries \u{2502} y: Yank \u{2502} /: Filter \u{2502} Enter Select ",
+                grouped_count,
+            ),
+            QueryHistoryPickerMode::Filter => format!(
+                " {} entries \u{2502} type to filter \u{2502} Enter Select ",
+                grouped_count,
+            ),
+        };
+
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Max(desired_height),
             " Query History ",
-            &format!(
-                " {} entries \u{2502} \u{2191}\u{2193} Navigate \u{2502} Enter Select ",
-                grouped_count,
-            ),
+            &border_footer,
         );
 
         let preview_h = compute_preview_height(inner.height);
