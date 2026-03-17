@@ -311,17 +311,23 @@ pub fn reduce_navigation(
             Some(vec![])
         }
 
-        // Explorer page scroll (selection-based)
+        // Explorer page scroll (selection-based, vim-compatible viewport sync)
         Action::SelectHalfPageDown => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
             }
             let visible = state.ui.explorer_visible_items();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = (visible / 2).max(1);
             let max_idx = len.saturating_sub(1);
+            let max_offset = len.saturating_sub(visible);
             let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
-            state.ui.set_explorer_selection(Some(new_idx));
+            state.ui.explorer_selected = new_idx;
+            state.ui.explorer_scroll_offset =
+                (state.ui.explorer_scroll_offset + delta).min(max_offset);
             Some(vec![])
         }
         Action::SelectHalfPageUp => {
@@ -330,9 +336,13 @@ pub fn reduce_navigation(
                 return Some(vec![]);
             }
             let visible = state.ui.explorer_visible_items();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = (visible / 2).max(1);
             let new_idx = state.ui.explorer_selected.saturating_sub(delta);
-            state.ui.set_explorer_selection(Some(new_idx));
+            state.ui.explorer_selected = new_idx;
+            state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
         Action::SelectFullPageDown => {
@@ -341,10 +351,16 @@ pub fn reduce_navigation(
                 return Some(vec![]);
             }
             let visible = state.ui.explorer_visible_items();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = visible.max(1);
             let max_idx = len.saturating_sub(1);
+            let max_offset = len.saturating_sub(visible);
             let new_idx = (state.ui.explorer_selected + delta).min(max_idx);
-            state.ui.set_explorer_selection(Some(new_idx));
+            state.ui.explorer_selected = new_idx;
+            state.ui.explorer_scroll_offset =
+                (state.ui.explorer_scroll_offset + delta).min(max_offset);
             Some(vec![])
         }
         Action::SelectFullPageUp => {
@@ -353,9 +369,13 @@ pub fn reduce_navigation(
                 return Some(vec![]);
             }
             let visible = state.ui.explorer_visible_items();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = visible.max(1);
             let new_idx = state.ui.explorer_selected.saturating_sub(delta);
-            state.ui.set_explorer_selection(Some(new_idx));
+            state.ui.explorer_selected = new_idx;
+            state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
 
@@ -1263,9 +1283,9 @@ mod tests {
         }
 
         #[test]
-        fn zero_height_pane_scrolls_by_one() {
+        fn zero_height_pane_is_noop() {
             let mut state = state_with_tables(50, 0);
-            // explorer_visible_items = 0, delta = max(0/2,1) = 1
+            // explorer_visible_items = 0 → early return
             reduce_navigation(
                 &mut state,
                 &Action::SelectHalfPageDown,
@@ -1273,7 +1293,155 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.explorer_selected, 1);
+            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_scroll_offset, 0);
+        }
+
+        #[test]
+        fn half_page_down_moves_both_selection_and_scroll() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, half=10
+            state.ui.explorer_selected = 15;
+            state.ui.explorer_scroll_offset = 10;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 25);
+            assert_eq!(state.ui.explorer_scroll_offset, 20);
+        }
+
+        #[test]
+        fn half_page_up_moves_both_selection_and_scroll() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, half=10
+            state.ui.explorer_selected = 25;
+            state.ui.explorer_scroll_offset = 20;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 15);
+            assert_eq!(state.ui.explorer_scroll_offset, 10);
+        }
+
+        #[test]
+        fn half_page_down_preserves_relative_position() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, half=10
+            state.ui.explorer_selected = 15;
+            state.ui.explorer_scroll_offset = 10;
+            // relative position = 5
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // both move by 10: selected=25, offset=20 → relative still 5
+            let relative = state.ui.explorer_selected - state.ui.explorer_scroll_offset;
+            assert_eq!(relative, 5);
+        }
+
+        #[test]
+        fn data_fewer_than_viewport_scroll_stays_zero() {
+            let mut state = state_with_tables(10, 23);
+            // visible=20, 10 items < 20 → max_offset=0
+            state.ui.explorer_selected = 3;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectHalfPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // selected: 3+10=13 → clamped to 9
+            // scroll: 0+10=10 → clamped to max_offset=0
+            assert_eq!(state.ui.explorer_selected, 9);
+            assert_eq!(state.ui.explorer_scroll_offset, 0);
+        }
+
+        #[test]
+        fn full_page_down_moves_both_selection_and_scroll() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, delta=20
+            state.ui.explorer_selected = 10;
+            state.ui.explorer_scroll_offset = 5;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectFullPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 30);
+            assert_eq!(state.ui.explorer_scroll_offset, 25);
+        }
+
+        #[test]
+        fn full_page_up_moves_both_selection_and_scroll() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, delta=20
+            state.ui.explorer_selected = 30;
+            state.ui.explorer_scroll_offset = 25;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectFullPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 10);
+            assert_eq!(state.ui.explorer_scroll_offset, 5);
+        }
+
+        #[test]
+        fn full_page_down_clamps_near_bottom() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, delta=20, max_idx=49, max_offset=30
+            state.ui.explorer_selected = 40;
+            state.ui.explorer_scroll_offset = 25;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectFullPageDown,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 49);
+            assert_eq!(state.ui.explorer_scroll_offset, 30);
+        }
+
+        #[test]
+        fn full_page_up_clamps_near_top() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, delta=20
+            state.ui.explorer_selected = 10;
+            state.ui.explorer_scroll_offset = 5;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectFullPageUp,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 0);
+            assert_eq!(state.ui.explorer_scroll_offset, 0);
         }
 
         #[test]
