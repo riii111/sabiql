@@ -1520,4 +1520,353 @@ mod tests {
             assert!(matches!(result, Action::ScrollCursorBottom));
         }
     }
+
+    mod navigation_matrix {
+        use super::*;
+        use crate::domain::{QueryResult, QuerySource};
+        use std::sync::Arc;
+
+        fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
+            assert_eq!(
+                std::mem::discriminant(&actual),
+                std::mem::discriminant(&expected),
+                "[{ctx} + {key}] expected {expected:?}, got {actual:?}"
+            );
+        }
+
+        fn explorer_ctx() -> AppState {
+            browse_state()
+        }
+
+        fn result_scroll_ctx() -> AppState {
+            result_focused_state()
+        }
+
+        fn result_row_active_ctx() -> AppState {
+            let mut state = result_focused_state();
+            state.result_interaction.enter_row(0);
+            state
+        }
+
+        fn result_cell_active_ctx() -> AppState {
+            let mut state = result_focused_state();
+            state.result_interaction.enter_row(0);
+            state.result_interaction.enter_cell(0);
+            state
+        }
+
+        fn inspector_ctx() -> AppState {
+            inspector_focused_state()
+        }
+
+        fn make_result() -> Arc<QueryResult> {
+            Arc::new(QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["col".to_string()],
+                vec![vec!["val".to_string()]],
+                10,
+                QuerySource::Adhoc,
+            ))
+        }
+
+        fn history_focus_ctx() -> AppState {
+            let mut state = browse_state();
+            let qr = make_result();
+            state.query.result_history.push(qr.clone());
+            state.query.set_current_result(qr);
+            state.query.enter_history(0);
+            state.ui.focus_mode = true;
+            state.ui.focused_pane = FocusedPane::Result;
+            state
+        }
+
+        fn focus_mode_ctx() -> AppState {
+            focus_mode_state()
+        }
+
+        #[rstest]
+        #[case("explorer", Key::Char('j'), Action::SelectNext)]
+        #[case("explorer", Key::Char('k'), Action::SelectPrevious)]
+        #[case("result_scroll", Key::Char('j'), Action::ResultScrollDown)]
+        #[case("result_scroll", Key::Char('k'), Action::ResultScrollUp)]
+        #[case("result_row_active", Key::Char('j'), Action::ResultScrollDown)]
+        #[case("result_row_active", Key::Char('k'), Action::ResultScrollUp)]
+        #[case("result_cell_active", Key::Char('j'), Action::ResultScrollDown)]
+        #[case("result_cell_active", Key::Char('k'), Action::ResultScrollUp)]
+        #[case("inspector", Key::Char('j'), Action::InspectorScrollDown)]
+        #[case("inspector", Key::Char('k'), Action::InspectorScrollUp)]
+        #[case("history_focus", Key::Char('j'), Action::ResultScrollDown)]
+        #[case("history_focus", Key::Char('k'), Action::ResultScrollUp)]
+        #[case("focus_mode", Key::Char('j'), Action::ResultScrollDown)]
+        #[case("focus_mode", Key::Char('k'), Action::ResultScrollUp)]
+        fn vertical_jk(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+            let state = match ctx_name {
+                "explorer" => explorer_ctx(),
+                "result_scroll" => result_scroll_ctx(),
+                "result_row_active" => result_row_active_ctx(),
+                "result_cell_active" => result_cell_active_ctx(),
+                "inspector" => inspector_ctx(),
+                "history_focus" => history_focus_ctx(),
+                "focus_mode" => focus_mode_ctx(),
+                _ => unreachable!(),
+            };
+            let key_label = format!("{:?}", key);
+            let actual = handle_normal_mode(combo(key), &state);
+            assert_action(actual, expected, ctx_name, &key_label);
+        }
+
+        #[rstest]
+        #[case("explorer", Key::Char('g'), Action::SelectFirst)]
+        #[case("explorer", Key::Char('G'), Action::SelectLast)]
+        #[case("result_scroll", Key::Char('g'), Action::ResultScrollTop)]
+        #[case("result_scroll", Key::Char('G'), Action::ResultScrollBottom)]
+        #[case("result_row_active", Key::Char('g'), Action::ResultScrollTop)]
+        #[case("result_row_active", Key::Char('G'), Action::ResultScrollBottom)]
+        #[case("result_cell_active", Key::Char('g'), Action::ResultScrollTop)]
+        #[case("result_cell_active", Key::Char('G'), Action::ResultScrollBottom)]
+        #[case("inspector", Key::Char('g'), Action::InspectorScrollTop)]
+        #[case("inspector", Key::Char('G'), Action::InspectorScrollBottom)]
+        #[case("history_focus", Key::Char('g'), Action::ResultScrollTop)]
+        #[case("history_focus", Key::Char('G'), Action::ResultScrollBottom)]
+        #[case("focus_mode", Key::Char('g'), Action::ResultScrollTop)]
+        #[case("focus_mode", Key::Char('G'), Action::ResultScrollBottom)]
+        fn ends_g_shift_g(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+            let state = match ctx_name {
+                "explorer" => explorer_ctx(),
+                "result_scroll" => result_scroll_ctx(),
+                "result_row_active" => result_row_active_ctx(),
+                "result_cell_active" => result_cell_active_ctx(),
+                "inspector" => inspector_ctx(),
+                "history_focus" => history_focus_ctx(),
+                "focus_mode" => focus_mode_ctx(),
+                _ => unreachable!(),
+            };
+            let key_label = format!("{:?}", key);
+            let actual = handle_normal_mode(combo(key), &state);
+            assert_action(actual, expected, ctx_name, &key_label);
+        }
+
+        #[rstest]
+        #[case("explorer", Key::Char('H'), Action::SelectViewportTop)]
+        #[case("explorer", Key::Char('M'), Action::SelectViewportMiddle)]
+        #[case("explorer", Key::Char('L'), Action::SelectViewportBottom)]
+        #[case("result_scroll", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case("result_scroll", Key::Char('M'), Action::ResultScrollViewportMiddle)]
+        #[case("result_scroll", Key::Char('L'), Action::ResultScrollViewportBottom)]
+        #[case("result_row_active", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case(
+            "result_row_active",
+            Key::Char('M'),
+            Action::ResultScrollViewportMiddle
+        )]
+        #[case(
+            "result_row_active",
+            Key::Char('L'),
+            Action::ResultScrollViewportBottom
+        )]
+        #[case("result_cell_active", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case(
+            "result_cell_active",
+            Key::Char('M'),
+            Action::ResultScrollViewportMiddle
+        )]
+        #[case(
+            "result_cell_active",
+            Key::Char('L'),
+            Action::ResultScrollViewportBottom
+        )]
+        #[case("inspector", Key::Char('H'), Action::None)]
+        #[case("inspector", Key::Char('M'), Action::None)]
+        #[case("inspector", Key::Char('L'), Action::None)]
+        #[case("history_focus", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case("history_focus", Key::Char('M'), Action::ResultScrollViewportMiddle)]
+        #[case("history_focus", Key::Char('L'), Action::ResultScrollViewportBottom)]
+        #[case("focus_mode", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case("focus_mode", Key::Char('M'), Action::ResultScrollViewportMiddle)]
+        #[case("focus_mode", Key::Char('L'), Action::ResultScrollViewportBottom)]
+        fn viewport_hml(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+            let state = match ctx_name {
+                "explorer" => explorer_ctx(),
+                "result_scroll" => result_scroll_ctx(),
+                "result_row_active" => result_row_active_ctx(),
+                "result_cell_active" => result_cell_active_ctx(),
+                "inspector" => inspector_ctx(),
+                "history_focus" => history_focus_ctx(),
+                "focus_mode" => focus_mode_ctx(),
+                _ => unreachable!(),
+            };
+            let key_label = format!("{:?}", key);
+            let actual = handle_normal_mode(combo(key), &state);
+            assert_action(actual, expected, ctx_name, &key_label);
+        }
+
+        #[rstest]
+        #[case("explorer", Key::Char('z'), Action::ScrollCursorCenter)]
+        #[case("explorer", Key::Char('t'), Action::ScrollCursorTop)]
+        #[case("explorer", Key::Char('b'), Action::ScrollCursorBottom)]
+        #[case("result_scroll", Key::Char('z'), Action::ResultScrollCursorCenter)]
+        #[case("result_scroll", Key::Char('t'), Action::ResultScrollCursorTop)]
+        #[case("result_scroll", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("result_row_active", Key::Char('z'), Action::ResultScrollCursorCenter)]
+        #[case("result_row_active", Key::Char('t'), Action::ResultScrollCursorTop)]
+        #[case("result_row_active", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("result_cell_active", Key::Char('z'), Action::ResultScrollCursorCenter)]
+        #[case("result_cell_active", Key::Char('t'), Action::ResultScrollCursorTop)]
+        #[case("result_cell_active", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("inspector", Key::Char('z'), Action::ClearPendingZ)]
+        #[case("inspector", Key::Char('t'), Action::ClearPendingZ)]
+        #[case("inspector", Key::Char('b'), Action::ClearPendingZ)]
+        #[case("history_focus", Key::Char('z'), Action::ResultScrollCursorCenter)]
+        #[case("history_focus", Key::Char('t'), Action::ResultScrollCursorTop)]
+        #[case("history_focus", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("focus_mode", Key::Char('z'), Action::ResultScrollCursorCenter)]
+        #[case("focus_mode", Key::Char('t'), Action::ResultScrollCursorTop)]
+        #[case("focus_mode", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        fn scroll_to_cursor_zztb(
+            #[case] ctx_name: &str,
+            #[case] key: Key,
+            #[case] expected: Action,
+        ) {
+            let mut state = match ctx_name {
+                "explorer" => explorer_ctx(),
+                "result_scroll" => result_scroll_ctx(),
+                "result_row_active" => result_row_active_ctx(),
+                "result_cell_active" => result_cell_active_ctx(),
+                "inspector" => inspector_ctx(),
+                "history_focus" => history_focus_ctx(),
+                "focus_mode" => focus_mode_ctx(),
+                _ => unreachable!(),
+            };
+            state.ui.pending_z = true;
+            let key_label = format!("{:?}", key);
+            let actual = handle_normal_mode(combo(key), &state);
+            assert_action(actual, expected, ctx_name, &key_label);
+        }
+
+        #[rstest]
+        #[case("explorer", explorer_ctx())]
+        #[case("result_scroll", result_scroll_ctx())]
+        #[case("result_row_active", result_row_active_ctx())]
+        #[case("result_cell_active", result_cell_active_ctx())]
+        #[case("inspector", inspector_ctx())]
+        #[case("history_focus", history_focus_ctx())]
+        #[case("focus_mode", focus_mode_ctx())]
+        fn z_prefix_returns_pending_z(#[case] ctx_name: &str, #[case] state: AppState) {
+            let actual = handle_normal_mode(combo(Key::Char('z')), &state);
+            assert_action(actual, Action::PendingZ, ctx_name, "z");
+        }
+
+        mod history_pane_edges {
+            use super::*;
+
+            fn history_explorer_ctx() -> AppState {
+                let mut state = history_focus_ctx();
+                state.ui.focused_pane = FocusedPane::Explorer;
+                state.ui.focus_mode = false;
+                state
+            }
+
+            fn history_inspector_ctx() -> AppState {
+                let mut state = history_focus_ctx();
+                state.ui.focused_pane = FocusedPane::Inspector;
+                state.ui.focus_mode = false;
+                state
+            }
+
+            #[test]
+            fn history_explorer_j_selects_next() {
+                let state = history_explorer_ctx();
+                let actual = handle_normal_mode(combo(Key::Char('j')), &state);
+                assert_action(actual, Action::SelectNext, "history+explorer", "j");
+            }
+
+            #[test]
+            fn history_explorer_h_selects_viewport_top() {
+                let state = history_explorer_ctx();
+                let actual = handle_normal_mode(combo(Key::Char('H')), &state);
+                assert_action(actual, Action::SelectViewportTop, "history+explorer", "H");
+            }
+
+            #[test]
+            fn history_inspector_j_scrolls_down() {
+                let state = history_inspector_ctx();
+                let actual = handle_normal_mode(combo(Key::Char('j')), &state);
+                assert_action(
+                    actual,
+                    Action::InspectorScrollDown,
+                    "history+inspector",
+                    "j",
+                );
+            }
+
+            #[test]
+            fn history_inspector_h_is_noop() {
+                let state = history_inspector_ctx();
+                let actual = handle_normal_mode(combo(Key::Char('H')), &state);
+                assert_action(actual, Action::None, "history+inspector", "H");
+            }
+
+            #[test]
+            fn history_zz_explorer_scrolls_cursor() {
+                let mut state = history_explorer_ctx();
+                state.ui.pending_z = true;
+                let actual = handle_normal_mode(combo(Key::Char('z')), &state);
+                assert_action(
+                    actual,
+                    Action::ScrollCursorCenter,
+                    "history+explorer+pending_z",
+                    "z",
+                );
+            }
+
+            #[test]
+            fn history_zz_inspector_clears() {
+                let mut state = history_inspector_ctx();
+                state.ui.pending_z = true;
+                let actual = handle_normal_mode(combo(Key::Char('z')), &state);
+                assert_action(
+                    actual,
+                    Action::ClearPendingZ,
+                    "history+inspector+pending_z",
+                    "z",
+                );
+            }
+        }
+
+        mod history_whitelist_asymmetry {
+            use super::*;
+
+            fn history_result_ctx() -> AppState {
+                history_focus_ctx()
+            }
+
+            #[test]
+            fn home_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::Home), &state);
+                assert_action(actual, Action::None, "history+result", "Home");
+            }
+
+            #[test]
+            fn end_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::End), &state);
+                assert_action(actual, Action::None, "history+result", "End");
+            }
+
+            #[test]
+            fn up_allowed_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::Up), &state);
+                assert_action(actual, Action::ResultScrollUp, "history+result", "Up");
+            }
+
+            #[test]
+            fn down_allowed_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::Down), &state);
+                assert_action(actual, Action::ResultScrollDown, "history+result", "Down");
+            }
+        }
+    }
 }
