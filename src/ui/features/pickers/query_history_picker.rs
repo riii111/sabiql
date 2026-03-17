@@ -13,7 +13,7 @@ use crate::ui::theme::Theme;
 const TIMESTAMP_WIDTH: usize = 18;
 const STATUS_WIDTH: usize = 2;
 const LIST_MIN_HEIGHT: u16 = 5;
-const LIST_MAX_HEIGHT: u16 = 15;
+const LIST_MAX_HEIGHT: u16 = 10;
 const PREVIEW_MIN_HEIGHT: u16 = 6;
 const MIN_INNER_FOR_PREVIEW: u16 = 10;
 
@@ -88,14 +88,13 @@ impl QueryHistoryPicker {
         };
 
         let max_height = (frame.area().height * 70 / 100).max(MIN_INNER_FOR_PREVIEW + 2);
-        let list_rows = (grouped_count as u16).clamp(1, LIST_MAX_HEIGHT);
         let preview_est = if grouped_count > 0 {
             PREVIEW_MIN_HEIGHT + 1 // +1 for border
         } else {
             0
         };
-        // border(2) + filter(1) + list + preview
-        let desired_height = (2 + 1 + list_rows + preview_est).min(max_height);
+        // border(2) + filter(1) + actual entries + preview — capped at 70%
+        let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
         let (_, inner) = render_modal(
             frame,
