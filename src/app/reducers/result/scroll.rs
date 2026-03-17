@@ -93,19 +93,36 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             });
             Some(vec![])
         }
-        Action::ResultScrollMiddle => {
-            let visible = state.result_visible_rows();
-            let mid_viewport = visible / 2;
-            let mid_row = state.result_interaction.scroll_offset + mid_viewport;
-            let max_row = result_row_count(state).saturating_sub(1);
-            let target = mid_row.min(max_row);
-            move_row_or_scroll(state, target, |s| {
-                let total = result_row_count(s);
-                let v = s.result_visible_rows();
-                let ideal = total / 2;
-                let max_s = total.saturating_sub(v);
-                s.result_interaction.scroll_offset = ideal.saturating_sub(v / 2).min(max_s);
-            });
+        Action::ResultScrollViewportMiddle => {
+            if state.result_interaction.selection().row().is_some() {
+                let visible = state.result_visible_rows();
+                let total = result_row_count(state);
+                let offset = state.result_interaction.scroll_offset;
+                let displayed = visible.min(total.saturating_sub(offset));
+                let target_row = offset + displayed / 2;
+                state.result_interaction.move_row(target_row);
+                ensure_row_visible(state);
+            }
+            Some(vec![])
+        }
+        Action::ResultScrollViewportTop => {
+            if state.result_interaction.selection().row().is_some() {
+                let target = state.result_interaction.scroll_offset;
+                state.result_interaction.move_row(target);
+                ensure_row_visible(state);
+            }
+            Some(vec![])
+        }
+        Action::ResultScrollViewportBottom => {
+            if state.result_interaction.selection().row().is_some() {
+                let visible = state.result_visible_rows();
+                let total = result_row_count(state);
+                let offset = state.result_interaction.scroll_offset;
+                let displayed = visible.min(total.saturating_sub(offset));
+                let target = offset + displayed.saturating_sub(1);
+                state.result_interaction.move_row(target);
+                ensure_row_visible(state);
+            }
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
@@ -168,6 +185,43 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             });
             Some(vec![])
         }
+        // Scroll-to-cursor (zz/zt/zb): only meaningful in RowActive/CellActive
+        Action::ResultScrollCursorCenter => {
+            state.ui.pending_z = false;
+            if let Some(row) = state.result_interaction.selection().row() {
+                let visible = state.result_visible_rows();
+                if visible > 0 {
+                    let max_scroll = result_max_scroll(state);
+                    state.result_interaction.scroll_offset =
+                        row.saturating_sub(visible / 2).min(max_scroll);
+                }
+            }
+            Some(vec![])
+        }
+        Action::ResultScrollCursorTop => {
+            state.ui.pending_z = false;
+            if let Some(row) = state.result_interaction.selection().row() {
+                let visible = state.result_visible_rows();
+                if visible > 0 {
+                    let max_scroll = result_max_scroll(state);
+                    state.result_interaction.scroll_offset = row.min(max_scroll);
+                }
+            }
+            Some(vec![])
+        }
+        Action::ResultScrollCursorBottom => {
+            state.ui.pending_z = false;
+            if let Some(row) = state.result_interaction.selection().row() {
+                let visible = state.result_visible_rows();
+                if visible > 0 {
+                    let max_scroll = result_max_scroll(state);
+                    state.result_interaction.scroll_offset = row
+                        .saturating_sub(visible.saturating_sub(1))
+                        .min(max_scroll);
+                }
+            }
+            Some(vec![])
+        }
         Action::ResultScrollLeft => {
             state.result_interaction.horizontal_offset =
                 calculate_prev_column_offset(state.result_interaction.horizontal_offset);
@@ -192,29 +246,29 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.ui.result_pane_height = pane_height;
+        let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
+        let row_count = result_rows.len();
+        state
+            .query
+            .set_current_result(Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string()],
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: std::time::Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+                command_tag: None,
+            }));
+        state
+    }
+
     mod result_page_scroll {
         use super::*;
-
-        fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.result_pane_height = pane_height;
-            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-            let row_count = result_rows.len();
-            state
-                .query
-                .set_current_result(Arc::new(crate::domain::QueryResult {
-                    query: String::new(),
-                    columns: vec!["id".to_string()],
-                    rows: result_rows,
-                    row_count,
-                    execution_time_ms: 1,
-                    executed_at: std::time::Instant::now(),
-                    source: crate::domain::QuerySource::Preview,
-                    error: None,
-                    command_tag: None,
-                }));
-            state
-        }
 
         #[test]
         fn half_page_down_from_top() {
@@ -269,14 +323,12 @@ mod tests {
         }
 
         #[test]
-        fn scroll_middle_centers_viewport() {
+        fn scroll_middle_is_noop_in_scroll_mode() {
             let mut state = state_with_result_rows(100, 25);
-            // visible = 20, scroll starts at 0
 
-            reduce(&mut state, &Action::ResultScrollMiddle);
+            reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
-            // ideal = 50, v/2 = 10, offset = 40, max = 80 → 40
-            assert_eq!(state.result_interaction.scroll_offset, 40);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
         #[test]
@@ -285,9 +337,83 @@ mod tests {
             // visible = 20, mid_viewport = 10, target = 0 + 10 = 10
             state.result_interaction.enter_row(0);
 
-            reduce(&mut state, &Action::ResultScrollMiddle);
+            reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
             assert_eq!(state.result_interaction.selection().row(), Some(10));
+        }
+    }
+
+    mod result_scroll_to_cursor {
+        use super::*;
+
+        #[test]
+        fn scroll_cursor_center_centers_on_selected_row() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible = 20
+            state.result_interaction.enter_row(50);
+            state.result_interaction.scroll_offset = 50;
+            state.ui.pending_z = true;
+
+            reduce(&mut state, &Action::ResultScrollCursorCenter);
+
+            // row=50, visible=20, offset=50-10=40, max=80 → 40
+            assert_eq!(state.result_interaction.scroll_offset, 40);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_top_puts_row_at_top() {
+            let mut state = state_with_result_rows(100, 25);
+            state.result_interaction.enter_row(30);
+            state.result_interaction.scroll_offset = 20;
+            state.ui.pending_z = true;
+
+            reduce(&mut state, &Action::ResultScrollCursorTop);
+
+            assert_eq!(state.result_interaction.scroll_offset, 30);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_bottom_puts_row_at_bottom() {
+            let mut state = state_with_result_rows(100, 25);
+            state.result_interaction.enter_row(30);
+            state.result_interaction.scroll_offset = 30;
+            state.ui.pending_z = true;
+
+            reduce(&mut state, &Action::ResultScrollCursorBottom);
+
+            // row=30, visible=20, offset=30-19=11, max=80 → 11
+            assert_eq!(state.result_interaction.scroll_offset, 11);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_center_is_noop_in_scroll_mode() {
+            let mut state = state_with_result_rows(100, 25);
+            state.result_interaction.scroll_offset = 20;
+            state.ui.pending_z = true;
+
+            reduce(&mut state, &Action::ResultScrollCursorCenter);
+
+            // No row selected, offset unchanged
+            assert_eq!(state.result_interaction.scroll_offset, 20);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_top_clamps_to_max_scroll() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, max_scroll=80
+            state.result_interaction.enter_row(95);
+            state.result_interaction.scroll_offset = 80;
+            state.ui.pending_z = true;
+
+            reduce(&mut state, &Action::ResultScrollCursorTop);
+
+            // row=95, clamped to max_scroll=80
+            assert_eq!(state.result_interaction.scroll_offset, 80);
+            assert!(!state.ui.pending_z);
         }
     }
 }

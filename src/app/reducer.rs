@@ -63,6 +63,14 @@ fn reduce_inner(
 
     match action {
         Action::None => vec![],
+        Action::PendingZ => {
+            state.ui.pending_z = true;
+            vec![]
+        }
+        Action::ClearPendingZ => {
+            state.ui.pending_z = false;
+            vec![]
+        }
         Action::Quit => {
             state.should_quit = true;
             vec![]
