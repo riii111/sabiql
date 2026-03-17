@@ -7,7 +7,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
+│       ╭ SQL Editor ── INSERT ────────────────────────────────────────╮       │
 │       │SELECT 1█                                                     │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │Ready                                                         │       │
-│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
+│       ╰ ⌥Enter: Run │ Ctrl+L: Clear │ Esc: Normal ───────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Close
+⌥Enter:Run  ↑↓←→:Move  Esc:Normal
