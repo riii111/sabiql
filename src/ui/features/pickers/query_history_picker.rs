@@ -10,7 +10,7 @@ use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
-const TIMESTAMP_WIDTH: usize = 14;
+const TIMESTAMP_WIDTH: usize = 18;
 const STATUS_WIDTH: usize = 2;
 const LIST_MIN_HEIGHT: u16 = 5;
 const LIST_MAX_HEIGHT: u16 = 15;
@@ -22,7 +22,7 @@ const MONTH_ABBR: [&str; 12] = [
 ];
 
 fn format_short_timestamp(iso: &str) -> String {
-    // "2026-03-17T00:48:52Z" -> "Mar 17 00:48"
+    // "2026-03-17T00:48:52Z" -> "Mar 17 00:48 UTC"
     if iso.len() < 16 {
         return iso.to_string();
     }
@@ -34,7 +34,7 @@ fn format_short_timestamp(iso: &str) -> String {
     } else {
         "???"
     };
-    format!("{} {} {}", month_name, day, time)
+    format!("{} {} {} UTC", month_name, day, time)
 }
 
 fn status_span(status: QueryResultStatus) -> Span<'static> {

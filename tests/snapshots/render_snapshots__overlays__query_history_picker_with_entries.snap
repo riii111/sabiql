@@ -10,13 +10,13 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
 │           │  > █                                                 │           │
-│           │▸ ✗ SELECT count(*) FROM users          Mar 13 12:00  │           │
-│           │  ✓ INSERT INTO orders (user_id, tota…  Mar 13 11:00  │           │
-│           │  ✓ SELECT * FROM users WHERE id = 1    Mar 13 10:00  │           │
+│           │▸ ✗ SELECT count(*) FROM users      Mar 13 12:00 UTC  │           │
+│           │  ✓ INSERT INTO orders (user_id, …  Mar 13 11:00 UTC  │           │
+│           │  ✓ SELECT * FROM users WHERE id …  Mar 13 10:00 UTC  │           │
 │           │                                                      │───────────┘
 │           │                                                      │───────────┐
 │           │ Preview ─────────────────────────────────────────────│           │
-│           │✗ Failed  │ Mar 13 12:00                              │           │
+│           │✗ Failed  │ Mar 13 12:00 UTC                          │           │
 │           │                                                      │           │
 │           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
