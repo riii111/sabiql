@@ -43,7 +43,16 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 4: CLOSE
+    // idx 4: HOME_END
+    KeyBinding {
+        key_short: "Home/End",
+        key: "Home/End",
+        desc_short: "Line",
+        description: "Line start/end",
+        action: Action::None,
+        combos: &[],
+    },
+    // idx 5: CLOSE
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -52,7 +61,7 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         action: Action::CloseSqlModal,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // idx 5: CLEAR
+    // idx 6: CLEAR
     KeyBinding {
         key_short: "^L",
         key: "Ctrl+L",
@@ -61,7 +70,7 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalClear,
         combos: &[KeyCombo::ctrl(Key::Char('l'))],
     },
-    // idx 6: QUERY_HISTORY
+    // idx 7: QUERY_HISTORY
     KeyBinding {
         key_short: "^O",
         key: "Ctrl+O",
