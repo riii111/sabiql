@@ -1,27 +1,16 @@
-use std::time::Instant;
-
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
 use super::text_input::TextInputState;
 use crate::domain::query_history::QueryHistoryEntry;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QueryHistoryPickerMode {
-    #[default]
-    Normal,
-    Filter,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct QueryHistoryPickerState {
-    pub mode: QueryHistoryPickerMode,
     pub entries: Vec<QueryHistoryEntry>,
     pub filter_input: TextInputState,
     pub selected: usize,
     pub scroll_offset: usize,
     pub pane_height: u16,
-    pub yank_flash_until: Option<Instant>,
 }
 
 pub struct FilteredEntry<'a> {
@@ -37,12 +26,10 @@ pub struct GroupedEntry<'a> {
 
 impl QueryHistoryPickerState {
     pub fn reset(&mut self) {
-        self.mode = QueryHistoryPickerMode::Normal;
         self.entries.clear();
         self.filter_input.clear();
         self.selected = 0;
         self.scroll_offset = 0;
-        self.yank_flash_until = None;
     }
 
     pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {

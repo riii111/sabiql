@@ -1,12 +1,10 @@
-use std::time::Instant;
-
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
-use crate::app::query_history_state::{GroupedEntry, QueryHistoryPickerMode};
+use crate::app::query_history_state::GroupedEntry;
 use crate::app::state::AppState;
 use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
@@ -98,16 +96,10 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
-        let border_footer = match state.query_history_picker.mode {
-            QueryHistoryPickerMode::Normal => format!(
-                " {} entries \u{2502} y: Yank \u{2502} /: Filter \u{2502} Enter Select ",
-                grouped_count,
-            ),
-            QueryHistoryPickerMode::Filter => format!(
-                " {} entries \u{2502} type to filter \u{2502} Enter Select ",
-                grouped_count,
-            ),
-        };
+        let border_footer = format!(
+            " {} entries \u{2502} type to filter \u{2502} Enter Select ",
+            grouped_count,
+        );
 
         let (_, inner) = render_modal(
             frame,
@@ -135,8 +127,12 @@ impl QueryHistoryPicker {
         };
         let (filter_area, list_area, preview_area) = areas;
 
-        let is_filter_mode = state.query_history_picker.mode == QueryHistoryPickerMode::Filter;
-        let filter_line = if is_filter_mode {
+        let filter_line = if filter_content.is_empty() {
+            Line::from(Span::styled(
+                "  type to filter",
+                Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            ))
+        } else {
             Line::from(vec![
                 Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
                 Span::raw(filter_content),
@@ -146,16 +142,6 @@ impl QueryHistoryPicker {
                         .fg(Theme::CURSOR_FG)
                         .add_modifier(Modifier::SLOW_BLINK),
                 ),
-            ])
-        } else if filter_content.is_empty() {
-            Line::from(Span::styled(
-                "  / to filter",
-                Style::default().fg(Theme::PLACEHOLDER_TEXT),
-            ))
-        } else {
-            Line::from(vec![
-                Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-                Span::styled(filter_content, Style::default().fg(Theme::TEXT_SECONDARY)),
             ])
         };
         frame.render_widget(Paragraph::new(filter_line), filter_area);
@@ -206,23 +192,10 @@ impl QueryHistoryPicker {
             }
         }
 
-        let now = Instant::now();
-        let yank_flash_active = state
-            .query_history_picker
-            .yank_flash_until
-            .is_some_and(|until| now < until);
-
-        let highlight_style = if yank_flash_active {
-            Style::default()
-                .bg(Theme::YANK_FLASH_BG)
-                .fg(Theme::YANK_FLASH_FG)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .bg(Theme::COMPLETION_SELECTED_BG)
-                .fg(Theme::TEXT_PRIMARY)
-                .add_modifier(Modifier::BOLD)
-        };
+        let highlight_style = Style::default()
+            .bg(Theme::COMPLETION_SELECTED_BG)
+            .fg(Theme::TEXT_PRIMARY)
+            .add_modifier(Modifier::BOLD);
 
         let list = List::new(items)
             .highlight_style(highlight_style)

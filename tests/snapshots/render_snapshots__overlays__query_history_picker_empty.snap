@@ -13,9 +13,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
-│           │  / to filter                                         │───────────┘
+│           │  type to filter                                      │───────────┘
 │           │  No history yet                                      │───────────┐
-│           ╰ 0 entries │ y: Yank │ /: Filter │ Enter Select ──────╯           │
+│           ╰ 0 entries │ type to filter │ Enter Select ───────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  y:Yank  ↑↓:Navigate  /:Filter  Esc:Close
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

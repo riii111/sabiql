@@ -9,7 +9,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
-│           │  / to filter                                         │           │
+│           │  type to filter                                      │           │
 │           │▸ ✗ SELECT count(*) FROM users      Mar 13 12:00 UTC  │           │
 │           │  ✓ INSERT INTO orders (user_id, …  Mar 13 11:00 UTC  │           │
 │           │  ✓ SELECT * FROM users WHERE id …  Mar 13 10:00 UTC  │           │
@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │           │                                                      │           │
 │           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
-│           ╰ 3 entries │ y: Yank │ /: Filter │ Enter Select ──────╯           │
+│           ╰ 3 entries │ type to filter │ Enter Select ───────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  y:Yank  ↑↓:Navigate  /:Filter  Esc:Close
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

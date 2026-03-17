@@ -51,9 +51,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
-        InputMode::QueryHistoryPicker => {
-            pickers::handle_query_history_picker_keys(combo, state.query_history_picker.mode)
-        }
+        InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
     }
 }
 

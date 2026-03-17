@@ -1,10 +1,9 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::app::action::Action;
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::query_history_state::QueryHistoryPickerMode;
 use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
@@ -226,36 +225,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
                 _ => {}
             }
-            Some(vec![])
-        }
-
-        Action::QueryHistoryEnterFilter => {
-            state.query_history_picker.mode = QueryHistoryPickerMode::Filter;
-            Some(vec![])
-        }
-        Action::QueryHistoryEnterNormal => {
-            state.query_history_picker.mode = QueryHistoryPickerMode::Normal;
-            Some(vec![])
-        }
-        Action::QueryHistoryYank => {
-            let grouped = state.query_history_picker.grouped_filtered_entries();
-            let selected = if grouped.is_empty() {
-                0
-            } else {
-                state.query_history_picker.selected.min(grouped.len() - 1)
-            };
-            let query = grouped.get(selected).map(|g| g.entry.query.clone());
-            match query {
-                Some(q) if !q.is_empty() => Some(vec![Effect::CopyToClipboard {
-                    content: q,
-                    on_success: Some(Action::QueryHistoryYankSuccess),
-                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
-                }]),
-                _ => Some(vec![]),
-            }
-        }
-        Action::QueryHistoryYankSuccess => {
-            state.query_history_picker.yank_flash_until = Some(now + Duration::from_millis(200));
             Some(vec![])
         }
 

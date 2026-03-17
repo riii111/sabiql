@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  type:Filter  ↑↓:Navigate  Esc:Normal
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

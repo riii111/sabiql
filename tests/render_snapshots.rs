@@ -448,7 +448,6 @@ mod overlays {
 
     #[test]
     fn query_history_picker_filter_mode() {
-        use sabiql::app::query_history_state::QueryHistoryPickerMode;
         use sabiql::domain::ConnectionId;
         use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
@@ -456,7 +455,6 @@ mod overlays {
         let mut terminal = create_test_terminal();
 
         state.modal.set_mode(InputMode::QueryHistoryPicker);
-        state.query_history_picker.mode = QueryHistoryPickerMode::Filter;
         state.query_history_picker.entries = vec![
             QueryHistoryEntry::new(
                 "SELECT * FROM users".to_string(),

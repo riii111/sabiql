@@ -9,9 +9,8 @@ use crate::app::input_mode::InputMode;
 use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
-    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_FILTER_ROWS, QUERY_HISTORY_NORMAL_ROWS,
-    RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS,
-    TABLE_PICKER_ROWS, idx,
+    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
+    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
@@ -270,24 +269,12 @@ impl Footer {
                 ER_PICKER_ROWS[idx::er_picker::NAVIGATE].as_hint(),
                 ER_PICKER_ROWS[idx::er_picker::ESC_CLOSE].as_hint(),
             ],
-            InputMode::QueryHistoryPicker => {
-                use crate::app::query_history_state::QueryHistoryPickerMode;
-                match state.query_history_picker.mode {
-                    QueryHistoryPickerMode::Normal => vec![
-                        QUERY_HISTORY_NORMAL_ROWS[idx::qh_normal::ENTER_SELECT].as_hint(),
-                        QUERY_HISTORY_NORMAL_ROWS[idx::qh_normal::YANK].as_hint(),
-                        QUERY_HISTORY_NORMAL_ROWS[idx::qh_normal::NAVIGATE].as_hint(),
-                        QUERY_HISTORY_NORMAL_ROWS[idx::qh_normal::ENTER_FILTER].as_hint(),
-                        QUERY_HISTORY_NORMAL_ROWS[idx::qh_normal::ESC_CLOSE].as_hint(),
-                    ],
-                    QueryHistoryPickerMode::Filter => vec![
-                        QUERY_HISTORY_FILTER_ROWS[idx::qh_filter::ENTER_SELECT].as_hint(),
-                        QUERY_HISTORY_FILTER_ROWS[idx::qh_filter::TYPE_FILTER].as_hint(),
-                        QUERY_HISTORY_FILTER_ROWS[idx::qh_filter::NAVIGATE].as_hint(),
-                        QUERY_HISTORY_FILTER_ROWS[idx::qh_filter::ESC_NORMAL].as_hint(),
-                    ],
-                }
-            }
+            InputMode::QueryHistoryPicker => vec![
+                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ENTER_SELECT].as_hint(),
+                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::TYPE_FILTER].as_hint(),
+                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::NAVIGATE].as_hint(),
+                QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
+            ],
             InputMode::ConnectionSelector => {
                 let r = CONNECTION_SELECTOR_ROWS;
                 use idx::connection_selector as cs;
