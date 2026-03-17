@@ -8,9 +8,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
 │           │  > █                                                 │           │
-│           │▸   SELECT count(*) FROM users  2026-03-13T12:00      │           │
-│           │    INSERT INTO orders (user_id, total) VALUES (1, 100│           │
-│           │    SELECT * FROM users WHERE id = 1  2026-03-13T10:00│           │
+│           │▸   █ SELECT count(*) FROM users  2026-03-13T12:00    │           │
+│           │    █ INSERT INTO orders (user_id…  2026-03-13T11:00  │           │
+│           │    █ SELECT * FROM users WHERE i…  2026-03-13T10:00  │           │
 │           │                                                      │           │
 │           │                                                      │           │
 │           │                                                      │───────────┘

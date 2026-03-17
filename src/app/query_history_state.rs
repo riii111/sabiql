@@ -18,6 +18,12 @@ pub struct FilteredEntry<'a> {
     pub match_indices: Vec<u32>,
 }
 
+pub struct GroupedEntry<'a> {
+    pub entry: &'a QueryHistoryEntry,
+    pub count: usize,
+    pub match_indices: Vec<u32>,
+}
+
 impl QueryHistoryPickerState {
     pub fn reset(&mut self) {
         self.entries.clear();
@@ -61,12 +67,33 @@ impl QueryHistoryPickerState {
             .collect()
     }
 
-    pub fn filtered_count(&self) -> usize {
-        self.filtered_entries().len()
+    pub fn grouped_filtered_entries(&self) -> Vec<GroupedEntry<'_>> {
+        let filtered = self.filtered_entries();
+        let mut groups: Vec<GroupedEntry<'_>> = Vec::new();
+
+        for fe in filtered {
+            if let Some(last) = groups.last_mut() {
+                if last.entry.query == fe.entry.query {
+                    last.count += 1;
+                    continue;
+                }
+            }
+            groups.push(GroupedEntry {
+                entry: fe.entry,
+                count: 1,
+                match_indices: fe.match_indices,
+            });
+        }
+
+        groups
+    }
+
+    pub fn grouped_count(&self) -> usize {
+        self.grouped_filtered_entries().len()
     }
 
     pub fn clamped_selected(&self) -> usize {
-        let count = self.filtered_count();
+        let count = self.grouped_count();
         if count == 0 {
             0
         } else {

@@ -180,7 +180,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistorySelectNext => {
-            let count = state.query_history_picker.filtered_count();
+            let count = state.query_history_picker.grouped_count();
             if count > 0 && state.query_history_picker.selected < count - 1 {
                 state.query_history_picker.selected += 1;
             }
@@ -192,9 +192,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistoryConfirmSelection => {
-            let filtered = state.query_history_picker.filtered_entries();
+            let grouped = state.query_history_picker.grouped_filtered_entries();
             let selected = state.query_history_picker.clamped_selected();
-            let query = filtered.get(selected).map(|f| f.entry.query.clone());
+            let query = grouped.get(selected).map(|g| g.entry.query.clone());
             let origin = state.modal.pop_mode();
 
             state.query_history_picker.reset();

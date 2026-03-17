@@ -48,12 +48,12 @@ impl QueryHistoryPicker {
         let scroll_offset = state.query_history_picker.scroll_offset;
         let raw_selected = state.query_history_picker.selected;
 
-        let filtered = state.query_history_picker.filtered_entries();
-        let filtered_count = filtered.len();
-        let selected_idx = if filtered_count == 0 {
+        let grouped = state.query_history_picker.grouped_filtered_entries();
+        let grouped_count = grouped.len();
+        let selected_idx = if grouped_count == 0 {
             0
         } else {
-            raw_selected.min(filtered_count - 1)
+            raw_selected.min(grouped_count - 1)
         };
 
         let (_, inner) = render_modal(
@@ -63,7 +63,7 @@ impl QueryHistoryPicker {
             " Query History ",
             &format!(
                 " {} entries \u{2502} \u{2191}\u{2193} Navigate \u{2502} Enter Select ",
-                filtered_count,
+                grouped_count,
             ),
         );
 
@@ -82,8 +82,8 @@ impl QueryHistoryPicker {
         ]);
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
-        if filtered_count == 0 {
-            drop(filtered);
+        if grouped_count == 0 {
+            drop(grouped);
             state.query_history_picker.pane_height = list_area.height;
             let msg = if filter_is_empty {
                 "No history yet"
@@ -100,13 +100,13 @@ impl QueryHistoryPicker {
 
         let available_width = list_area.width as usize;
         let prefix_width = STATUS_WIDTH + COLOR_BAR_WIDTH;
-        let query_max = available_width.saturating_sub(prefix_width + TIMESTAMP_WIDTH + 4); // 4 = leading "  " + gaps
+        let query_max = available_width.saturating_sub(prefix_width + TIMESTAMP_WIDTH + 4);
 
-        let items: Vec<ListItem> = filtered
+        let items: Vec<ListItem> = grouped
             .iter()
             .enumerate()
-            .map(|(i, fe)| {
-                let query_display = fe.entry.query.replace('\n', " ");
+            .map(|(i, ge)| {
+                let query_display = ge.entry.query.replace('\n', " ");
                 let char_len = query_display.chars().count();
                 let truncated = if char_len > query_max && query_max > 3 {
                     let s: String = query_display.chars().take(query_max - 1).collect();
@@ -115,22 +115,22 @@ impl QueryHistoryPicker {
                     query_display
                 };
 
-                let timestamp = fe.entry.executed_at.as_str();
+                let timestamp = ge.entry.executed_at.as_str();
                 let ts_short = if timestamp.len() >= 16 {
                     &timestamp[..16]
                 } else {
                     timestamp
                 };
 
-                let category = classify_sql(&fe.entry.query);
+                let category = classify_sql(&ge.entry.query);
                 let bar_color = category_color(category);
 
                 let mut spans = vec![
-                    status_span(fe.entry.result_status),
+                    status_span(ge.entry.result_status),
                     Span::styled("\u{2588} ", Style::default().fg(bar_color)),
                 ];
 
-                if fe.match_indices.is_empty() {
+                if ge.match_indices.is_empty() {
                     spans.push(Span::styled(
                         truncated.clone(),
                         Style::default().fg(if i == selected_idx {
@@ -142,7 +142,7 @@ impl QueryHistoryPicker {
                 } else {
                     let chars: Vec<char> = truncated.chars().collect();
                     for (ci, ch) in chars.iter().enumerate() {
-                        let is_match = fe.match_indices.contains(&(ci as u32));
+                        let is_match = ge.match_indices.contains(&(ci as u32));
                         let color = if is_match {
                             Theme::TEXT_ACCENT
                         } else if i == selected_idx {
@@ -158,6 +158,13 @@ impl QueryHistoryPicker {
                     }
                 }
 
+                if ge.count > 1 {
+                    spans.push(Span::styled(
+                        format!(" (\u{00d7}{})", ge.count),
+                        Style::default().fg(Theme::TEXT_MUTED),
+                    ));
+                }
+
                 spans.push(Span::styled(
                     format!("  {}", ts_short),
                     Style::default().fg(Theme::TEXT_MUTED),
@@ -167,7 +174,7 @@ impl QueryHistoryPicker {
             })
             .collect();
 
-        drop(filtered);
+        drop(grouped);
         state.query_history_picker.pane_height = list_area.height;
 
         let list = List::new(items)
