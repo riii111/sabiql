@@ -9,7 +9,7 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::ports::{QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
@@ -49,10 +49,13 @@ fn save_query_history(
     project_name: &str,
     connection_id: &crate::domain::ConnectionId,
     query: &str,
+    result_status: QueryResultStatus,
+    affected_rows: Option<u64>,
 ) {
     let store = Arc::clone(query_history_store);
     let tx = action_tx.clone();
-    let entry = QueryHistoryEntry::new(query.to_string(), utc_now_iso8601(), connection_id.clone());
+    let entry = QueryHistoryEntry::new(query.to_string(), utc_now_iso8601(), connection_id.clone())
+        .with_result(result_status, affected_rows);
     let project = project_name.to_string();
     let conn_id = connection_id.clone();
     tokio::spawn(async move {
@@ -140,21 +143,29 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
-            if let Some(conn_id) = &_state.session.active_connection_id {
-                save_query_history(
-                    query_history_store,
-                    action_tx,
-                    &_state.runtime.project_name,
-                    conn_id,
-                    &query,
-                );
-            }
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
+            let history_store = Arc::clone(query_history_store);
+            let history_tx = action_tx.clone();
+            let project = _state.runtime.project_name.clone();
+            let conn_id = _state.session.active_connection_id.clone();
+            let query_for_history = query.clone();
 
             tokio::spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
+                        if let Some(cid) = &conn_id {
+                            let rows = result.command_tag.as_ref().and_then(|t| t.affected_rows());
+                            save_query_history(
+                                &history_store,
+                                &history_tx,
+                                &project,
+                                cid,
+                                &query_for_history,
+                                QueryResultStatus::Success,
+                                rows,
+                            );
+                        }
                         tx.send(Action::QueryCompleted {
                             result: Arc::new(result),
                             generation: 0,
@@ -164,6 +175,17 @@ pub(crate) async fn run(
                         .ok();
                     }
                     Err(e) => {
+                        if let Some(cid) = &conn_id {
+                            save_query_history(
+                                &history_store,
+                                &history_tx,
+                                &project,
+                                cid,
+                                &query_for_history,
+                                QueryResultStatus::Failed,
+                                None,
+                            );
+                        }
                         tx.send(Action::QueryFailed(e.to_string(), 0)).await.ok();
                     }
                 }
@@ -176,21 +198,28 @@ pub(crate) async fn run(
             query,
             read_only,
         } => {
-            if let Some(conn_id) = &_state.session.active_connection_id {
-                save_query_history(
-                    query_history_store,
-                    action_tx,
-                    &_state.runtime.project_name,
-                    conn_id,
-                    &query,
-                );
-            }
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
+            let history_store = Arc::clone(query_history_store);
+            let history_tx = action_tx.clone();
+            let project = _state.runtime.project_name.clone();
+            let conn_id = _state.session.active_connection_id.clone();
+            let query_for_history = query.clone();
 
             tokio::spawn(async move {
                 match executor.execute_write(&dsn, &query, read_only).await {
                     Ok(result) => {
+                        if let Some(cid) = &conn_id {
+                            save_query_history(
+                                &history_store,
+                                &history_tx,
+                                &project,
+                                cid,
+                                &query_for_history,
+                                QueryResultStatus::Success,
+                                Some(result.affected_rows as u64),
+                            );
+                        }
                         tx.send(Action::ExecuteWriteSucceeded {
                             affected_rows: result.affected_rows,
                         })
@@ -198,6 +227,17 @@ pub(crate) async fn run(
                         .ok();
                     }
                     Err(e) => {
+                        if let Some(cid) = &conn_id {
+                            save_query_history(
+                                &history_store,
+                                &history_tx,
+                                &project,
+                                cid,
+                                &query_for_history,
+                                QueryResultStatus::Failed,
+                                None,
+                            );
+                        }
                         tx.send(Action::ExecuteWriteFailed(e.to_string()))
                             .await
                             .ok();
