@@ -98,7 +98,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             | Key::Char('G')
             | Key::Char('H')
             | Key::Char('L')
-            | Key::Char('M') => {}
+            | Key::Char('M')
+            | Key::Char('z') => {}
             _ => return Action::None,
         }
     }
@@ -118,6 +119,40 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
     if kb::is_focus_toggle(&combo) {
         return Action::ToggleFocus;
+    }
+
+    // Pending z-prefix: two-key sequences (zz, zt, zb)
+    if state.ui.pending_z {
+        return match combo.key {
+            Key::Char('z') => {
+                if result_navigation {
+                    Action::ResultScrollCursorCenter
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorCenter
+                }
+            }
+            Key::Char('t') => {
+                if result_navigation {
+                    Action::ResultScrollCursorTop
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorTop
+                }
+            }
+            Key::Char('b') => {
+                if result_navigation {
+                    Action::ResultScrollCursorBottom
+                } else if inspector_navigation {
+                    Action::ClearPendingZ
+                } else {
+                    Action::ScrollCursorBottom
+                }
+            }
+            _ => Action::ClearPendingZ,
+        };
     }
 
     match combo.key {
@@ -310,6 +345,8 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
             Action::OpenConnectionSelector
         }
+
+        Key::Char('z') => Action::PendingZ,
 
         Key::Enter => {
             if state.connection_error.error_info.is_some() {
@@ -564,7 +601,7 @@ mod tests {
     fn unknown_key_returns_none() {
         let state = browse_state();
 
-        let result = handle_normal_mode(combo(Key::Char('z')), &state);
+        let result = handle_normal_mode(combo(Key::Char('x')), &state);
 
         assert!(matches!(result, Action::None));
     }
@@ -1302,6 +1339,118 @@ mod tests {
 
             assert!(matches!(next, Action::ResultNextPage));
             assert!(matches!(prev, Action::ResultPrevPage));
+        }
+    }
+
+    mod pending_z {
+        use super::*;
+
+        #[test]
+        fn z_key_returns_pending_z() {
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::PendingZ));
+        }
+
+        #[test]
+        fn z_then_z_returns_scroll_cursor_center_for_explorer() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::ScrollCursorCenter));
+        }
+
+        #[test]
+        fn z_then_t_returns_scroll_cursor_top_for_explorer() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('t')), &state);
+
+            assert!(matches!(result, Action::ScrollCursorTop));
+        }
+
+        #[test]
+        fn z_then_b_returns_scroll_cursor_bottom_for_explorer() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('b')), &state);
+
+            assert!(matches!(result, Action::ScrollCursorBottom));
+        }
+
+        #[test]
+        fn z_then_unknown_returns_clear_pending_z() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('x')), &state);
+
+            assert!(matches!(result, Action::ClearPendingZ));
+        }
+
+        #[test]
+        fn z_then_z_returns_result_scroll_cursor_center_for_result() {
+            let mut state = result_focused_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::ResultScrollCursorCenter));
+        }
+
+        #[test]
+        fn z_then_t_returns_result_scroll_cursor_top_for_result() {
+            let mut state = result_focused_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('t')), &state);
+
+            assert!(matches!(result, Action::ResultScrollCursorTop));
+        }
+
+        #[test]
+        fn z_then_b_returns_result_scroll_cursor_bottom_for_result() {
+            let mut state = result_focused_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('b')), &state);
+
+            assert!(matches!(result, Action::ResultScrollCursorBottom));
+        }
+
+        #[test]
+        fn z_then_z_returns_clear_pending_z_for_inspector() {
+            let mut state = inspector_focused_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::ClearPendingZ));
+        }
+
+        #[test]
+        fn z_key_returns_pending_z_in_focus_mode() {
+            let state = focus_mode_state();
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::PendingZ));
+        }
+
+        #[test]
+        fn z_then_z_returns_result_scroll_cursor_center_in_focus_mode() {
+            let mut state = focus_mode_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo(Key::Char('z')), &state);
+
+            assert!(matches!(result, Action::ResultScrollCursorCenter));
         }
     }
 }

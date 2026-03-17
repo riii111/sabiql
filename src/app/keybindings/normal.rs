@@ -222,6 +222,14 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
+        key_short: "zz/zt/zb",
+        key: "zz / zt / zb",
+        desc_short: "Scroll To",
+        description: "Scroll cursor to center/top/bottom",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "^D/^U",
         key: "Ctrl+D / Ctrl+U",
         desc_short: "Half Page",
@@ -282,12 +290,12 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: TOP_MID_BOTTOM
+    // idx 2: TOP_BOTTOM
     KeyBinding {
-        key_short: "g/M/G",
-        key: "g / M / G",
-        desc_short: "Top/Mid/Bot",
-        description: "First/Middle/Last item",
+        key_short: "g/G H/M/L",
+        key: "g / G / H / M / L",
+        desc_short: "Top/Bot/Viewport",
+        description: "First/Last item, Viewport top/mid/bot",
         action: Action::None,
         combos: &[],
     },
@@ -366,12 +374,12 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 6: TOP_MID_BOTTOM (display-only)
+    // idx 6: TOP_BOTTOM (display-only)
     KeyBinding {
-        key_short: "g/M/G",
-        key: "g / M / G",
-        desc_short: "Top/Mid/Bot",
-        description: "First/Middle/Last row",
+        key_short: "g/G H/M/L",
+        key: "g / G / H / M / L",
+        desc_short: "Top/Bot/Viewport",
+        description: "First/Last row, Viewport top/mid/bot",
         action: Action::None,
         combos: &[],
     },

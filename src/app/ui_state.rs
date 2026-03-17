@@ -136,6 +136,8 @@ pub struct UiState {
     pub help_scroll_offset: usize,
 
     pub terminal_height: u16,
+
+    pub pending_z: bool,
 }
 
 impl UiState {

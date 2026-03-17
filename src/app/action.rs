@@ -338,6 +338,20 @@ pub enum Action {
     HistoryNewer,
     ExitResultHistory,
 
+    // Pending z-prefix (two-key sequence: zz, zt, zb)
+    PendingZ,
+    ClearPendingZ,
+
+    // Scroll-to-cursor (zz/zt/zb) — Explorer
+    ScrollCursorCenter,
+    ScrollCursorTop,
+    ScrollCursorBottom,
+
+    // Scroll-to-cursor (zz/zt/zb) — Result
+    ResultScrollCursorCenter,
+    ResultScrollCursorTop,
+    ResultScrollCursorBottom,
+
     // Focus mode
     ToggleFocus,
 

@@ -241,8 +241,8 @@ pub fn reduce_navigation(
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
-                    let target =
-                        (state.ui.explorer_scroll_offset + visible / 2).min(len.saturating_sub(1));
+                    let displayed = visible.min(len - state.ui.explorer_scroll_offset);
+                    let target = state.ui.explorer_scroll_offset + displayed / 2;
                     state.ui.set_explorer_selection(Some(target));
                 }
             }
@@ -263,10 +263,48 @@ pub fn reduce_navigation(
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 {
-                    let target = (state.ui.explorer_scroll_offset + visible.saturating_sub(1))
-                        .min(len.saturating_sub(1));
+                    let displayed = visible.min(len - state.ui.explorer_scroll_offset);
+                    let target = state.ui.explorer_scroll_offset + displayed.saturating_sub(1);
                     state.ui.set_explorer_selection(Some(target));
                 }
+            }
+            Some(vec![])
+        }
+
+        // Explorer scroll-to-cursor (zz/zt/zb)
+        Action::ScrollCursorCenter => {
+            state.ui.pending_z = false;
+            let len = explorer_item_count(state);
+            let visible = state.ui.explorer_visible_items();
+            if len > 0 && visible > 0 {
+                let selected = state.ui.explorer_selected;
+                let max_offset = len.saturating_sub(visible);
+                state.ui.explorer_scroll_offset =
+                    selected.saturating_sub(visible / 2).min(max_offset);
+            }
+            Some(vec![])
+        }
+        Action::ScrollCursorTop => {
+            state.ui.pending_z = false;
+            let len = explorer_item_count(state);
+            let visible = state.ui.explorer_visible_items();
+            if len > 0 && visible > 0 {
+                let selected = state.ui.explorer_selected;
+                let max_offset = len.saturating_sub(visible);
+                state.ui.explorer_scroll_offset = selected.min(max_offset);
+            }
+            Some(vec![])
+        }
+        Action::ScrollCursorBottom => {
+            state.ui.pending_z = false;
+            let len = explorer_item_count(state);
+            let visible = state.ui.explorer_visible_items();
+            if len > 0 && visible > 0 {
+                let selected = state.ui.explorer_selected;
+                let max_offset = len.saturating_sub(visible);
+                state.ui.explorer_scroll_offset = selected
+                    .saturating_sub(visible.saturating_sub(1))
+                    .min(max_offset);
             }
             Some(vec![])
         }
@@ -1316,9 +1354,9 @@ mod tests {
         }
 
         #[test]
-        fn select_viewport_bottom_clamps_to_last_item() {
+        fn select_viewport_bottom_clamps_to_last_displayed_item() {
             let mut state = state_with_tables(10, 23);
-            // visible = 20, scroll_offset = 0, target = min(0 + 19, 9) = 9
+            // visible = 20, displayed = min(20, 10-0) = 10, target = 0 + 9 = 9
             reduce_navigation(
                 &mut state,
                 &Action::SelectViewportBottom,
@@ -1327,6 +1365,120 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_selected, 9);
+        }
+
+        #[test]
+        fn select_viewport_middle_uses_displayed_count_near_end() {
+            let mut state = state_with_tables(50, 23);
+            // visible = 20, scroll_offset = 40, displayed = min(20, 50-40) = 10
+            // target = 40 + 10/2 = 45
+            state.ui.explorer_scroll_offset = 40;
+            state.ui.explorer_selected = 40;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportMiddle,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 45);
+        }
+
+        #[test]
+        fn select_viewport_bottom_uses_displayed_count_near_end() {
+            let mut state = state_with_tables(50, 23);
+            // visible = 20, scroll_offset = 40, displayed = min(20, 50-40) = 10
+            // target = 40 + 9 = 49
+            state.ui.explorer_scroll_offset = 40;
+            state.ui.explorer_selected = 40;
+
+            reduce_navigation(
+                &mut state,
+                &Action::SelectViewportBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.explorer_selected, 49);
+        }
+
+        #[test]
+        fn scroll_cursor_center_centers_viewport_on_selected() {
+            let mut state = state_with_tables(50, 23);
+            // visible = 20, select item 30
+            state.ui.explorer_selected = 30;
+            state.ui.explorer_scroll_offset = 30;
+            state.ui.pending_z = true;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ScrollCursorCenter,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // selected=30, visible=20, offset=30-10=20, max_offset=30, → 20
+            assert_eq!(state.ui.explorer_scroll_offset, 20);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_top_puts_selected_at_top() {
+            let mut state = state_with_tables(50, 23);
+            state.ui.explorer_selected = 15;
+            state.ui.explorer_scroll_offset = 0;
+            state.ui.pending_z = true;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ScrollCursorTop,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // selected=15, max_offset=30, → 15
+            assert_eq!(state.ui.explorer_scroll_offset, 15);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_bottom_puts_selected_at_bottom() {
+            let mut state = state_with_tables(50, 23);
+            state.ui.explorer_selected = 25;
+            state.ui.explorer_scroll_offset = 25;
+            state.ui.pending_z = true;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ScrollCursorBottom,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // selected=25, visible=20, offset=25-19=6, max_offset=30, → 6
+            assert_eq!(state.ui.explorer_scroll_offset, 6);
+            assert!(!state.ui.pending_z);
+        }
+
+        #[test]
+        fn scroll_cursor_top_clamps_to_max_offset() {
+            let mut state = state_with_tables(50, 23);
+            // visible=20, max_offset=30
+            state.ui.explorer_selected = 45;
+            state.ui.explorer_scroll_offset = 30;
+            state.ui.pending_z = true;
+
+            reduce_navigation(
+                &mut state,
+                &Action::ScrollCursorTop,
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            // selected=45, but max_offset=30, clamped to 30
+            assert_eq!(state.ui.explorer_scroll_offset, 30);
+            assert!(!state.ui.pending_z);
         }
     }
 }
