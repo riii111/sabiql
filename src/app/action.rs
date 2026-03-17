@@ -381,6 +381,10 @@ pub enum Action {
     QueryHistorySelectNext,
     QueryHistorySelectPrevious,
     QueryHistoryConfirmSelection,
+    QueryHistoryEnterFilter,
+    QueryHistoryEnterNormal,
+    QueryHistoryYank,
+    QueryHistoryYankSuccess,
 
     // CSV Export
     RequestCsvExport,

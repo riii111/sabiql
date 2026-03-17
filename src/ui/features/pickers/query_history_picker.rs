@@ -4,7 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
-use crate::app::query_history_state::GroupedEntry;
+use crate::app::query_history_state::{GroupedEntry, QueryHistoryPickerMode};
 use crate::app::state::AppState;
 use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
@@ -125,16 +125,29 @@ impl QueryHistoryPicker {
         };
         let (filter_area, list_area, preview_area) = areas;
 
-        let filter_line = Line::from(vec![
-            Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(filter_content),
-            Span::styled(
-                "\u{2588}",
-                Style::default()
-                    .fg(Theme::CURSOR_FG)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ]);
+        let is_filter_mode = state.query_history_picker.mode == QueryHistoryPickerMode::Filter;
+        let filter_line = if is_filter_mode {
+            Line::from(vec![
+                Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
+                Span::raw(filter_content),
+                Span::styled(
+                    "\u{2588}",
+                    Style::default()
+                        .fg(Theme::CURSOR_FG)
+                        .add_modifier(Modifier::SLOW_BLINK),
+                ),
+            ])
+        } else if filter_content.is_empty() {
+            Line::from(Span::styled(
+                "  / to filter",
+                Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            ))
+        } else {
+            Line::from(vec![
+                Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
+                Span::styled(filter_content, Style::default().fg(Theme::TEXT_SECONDARY)),
+            ])
+        };
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
         if grouped_count == 0 {

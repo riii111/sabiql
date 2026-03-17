@@ -4,6 +4,7 @@ use crate::app::action::Action;
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
+use crate::app::query_history_state::QueryHistoryPickerMode;
 use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
@@ -224,6 +225,32 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 }
                 _ => {}
             }
+            Some(vec![])
+        }
+
+        Action::QueryHistoryEnterFilter => {
+            state.query_history_picker.mode = QueryHistoryPickerMode::Filter;
+            Some(vec![])
+        }
+        Action::QueryHistoryEnterNormal => {
+            state.query_history_picker.mode = QueryHistoryPickerMode::Normal;
+            Some(vec![])
+        }
+        Action::QueryHistoryYank => {
+            let grouped = state.query_history_picker.grouped_filtered_entries();
+            let selected = state.query_history_picker.clamped_selected();
+            let query = grouped.get(selected).map(|g| g.entry.query.clone());
+            match query {
+                Some(q) if !q.is_empty() => Some(vec![Effect::CopyToClipboard {
+                    content: q,
+                    on_success: Some(Action::QueryHistoryYankSuccess),
+                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                }]),
+                _ => Some(vec![]),
+            }
+        }
+        Action::QueryHistoryYankSuccess => {
+            state.messages.set_success_at("Yanked!".to_string(), now);
             Some(vec![])
         }
 

@@ -1,5 +1,6 @@
 use crate::app::action::Action;
 use crate::app::keybindings::{self, Key, KeyCombo};
+use crate::app::query_history_state::QueryHistoryPickerMode;
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
@@ -17,13 +18,20 @@ pub fn handle_command_palette_keys(combo: KeyCombo) -> Action {
         .unwrap_or(Action::None)
 }
 
-pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keybindings::QUERY_HISTORY_PICKER.resolve(&combo) {
-        return action;
-    }
-    match combo.key {
-        Key::Char(c) => Action::QueryHistoryFilterInput(c),
-        _ => Action::None,
+pub fn handle_query_history_picker_keys(combo: KeyCombo, mode: QueryHistoryPickerMode) -> Action {
+    match mode {
+        QueryHistoryPickerMode::Normal => keybindings::QUERY_HISTORY_NORMAL
+            .resolve(&combo)
+            .unwrap_or(Action::None),
+        QueryHistoryPickerMode::Filter => {
+            if let Some(action) = keybindings::QUERY_HISTORY_FILTER.resolve(&combo) {
+                return action;
+            }
+            match combo.key {
+                Key::Char(c) => Action::QueryHistoryFilterInput(c),
+                _ => Action::None,
+            }
+        }
     }
 }
 
@@ -113,6 +121,63 @@ mod tests {
                 Expected::SelectNext => assert!(matches!(result, Action::SelectNext)),
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+    }
+
+    mod query_history_picker {
+        use super::*;
+
+        #[rstest]
+        #[case(Key::Char('y'), Action::QueryHistoryYank)]
+        #[case(Key::Enter, Action::QueryHistoryConfirmSelection)]
+        #[case(Key::Up, Action::QueryHistorySelectPrevious)]
+        #[case(Key::Down, Action::QueryHistorySelectNext)]
+        #[case(Key::Char('/'), Action::QueryHistoryEnterFilter)]
+        #[case(Key::Esc, Action::CloseQueryHistoryPicker)]
+        fn normal_mode_keys(#[case] key: Key, #[case] expected: Action) {
+            let result =
+                handle_query_history_picker_keys(combo(key), QueryHistoryPickerMode::Normal);
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn normal_mode_ignores_arbitrary_chars() {
+            let result = handle_query_history_picker_keys(
+                combo(Key::Char('a')),
+                QueryHistoryPickerMode::Normal,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
+        #[case(Key::Enter, Action::QueryHistoryConfirmSelection)]
+        #[case(Key::Up, Action::QueryHistorySelectPrevious)]
+        #[case(Key::Down, Action::QueryHistorySelectNext)]
+        #[case(Key::Backspace, Action::QueryHistoryFilterBackspace)]
+        #[case(Key::Esc, Action::QueryHistoryEnterNormal)]
+        fn filter_mode_keys(#[case] key: Key, #[case] expected: Action) {
+            let result =
+                handle_query_history_picker_keys(combo(key), QueryHistoryPickerMode::Filter);
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn filter_mode_char_falls_through_to_filter_input() {
+            let result = handle_query_history_picker_keys(
+                combo(Key::Char('a')),
+                QueryHistoryPickerMode::Filter,
+            );
+
+            assert!(matches!(result, Action::QueryHistoryFilterInput('a')));
         }
     }
 

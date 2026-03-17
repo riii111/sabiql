@@ -244,10 +244,78 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
 ];
 
 // =============================================================================
-// Query History Picker
+// Query History Picker (Normal mode — default)
 // =============================================================================
 
-pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
+pub const QUERY_HISTORY_NORMAL_ROWS: &[ModeRow] = &[
+    // idx 0: ENTER_SELECT
+    ModeRow {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Select",
+        description: "Select query",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryConfirmSelection,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
+    },
+    // idx 1: YANK
+    ModeRow {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy query to clipboard",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryYank,
+            combos: &[KeyCombo::plain(Key::Char('y'))],
+        }],
+    },
+    // idx 2: NAVIGATE
+    ModeRow {
+        key_short: "↑↓",
+        key: "↑↓",
+        desc_short: "Navigate",
+        description: "Navigate",
+        bindings: &[
+            ExecBinding {
+                action: Action::QueryHistorySelectNext,
+                combos: &[KeyCombo::plain(Key::Down)],
+            },
+            ExecBinding {
+                action: Action::QueryHistorySelectPrevious,
+                combos: &[KeyCombo::plain(Key::Up)],
+            },
+        ],
+    },
+    // idx 3: ENTER_FILTER
+    ModeRow {
+        key_short: "/",
+        key: "/",
+        desc_short: "Filter",
+        description: "Enter filter mode",
+        bindings: &[ExecBinding {
+            action: Action::QueryHistoryEnterFilter,
+            combos: &[KeyCombo::plain(Key::Char('/'))],
+        }],
+    },
+    // idx 4: ESC_CLOSE
+    ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close",
+        bindings: &[ExecBinding {
+            action: Action::CloseQueryHistoryPicker,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
+    },
+];
+
+// =============================================================================
+// Query History Picker (Filter mode)
+// =============================================================================
+
+pub const QUERY_HISTORY_FILTER_ROWS: &[ModeRow] = &[
     // idx 0: ENTER_SELECT
     ModeRow {
         key_short: "Enter",
@@ -287,18 +355,21 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
-    // idx 3: ESC_CLOSE
+    // idx 3: ESC_NORMAL
     ModeRow {
         key_short: "Esc",
         key: "Esc",
-        desc_short: "Close",
-        description: "Close",
+        desc_short: "Normal",
+        description: "Return to Normal mode",
         bindings: &[ExecBinding {
-            action: Action::CloseQueryHistoryPicker,
+            action: Action::QueryHistoryEnterNormal,
             combos: &[KeyCombo::plain(Key::Esc)],
         }],
     },
 ];
+
+// Keep the old name as an alias for backward compatibility in help overlay line count
+pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = QUERY_HISTORY_NORMAL_ROWS;
 
 // =============================================================================
 // Command Palette
