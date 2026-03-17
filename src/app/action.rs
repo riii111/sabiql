@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
+use crate::app::key_sequence::Prefix;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
@@ -339,9 +340,9 @@ pub enum Action {
     HistoryNewer,
     ExitResultHistory,
 
-    // Pending z-prefix (two-key sequence: zz, zt, zb)
-    PendingZ,
-    ClearPendingZ,
+    // Multi-key sequence FSM (zz, zt, zb)
+    BeginKeySequence(Prefix),
+    CancelKeySequence,
 
     // Scroll-to-cursor (zz/zt/zb) — Explorer
     ScrollCursorCenter,

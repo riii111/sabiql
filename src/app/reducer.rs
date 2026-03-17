@@ -10,6 +10,7 @@ use crate::app::action::{Action, TableTarget};
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
+use crate::app::key_sequence::KeySequenceState;
 use crate::app::reducers::{
     reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation, reduce_query,
     reduce_result, reduce_sql_modal,
@@ -63,12 +64,12 @@ fn reduce_inner(
 
     match action {
         Action::None => vec![],
-        Action::PendingZ => {
-            state.ui.pending_z = true;
+        Action::BeginKeySequence(prefix) => {
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
             vec![]
         }
-        Action::ClearPendingZ => {
-            state.ui.pending_z = false;
+        Action::CancelKeySequence => {
+            state.ui.key_sequence = KeySequenceState::Idle;
             vec![]
         }
         Action::Quit => {
