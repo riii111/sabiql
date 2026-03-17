@@ -5,8 +5,35 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::state::AppState;
+use crate::domain::query_history::{QueryResultStatus, SqlCategory, classify_sql};
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
+
+const TIMESTAMP_WIDTH: usize = 18;
+const STATUS_WIDTH: usize = 2;
+const COLOR_BAR_WIDTH: usize = 2;
+
+fn status_span(status: Option<QueryResultStatus>) -> Span<'static> {
+    match status {
+        Some(QueryResultStatus::Success) => {
+            Span::styled("\u{2713} ", Style::default().fg(Theme::STATUS_SUCCESS))
+        }
+        Some(QueryResultStatus::Failed) => {
+            Span::styled("\u{2717} ", Style::default().fg(Theme::STATUS_ERROR))
+        }
+        None => Span::raw("  "),
+    }
+}
+
+fn category_color(cat: SqlCategory) -> ratatui::style::Color {
+    match cat {
+        SqlCategory::Select => Theme::SQL_SELECT,
+        SqlCategory::Dml => Theme::SQL_DML,
+        SqlCategory::Ddl => Theme::SQL_DDL,
+        SqlCategory::Tcl => Theme::SQL_TCL,
+        SqlCategory::Other => Theme::TEXT_MUTED,
+    }
+}
 
 pub struct QueryHistoryPicker;
 
@@ -21,7 +48,6 @@ impl QueryHistoryPicker {
         let scroll_offset = state.query_history_picker.scroll_offset;
         let raw_selected = state.query_history_picker.selected;
 
-        // Single fuzzy match per frame (W1)
         let filtered = state.query_history_picker.filtered_entries();
         let filtered_count = filtered.len();
         let selected_idx = if filtered_count == 0 {
@@ -44,7 +70,6 @@ impl QueryHistoryPicker {
         let [filter_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
 
-        // Filter input with cursor
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
             Span::raw(filter_content),
@@ -73,29 +98,37 @@ impl QueryHistoryPicker {
             return;
         }
 
-        // Build list items from filtered entries
+        let available_width = list_area.width as usize;
+        let prefix_width = STATUS_WIDTH + COLOR_BAR_WIDTH;
+        let query_max = available_width.saturating_sub(prefix_width + TIMESTAMP_WIDTH + 4); // 4 = leading "  " + gaps
+
         let items: Vec<ListItem> = filtered
             .iter()
             .enumerate()
             .map(|(i, fe)| {
                 let query_display = fe.entry.query.replace('\n', " ");
                 let char_len = query_display.chars().count();
-                let truncated = if char_len > 120 {
-                    let s: String = query_display.chars().take(117).collect();
-                    format!("{}...", s)
+                let truncated = if char_len > query_max && query_max > 3 {
+                    let s: String = query_display.chars().take(query_max - 1).collect();
+                    format!("{}\u{2026}", s)
                 } else {
                     query_display
                 };
 
                 let timestamp = fe.entry.executed_at.as_str();
-                // executed_at is always ASCII ISO-8601, so byte slice is safe
                 let ts_short = if timestamp.len() >= 16 {
                     &timestamp[..16]
                 } else {
                     timestamp
                 };
 
-                let mut spans = vec![Span::raw("  ")];
+                let category = classify_sql(&fe.entry.query);
+                let bar_color = category_color(category);
+
+                let mut spans = vec![
+                    status_span(fe.entry.result_status),
+                    Span::styled("\u{2588} ", Style::default().fg(bar_color)),
+                ];
 
                 if fe.match_indices.is_empty() {
                     spans.push(Span::styled(
