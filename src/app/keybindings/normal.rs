@@ -198,6 +198,14 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
+        key_short: "M",
+        key: "M",
+        desc_short: "Middle",
+        description: "Middle of viewport",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "^D/^U",
         key: "Ctrl+D / Ctrl+U",
         desc_short: "Half Page",
@@ -258,12 +266,12 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: TOP_BOTTOM
+    // idx 2: TOP_MID_BOTTOM
     KeyBinding {
-        key_short: "g/G",
-        key: "g / G",
-        desc_short: "Top/Bottom",
-        description: "First/Last item",
+        key_short: "g/M/G",
+        key: "g / M / G",
+        desc_short: "Top/Mid/Bot",
+        description: "First/Middle/Last item",
         action: Action::None,
         combos: &[],
     },
@@ -342,12 +350,12 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 6: TOP_BOTTOM (display-only)
+    // idx 6: TOP_MID_BOTTOM (display-only)
     KeyBinding {
-        key_short: "g/G",
-        key: "g / G",
-        desc_short: "Top/Bot",
-        description: "First/Last row",
+        key_short: "g/M/G",
+        key: "g / M / G",
+        desc_short: "Top/Mid/Bot",
+        description: "First/Middle/Last row",
         action: Action::None,
         combos: &[],
     },

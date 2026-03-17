@@ -29,7 +29,8 @@ crossterm::KeyEvent
   → ui/event/key_translator::translate()
   → app::keybindings::KeyCombo
   → app::keymap::resolve(combo, bindings)   (simple modes)
-     OR keybindings::is_quit(&combo) 等     (Normal mode predicates)
+     OR keybindings::is_*(&combo)           (Normal mode: predicate dispatch)
+     OR Key::Char match in handler          (Normal mode: context-dependent navigation)
   → Action
 ```
 
@@ -44,7 +45,9 @@ crossterm::KeyEvent
 ## 新規キーバインド追加チェックリスト
 
 1. `app/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
-2. Normal mode の場合: `keybindings/mod.rs` に predicate fn を追加 + `handlers/normal.rs` で配線
+2. Normal mode の場合、2つのパターンがある:
+   - **predicate dispatch**: 1つのキーが1つの Action に対応する場合（例: `Ctrl+Q` → Quit）。`keybindings/mod.rs` に `is_*()` predicate fn を追加し、`handlers/normal.rs` で使う。キーは `combos` 配列で宣言する
+   - **context-dependent navigation**: 1つのキーが文脈（focused pane）で異なる Action に分岐する場合（例: `g`/`G`/`M`）。`combos: &[]`（display-only）で `keybindings/normal.rs` に宣言し、`handlers/normal.rs` で `Key::Char` を直接 match する
 3. ModeBindings mode の場合: `ModeRow` エントリを追加（ディスパッチは自動）
 4. バインドをフッターに表示する場合: `display_hint` を更新
 5. 該当モードのヘルプオーバーレイセクションを更新

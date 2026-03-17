@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-Enter:Select  yy:Yank Row  dd:Stage Del  j/k:Row  h/l / ←→:H-Scroll  g/G:Top/Bot
+Enter:Select  yy:Yank Row  dd:Stage Del  ?:Help  Esc:Back  q:Quit
