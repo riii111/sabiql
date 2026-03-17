@@ -1,5 +1,6 @@
 use crate::app::action::Action;
 use crate::app::effect::Effect;
+use crate::app::key_sequence::KeySequenceState;
 use crate::app::state::AppState;
 use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 
@@ -201,7 +202,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         // Scroll-to-cursor (zz/zt/zb): only meaningful in RowActive/CellActive
         Action::ResultScrollCursorCenter => {
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
+            state.ui.key_sequence = KeySequenceState::Idle;
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -213,7 +214,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::ResultScrollCursorTop => {
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
+            state.ui.key_sequence = KeySequenceState::Idle;
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -224,7 +225,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::ResultScrollCursorBottom => {
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::Idle;
+            state.ui.key_sequence = KeySequenceState::Idle;
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
@@ -258,6 +259,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::key_sequence::Prefix;
     use std::sync::Arc;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
@@ -545,18 +547,13 @@ mod tests {
             // visible = 20
             state.result_interaction.enter_row(50);
             state.result_interaction.scroll_offset = 50;
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
-                crate::app::key_sequence::Prefix::Z,
-            );
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             reduce(&mut state, &Action::ResultScrollCursorCenter);
 
             // row=50, visible=20, offset=50-10=40, max=80 → 40
             assert_eq!(state.result_interaction.scroll_offset, 40);
-            assert_eq!(
-                state.ui.key_sequence,
-                crate::app::key_sequence::KeySequenceState::Idle
-            );
+            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
         }
 
         #[test]
@@ -564,17 +561,12 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.enter_row(30);
             state.result_interaction.scroll_offset = 20;
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
-                crate::app::key_sequence::Prefix::Z,
-            );
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             reduce(&mut state, &Action::ResultScrollCursorTop);
 
             assert_eq!(state.result_interaction.scroll_offset, 30);
-            assert_eq!(
-                state.ui.key_sequence,
-                crate::app::key_sequence::KeySequenceState::Idle
-            );
+            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
         }
 
         #[test]
@@ -582,36 +574,26 @@ mod tests {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.enter_row(30);
             state.result_interaction.scroll_offset = 30;
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
-                crate::app::key_sequence::Prefix::Z,
-            );
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             reduce(&mut state, &Action::ResultScrollCursorBottom);
 
             // row=30, visible=20, offset=30-19=11, max=80 → 11
             assert_eq!(state.result_interaction.scroll_offset, 11);
-            assert_eq!(
-                state.ui.key_sequence,
-                crate::app::key_sequence::KeySequenceState::Idle
-            );
+            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
         }
 
         #[test]
         fn scroll_cursor_center_is_noop_in_scroll_mode() {
             let mut state = state_with_result_rows(100, 25);
             state.result_interaction.scroll_offset = 20;
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
-                crate::app::key_sequence::Prefix::Z,
-            );
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             reduce(&mut state, &Action::ResultScrollCursorCenter);
 
             // No row selected, offset unchanged
             assert_eq!(state.result_interaction.scroll_offset, 20);
-            assert_eq!(
-                state.ui.key_sequence,
-                crate::app::key_sequence::KeySequenceState::Idle
-            );
+            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
         }
 
         #[test]
@@ -620,18 +602,13 @@ mod tests {
             // visible=20, max_scroll=80
             state.result_interaction.enter_row(95);
             state.result_interaction.scroll_offset = 80;
-            state.ui.key_sequence = crate::app::key_sequence::KeySequenceState::WaitingSecondKey(
-                crate::app::key_sequence::Prefix::Z,
-            );
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             reduce(&mut state, &Action::ResultScrollCursorTop);
 
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset, 80);
-            assert_eq!(
-                state.ui.key_sequence,
-                crate::app::key_sequence::KeySequenceState::Idle
-            );
+            assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
         }
     }
 

@@ -379,6 +379,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::key_sequence::KeySequenceState;
     use crate::app::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -1358,8 +1359,7 @@ mod tests {
         #[test]
         fn z_then_z_returns_scroll_cursor_center_for_explorer() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1369,8 +1369,7 @@ mod tests {
         #[test]
         fn z_then_t_returns_scroll_cursor_top_for_explorer() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1380,8 +1379,7 @@ mod tests {
         #[test]
         fn z_then_b_returns_scroll_cursor_bottom_for_explorer() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1391,8 +1389,7 @@ mod tests {
         #[test]
         fn z_then_unknown_returns_cancel_key_sequence() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('x')), &state);
 
@@ -1402,8 +1399,7 @@ mod tests {
         #[test]
         fn z_then_z_returns_result_scroll_cursor_center_for_result() {
             let mut state = result_focused_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1413,8 +1409,7 @@ mod tests {
         #[test]
         fn z_then_t_returns_result_scroll_cursor_top_for_result() {
             let mut state = result_focused_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1424,8 +1419,7 @@ mod tests {
         #[test]
         fn z_then_b_returns_result_scroll_cursor_bottom_for_result() {
             let mut state = result_focused_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1435,8 +1429,7 @@ mod tests {
         #[test]
         fn z_then_z_returns_cancel_key_sequence_for_inspector() {
             let mut state = inspector_focused_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1455,8 +1448,7 @@ mod tests {
         #[test]
         fn z_then_z_returns_result_scroll_cursor_center_in_focus_mode() {
             let mut state = focus_mode_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
@@ -1466,8 +1458,7 @@ mod tests {
         #[test]
         fn key_sequence_resolved_before_global_actions() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             // '?' is a global action (OpenHelp), but with active key sequence it should
             // cancel the sequence instead of opening help
@@ -1479,8 +1470,7 @@ mod tests {
         #[test]
         fn ctrl_modifier_cancels_key_sequence() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('t')), &state);
 
@@ -1490,8 +1480,7 @@ mod tests {
         #[test]
         fn alt_modifier_cancels_key_sequence() {
             let mut state = browse_state();
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
             let result = handle_normal_mode(KeyCombo::alt(Key::Char('b')), &state);
 
@@ -1513,8 +1502,7 @@ mod tests {
             state.query.result_history.push(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
             state
         }
 
@@ -1753,8 +1741,7 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            state.ui.key_sequence =
-                crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
             let key_label = format!("{:?}", key);
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
@@ -1826,8 +1813,7 @@ mod tests {
             #[test]
             fn history_zz_explorer_scrolls_cursor() {
                 let mut state = history_explorer_ctx();
-                state.ui.key_sequence =
-                    crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
@@ -1840,8 +1826,7 @@ mod tests {
             #[test]
             fn history_zz_inspector_clears() {
                 let mut state = history_inspector_ctx();
-                state.ui.key_sequence =
-                    crate::app::key_sequence::KeySequenceState::WaitingSecondKey(Prefix::Z);
+                state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
