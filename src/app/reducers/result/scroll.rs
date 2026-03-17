@@ -249,29 +249,29 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.ui.result_pane_height = pane_height;
+        let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
+        let row_count = result_rows.len();
+        state
+            .query
+            .set_current_result(Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string()],
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: std::time::Instant::now(),
+                source: crate::domain::QuerySource::Preview,
+                error: None,
+                command_tag: None,
+            }));
+        state
+    }
+
     mod result_page_scroll {
         use super::*;
-
-        fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.result_pane_height = pane_height;
-            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-            let row_count = result_rows.len();
-            state
-                .query
-                .set_current_result(Arc::new(crate::domain::QueryResult {
-                    query: String::new(),
-                    columns: vec!["id".to_string()],
-                    rows: result_rows,
-                    row_count,
-                    execution_time_ms: 1,
-                    executed_at: std::time::Instant::now(),
-                    source: crate::domain::QuerySource::Preview,
-                    error: None,
-                    command_tag: None,
-                }));
-            state
-        }
 
         #[test]
         fn half_page_down_from_top() {
@@ -350,27 +350,6 @@ mod tests {
 
     mod result_scroll_to_cursor {
         use super::*;
-
-        fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.result_pane_height = pane_height;
-            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
-            let row_count = result_rows.len();
-            state
-                .query
-                .set_current_result(Arc::new(crate::domain::QueryResult {
-                    query: String::new(),
-                    columns: vec!["id".to_string()],
-                    rows: result_rows,
-                    row_count,
-                    execution_time_ms: 1,
-                    executed_at: std::time::Instant::now(),
-                    source: crate::domain::QuerySource::Preview,
-                    error: None,
-                    command_tag: None,
-                }));
-            state
-        }
 
         #[test]
         fn scroll_cursor_center_centers_on_selected_row() {

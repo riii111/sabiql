@@ -219,7 +219,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportTop
             } else if inspector_navigation {
-                Action::InspectorScrollViewportTop
+                Action::InspectorScrollTop
             } else {
                 Action::SelectViewportTop
             }
@@ -228,7 +228,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportMiddle
             } else if inspector_navigation {
-                Action::InspectorScrollViewportMiddle
+                Action::InspectorScrollMiddle
             } else {
                 Action::SelectViewportMiddle
             }
@@ -237,7 +237,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportBottom
             } else if inspector_navigation {
-                Action::InspectorScrollViewportBottom
+                Action::InspectorScrollBottom
             } else {
                 Action::SelectViewportBottom
             }
@@ -962,12 +962,12 @@ mod tests {
     }
 
     #[test]
-    fn h_key_returns_inspector_scroll_viewport_top_when_inspector_focused() {
+    fn h_key_returns_inspector_scroll_top_when_inspector_focused() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
 
-        assert!(matches!(result, Action::InspectorScrollViewportTop));
+        assert!(matches!(result, Action::InspectorScrollTop));
     }
 
     #[test]
@@ -976,16 +976,16 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::InspectorScrollViewportMiddle));
+        assert!(matches!(result, Action::InspectorScrollMiddle));
     }
 
     #[test]
-    fn l_key_returns_inspector_scroll_viewport_bottom_when_inspector_focused() {
+    fn l_key_returns_inspector_scroll_bottom_when_inspector_focused() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
 
-        assert!(matches!(result, Action::InspectorScrollViewportBottom));
+        assert!(matches!(result, Action::InspectorScrollBottom));
     }
 
     #[test]
@@ -1282,8 +1282,16 @@ mod tests {
                 Action::ResultScrollBottom
             ));
             assert!(matches!(
+                handle_normal_mode(combo(Key::Char('H')), &state),
+                Action::ResultScrollViewportTop
+            ));
+            assert!(matches!(
                 handle_normal_mode(combo(Key::Char('M')), &state),
                 Action::ResultScrollViewportMiddle
+            ));
+            assert!(matches!(
+                handle_normal_mode(combo(Key::Char('L')), &state),
+                Action::ResultScrollViewportBottom
             ));
         }
 
@@ -1471,7 +1479,7 @@ mod tests {
         }
 
         #[test]
-        fn modifier_key_clears_pending_z() {
+        fn ctrl_modifier_clears_pending_z() {
             let mut state = browse_state();
             state.ui.pending_z = true;
 
@@ -1481,7 +1489,16 @@ mod tests {
         }
 
         #[test]
-        fn zt_works_in_history_mode() {
+        fn alt_modifier_clears_pending_z() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(KeyCombo::alt(Key::Char('b')), &state);
+
+            assert!(matches!(result, Action::ClearPendingZ));
+        }
+
+        fn history_mode_state_with_pending_z() -> AppState {
             use crate::domain::{QueryResult, QuerySource};
             use std::sync::Arc;
 
@@ -1497,10 +1514,25 @@ mod tests {
             state.query.set_current_result(qr);
             state.query.enter_history(0);
             state.ui.pending_z = true;
+            state
+        }
+
+        #[test]
+        fn zt_works_in_history_mode() {
+            let state = history_mode_state_with_pending_z();
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
             assert!(matches!(result, Action::ScrollCursorTop));
+        }
+
+        #[test]
+        fn zb_works_in_history_mode() {
+            let state = history_mode_state_with_pending_z();
+
+            let result = handle_normal_mode(combo(Key::Char('b')), &state);
+
+            assert!(matches!(result, Action::ScrollCursorBottom));
         }
     }
 }

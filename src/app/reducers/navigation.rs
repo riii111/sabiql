@@ -241,7 +241,8 @@ pub fn reduce_navigation(
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
                 if len > 0 && visible > 0 {
-                    let displayed = visible.min(len - state.ui.explorer_scroll_offset);
+                    let displayed =
+                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
                     let target = state.ui.explorer_scroll_offset + displayed / 2;
                     state.ui.set_explorer_selection(Some(target));
                 }
@@ -262,8 +263,9 @@ pub fn reduce_navigation(
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
-                if len > 0 {
-                    let displayed = visible.min(len - state.ui.explorer_scroll_offset);
+                if len > 0 && visible > 0 {
+                    let displayed =
+                        visible.min(len.saturating_sub(state.ui.explorer_scroll_offset));
                     let target = state.ui.explorer_scroll_offset + displayed.saturating_sub(1);
                     state.ui.set_explorer_selection(Some(target));
                 }
@@ -377,17 +379,9 @@ pub fn reduce_navigation(
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
-        Action::InspectorScrollViewportMiddle => {
+        Action::InspectorScrollMiddle => {
             let max = inspector_max_scroll(state, services);
             state.ui.inspector_scroll_offset = max / 2;
-            Some(vec![])
-        }
-        Action::InspectorScrollViewportTop => {
-            state.ui.inspector_scroll_offset = 0;
-            Some(vec![])
-        }
-        Action::InspectorScrollViewportBottom => {
-            state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
         Action::InspectorScrollHalfPageDown => {
