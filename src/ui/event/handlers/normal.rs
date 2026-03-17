@@ -83,6 +83,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Must be resolved before history whitelist and global actions so that
     // the second key (t, b, z) is never swallowed and pending_z is always cleared.
     if state.ui.pending_z {
+        if combo.modifiers.ctrl || combo.modifiers.alt {
+            return Action::ClearPendingZ;
+        }
         return match combo.key {
             Key::Char('z') => {
                 if result_navigation {
@@ -1463,6 +1466,16 @@ mod tests {
             // '?' is a global action (OpenHelp), but with pending_z it should
             // clear the prefix instead of opening help
             let result = handle_normal_mode(combo(Key::Char('?')), &state);
+
+            assert!(matches!(result, Action::ClearPendingZ));
+        }
+
+        #[test]
+        fn modifier_key_clears_pending_z() {
+            let mut state = browse_state();
+            state.ui.pending_z = true;
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('t')), &state);
 
             assert!(matches!(result, Action::ClearPendingZ));
         }
