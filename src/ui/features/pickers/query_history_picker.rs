@@ -239,13 +239,23 @@ fn build_list_item(
         }
     }
 
-    if ge.count > 1 {
-        spans.push(Span::styled(
-            format!(" (\u{00d7}{})", ge.count),
-            Style::default().fg(Theme::TEXT_MUTED),
-        ));
+    let badge = if ge.count > 1 {
+        format!(" (\u{00d7}{})", ge.count)
+    } else {
+        String::new()
+    };
+
+    // Pad query + badge to fixed width so timestamp column aligns
+    let query_chars = truncated.chars().count();
+    let badge_chars = badge.chars().count();
+    let used = query_chars + badge_chars;
+    let pad = query_max.saturating_sub(used);
+
+    if !badge.is_empty() {
+        spans.push(Span::styled(badge, Style::default().fg(Theme::TEXT_MUTED)));
     }
 
+    spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(
         format!("  {}", ts_short),
         Style::default().fg(Theme::TEXT_MUTED),

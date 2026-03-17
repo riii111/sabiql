@@ -69,7 +69,7 @@ impl QueryHistoryEntry {
 pub fn classify_sql(query: &str) -> SqlCategory {
     let first_keyword = skip_comments_and_first_word(query);
     match first_keyword.to_uppercase().as_str() {
-        "SELECT" => SqlCategory::Select,
+        "SELECT" | "TABLE" => SqlCategory::Select,
         "INSERT" | "UPDATE" | "DELETE" | "MERGE" | "UPSERT" | "COPY" => SqlCategory::Dml,
         "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "COMMENT" | "GRANT" | "REVOKE" => {
             SqlCategory::Ddl
@@ -238,6 +238,11 @@ mod tests {
         #[test]
         fn select() {
             assert_eq!(classify_sql("SELECT * FROM users"), SqlCategory::Select);
+        }
+
+        #[test]
+        fn table_command() {
+            assert_eq!(classify_sql("TABLE users"), SqlCategory::Select);
         }
 
         #[test]
