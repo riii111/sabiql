@@ -180,7 +180,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistorySelectNext => {
-            let count = state.query_history_picker.filtered_count();
+            let count = state.query_history_picker.grouped_count();
             if count > 0 && state.query_history_picker.selected < count - 1 {
                 state.query_history_picker.selected += 1;
             }
@@ -192,9 +192,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistoryConfirmSelection => {
-            let filtered = state.query_history_picker.filtered_entries();
+            let grouped = state.query_history_picker.grouped_filtered_entries();
             let selected = state.query_history_picker.clamped_selected();
-            let query = filtered.get(selected).map(|f| f.entry.query.clone());
+            let query = grouped.get(selected).map(|g| g.entry.query.clone());
             let origin = state.modal.pop_mode();
 
             state.query_history_picker.reset();
@@ -531,7 +531,17 @@ mod tests {
     mod query_history_picker {
         use super::*;
         use crate::domain::ConnectionId;
-        use crate::domain::query_history::QueryHistoryEntry;
+        use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+
+        fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
+            QueryHistoryEntry::new(
+                query.to_string(),
+                "2026-03-13T12:00:00Z".to_string(),
+                conn_id.clone(),
+                QueryResultStatus::Success,
+                None,
+            )
+        }
 
         fn connected_state() -> AppState {
             let mut state = create_test_state();
@@ -595,11 +605,7 @@ mod tests {
             let mut state = connected_state();
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             let conn_id = ConnectionId::from_string("test-conn");
-            let entries = vec![QueryHistoryEntry::new(
-                "SELECT 1".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                conn_id.clone(),
-            )];
+            let entries = vec![make_entry("SELECT 1", &conn_id)];
 
             let effects = reduce_modal(
                 &mut state,
@@ -617,11 +623,7 @@ mod tests {
             let mut state = connected_state();
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             let stale_conn = ConnectionId::from_string("old-conn");
-            let entries = vec![QueryHistoryEntry::new(
-                "SELECT 1".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                stale_conn.clone(),
-            )];
+            let entries = vec![make_entry("SELECT 1", &stale_conn)];
 
             reduce_modal(
                 &mut state,
@@ -637,11 +639,7 @@ mod tests {
         fn loaded_ignores_when_picker_closed() {
             let mut state = connected_state();
             let conn_id = ConnectionId::from_string("test-conn");
-            let entries = vec![QueryHistoryEntry::new(
-                "SELECT 1".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                conn_id.clone(),
-            )];
+            let entries = vec![make_entry("SELECT 1", &conn_id)];
 
             reduce_modal(
                 &mut state,
@@ -699,11 +697,8 @@ mod tests {
             let query = "SELECT '\u{3042}\u{3044}\u{3046}'".to_string();
             let expected_chars = query.chars().count(); // 13
             assert_ne!(query.len(), expected_chars); // sanity: bytes != chars
-            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
-                query,
-                "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
-            )];
+            let test_conn = ConnectionId::from_string("test-conn");
+            state.query_history_picker.entries = vec![make_entry(&query, &test_conn)];
 
             reduce_modal(
                 &mut state,
@@ -719,11 +714,9 @@ mod tests {
         fn confirm_from_normal_opens_sql_modal_with_query() {
             let mut state = connected_state();
             enter_query_history(&mut state, InputMode::Normal);
-            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
-                "SELECT * FROM users".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
-            )];
+            let test_conn = ConnectionId::from_string("test-conn");
+            state.query_history_picker.entries =
+                vec![make_entry("SELECT * FROM users", &test_conn)];
             state.query_history_picker.selected = 0;
 
             let effects = reduce_modal(
@@ -743,11 +736,8 @@ mod tests {
             let mut state = connected_state();
             enter_query_history(&mut state, InputMode::SqlModal);
             state.sql_modal.content = "old query".to_string();
-            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
-                "new query".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
-            )];
+            let test_conn = ConnectionId::from_string("test-conn");
+            state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
             state.query_history_picker.selected = 0;
 
             reduce_modal(
@@ -779,17 +769,10 @@ mod tests {
         #[test]
         fn select_next_increments() {
             let mut state = connected_state();
+            let test_conn = ConnectionId::from_string("test-conn");
             state.query_history_picker.entries = vec![
-                QueryHistoryEntry::new(
-                    "SELECT 1".to_string(),
-                    "2026-03-13T12:00:00Z".to_string(),
-                    ConnectionId::from_string("test-conn"),
-                ),
-                QueryHistoryEntry::new(
-                    "SELECT 2".to_string(),
-                    "2026-03-13T12:00:00Z".to_string(),
-                    ConnectionId::from_string("test-conn"),
-                ),
+                make_entry("SELECT 1", &test_conn),
+                make_entry("SELECT 2", &test_conn),
             ];
             state.query_history_picker.selected = 0;
 
@@ -801,11 +784,8 @@ mod tests {
         #[test]
         fn select_next_clamps_at_end() {
             let mut state = connected_state();
-            state.query_history_picker.entries = vec![QueryHistoryEntry::new(
-                "SELECT 1".to_string(),
-                "2026-03-13T12:00:00Z".to_string(),
-                ConnectionId::from_string("test-conn"),
-            )];
+            let test_conn = ConnectionId::from_string("test-conn");
+            state.query_history_picker.entries = vec![make_entry("SELECT 1", &test_conn)];
             state.query_history_picker.selected = 0;
 
             reduce_modal(&mut state, &Action::QueryHistorySelectNext, Instant::now()).unwrap();

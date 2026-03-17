@@ -6,22 +6,22 @@ test_project | - | - | no dsn | localhost:5432/test
 ┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
 │           │  > █                                                 │           │
-│           │▸   SELECT count(*) FROM users  2026-03-13T12:00      │           │
-│           │    INSERT INTO orders (user_id, total) VALUES (1, 100│           │
-│           │    SELECT * FROM users WHERE id = 1  2026-03-13T10:00│           │
-│           │                                                      │           │
-│           │                                                      │           │
+│           │▸ ✗ SELECT count(*) FROM users      Mar 13 12:00 UTC  │           │
+│           │  ✓ INSERT INTO orders (user_id, …  Mar 13 11:00 UTC  │           │
+│           │  ✓ SELECT * FROM users WHERE id …  Mar 13 10:00 UTC  │           │
 │           │                                                      │───────────┘
 │           │                                                      │───────────┐
+│           │ Preview ─────────────────────────────────────────────│           │
+│           │✗ Failed  │ Mar 13 12:00 UTC                          │           │
 │           │                                                      │           │
-│           │                                                      │           │
-│           │                                                      │           │
-│           │                                                      │           │
-│           │                                                      │           │
+│           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
 │           ╰ 3 entries │ ↑↓ Navigate │ Enter Select ──────────────╯           │
+│                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
 Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

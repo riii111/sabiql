@@ -50,6 +50,7 @@ impl Theme {
     pub const TEXT_PRIMARY: Color = Color::White;
     pub const TEXT_SECONDARY: Color = Color::Gray;
     pub const TEXT_MUTED: Color = Color::DarkGray;
+    pub const TEXT_DIM: Color = Color::Rgb(0x77, 0x77, 0x88);
     pub const TEXT_ACCENT: Color = Color::Yellow;
 
     // ============ Status Colors ============
