@@ -7,7 +7,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
-│       ╭ SQL Editor ── INSERT ────────────────────────────────────────╮       │
+│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
 │       │SELECT * FROM us█                                             │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -19,7 +19,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │Ready                                                         │       │
+│       │[INSERT]                                                 Ready│       │
 │       ╰ ⌥Enter: Run │ Ctrl+L: Clear │ Esc: Normal ───────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │

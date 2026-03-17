@@ -368,6 +368,7 @@ pub fn reduce_sql_modal(
         }
         Action::SqlModalYankSuccess => {
             state.messages.set_success_at("Yanked!".to_string(), now);
+            state.sql_modal.yank_flash_until = Some(now + Duration::from_millis(200));
             Some(vec![])
         }
 

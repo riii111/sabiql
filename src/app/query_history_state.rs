@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
@@ -19,6 +21,7 @@ pub struct QueryHistoryPickerState {
     pub selected: usize,
     pub scroll_offset: usize,
     pub pane_height: u16,
+    pub yank_flash_until: Option<Instant>,
 }
 
 pub struct FilteredEntry<'a> {
@@ -39,6 +42,7 @@ impl QueryHistoryPickerState {
         self.filter_input.clear();
         self.selected = 0;
         self.scroll_offset = 0;
+        self.yank_flash_until = None;
     }
 
     pub fn filtered_entries(&self) -> Vec<FilteredEntry<'_>> {

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -62,14 +64,14 @@ impl SqlModal {
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
-                " SQL Editor \u{2500}\u{2500} INSERT ",
+                " SQL Editor ",
                 " \u{2325}Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Esc: Normal ",
             ),
             _ => render_modal(
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
-                " SQL Editor \u{2500}\u{2500} NORMAL ",
+                " SQL Editor ",
                 " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} Enter: Insert \u{2502} q: Close ",
             ),
         };
@@ -99,6 +101,11 @@ impl SqlModal {
 
     fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         let content = &state.sql_modal.content;
+        let now = Instant::now();
+        let yank_flash_active = state
+            .sql_modal
+            .yank_flash_until
+            .is_some_and(|until| now < until);
 
         // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
         if matches!(
@@ -183,10 +190,17 @@ impl SqlModal {
             );
         }
 
+        let base_style = if yank_flash_active {
+            Style::default()
+                .fg(Theme::YANK_FLASH_FG)
+                .bg(Theme::YANK_FLASH_BG)
+        } else {
+            Style::default()
+        };
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .style(Style::default()),
+                .style(base_style),
             area,
         );
     }
@@ -206,20 +220,29 @@ impl SqlModal {
             return;
         }
 
-        let (status_text, status_style) = match state.sql_modal.status() {
-            SqlModalStatus::Normal | SqlModalStatus::Editing => {
-                ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
-            }
+        let (badge_text, badge_style, status_text, status_style) = match state.sql_modal.status() {
+            SqlModalStatus::Normal => (
+                "[NORMAL]",
+                Style::default().fg(Theme::TEXT_MUTED),
+                "Ready".to_string(),
+                Style::default().fg(Theme::TEXT_MUTED),
+            ),
+            SqlModalStatus::Editing => (
+                "[INSERT]",
+                Style::default()
+                    .fg(Theme::TEXT_ACCENT)
+                    .add_modifier(Modifier::BOLD),
+                "Ready".to_string(),
+                Style::default().fg(Theme::TEXT_MUTED),
+            ),
             SqlModalStatus::Confirming(decision) => {
                 let text = format!(
                     "\u{26a0} {} RISK  {}",
                     decision.risk_level.as_str(),
                     decision.label
                 );
-                (
-                    text,
-                    Style::default().fg(Theme::risk_color(decision.risk_level)),
-                )
+                let color = Style::default().fg(Theme::risk_color(decision.risk_level));
+                ("[CONFIRM]", color, text, color)
             }
             SqlModalStatus::Running => {
                 let elapsed = state
@@ -230,11 +253,18 @@ impl SqlModal {
                 let spinner = spinner_char(elapsed.as_millis());
                 let elapsed_secs = elapsed.as_secs_f32();
                 let status = format!("{} Running {:.1}s", spinner, elapsed_secs);
-                (status, Style::default().fg(Theme::TEXT_ACCENT))
+                (
+                    "[INSERT]",
+                    Style::default().fg(Theme::TEXT_ACCENT),
+                    status,
+                    Style::default().fg(Theme::TEXT_ACCENT),
+                )
             }
             SqlModalStatus::Success => {
                 let msg = Self::success_status_message(state);
                 (
+                    "[NORMAL]",
+                    Style::default().fg(Theme::STATUS_SUCCESS),
                     msg,
                     Style::default()
                         .fg(Theme::STATUS_SUCCESS)
@@ -244,6 +274,8 @@ impl SqlModal {
             SqlModalStatus::Error => {
                 let msg = Self::error_status_message(state);
                 (
+                    "[NORMAL]",
+                    Style::default().fg(Theme::STATUS_ERROR),
                     msg,
                     Style::default()
                         .fg(Theme::STATUS_ERROR)
@@ -253,8 +285,19 @@ impl SqlModal {
             SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
         };
 
-        let line = Line::from(vec![Span::styled(status_text, status_style)]);
-        frame.render_widget(Paragraph::new(line).style(Style::default()), area);
+        let badge_width = badge_text.len() as u16;
+        let [badge_area, status_area] =
+            Layout::horizontal([Constraint::Length(badge_width + 1), Constraint::Min(1)])
+                .areas(area);
+
+        let badge_line = Line::from(Span::styled(badge_text, badge_style));
+        frame.render_widget(Paragraph::new(badge_line), badge_area);
+
+        let status_line = Line::from(vec![Span::styled(status_text, status_style)]);
+        frame.render_widget(
+            Paragraph::new(status_line).alignment(ratatui::layout::Alignment::Right),
+            status_area,
+        );
     }
 
     fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {

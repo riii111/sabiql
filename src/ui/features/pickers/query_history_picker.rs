@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
@@ -204,13 +206,26 @@ impl QueryHistoryPicker {
             }
         }
 
+        let now = Instant::now();
+        let yank_flash_active = state
+            .query_history_picker
+            .yank_flash_until
+            .is_some_and(|until| now < until);
+
+        let highlight_style = if yank_flash_active {
+            Style::default()
+                .bg(Theme::YANK_FLASH_BG)
+                .fg(Theme::YANK_FLASH_FG)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .bg(Theme::COMPLETION_SELECTED_BG)
+                .fg(Theme::TEXT_PRIMARY)
+                .add_modifier(Modifier::BOLD)
+        };
+
         let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Theme::TEXT_PRIMARY)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(highlight_style)
             .highlight_symbol("\u{25b8} ");
 
         let mut list_state = ListState::default()
