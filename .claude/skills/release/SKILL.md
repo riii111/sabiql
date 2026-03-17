@@ -37,6 +37,12 @@ Use this skill when releasing a new version of sabiql.
 5. **Create draft GitHub Release with release notes**
    ```bash
    gh release create vX.Y.Z --title "vX.Y.Z" --draft --notes "$(cat <<'EOF'
+   ## Highlights
+
+   A short narrative summary of the key changes in this release.
+   Write 1-3 paragraphs in natural language, focusing on what users
+   can now do differently. Mention contributors with @mentions.
+
    ## What's Changed in vX.Y.Z
 
    ### 🎯 User-Facing Changes
@@ -54,6 +60,7 @@ Use this skill when releasing a new version of sabiql.
    )"
    ```
    - `--draft` で作成する。CI がビルド成功後にドラフトを解除してバイナリを添付する
+   - **Highlights**: User-Facing Changes を自然言語で要約する。読者が PR 一覧を読まなくても対応内容を把握できるようにする
    - Categorize commits into **User-Facing Changes** vs **Internal Improvements**
    - User-Facing: new features, behavior changes, bug fixes, dependency upgrades that affect UX
    - Internal: refactoring, test additions, CI/docs changes, rule/skill updates
