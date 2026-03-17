@@ -127,11 +127,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::ResultScrollHalfPageDown => {
             let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = (visible / 2).max(1);
             if state.result_interaction.selection().row().is_some() {
-                if visible == 0 {
-                    return Some(vec![]);
-                }
                 let max_row = result_row_count(state).saturating_sub(1);
                 let max_scroll = result_max_scroll(state);
                 let new_row =
@@ -148,11 +148,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::ResultScrollHalfPageUp => {
             let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = (visible / 2).max(1);
             if state.result_interaction.selection().row().is_some() {
-                if visible == 0 {
-                    return Some(vec![]);
-                }
                 let new_row = state
                     .result_interaction
                     .selection()
@@ -170,11 +170,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::ResultScrollFullPageDown => {
             let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = visible.max(1);
             if state.result_interaction.selection().row().is_some() {
-                if visible == 0 {
-                    return Some(vec![]);
-                }
                 let max_row = result_row_count(state).saturating_sub(1);
                 let max_scroll = result_max_scroll(state);
                 let new_row =
@@ -191,11 +191,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::ResultScrollFullPageUp => {
             let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
             let delta = visible.max(1);
             if state.result_interaction.selection().row().is_some() {
-                if visible == 0 {
-                    return Some(vec![]);
-                }
                 let new_row = state
                     .result_interaction
                     .selection()
@@ -340,12 +340,12 @@ mod tests {
         }
 
         #[test]
-        fn zero_height_pane_scrolls_by_one() {
+        fn zero_height_pane_scroll_mode_is_noop() {
             let mut state = state_with_result_rows(100, 0);
-            // visible = 0, delta = max(0/2,1) = 1
+            // visible = 0 → no-op for all modes
             reduce(&mut state, &Action::ResultScrollHalfPageDown);
 
-            assert_eq!(state.result_interaction.scroll_offset, 1);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
         #[test]
