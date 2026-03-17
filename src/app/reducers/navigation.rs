@@ -240,7 +240,14 @@ pub fn reduce_navigation(
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
-                    state.ui.set_explorer_selection(Some(len / 2));
+                    let target = len / 2;
+                    state.ui.set_explorer_selection(Some(target));
+                    let visible = state.ui.explorer_visible_items();
+                    if visible > 0 {
+                        let max_offset = len.saturating_sub(visible);
+                        state.ui.explorer_scroll_offset =
+                            target.saturating_sub(visible / 2).min(max_offset);
+                    }
                 }
             }
             Some(vec![])
@@ -1219,7 +1226,8 @@ mod tests {
         #[test]
         fn select_middle_moves_to_center() {
             let mut state = state_with_tables(50, 23);
-            // len = 50, middle = 25
+            // visible = 20, len = 50, target = 25
+            // scroll_offset = 25 - 10 = 15
             reduce_navigation(
                 &mut state,
                 &Action::SelectMiddle,
@@ -1228,6 +1236,7 @@ mod tests {
             );
 
             assert_eq!(state.ui.explorer_selected, 25);
+            assert_eq!(state.ui.explorer_scroll_offset, 15);
         }
     }
 }
