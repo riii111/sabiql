@@ -6,7 +6,7 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state
         .query
-        .current_result()
+        .visible_result()
         .map(|r| r.rows.len())
         .unwrap_or(0)
 }
@@ -14,7 +14,7 @@ pub(super) fn result_row_count(state: &AppState) -> usize {
 pub(super) fn result_col_count(state: &AppState) -> usize {
     state
         .query
-        .current_result()
+        .visible_result()
         .map(|r| r.columns.len())
         .unwrap_or(0)
 }
@@ -126,63 +126,77 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
-            let delta = (state.result_visible_rows() / 2).max(1);
-            let max_row = result_row_count(state).saturating_sub(1);
-            let new_row = state
-                .result_interaction
-                .selection()
-                .row()
-                .map(|r| (r + delta).min(max_row))
-                .unwrap_or(0);
-            move_row_or_scroll(state, new_row, |s| {
-                let max = result_max_scroll(s);
-                s.result_interaction.scroll_offset =
-                    (s.result_interaction.scroll_offset + delta).min(max);
-            });
+            let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
+            let delta = (visible / 2).max(1);
+            if let Some(row) = state.result_interaction.selection().row() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                let max_scroll = result_max_scroll(state);
+                state
+                    .result_interaction
+                    .move_row((row + delta).min(max_row));
+                state.result_interaction.scroll_offset =
+                    (state.result_interaction.scroll_offset + delta).min(max_scroll);
+            } else {
+                let max = result_max_scroll(state);
+                state.result_interaction.scroll_offset =
+                    (state.result_interaction.scroll_offset + delta).min(max);
+            }
             Some(vec![])
         }
         Action::ResultScrollHalfPageUp => {
-            let delta = (state.result_visible_rows() / 2).max(1);
-            let new_row = state
-                .result_interaction
-                .selection()
-                .row()
-                .map(|r| r.saturating_sub(delta))
-                .unwrap_or(0);
-            move_row_or_scroll(state, new_row, |s| {
-                s.result_interaction.scroll_offset =
-                    s.result_interaction.scroll_offset.saturating_sub(delta);
-            });
+            let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
+            let delta = (visible / 2).max(1);
+            if let Some(row) = state.result_interaction.selection().row() {
+                state.result_interaction.move_row(row.saturating_sub(delta));
+                state.result_interaction.scroll_offset =
+                    state.result_interaction.scroll_offset.saturating_sub(delta);
+            } else {
+                state.result_interaction.scroll_offset =
+                    state.result_interaction.scroll_offset.saturating_sub(delta);
+            }
             Some(vec![])
         }
         Action::ResultScrollFullPageDown => {
-            let delta = state.result_visible_rows().max(1);
-            let max_row = result_row_count(state).saturating_sub(1);
-            let new_row = state
-                .result_interaction
-                .selection()
-                .row()
-                .map(|r| (r + delta).min(max_row))
-                .unwrap_or(0);
-            move_row_or_scroll(state, new_row, |s| {
-                let max = result_max_scroll(s);
-                s.result_interaction.scroll_offset =
-                    (s.result_interaction.scroll_offset + delta).min(max);
-            });
+            let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
+            let delta = visible.max(1);
+            if let Some(row) = state.result_interaction.selection().row() {
+                let max_row = result_row_count(state).saturating_sub(1);
+                let max_scroll = result_max_scroll(state);
+                state
+                    .result_interaction
+                    .move_row((row + delta).min(max_row));
+                state.result_interaction.scroll_offset =
+                    (state.result_interaction.scroll_offset + delta).min(max_scroll);
+            } else {
+                let max = result_max_scroll(state);
+                state.result_interaction.scroll_offset =
+                    (state.result_interaction.scroll_offset + delta).min(max);
+            }
             Some(vec![])
         }
         Action::ResultScrollFullPageUp => {
-            let delta = state.result_visible_rows().max(1);
-            let new_row = state
-                .result_interaction
-                .selection()
-                .row()
-                .map(|r| r.saturating_sub(delta))
-                .unwrap_or(0);
-            move_row_or_scroll(state, new_row, |s| {
-                s.result_interaction.scroll_offset =
-                    s.result_interaction.scroll_offset.saturating_sub(delta);
-            });
+            let visible = state.result_visible_rows();
+            if visible == 0 {
+                return Some(vec![]);
+            }
+            let delta = visible.max(1);
+            if let Some(row) = state.result_interaction.selection().row() {
+                state.result_interaction.move_row(row.saturating_sub(delta));
+                state.result_interaction.scroll_offset =
+                    state.result_interaction.scroll_offset.saturating_sub(delta);
+            } else {
+                state.result_interaction.scroll_offset =
+                    state.result_interaction.scroll_offset.saturating_sub(delta);
+            }
             Some(vec![])
         }
         // Scroll-to-cursor (zz/zt/zb): only meaningful in RowActive/CellActive
@@ -314,12 +328,12 @@ mod tests {
         }
 
         #[test]
-        fn zero_height_pane_scrolls_by_one() {
+        fn zero_height_pane_scroll_mode_is_noop() {
             let mut state = state_with_result_rows(100, 0);
-            // visible = 0, delta = max(0/2,1) = 1
+            // visible = 0 → no-op for all modes
             reduce(&mut state, &Action::ResultScrollHalfPageDown);
 
-            assert_eq!(state.result_interaction.scroll_offset, 1);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
         #[test]
@@ -340,6 +354,185 @@ mod tests {
             reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
             assert_eq!(state.result_interaction.selection().row(), Some(10));
+        }
+
+        #[test]
+        fn half_page_down_row_active_moves_both_cursor_and_viewport() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, half=10
+            state.result_interaction.enter_row(10);
+            state.result_interaction.scroll_offset = 5;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(20));
+            assert_eq!(state.result_interaction.scroll_offset, 15);
+        }
+
+        #[test]
+        fn half_page_up_row_active_moves_both_cursor_and_viewport() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, half=10
+            state.result_interaction.enter_row(30);
+            state.result_interaction.scroll_offset = 25;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageUp);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(20));
+            assert_eq!(state.result_interaction.scroll_offset, 15);
+        }
+
+        #[test]
+        fn half_page_down_row_active_preserves_relative_position() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, half=10
+            state.result_interaction.enter_row(15);
+            state.result_interaction.scroll_offset = 10;
+            // cursor is at relative position 5 within viewport
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            // both move by 10: cursor=25, offset=20 → relative position still 5
+            assert_eq!(state.result_interaction.selection().row(), Some(25));
+            assert_eq!(state.result_interaction.scroll_offset, 20);
+            let relative = state.result_interaction.selection().row().unwrap()
+                - state.result_interaction.scroll_offset;
+            assert_eq!(relative, 5);
+        }
+
+        #[test]
+        fn half_page_down_row_active_clamps_near_bottom() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, half=10, max_row=99, max_scroll=80
+            state.result_interaction.enter_row(95);
+            state.result_interaction.scroll_offset = 75;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            // cursor: 95+10=105 → clamped to 99
+            // scroll: 75+10=85 → clamped to 80
+            assert_eq!(state.result_interaction.selection().row(), Some(99));
+            assert_eq!(state.result_interaction.scroll_offset, 80);
+        }
+
+        #[test]
+        fn half_page_up_row_active_clamps_near_top() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, half=10
+            state.result_interaction.enter_row(5);
+            state.result_interaction.scroll_offset = 3;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageUp);
+
+            // cursor: 5-10 → 0
+            // scroll: 3-10 → 0
+            assert_eq!(state.result_interaction.selection().row(), Some(0));
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+        }
+
+        #[test]
+        fn cell_active_half_page_down_preserves_column() {
+            let mut state = state_with_result_rows(100, 25);
+            state.result_interaction.enter_row(10);
+            state.result_interaction.enter_cell(3);
+            state.result_interaction.scroll_offset = 5;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(20));
+            assert_eq!(state.result_interaction.selection().cell(), Some(3));
+            assert_eq!(state.result_interaction.scroll_offset, 15);
+        }
+
+        #[test]
+        fn visible_zero_row_active_is_noop() {
+            let mut state = state_with_result_rows(100, 0);
+            // visible=0
+            state.result_interaction.enter_row(5);
+            state.result_interaction.scroll_offset = 3;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(5));
+            assert_eq!(state.result_interaction.scroll_offset, 3);
+        }
+
+        #[test]
+        fn data_fewer_than_viewport_scroll_stays_zero() {
+            let mut state = state_with_result_rows(10, 25);
+            // visible=20, 10 rows < 20 visible → max_scroll=0
+            state.result_interaction.enter_row(3);
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            // cursor: 3+10=13 → clamped to 9
+            // scroll: 0+10=10 → clamped to max_scroll=0
+            assert_eq!(state.result_interaction.selection().row(), Some(9));
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+        }
+
+        #[test]
+        fn full_page_down_row_active_moves_both() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, delta=20
+            state.result_interaction.enter_row(10);
+            state.result_interaction.scroll_offset = 5;
+
+            reduce(&mut state, &Action::ResultScrollFullPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(30));
+            assert_eq!(state.result_interaction.scroll_offset, 25);
+        }
+
+        #[test]
+        fn full_page_up_row_active_moves_both() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, delta=20
+            state.result_interaction.enter_row(40);
+            state.result_interaction.scroll_offset = 30;
+
+            reduce(&mut state, &Action::ResultScrollFullPageUp);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(20));
+            assert_eq!(state.result_interaction.scroll_offset, 10);
+        }
+
+        #[test]
+        fn full_page_down_row_active_clamps_near_bottom() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, delta=20, max_row=99, max_scroll=80
+            state.result_interaction.enter_row(90);
+            state.result_interaction.scroll_offset = 75;
+
+            reduce(&mut state, &Action::ResultScrollFullPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(99));
+            assert_eq!(state.result_interaction.scroll_offset, 80);
+        }
+
+        #[test]
+        fn full_page_up_row_active_clamps_near_top() {
+            let mut state = state_with_result_rows(100, 25);
+            // visible=20, delta=20
+            state.result_interaction.enter_row(10);
+            state.result_interaction.scroll_offset = 5;
+
+            reduce(&mut state, &Action::ResultScrollFullPageUp);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(0));
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+        }
+
+        #[test]
+        fn visible_zero_row_active_full_page_is_noop() {
+            let mut state = state_with_result_rows(100, 0);
+            state.result_interaction.enter_row(5);
+            state.result_interaction.scroll_offset = 3;
+
+            reduce(&mut state, &Action::ResultScrollFullPageDown);
+
+            assert_eq!(state.result_interaction.selection().row(), Some(5));
+            assert_eq!(state.result_interaction.scroll_offset, 3);
         }
     }
 
@@ -414,6 +607,70 @@ mod tests {
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset, 80);
             assert!(!state.ui.pending_z);
+        }
+    }
+
+    mod history_mode_scroll {
+        use super::*;
+
+        fn make_result(
+            rows: usize,
+            source: crate::domain::QuerySource,
+        ) -> Arc<crate::domain::QueryResult> {
+            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
+            let row_count = result_rows.len();
+            Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string()],
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: std::time::Instant::now(),
+                source,
+                error: None,
+                command_tag: None,
+            })
+        }
+
+        #[test]
+        fn page_scroll_uses_history_entry_row_count_not_live_preview() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.result_pane_height = 25; // visible = 20, half = 10
+            // live preview: 100 rows
+            state
+                .query
+                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
+            // history entry: 5 rows
+            state
+                .query
+                .result_history
+                .push(make_result(5, crate::domain::QuerySource::Adhoc));
+            state.query.enter_history(0);
+
+            state.result_interaction.enter_row(2);
+            state.result_interaction.scroll_offset = 0;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            // Should clamp to history entry max_row=4, not live preview max_row=99
+            assert_eq!(state.result_interaction.selection().row(), Some(4));
+            // max_scroll = 5 - 20 = 0 (history has fewer rows than viewport)
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+        }
+
+        #[test]
+        fn row_count_reflects_visible_result_in_history_mode() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
+            state
+                .query
+                .result_history
+                .push(make_result(7, crate::domain::QuerySource::Adhoc));
+            state.query.enter_history(0);
+
+            assert_eq!(result_row_count(&state), 7);
         }
     }
 }
