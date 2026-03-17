@@ -10,7 +10,7 @@ use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
-    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, TABLE_PICKER_ROWS, idx,
+    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::app::sql_modal_context::SqlModalStatus;
 use crate::app::state::AppState;
@@ -211,8 +211,6 @@ impl Footer {
                     state.sql_modal.status(),
                     SqlModalStatus::ConfirmingHigh { .. }
                 ) {
-                    // Modal footer already provides the authoritative hint;
-                    // global footer shows only Esc.
                     vec![
                         SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]
                             .as_hint(),
@@ -224,11 +222,21 @@ impl Footer {
                         SQL_MODAL_CONFIRMING_KEYS[idx::sql_modal_confirming::CANCEL_CONFIRM]
                             .as_hint(),
                     ]
+                } else if matches!(
+                    state.sql_modal.status(),
+                    SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+                ) {
+                    vec![
+                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
+                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                    ]
                 } else {
                     vec![
                         SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
-                        SQL_MODAL_KEYS[idx::sql_modal::ESC_CLOSE].as_hint(),
+                        SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
                     ]
                 }
             }

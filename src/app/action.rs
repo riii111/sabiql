@@ -241,6 +241,10 @@ pub enum Action {
     // SQL Modal
     OpenSqlModal,
     CloseSqlModal,
+    SqlModalEnterInsert,
+    SqlModalEnterNormal,
+    SqlModalYank,
+    SqlModalYankSuccess,
     SqlModalInput(char),
     SqlModalBackspace,
     SqlModalDelete,

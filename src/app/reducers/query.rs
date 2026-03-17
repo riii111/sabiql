@@ -281,7 +281,7 @@ pub fn reduce_query(
                 }
                 Action::OpenSqlModal => {
                     state.modal.set_mode(InputMode::SqlModal);
-                    state.sql_modal.set_status(SqlModalStatus::Editing);
+                    state.sql_modal.set_status(SqlModalStatus::Normal);
                     if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some()
                     {
                         vec![Effect::DispatchActions(vec![Action::StartPrefetchAll])]

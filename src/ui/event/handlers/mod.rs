@@ -87,8 +87,8 @@ mod tests {
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
 
-            // Esc in SqlModal should close modal (not Escape action)
-            let result = handle_key_event(combo(Key::Esc), &state);
+            // q in SqlModal (Normal mode, the default) should close modal
+            let result = handle_key_event(combo(Key::Char('q')), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
         }

@@ -25,6 +25,7 @@ pub struct AdhocSuccessSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
+    Normal,
     Editing,
     Confirming(AdhocRiskDecision),
     // HIGH risk confirmation requiring the user to type the target table name.
@@ -171,7 +172,7 @@ mod tests {
 
         assert!(ctx.content.is_empty());
         assert_eq!(ctx.cursor, 0);
-        assert_eq!(ctx.status, SqlModalStatus::Editing);
+        assert_eq!(ctx.status, SqlModalStatus::Normal);
         assert!(!ctx.completion.visible);
         assert!(!ctx.is_prefetch_started());
     }

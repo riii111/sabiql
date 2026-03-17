@@ -127,9 +127,17 @@ pub mod idx {
         pub const PAGE_NAV: usize = 4;
     }
 
+    pub mod sql_modal_normal {
+        pub const RUN: usize = 0;
+        pub const YANK: usize = 1;
+        pub const ENTER_INSERT: usize = 2;
+        pub const MOVE: usize = 3;
+        pub const CLOSE: usize = 4;
+    }
+
     pub mod sql_modal {
         pub const RUN: usize = 0;
-        pub const ESC_CLOSE: usize = 1;
+        pub const ESC_NORMAL: usize = 1;
         pub const MOVE: usize = 2;
         pub const HOME_END: usize = 3;
         pub const TAB: usize = 4;
@@ -265,10 +273,11 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    19 + 18 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
+    21 + 18 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
+        + SQL_MODAL_NORMAL_KEYS.len()
         + SQL_MODAL_KEYS.len()
         + SQL_MODAL_CONFIRMING_KEYS.len()
         + OVERLAY_KEYS.len()
@@ -374,9 +383,16 @@ mod tests {
         assert!(idx::footer_nav::H_SCROLL < FOOTER_NAV_KEYS.len());
         assert!(idx::footer_nav::PAGE_NAV < FOOTER_NAV_KEYS.len());
 
+        // SQL_MODAL_NORMAL_KEYS
+        assert!(idx::sql_modal_normal::RUN < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::YANK < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::ENTER_INSERT < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::MOVE < SQL_MODAL_NORMAL_KEYS.len());
+        assert!(idx::sql_modal_normal::CLOSE < SQL_MODAL_NORMAL_KEYS.len());
+
         // SQL_MODAL_KEYS
         assert!(idx::sql_modal::RUN < SQL_MODAL_KEYS.len());
-        assert!(idx::sql_modal::ESC_CLOSE < SQL_MODAL_KEYS.len());
+        assert!(idx::sql_modal::ESC_NORMAL < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::MOVE < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::HOME_END < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::TAB < SQL_MODAL_KEYS.len());
@@ -494,6 +510,7 @@ mod tests {
             RESULT_ACTIVE_KEYS.len(),
             INSPECTOR_DDL_KEYS.len(),
             CELL_EDIT_KEYS.len(),
+            SQL_MODAL_NORMAL_KEYS.len(),
             SQL_MODAL_KEYS.len(),
             SQL_MODAL_CONFIRMING_KEYS.len(),
             OVERLAY_KEYS.len(),
@@ -827,6 +844,10 @@ mod tests {
             check_none_action_entries_have_no_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
             check_none_action_entries_have_no_combos(NAVIGATION_KEYS, "NAVIGATION_KEYS");
             check_none_action_entries_have_no_combos(FOOTER_NAV_KEYS, "FOOTER_NAV_KEYS");
+            check_none_action_entries_have_no_combos(
+                SQL_MODAL_NORMAL_KEYS,
+                "SQL_MODAL_NORMAL_KEYS",
+            );
             check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
             check_none_action_entries_have_no_combos(
                 SQL_MODAL_CONFIRMING_KEYS,

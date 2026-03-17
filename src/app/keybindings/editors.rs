@@ -3,7 +3,59 @@ use super::types::{Key, KeyCombo};
 use crate::app::action::Action;
 
 // =============================================================================
-// SQL Modal
+// SQL Modal (Normal mode — default when opened)
+// =============================================================================
+
+pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
+    // idx 0: RUN
+    KeyBinding {
+        key_short: "⌥Enter",
+        key: "Alt+Enter",
+        desc_short: "Run",
+        description: "Execute query",
+        action: Action::SqlModalSubmit,
+        combos: &[KeyCombo::alt(Key::Enter)],
+    },
+    // idx 1: YANK
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy query to clipboard",
+        action: Action::SqlModalYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
+    },
+    // idx 2: ENTER_INSERT
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Insert",
+        description: "Enter Insert mode",
+        action: Action::SqlModalEnterInsert,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
+    // idx 3: MOVE
+    KeyBinding {
+        key_short: "↑↓←→",
+        key: "↑↓←→",
+        desc_short: "Move",
+        description: "Move cursor",
+        action: Action::None,
+        combos: &[],
+    },
+    // idx 4: CLOSE
+    KeyBinding {
+        key_short: "q",
+        key: "q",
+        desc_short: "Close",
+        description: "Close editor",
+        action: Action::CloseSqlModal,
+        combos: &[KeyCombo::plain(Key::Char('q'))],
+    },
+];
+
+// =============================================================================
+// SQL Modal (Insert mode)
 // =============================================================================
 
 pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
@@ -16,13 +68,13 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalSubmit,
         combos: &[KeyCombo::alt(Key::Enter)],
     },
-    // idx 1: ESC_CLOSE
+    // idx 1: ESC_NORMAL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
-        desc_short: "Close",
-        description: "Close editor",
-        action: Action::CloseSqlModal,
+        desc_short: "Normal",
+        description: "Return to Normal mode",
+        action: Action::SqlModalEnterNormal,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 2: SQL_MOVE

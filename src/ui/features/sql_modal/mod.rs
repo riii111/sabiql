@@ -58,12 +58,19 @@ impl SqlModal {
                     Theme::STATUS_ERROR,
                 )
             }
+            SqlModalStatus::Editing => render_modal(
+                frame,
+                Constraint::Percentage(80),
+                Constraint::Percentage(60),
+                " SQL Editor \u{2500}\u{2500} INSERT ",
+                " \u{2325}Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Esc: Normal ",
+            ),
             _ => render_modal(
                 frame,
                 Constraint::Percentage(80),
                 Constraint::Percentage(60),
-                " SQL Editor ",
-                " Alt+Enter: Run \u{2502} Ctrl+L: Clear \u{2502} Esc: Close ",
+                " SQL Editor \u{2500}\u{2500} NORMAL ",
+                " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} Enter: Insert \u{2502} q: Close ",
             ),
         };
 
@@ -82,11 +89,7 @@ impl SqlModal {
         Self::render_editor(frame, editor_area, state);
         Self::render_status(frame, status_area, state);
 
-        let is_confirming = matches!(
-            state.sql_modal.status(),
-            SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
-        );
-        if !is_confirming
+        if matches!(state.sql_modal.status(), SqlModalStatus::Editing)
             && state.sql_modal.completion.visible
             && !state.sql_modal.completion.candidates.is_empty()
         {
@@ -115,21 +118,47 @@ impl SqlModal {
             return;
         }
 
+        let is_normal = matches!(
+            state.sql_modal.status(),
+            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+        );
+
         let cursor_pos = state.sql_modal.cursor;
         let (cursor_row, cursor_col) = Self::cursor_to_position(content, cursor_pos);
         let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
 
         let mut lines: Vec<Line> = if content.is_empty() {
-            vec![
-                Line::from(vec![
-                    Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
-                    Span::styled(
-                        " Enter SQL query...",
-                        Style::default().fg(Theme::PLACEHOLDER_TEXT),
-                    ),
-                ])
-                .style(current_line_style),
-            ]
+            let placeholder = if is_normal {
+                " Press Enter to edit..."
+            } else {
+                " Enter SQL query..."
+            };
+            if is_normal {
+                vec![Line::from(Span::styled(
+                    placeholder,
+                    Style::default().fg(Theme::PLACEHOLDER_TEXT),
+                ))]
+            } else {
+                vec![
+                    Line::from(vec![
+                        Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
+                        Span::styled(placeholder, Style::default().fg(Theme::PLACEHOLDER_TEXT)),
+                    ])
+                    .style(current_line_style),
+                ]
+            }
+        } else if is_normal {
+            content
+                .lines()
+                .enumerate()
+                .map(|(row, line)| {
+                    if row == cursor_row {
+                        Line::from(line.to_string()).style(current_line_style)
+                    } else {
+                        Line::from(line.to_string())
+                    }
+                })
+                .collect()
         } else {
             content
                 .lines()
@@ -144,7 +173,7 @@ impl SqlModal {
                 .collect()
         };
 
-        if content.ends_with('\n') && cursor_row == content.lines().count() {
+        if !is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
             lines.push(
                 Line::from(vec![Span::styled(
                     "\u{2588}",
@@ -178,7 +207,7 @@ impl SqlModal {
         }
 
         let (status_text, status_style) = match state.sql_modal.status() {
-            SqlModalStatus::Editing => {
+            SqlModalStatus::Normal | SqlModalStatus::Editing => {
                 ("Ready".to_string(), Style::default().fg(Theme::TEXT_MUTED))
             }
             SqlModalStatus::Confirming(decision) => {
