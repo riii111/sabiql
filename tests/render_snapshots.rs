@@ -399,7 +399,7 @@ mod overlays {
     #[test]
     fn query_history_picker_with_entries() {
         use sabiql::domain::ConnectionId;
-        use sabiql::domain::query_history::QueryHistoryEntry;
+        use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
         let mut state = create_test_state();
         let mut terminal = create_test_terminal();
@@ -410,16 +410,22 @@ mod overlays {
                 "SELECT * FROM users WHERE id = 1".to_string(),
                 "2026-03-13T10:00:00Z".to_string(),
                 ConnectionId::from_string("test-conn"),
+                QueryResultStatus::Success,
+                None,
             ),
             QueryHistoryEntry::new(
                 "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
                 "2026-03-13T11:00:00Z".to_string(),
                 ConnectionId::from_string("test-conn"),
+                QueryResultStatus::Success,
+                Some(1),
             ),
             QueryHistoryEntry::new(
                 "SELECT count(*) FROM users".to_string(),
                 "2026-03-13T12:00:00Z".to_string(),
                 ConnectionId::from_string("test-conn"),
+                QueryResultStatus::Failed,
+                None,
             ),
         ];
 

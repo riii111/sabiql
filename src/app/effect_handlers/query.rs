@@ -54,8 +54,13 @@ fn save_query_history(
 ) {
     let store = Arc::clone(query_history_store);
     let tx = action_tx.clone();
-    let entry = QueryHistoryEntry::new(query.to_string(), utc_now_iso8601(), connection_id.clone())
-        .with_result(result_status, affected_rows);
+    let entry = QueryHistoryEntry::new(
+        query.to_string(),
+        utc_now_iso8601(),
+        connection_id.clone(),
+        result_status,
+        affected_rows,
+    );
     let project = project_name.to_string();
     let conn_id = connection_id.clone();
     tokio::spawn(async move {
@@ -155,14 +160,20 @@ pub(crate) async fn run(
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
-                            let rows = result.command_tag.as_ref().and_then(|t| t.affected_rows());
+                            let (status, rows) = if result.is_error() {
+                                (QueryResultStatus::Failed, None)
+                            } else {
+                                let rows =
+                                    result.command_tag.as_ref().and_then(|t| t.affected_rows());
+                                (QueryResultStatus::Success, rows)
+                            };
                             save_query_history(
                                 &history_store,
                                 &history_tx,
                                 &project,
                                 cid,
                                 &query_for_history,
-                                QueryResultStatus::Success,
+                                status,
                                 rows,
                             );
                         }

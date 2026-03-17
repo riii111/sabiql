@@ -42,27 +42,25 @@ pub struct QueryHistoryEntry {
     pub query: String,
     pub executed_at: Iso8601Timestamp,
     pub connection_id: ConnectionId,
-    #[serde(default)]
-    pub result_status: Option<QueryResultStatus>,
-    #[serde(default)]
+    pub result_status: QueryResultStatus,
     pub affected_rows: Option<u64>,
 }
 
 impl QueryHistoryEntry {
-    pub fn new(query: String, executed_at: String, connection_id: ConnectionId) -> Self {
+    pub fn new(
+        query: String,
+        executed_at: String,
+        connection_id: ConnectionId,
+        result_status: QueryResultStatus,
+        affected_rows: Option<u64>,
+    ) -> Self {
         Self {
             query,
             executed_at: Iso8601Timestamp::new(executed_at),
             connection_id,
-            result_status: None,
-            affected_rows: None,
+            result_status,
+            affected_rows,
         }
-    }
-
-    pub fn with_result(mut self, status: QueryResultStatus, affected_rows: Option<u64>) -> Self {
-        self.result_status = Some(status);
-        self.affected_rows = affected_rows;
-        self
     }
 }
 
@@ -177,6 +175,8 @@ mod tests {
             "SELECT * FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-uuid"),
+            QueryResultStatus::Success,
+            None,
         );
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -186,30 +186,21 @@ mod tests {
     }
 
     #[test]
-    fn serde_round_trip_with_result_metadata() {
+    fn serde_round_trip_with_affected_rows() {
         let entry = QueryHistoryEntry::new(
             "UPDATE users SET name = 'x'".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-uuid"),
-        )
-        .with_result(QueryResultStatus::Success, Some(5));
+            QueryResultStatus::Success,
+            Some(5),
+        );
 
         let json = serde_json::to_string(&entry).unwrap();
         let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
 
         assert_eq!(entry, deserialized);
-        assert_eq!(deserialized.result_status, Some(QueryResultStatus::Success));
+        assert_eq!(deserialized.result_status, QueryResultStatus::Success);
         assert_eq!(deserialized.affected_rows, Some(5));
-    }
-
-    #[test]
-    fn serde_old_format_deserializes_with_none_fields() {
-        let old_json = r#"{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"abc-123"}"#;
-        let entry: QueryHistoryEntry = serde_json::from_str(old_json).unwrap();
-
-        assert_eq!(entry.query, "SELECT 1");
-        assert_eq!(entry.result_status, None);
-        assert_eq!(entry.affected_rows, None);
     }
 
     #[test]
@@ -218,6 +209,8 @@ mod tests {
             "SELECT 1".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("abc-123"),
+            QueryResultStatus::Success,
+            None,
         );
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -225,6 +218,7 @@ mod tests {
         assert!(json.contains("\"query\":\"SELECT 1\""));
         assert!(json.contains("\"executed_at\":\"2026-03-13T12:00:00Z\""));
         assert!(json.contains("\"connection_id\":\"abc-123\""));
+        assert!(json.contains("\"result_status\":\"Success\""));
     }
 
     mod classify {

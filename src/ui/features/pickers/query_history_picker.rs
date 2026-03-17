@@ -35,15 +35,14 @@ fn format_short_timestamp(iso: &str) -> String {
     format!("{} {} {}", month_name, day, time)
 }
 
-fn status_span(status: Option<QueryResultStatus>) -> Span<'static> {
+fn status_span(status: QueryResultStatus) -> Span<'static> {
     match status {
-        Some(QueryResultStatus::Success) => {
+        QueryResultStatus::Success => {
             Span::styled("\u{2713} ", Style::default().fg(Theme::STATUS_SUCCESS))
         }
-        Some(QueryResultStatus::Failed) => {
+        QueryResultStatus::Failed => {
             Span::styled("\u{2717} ", Style::default().fg(Theme::STATUS_ERROR))
         }
-        None => Span::raw("  "),
     }
 }
 
@@ -60,7 +59,7 @@ fn compute_preview_height(inner_height: u16) -> u16 {
 
 struct PreviewData {
     query: String,
-    result_status: Option<QueryResultStatus>,
+    result_status: QueryResultStatus,
     affected_rows: Option<u64>,
     executed_at: String,
 }
@@ -276,22 +275,16 @@ fn render_preview(frame: &mut Frame, area: ratatui::layout::Rect, pd: &PreviewDa
 
     let mut meta_spans = Vec::new();
     match pd.result_status {
-        Some(QueryResultStatus::Success) => {
+        QueryResultStatus::Success => {
             meta_spans.push(Span::styled(
                 "\u{2713} Success",
                 Style::default().fg(Theme::STATUS_SUCCESS),
             ));
         }
-        Some(QueryResultStatus::Failed) => {
+        QueryResultStatus::Failed => {
             meta_spans.push(Span::styled(
                 "\u{2717} Failed",
                 Style::default().fg(Theme::STATUS_ERROR),
-            ));
-        }
-        None => {
-            meta_spans.push(Span::styled(
-                "(legacy)",
-                Style::default().fg(Theme::TEXT_MUTED),
             ));
         }
     }

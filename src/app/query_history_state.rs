@@ -109,10 +109,13 @@ mod tests {
     use crate::domain::ConnectionId;
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
+        use crate::domain::query_history::QueryResultStatus;
         QueryHistoryEntry::new(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            QueryResultStatus::Success,
+            None,
         )
     }
 

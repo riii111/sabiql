@@ -119,10 +119,13 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
+        use crate::domain::query_history::QueryResultStatus;
         QueryHistoryEntry::new(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            QueryResultStatus::Success,
+            None,
         )
     }
 
@@ -267,21 +270,24 @@ mod tests {
 
         use std::io::Write;
         let mut file = std::fs::File::create(&path).unwrap();
-        // Old format (no result_status/affected_rows)
-        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn"}}"#).unwrap();
-        // New format
+        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":null}}"#).unwrap();
         writeln!(file, r#"{{"query":"UPDATE t SET x=1","executed_at":"2026-03-13T12:01:00Z","connection_id":"test-conn","result_status":"Success","affected_rows":5}}"#).unwrap();
+        // Malformed line should be skipped
+        writeln!(file, "not valid json").unwrap();
 
         let entries = store.load("test", &conn_id).await.unwrap();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].query, "SELECT 1");
-        assert_eq!(entries[0].result_status, None);
+        assert_eq!(
+            entries[0].result_status,
+            crate::domain::query_history::QueryResultStatus::Success
+        );
         assert_eq!(entries[0].affected_rows, None);
         assert_eq!(entries[1].query, "UPDATE t SET x=1");
         assert_eq!(
             entries[1].result_status,
-            Some(crate::domain::query_history::QueryResultStatus::Success)
+            crate::domain::query_history::QueryResultStatus::Success
         );
         assert_eq!(entries[1].affected_rows, Some(5));
     }
@@ -299,7 +305,7 @@ mod tests {
         use std::io::Write;
         let mut file = std::fs::File::create(&path).unwrap();
         // Entry with an extra unknown field
-        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","future_field":"whatever"}}"#).unwrap();
+        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","result_status":"Success","future_field":"whatever"}}"#).unwrap();
 
         let entries = store.load("test", &conn_id).await.unwrap();
 
