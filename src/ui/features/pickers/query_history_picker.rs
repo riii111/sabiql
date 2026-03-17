@@ -2,8 +2,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
+use crate::app::query_history_state::GroupedEntry;
 use crate::app::state::AppState;
 use crate::domain::query_history::{QueryResultStatus, SqlCategory, classify_sql};
 use crate::ui::primitives::molecules::render_modal;
@@ -12,6 +13,8 @@ use crate::ui::theme::Theme;
 const TIMESTAMP_WIDTH: usize = 18;
 const STATUS_WIDTH: usize = 2;
 const COLOR_BAR_WIDTH: usize = 2;
+const LIST_MIN_HEIGHT: u16 = 5;
+const MIN_INNER_FOR_PREVIEW: u16 = 10;
 
 fn status_span(status: Option<QueryResultStatus>) -> Span<'static> {
     match status {
@@ -33,6 +36,24 @@ fn category_color(cat: SqlCategory) -> ratatui::style::Color {
         SqlCategory::Tcl => Theme::SQL_TCL,
         SqlCategory::Other => Theme::TEXT_MUTED,
     }
+}
+
+fn compute_preview_height(inner_height: u16) -> u16 {
+    if inner_height < MIN_INNER_FOR_PREVIEW {
+        return 0;
+    }
+    // filter takes 1 row
+    let available_for_list_and_preview = inner_height.saturating_sub(1);
+    let desired = (inner_height * 30 / 100).max(4);
+    let max_preview = available_for_list_and_preview.saturating_sub(LIST_MIN_HEIGHT);
+    desired.min(max_preview)
+}
+
+struct PreviewData {
+    query: String,
+    result_status: Option<QueryResultStatus>,
+    affected_rows: Option<u64>,
+    executed_at: String,
 }
 
 pub struct QueryHistoryPicker;
@@ -67,8 +88,23 @@ impl QueryHistoryPicker {
             ),
         );
 
-        let [filter_area, list_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+        let preview_h = compute_preview_height(inner.height);
+        let show_preview = preview_h > 0;
+
+        let areas = if show_preview {
+            let [filter_area, list_area, preview_area] = Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Min(1),
+                Constraint::Length(preview_h),
+            ])
+            .areas(inner);
+            (filter_area, list_area, Some(preview_area))
+        } else {
+            let [filter_area, list_area] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+            (filter_area, list_area, None)
+        };
+        let (filter_area, list_area, preview_area) = areas;
 
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
@@ -95,6 +131,9 @@ impl QueryHistoryPicker {
                 Style::default().fg(Theme::TEXT_SECONDARY),
             ));
             frame.render_widget(Paragraph::new(empty_line), list_area);
+            if let Some(pa) = preview_area {
+                render_empty_preview(frame, pa);
+            }
             return;
         }
 
@@ -102,80 +141,29 @@ impl QueryHistoryPicker {
         let prefix_width = STATUS_WIDTH + COLOR_BAR_WIDTH;
         let query_max = available_width.saturating_sub(prefix_width + TIMESTAMP_WIDTH + 4);
 
+        let preview_data = grouped.get(selected_idx).map(|ge| PreviewData {
+            query: ge.entry.query.clone(),
+            result_status: ge.entry.result_status,
+            affected_rows: ge.entry.affected_rows,
+            executed_at: ge.entry.executed_at.as_str().to_string(),
+        });
+
         let items: Vec<ListItem> = grouped
             .iter()
             .enumerate()
-            .map(|(i, ge)| {
-                let query_display = ge.entry.query.replace('\n', " ");
-                let char_len = query_display.chars().count();
-                let truncated = if char_len > query_max && query_max > 3 {
-                    let s: String = query_display.chars().take(query_max - 1).collect();
-                    format!("{}\u{2026}", s)
-                } else {
-                    query_display
-                };
-
-                let timestamp = ge.entry.executed_at.as_str();
-                let ts_short = if timestamp.len() >= 16 {
-                    &timestamp[..16]
-                } else {
-                    timestamp
-                };
-
-                let category = classify_sql(&ge.entry.query);
-                let bar_color = category_color(category);
-
-                let mut spans = vec![
-                    status_span(ge.entry.result_status),
-                    Span::styled("\u{2588} ", Style::default().fg(bar_color)),
-                ];
-
-                if ge.match_indices.is_empty() {
-                    spans.push(Span::styled(
-                        truncated.clone(),
-                        Style::default().fg(if i == selected_idx {
-                            Theme::TEXT_PRIMARY
-                        } else {
-                            Theme::TEXT_SECONDARY
-                        }),
-                    ));
-                } else {
-                    let chars: Vec<char> = truncated.chars().collect();
-                    for (ci, ch) in chars.iter().enumerate() {
-                        let is_match = ge.match_indices.contains(&(ci as u32));
-                        let color = if is_match {
-                            Theme::TEXT_ACCENT
-                        } else if i == selected_idx {
-                            Theme::TEXT_PRIMARY
-                        } else {
-                            Theme::TEXT_SECONDARY
-                        };
-                        let mut style = Style::default().fg(color);
-                        if is_match {
-                            style = style.add_modifier(Modifier::BOLD);
-                        }
-                        spans.push(Span::styled(ch.to_string(), style));
-                    }
-                }
-
-                if ge.count > 1 {
-                    spans.push(Span::styled(
-                        format!(" (\u{00d7}{})", ge.count),
-                        Style::default().fg(Theme::TEXT_MUTED),
-                    ));
-                }
-
-                spans.push(Span::styled(
-                    format!("  {}", ts_short),
-                    Style::default().fg(Theme::TEXT_MUTED),
-                ));
-
-                ListItem::new(Line::from(spans))
-            })
+            .map(|(i, ge)| build_list_item(ge, i, selected_idx, query_max))
             .collect();
 
         drop(grouped);
         state.query_history_picker.pane_height = list_area.height;
+
+        if let Some(pa) = preview_area {
+            if let Some(ref pd) = preview_data {
+                render_preview(frame, pa, pd);
+            } else {
+                render_empty_preview(frame, pa);
+            }
+        }
 
         let list = List::new(items)
             .highlight_style(
@@ -191,4 +179,153 @@ impl QueryHistoryPicker {
             .with_offset(scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
     }
+}
+
+fn build_list_item(
+    ge: &GroupedEntry<'_>,
+    i: usize,
+    selected_idx: usize,
+    query_max: usize,
+) -> ListItem<'static> {
+    let query_display = ge.entry.query.replace('\n', " ");
+    let char_len = query_display.chars().count();
+    let truncated = if char_len > query_max && query_max > 3 {
+        let s: String = query_display.chars().take(query_max - 1).collect();
+        format!("{}\u{2026}", s)
+    } else {
+        query_display
+    };
+
+    let timestamp = ge.entry.executed_at.as_str();
+    let ts_short = if timestamp.len() >= 16 {
+        &timestamp[..16]
+    } else {
+        timestamp
+    };
+
+    let category = classify_sql(&ge.entry.query);
+    let bar_color = category_color(category);
+
+    let mut spans = vec![
+        status_span(ge.entry.result_status),
+        Span::styled("\u{2588} ", Style::default().fg(bar_color)),
+    ];
+
+    if ge.match_indices.is_empty() {
+        spans.push(Span::styled(
+            truncated.clone(),
+            Style::default().fg(if i == selected_idx {
+                Theme::TEXT_PRIMARY
+            } else {
+                Theme::TEXT_SECONDARY
+            }),
+        ));
+    } else {
+        let chars: Vec<char> = truncated.chars().collect();
+        for (ci, ch) in chars.iter().enumerate() {
+            let is_match = ge.match_indices.contains(&(ci as u32));
+            let color = if is_match {
+                Theme::TEXT_ACCENT
+            } else if i == selected_idx {
+                Theme::TEXT_PRIMARY
+            } else {
+                Theme::TEXT_SECONDARY
+            };
+            let mut style = Style::default().fg(color);
+            if is_match {
+                style = style.add_modifier(Modifier::BOLD);
+            }
+            spans.push(Span::styled(ch.to_string(), style));
+        }
+    }
+
+    if ge.count > 1 {
+        spans.push(Span::styled(
+            format!(" (\u{00d7}{})", ge.count),
+            Style::default().fg(Theme::TEXT_MUTED),
+        ));
+    }
+
+    spans.push(Span::styled(
+        format!("  {}", ts_short),
+        Style::default().fg(Theme::TEXT_MUTED),
+    ));
+
+    ListItem::new(Line::from(spans))
+}
+
+fn render_preview(frame: &mut Frame, area: ratatui::layout::Rect, pd: &PreviewData) {
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Theme::MODAL_BORDER))
+        .title(Span::styled(
+            " Preview ",
+            Style::default().fg(Theme::MODAL_TITLE),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    let mut meta_spans = Vec::new();
+    match pd.result_status {
+        Some(QueryResultStatus::Success) => {
+            meta_spans.push(Span::styled(
+                "\u{2713} Success",
+                Style::default().fg(Theme::STATUS_SUCCESS),
+            ));
+        }
+        Some(QueryResultStatus::Failed) => {
+            meta_spans.push(Span::styled(
+                "\u{2717} Failed",
+                Style::default().fg(Theme::STATUS_ERROR),
+            ));
+        }
+        None => {
+            meta_spans.push(Span::styled(
+                "(legacy)",
+                Style::default().fg(Theme::TEXT_MUTED),
+            ));
+        }
+    }
+    if let Some(rows) = pd.affected_rows {
+        meta_spans.push(Span::styled(
+            format!("  \u{2502} {} rows affected", rows),
+            Style::default().fg(Theme::TEXT_SECONDARY),
+        ));
+    }
+    meta_spans.push(Span::styled(
+        format!("  \u{2502} {}", pd.executed_at),
+        Style::default().fg(Theme::TEXT_MUTED),
+    ));
+    lines.push(Line::from(meta_spans));
+    lines.push(Line::raw(""));
+
+    for sql_line in pd.query.lines() {
+        lines.push(Line::styled(
+            sql_line.to_string(),
+            Style::default().fg(Theme::TEXT_PRIMARY),
+        ));
+    }
+
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, inner);
+}
+
+fn render_empty_preview(frame: &mut Frame, area: ratatui::layout::Rect) {
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Theme::MODAL_BORDER))
+        .title(Span::styled(
+            " Preview ",
+            Style::default().fg(Theme::MODAL_TITLE),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let msg = Paragraph::new(Line::styled(
+        "No selection",
+        Style::default().fg(Theme::TEXT_MUTED),
+    ));
+    frame.render_widget(msg, inner);
 }
