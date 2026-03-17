@@ -92,12 +92,6 @@ impl Theme {
     pub const SQL_KEYWORD: Color = Color::Blue;
     pub const SQL_TEXT: Color = Color::White;
 
-    // SQL category color bars (query history)
-    pub const SQL_SELECT: Color = Color::Cyan;
-    pub const SQL_DML: Color = Color::Yellow;
-    pub const SQL_DDL: Color = Color::Magenta;
-    pub const SQL_TCL: Color = Color::DarkGray;
-
     // Striped table rows — ANSI 256 (#303030) for terminal-agnostic rendering
     pub const STRIPED_ROW_BG: Color = Color::Indexed(235);
 

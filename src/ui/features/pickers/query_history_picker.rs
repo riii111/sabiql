@@ -6,15 +6,34 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 
 use crate::app::query_history_state::GroupedEntry;
 use crate::app::state::AppState;
-use crate::domain::query_history::{QueryResultStatus, SqlCategory, classify_sql};
+use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
-const TIMESTAMP_WIDTH: usize = 18;
+const TIMESTAMP_WIDTH: usize = 14;
 const STATUS_WIDTH: usize = 2;
-const COLOR_BAR_WIDTH: usize = 2;
 const LIST_MIN_HEIGHT: u16 = 5;
 const MIN_INNER_FOR_PREVIEW: u16 = 10;
+
+const MONTH_ABBR: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn format_short_timestamp(iso: &str) -> String {
+    // "2026-03-17T00:48:52Z" -> "Mar 17 00:48"
+    if iso.len() < 16 {
+        return iso.to_string();
+    }
+    let month: usize = iso[5..7].parse().unwrap_or(0);
+    let day = &iso[8..10];
+    let time = &iso[11..16];
+    let month_name = if (1..=12).contains(&month) {
+        MONTH_ABBR[month - 1]
+    } else {
+        "???"
+    };
+    format!("{} {} {}", month_name, day, time)
+}
 
 fn status_span(status: Option<QueryResultStatus>) -> Span<'static> {
     match status {
@@ -25,16 +44,6 @@ fn status_span(status: Option<QueryResultStatus>) -> Span<'static> {
             Span::styled("\u{2717} ", Style::default().fg(Theme::STATUS_ERROR))
         }
         None => Span::raw("  "),
-    }
-}
-
-fn category_color(cat: SqlCategory) -> ratatui::style::Color {
-    match cat {
-        SqlCategory::Select => Theme::SQL_SELECT,
-        SqlCategory::Dml => Theme::SQL_DML,
-        SqlCategory::Ddl => Theme::SQL_DDL,
-        SqlCategory::Tcl => Theme::SQL_TCL,
-        SqlCategory::Other => Theme::TEXT_MUTED,
     }
 }
 
@@ -138,8 +147,7 @@ impl QueryHistoryPicker {
         }
 
         let available_width = list_area.width as usize;
-        let prefix_width = STATUS_WIDTH + COLOR_BAR_WIDTH;
-        let query_max = available_width.saturating_sub(prefix_width + TIMESTAMP_WIDTH + 4);
+        let query_max = available_width.saturating_sub(STATUS_WIDTH + TIMESTAMP_WIDTH + 4);
 
         let preview_data = grouped.get(selected_idx).map(|ge| PreviewData {
             query: ge.entry.query.clone(),
@@ -196,20 +204,9 @@ fn build_list_item(
         query_display
     };
 
-    let timestamp = ge.entry.executed_at.as_str();
-    let ts_short = if timestamp.len() >= 16 {
-        &timestamp[..16]
-    } else {
-        timestamp
-    };
+    let ts_short = format_short_timestamp(ge.entry.executed_at.as_str());
 
-    let category = classify_sql(&ge.entry.query);
-    let bar_color = category_color(category);
-
-    let mut spans = vec![
-        status_span(ge.entry.result_status),
-        Span::styled("\u{2588} ", Style::default().fg(bar_color)),
-    ];
+    let mut spans = vec![status_span(ge.entry.result_status)];
 
     if ge.match_indices.is_empty() {
         spans.push(Span::styled(
@@ -257,7 +254,7 @@ fn build_list_item(
 
     spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(
-        format!("  {}", ts_short),
+        format!("  {ts_short}"),
         Style::default().fg(Theme::TEXT_MUTED),
     ));
 
