@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│       ╭ SQL Editor ── NORMAL ────────────────────────────────────────╮       │
+│       │ Press Enter to edit...                                       │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │───────┘
+│       │                                                              │───────┐
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │Ready                                                         │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ Enter: Insert │ q: Close ────────────╯       │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+⌥Enter:Run  y:Yank  Enter:Insert  q:Close
