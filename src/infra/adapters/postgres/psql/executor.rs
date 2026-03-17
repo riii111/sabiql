@@ -10,6 +10,63 @@ use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
+/// Count CSV fields in a single line, respecting quoted commas.
+fn csv_field_count(line: &str) -> usize {
+    let mut count = 1;
+    let mut in_quotes = false;
+    for ch in line.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => count += 1,
+            _ => {}
+        }
+    }
+    count
+}
+
+/// Extract the last CSV result set from psql `--csv` output.
+///
+/// When multiple SELECT statements are executed, psql concatenates each result
+/// set (header + rows) in the output. This function finds the last result set
+/// by detecting boundaries where:
+/// - The CSV field count changes (different column schemas), or
+/// - A line exactly matches the current header (repeated identical schema).
+fn extract_last_csv_block(stdout: &str) -> &str {
+    let lines: Vec<&str> = stdout.lines().collect();
+    if lines.len() <= 2 {
+        return stdout;
+    }
+
+    let first_header = lines[0];
+    let mut current_header = first_header;
+    let mut current_fc = csv_field_count(first_header);
+    let mut last_header_idx = 0;
+
+    for (i, &line) in lines.iter().enumerate().skip(1) {
+        let fc = csv_field_count(line);
+        if fc != current_fc {
+            last_header_idx = i;
+            current_header = line;
+            current_fc = fc;
+        } else if line == current_header {
+            last_header_idx = i;
+        }
+    }
+
+    if last_header_idx == 0 {
+        return stdout;
+    }
+
+    // Find byte offset of the last header line
+    let byte_offset: usize = stdout
+        .lines()
+        .take(last_header_idx)
+        .map(|l| l.len() + 1) // +1 for '\n'
+        .sum();
+
+    &stdout[byte_offset..]
+}
+
 struct PsqlOutput {
     status: ExitStatus,
     stdout: String,
@@ -154,9 +211,10 @@ impl PostgresAdapter {
             return Ok(result.with_command_tag(tag));
         }
 
+        let csv_block = extract_last_csv_block(stdout_trimmed);
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(true)
-            .from_reader(output.stdout.as_bytes());
+            .from_reader(csv_block.as_bytes());
 
         let columns: Vec<String> = reader
             .headers()
@@ -326,6 +384,52 @@ impl PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::infra::adapters::postgres::PostgresAdapter;
+
+    mod extract_last_csv_block {
+        use super::super::extract_last_csv_block;
+
+        #[test]
+        fn single_result_set_returned_as_is() {
+            let input = "id,name\n1,alice\n2,bob";
+            assert_eq!(extract_last_csv_block(input), input);
+        }
+
+        #[test]
+        fn two_selects_same_header_returns_last() {
+            // SELECT 1; SELECT 2; → psql outputs ?column?\n1\n?column?\n2
+            let input = "?column?\n1\n?column?\n2";
+            assert_eq!(extract_last_csv_block(input), "?column?\n2");
+        }
+
+        #[test]
+        fn two_selects_different_column_count_returns_last() {
+            // SELECT 1 AS a; SELECT 2 AS b, 3 AS c;
+            let input = "a\n1\nb,c\n2,3";
+            assert_eq!(extract_last_csv_block(input), "b,c\n2,3");
+        }
+
+        #[test]
+        fn three_selects_returns_last() {
+            let input = "?column?\n1\n?column?\n2\n?column?\n3";
+            assert_eq!(extract_last_csv_block(input), "?column?\n3");
+        }
+
+        #[test]
+        fn single_row_no_split() {
+            let input = "col\n42";
+            assert_eq!(extract_last_csv_block(input), input);
+        }
+
+        #[test]
+        fn empty_input() {
+            assert_eq!(extract_last_csv_block(""), "");
+        }
+
+        #[test]
+        fn header_only_no_split() {
+            assert_eq!(extract_last_csv_block("col"), "col");
+        }
+    }
 
     mod csv_parsing {
         #[test]
