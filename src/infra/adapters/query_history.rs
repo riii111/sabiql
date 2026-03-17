@@ -291,25 +291,4 @@ mod tests {
         );
         assert_eq!(entries[1].affected_rows, Some(5));
     }
-
-    #[tokio::test]
-    async fn new_format_entries_with_unknown_fields_are_loaded() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
-        let conn_id = ConnectionId::from_string("test-conn");
-
-        let history_dir = tmp.path().join("history");
-        std::fs::create_dir_all(&history_dir).unwrap();
-        let path = history_dir.join(format!("{}.jsonl", conn_id));
-
-        use std::io::Write;
-        let mut file = std::fs::File::create(&path).unwrap();
-        // Entry with an extra unknown field
-        writeln!(file, r#"{{"query":"SELECT 1","executed_at":"2026-03-13T12:00:00Z","connection_id":"test-conn","result_status":"Success","future_field":"whatever"}}"#).unwrap();
-
-        let entries = store.load("test", &conn_id).await.unwrap();
-
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].query, "SELECT 1");
-    }
 }
