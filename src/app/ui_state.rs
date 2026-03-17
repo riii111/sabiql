@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
 use super::inspector_tab::InspectorTab;
+use super::key_sequence::KeySequenceState;
 use super::keybindings::help_content_line_count;
 use super::viewport::ViewportPlan;
 
@@ -137,7 +138,7 @@ pub struct UiState {
 
     pub terminal_height: u16,
 
-    pub pending_z: bool,
+    pub key_sequence: KeySequenceState,
 }
 
 impl UiState {
