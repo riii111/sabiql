@@ -28,7 +28,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::CommandLine
         | InputMode::CellEdit
         | InputMode::ConnectionSetup
-        | InputMode::SqlModal => Action::Paste(text),
+        | InputMode::SqlModal
+        | InputMode::QueryHistoryPicker => Action::Paste(text),
         _ => Action::None,
     }
 }
@@ -128,6 +129,15 @@ mod tests {
             let result = handle_paste_event("public.users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
+        fn paste_event_in_query_history_picker_returns_paste_action() {
+            let state = make_state(InputMode::QueryHistoryPicker);
+
+            let result = handle_paste_event("users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "users"));
         }
 
         #[test]

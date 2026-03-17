@@ -127,6 +127,13 @@ pub fn reduce_navigation(
                     .insert_str(&clean);
                 Some(vec![])
             }
+            InputMode::QueryHistoryPicker => {
+                let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+                state.query_history_picker.filter_input.insert_str(&clean);
+                state.query_history_picker.selected = 0;
+                state.query_history_picker.scroll_offset = 0;
+                Some(vec![])
+            }
             _ => None,
         },
 
@@ -743,6 +750,39 @@ mod tests {
             );
 
             assert_eq!(state.ui.er_filter_input, "public.users");
+        }
+
+        #[test]
+        fn paste_in_query_history_picker_appends_to_filter() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
+            state.query_history_picker.selected = 3;
+
+            let effects = reduce_navigation(
+                &mut state,
+                &Action::Paste("users".to_string()),
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert!(effects.is_some());
+            assert_eq!(state.query_history_picker.filter_input.content(), "users");
+            assert_eq!(state.query_history_picker.selected, 0);
+        }
+
+        #[test]
+        fn paste_in_query_history_picker_strips_newlines() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
+
+            reduce_navigation(
+                &mut state,
+                &Action::Paste("us\ners\r\n".to_string()),
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.query_history_picker.filter_input.content(), "users");
         }
     }
 
