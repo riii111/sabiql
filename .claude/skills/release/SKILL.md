@@ -42,14 +42,14 @@ Use this skill when releasing a new version of sabiql.
    ### 🎯 User-Facing Changes
    > Features and fixes that affect how you use sabiql.
 
-   - **Feature A**: description
-   - **Fix B**: description
+   - feat(sab-XX): description by @author in #123
+   - fix: description by @author in #456
 
    ### 🔧 Internal Improvements
-   > Refactoring and tests -- no behavior change for end users.
+   > Refactoring and tests — no behavior change for end users.
 
-   - **Refactor C**: description
-   - **Test D**: description
+   - refactor(sab-XX): description by @author in #789
+   - test: description by @author in #012
    EOF
    )"
    ```
@@ -57,6 +57,8 @@ Use this skill when releasing a new version of sabiql.
    - Categorize commits into **User-Facing Changes** vs **Internal Improvements**
    - User-Facing: new features, behavior changes, bug fixes, dependency upgrades that affect UX
    - Internal: refactoring, test additions, CI/docs changes, rule/skill updates
+   - Each entry follows: `- <commit title without PR number> by @<author> in #<PR number>`
+   - Use `git log vPREV..vX.Y.Z --oneline` to get commit list, then look up PR numbers and authors
 
 6. **Verify release (すべて成功するまで監視する)**
 
