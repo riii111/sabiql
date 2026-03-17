@@ -8,6 +8,13 @@ use crate::domain::CommandTag;
 // Sized so that prompt + input + checkmark fits within the 80-col modal inner width (~62 cols).
 pub const HIGH_RISK_INPUT_VISIBLE_WIDTH: usize = 30;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SqlModalTab {
+    #[default]
+    Sql,
+    Plan,
+}
+
 #[derive(Debug, Clone)]
 pub struct FailedPrefetchEntry {
     pub failed_at: Instant,
@@ -83,6 +90,7 @@ pub struct SqlModalContext {
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
     pub yank_flash_until: Option<Instant>,
+    pub active_tab: SqlModalTab,
 }
 
 impl SqlModalContext {

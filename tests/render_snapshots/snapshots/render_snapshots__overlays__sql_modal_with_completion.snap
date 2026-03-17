@@ -8,8 +8,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
 │       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
+│       │ [SQL]  [Plan]                                                │       │
 │       │SELECT * FROM us█                                             │       │
-│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Normal
+⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

@@ -267,6 +267,7 @@ impl EffectRunner {
 
             e @ (Effect::ExecutePreview { .. }
             | Effect::ExecuteAdhoc { .. }
+            | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }) => {

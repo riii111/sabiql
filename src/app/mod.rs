@@ -17,6 +17,7 @@ pub(crate) mod effect_handlers;
 pub mod effect_runner;
 pub mod er_state;
 pub mod er_task;
+pub mod explain_context;
 pub mod focused_pane;
 pub mod input_mode;
 pub mod inspector_tab;

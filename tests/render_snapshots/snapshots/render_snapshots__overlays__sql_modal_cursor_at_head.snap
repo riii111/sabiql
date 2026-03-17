@@ -8,8 +8,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
+│       │ [SQL]  [Plan]                                                │       │
 │       │SELECT 1                                                      │       │
-│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Normal
+⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

@@ -23,9 +23,9 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
     let (badge_text, badge_style, status_text, status_style) = match state.sql_modal.status() {
         SqlModalStatus::Normal => (
             "[NORMAL]",
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::TEXT_DIM),
             "Ready".to_string(),
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::TEXT_DIM),
         ),
         SqlModalStatus::Editing => (
             "[INSERT]",
@@ -33,7 +33,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
                 .fg(Theme::TEXT_ACCENT)
                 .add_modifier(Modifier::BOLD),
             "Ready".to_string(),
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::TEXT_DIM),
         ),
         SqlModalStatus::Confirming(decision) => {
             let text = format!(

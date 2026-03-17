@@ -12,7 +12,7 @@ use crate::app::keybindings::{
     INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
     SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS, idx,
 };
-use crate::app::sql_modal_context::SqlModalStatus;
+use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 use crate::ui::primitives::atoms::spinner_char;
@@ -226,15 +226,29 @@ impl Footer {
                     state.sql_modal.status(),
                     SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
                 ) {
-                    vec![
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                        SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
-                    ]
+                    if state.sql_modal.active_tab == SqlModalTab::Plan {
+                        vec![
+                            ("^E", "Explain"),
+                            ("\u{2325}E", "Analyze"),
+                            ("\u{2191}\u{2193}", "Scroll"),
+                            ("Tab", "SQL"),
+                            ("Esc", "Close"),
+                        ]
+                    } else {
+                        vec![
+                            SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                            ("^E", "Explain"),
+                            SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
+                            SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                            ("Tab", "Tab"),
+                            SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        ]
+                    }
                 } else {
+                    // Editing mode
                     vec![
                         SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
+                        ("^E", "Explain"),
                         SQL_MODAL_KEYS[idx::sql_modal::MOVE].as_hint(),
                         SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
                     ]

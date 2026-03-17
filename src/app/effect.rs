@@ -63,6 +63,12 @@ pub enum Effect {
         query: String,
         read_only: bool,
     },
+    ExecuteExplain {
+        dsn: String,
+        query: String,
+        is_analyze: bool,
+        read_only: bool,
+    },
     ExecuteWrite {
         dsn: String,
         query: String,

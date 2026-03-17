@@ -60,7 +60,7 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         } else {
             vec![
                 Line::from(vec![
-                    Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
+                    Span::styled("\u{258F}", Style::default().fg(Theme::CURSOR_FG)),
                     Span::styled(placeholder, Style::default().fg(Theme::PLACEHOLDER_TEXT)),
                 ])
                 .style(current_line_style),
@@ -95,7 +95,7 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
     if !is_normal && content.ends_with('\n') && cursor_row == content.lines().count() {
         lines.push(
             Line::from(vec![Span::styled(
-                "\u{2588}",
+                "\u{258F}",
                 Style::default().fg(Theme::CURSOR_FG),
             )])
             .style(current_line_style),
