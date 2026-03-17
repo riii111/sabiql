@@ -94,38 +94,35 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::ResultScrollViewportMiddle => {
-            let visible = state.result_visible_rows();
-            let total = result_row_count(state);
-            let offset = state.result_interaction.scroll_offset;
-            let displayed = visible.min(total.saturating_sub(offset));
-            let target_row = offset + displayed / 2;
-            move_row_or_scroll(state, target_row, |s| {
-                // Scroll mode (no cursor): center viewport on middle of entire dataset
-                let t = result_row_count(s);
-                let v = s.result_visible_rows();
-                let ideal = t / 2;
-                let max_s = t.saturating_sub(v);
-                s.result_interaction.scroll_offset = ideal.saturating_sub(v / 2).min(max_s);
-            });
+            if state.result_interaction.selection().row().is_some() {
+                let visible = state.result_visible_rows();
+                let total = result_row_count(state);
+                let offset = state.result_interaction.scroll_offset;
+                let displayed = visible.min(total.saturating_sub(offset));
+                let target_row = offset + displayed / 2;
+                state.result_interaction.move_row(target_row);
+                ensure_row_visible(state);
+            }
             Some(vec![])
         }
         Action::ResultScrollViewportTop => {
-            let target = state.result_interaction.scroll_offset;
-            move_row_or_scroll(state, target, |s| {
-                s.result_interaction.scroll_offset = 0;
-            });
+            if state.result_interaction.selection().row().is_some() {
+                let target = state.result_interaction.scroll_offset;
+                state.result_interaction.move_row(target);
+                ensure_row_visible(state);
+            }
             Some(vec![])
         }
         Action::ResultScrollViewportBottom => {
-            let visible = state.result_visible_rows();
-            let total = result_row_count(state);
-            let offset = state.result_interaction.scroll_offset;
-            let displayed = visible.min(total.saturating_sub(offset));
-            let target = offset + displayed.saturating_sub(1);
-            move_row_or_scroll(state, target, |s| {
-                let max_scroll = result_max_scroll(s);
-                s.result_interaction.scroll_offset = max_scroll;
-            });
+            if state.result_interaction.selection().row().is_some() {
+                let visible = state.result_visible_rows();
+                let total = result_row_count(state);
+                let offset = state.result_interaction.scroll_offset;
+                let displayed = visible.min(total.saturating_sub(offset));
+                let target = offset + displayed.saturating_sub(1);
+                state.result_interaction.move_row(target);
+                ensure_row_visible(state);
+            }
             Some(vec![])
         }
         Action::ResultScrollHalfPageDown => {
@@ -326,14 +323,12 @@ mod tests {
         }
 
         #[test]
-        fn scroll_middle_centers_viewport() {
+        fn scroll_middle_is_noop_in_scroll_mode() {
             let mut state = state_with_result_rows(100, 25);
-            // visible = 20, scroll starts at 0
 
             reduce(&mut state, &Action::ResultScrollViewportMiddle);
 
-            // ideal = 50, v/2 = 10, offset = 40, max = 80 → 40
-            assert_eq!(state.result_interaction.scroll_offset, 40);
+            assert_eq!(state.result_interaction.scroll_offset, 0);
         }
 
         #[test]
