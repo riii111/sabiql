@@ -22,19 +22,35 @@ impl std::fmt::Display for Iso8601Timestamp {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QueryResultStatus {
+    Success,
+    Failed,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QueryHistoryEntry {
     pub query: String,
     pub executed_at: Iso8601Timestamp,
     pub connection_id: ConnectionId,
+    pub result_status: QueryResultStatus,
+    pub affected_rows: Option<u64>,
 }
 
 impl QueryHistoryEntry {
-    pub fn new(query: String, executed_at: String, connection_id: ConnectionId) -> Self {
+    pub fn new(
+        query: String,
+        executed_at: String,
+        connection_id: ConnectionId,
+        result_status: QueryResultStatus,
+        affected_rows: Option<u64>,
+    ) -> Self {
         Self {
             query,
             executed_at: Iso8601Timestamp::new(executed_at),
             connection_id,
+            result_status,
+            affected_rows,
         }
     }
 }
@@ -49,6 +65,8 @@ mod tests {
             "SELECT * FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-uuid"),
+            QueryResultStatus::Success,
+            None,
         );
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -58,11 +76,31 @@ mod tests {
     }
 
     #[test]
+    fn serde_round_trip_with_affected_rows() {
+        let entry = QueryHistoryEntry::new(
+            "UPDATE users SET name = 'x'".to_string(),
+            "2026-03-13T12:00:00Z".to_string(),
+            ConnectionId::from_string("test-uuid"),
+            QueryResultStatus::Success,
+            Some(5),
+        );
+
+        let json = serde_json::to_string(&entry).unwrap();
+        let deserialized: QueryHistoryEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(entry, deserialized);
+        assert_eq!(deserialized.result_status, QueryResultStatus::Success);
+        assert_eq!(deserialized.affected_rows, Some(5));
+    }
+
+    #[test]
     fn serde_json_format() {
         let entry = QueryHistoryEntry::new(
             "SELECT 1".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("abc-123"),
+            QueryResultStatus::Success,
+            None,
         );
 
         let json = serde_json::to_string(&entry).unwrap();
@@ -70,5 +108,6 @@ mod tests {
         assert!(json.contains("\"query\":\"SELECT 1\""));
         assert!(json.contains("\"executed_at\":\"2026-03-13T12:00:00Z\""));
         assert!(json.contains("\"connection_id\":\"abc-123\""));
+        assert!(json.contains("\"result_status\":\"Success\""));
     }
 }
