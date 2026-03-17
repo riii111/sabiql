@@ -6,7 +6,7 @@ use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_o
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state
         .query
-        .current_result()
+        .visible_result()
         .map(|r| r.rows.len())
         .unwrap_or(0)
 }
@@ -14,7 +14,7 @@ pub(super) fn result_row_count(state: &AppState) -> usize {
 pub(super) fn result_col_count(state: &AppState) -> usize {
     state
         .query
-        .current_result()
+        .visible_result()
         .map(|r| r.columns.len())
         .unwrap_or(0)
 }
@@ -131,12 +131,12 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 return Some(vec![]);
             }
             let delta = (visible / 2).max(1);
-            if state.result_interaction.selection().row().is_some() {
+            if let Some(row) = state.result_interaction.selection().row() {
                 let max_row = result_row_count(state).saturating_sub(1);
                 let max_scroll = result_max_scroll(state);
-                let new_row =
-                    (state.result_interaction.selection().row().unwrap() + delta).min(max_row);
-                state.result_interaction.move_row(new_row);
+                state
+                    .result_interaction
+                    .move_row((row + delta).min(max_row));
                 state.result_interaction.scroll_offset =
                     (state.result_interaction.scroll_offset + delta).min(max_scroll);
             } else {
@@ -152,14 +152,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 return Some(vec![]);
             }
             let delta = (visible / 2).max(1);
-            if state.result_interaction.selection().row().is_some() {
-                let new_row = state
-                    .result_interaction
-                    .selection()
-                    .row()
-                    .unwrap()
-                    .saturating_sub(delta);
-                state.result_interaction.move_row(new_row);
+            if let Some(row) = state.result_interaction.selection().row() {
+                state.result_interaction.move_row(row.saturating_sub(delta));
                 state.result_interaction.scroll_offset =
                     state.result_interaction.scroll_offset.saturating_sub(delta);
             } else {
@@ -174,12 +168,12 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 return Some(vec![]);
             }
             let delta = visible.max(1);
-            if state.result_interaction.selection().row().is_some() {
+            if let Some(row) = state.result_interaction.selection().row() {
                 let max_row = result_row_count(state).saturating_sub(1);
                 let max_scroll = result_max_scroll(state);
-                let new_row =
-                    (state.result_interaction.selection().row().unwrap() + delta).min(max_row);
-                state.result_interaction.move_row(new_row);
+                state
+                    .result_interaction
+                    .move_row((row + delta).min(max_row));
                 state.result_interaction.scroll_offset =
                     (state.result_interaction.scroll_offset + delta).min(max_scroll);
             } else {
@@ -195,14 +189,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 return Some(vec![]);
             }
             let delta = visible.max(1);
-            if state.result_interaction.selection().row().is_some() {
-                let new_row = state
-                    .result_interaction
-                    .selection()
-                    .row()
-                    .unwrap()
-                    .saturating_sub(delta);
-                state.result_interaction.move_row(new_row);
+            if let Some(row) = state.result_interaction.selection().row() {
+                state.result_interaction.move_row(row.saturating_sub(delta));
                 state.result_interaction.scroll_offset =
                     state.result_interaction.scroll_offset.saturating_sub(delta);
             } else {
@@ -619,6 +607,70 @@ mod tests {
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset, 80);
             assert!(!state.ui.pending_z);
+        }
+    }
+
+    mod history_mode_scroll {
+        use super::*;
+
+        fn make_result(
+            rows: usize,
+            source: crate::domain::QuerySource,
+        ) -> Arc<crate::domain::QueryResult> {
+            let result_rows: Vec<Vec<String>> = (0..rows).map(|i| vec![format!("{}", i)]).collect();
+            let row_count = result_rows.len();
+            Arc::new(crate::domain::QueryResult {
+                query: String::new(),
+                columns: vec!["id".to_string()],
+                rows: result_rows,
+                row_count,
+                execution_time_ms: 1,
+                executed_at: std::time::Instant::now(),
+                source,
+                error: None,
+                command_tag: None,
+            })
+        }
+
+        #[test]
+        fn page_scroll_uses_history_entry_row_count_not_live_preview() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.result_pane_height = 25; // visible = 20, half = 10
+            // live preview: 100 rows
+            state
+                .query
+                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
+            // history entry: 5 rows
+            state
+                .query
+                .result_history
+                .push(make_result(5, crate::domain::QuerySource::Adhoc));
+            state.query.enter_history(0);
+
+            state.result_interaction.enter_row(2);
+            state.result_interaction.scroll_offset = 0;
+
+            reduce(&mut state, &Action::ResultScrollHalfPageDown);
+
+            // Should clamp to history entry max_row=4, not live preview max_row=99
+            assert_eq!(state.result_interaction.selection().row(), Some(4));
+            // max_scroll = 5 - 20 = 0 (history has fewer rows than viewport)
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+        }
+
+        #[test]
+        fn row_count_reflects_visible_result_in_history_mode() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
+            state
+                .query
+                .result_history
+                .push(make_result(7, crate::domain::QuerySource::Adhoc));
+            state.query.enter_history(0);
+
+            assert_eq!(result_row_count(&state), 7);
         }
     }
 }
