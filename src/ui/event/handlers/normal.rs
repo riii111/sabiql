@@ -219,7 +219,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportTop
             } else if inspector_navigation {
-                Action::InspectorScrollTop
+                Action::None
             } else {
                 Action::SelectViewportTop
             }
@@ -228,7 +228,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportMiddle
             } else if inspector_navigation {
-                Action::InspectorScrollMiddle
+                Action::None
             } else {
                 Action::SelectViewportMiddle
             }
@@ -237,7 +237,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if result_navigation {
                 Action::ResultScrollViewportBottom
             } else if inspector_navigation {
-                Action::InspectorScrollBottom
+                Action::None
             } else {
                 Action::SelectViewportBottom
             }
@@ -961,31 +961,16 @@ mod tests {
         assert!(matches!(result, Action::InspectorScrollBottom));
     }
 
-    #[test]
-    fn h_key_returns_inspector_scroll_top_when_inspector_focused() {
+    #[rstest]
+    #[case(Key::Char('H'))]
+    #[case(Key::Char('M'))]
+    #[case(Key::Char('L'))]
+    fn hml_noop_when_inspector_focused(#[case] key: Key) {
         let state = inspector_focused_state();
 
-        let result = handle_normal_mode(combo(Key::Char('H')), &state);
+        let result = handle_normal_mode(combo(key), &state);
 
-        assert!(matches!(result, Action::InspectorScrollTop));
-    }
-
-    #[test]
-    fn m_key_returns_inspector_scroll_middle_when_inspector_focused() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('M')), &state);
-
-        assert!(matches!(result, Action::InspectorScrollMiddle));
-    }
-
-    #[test]
-    fn l_key_returns_inspector_scroll_bottom_when_inspector_focused() {
-        let state = inspector_focused_state();
-
-        let result = handle_normal_mode(combo(Key::Char('L')), &state);
-
-        assert!(matches!(result, Action::InspectorScrollBottom));
+        assert!(matches!(result, Action::None));
     }
 
     #[test]

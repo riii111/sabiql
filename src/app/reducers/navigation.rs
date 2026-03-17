@@ -379,11 +379,6 @@ pub fn reduce_navigation(
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
-        Action::InspectorScrollMiddle => {
-            let max = inspector_max_scroll(state, services);
-            state.ui.inspector_scroll_offset = max / 2;
-            Some(vec![])
-        }
         Action::InspectorScrollHalfPageDown => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),

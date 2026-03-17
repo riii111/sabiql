@@ -228,7 +228,6 @@ pub enum Action {
     InspectorScrollDown,
     InspectorScrollTop,
     InspectorScrollBottom,
-    InspectorScrollMiddle,
     InspectorScrollHalfPageDown,
     InspectorScrollHalfPageUp,
     InspectorScrollFullPageDown,
