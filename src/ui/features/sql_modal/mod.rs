@@ -190,17 +190,19 @@ impl SqlModal {
             );
         }
 
-        let base_style = if yank_flash_active {
-            Style::default()
+        if yank_flash_active {
+            let flash_style = Style::default()
                 .fg(Theme::YANK_FLASH_FG)
-                .bg(Theme::YANK_FLASH_BG)
-        } else {
-            Style::default()
-        };
+                .bg(Theme::YANK_FLASH_BG);
+            for line in &mut lines {
+                *line = std::mem::take(line).style(flash_style);
+            }
+        }
+
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .style(base_style),
+                .style(Style::default()),
             area,
         );
     }
@@ -285,15 +287,17 @@ impl SqlModal {
             SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
         };
 
-        let badge_width = badge_text.len() as u16;
+        let badge_display = format!(" {}", badge_text);
+        let badge_width = badge_display.len() as u16;
         let [badge_area, status_area] =
             Layout::horizontal([Constraint::Length(badge_width + 1), Constraint::Min(1)])
                 .areas(area);
 
-        let badge_line = Line::from(Span::styled(badge_text, badge_style));
+        let badge_line = Line::from(Span::styled(badge_display, badge_style));
         frame.render_widget(Paragraph::new(badge_line), badge_area);
 
-        let status_line = Line::from(vec![Span::styled(status_text, status_style)]);
+        let status_display = format!("{} ", status_text);
+        let status_line = Line::from(vec![Span::styled(status_display, status_style)]);
         frame.render_widget(
             Paragraph::new(status_line).alignment(ratatui::layout::Alignment::Right),
             status_area,

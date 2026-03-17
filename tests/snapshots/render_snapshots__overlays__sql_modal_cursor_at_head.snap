@@ -19,7 +19,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │[INSERT]                                                 Ready│       │
+│       │ [INSERT]                                               Ready │       │
 │       ╰ ⌥Enter: Run │ Ctrl+L: Clear │ Esc: Normal ───────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
