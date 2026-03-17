@@ -10,7 +10,6 @@ use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 
-/// Count CSV fields in a single line, respecting quoted commas.
 fn csv_field_count(line: &str) -> usize {
     let mut count = 1;
     let mut in_quotes = false;
@@ -24,13 +23,8 @@ fn csv_field_count(line: &str) -> usize {
     count
 }
 
-/// Extract the last CSV result set from psql `--csv` output.
-///
-/// When multiple SELECT statements are executed, psql concatenates each result
-/// set (header + rows) in the output. This function finds the last result set
-/// by detecting boundaries where:
-/// - The CSV field count changes (different column schemas), or
-/// - A line exactly matches the current header (repeated identical schema).
+// psql --csv concatenates multiple result sets without separators;
+// keep only the last one.
 fn extract_last_csv_block(stdout: &str) -> &str {
     let lines: Vec<&str> = stdout.lines().collect();
     if lines.len() <= 2 {
@@ -57,7 +51,6 @@ fn extract_last_csv_block(stdout: &str) -> &str {
         return stdout;
     }
 
-    // Find byte offset of the last header line
     let byte_offset: usize = stdout
         .lines()
         .take(last_header_idx)
@@ -415,18 +408,18 @@ mod tests {
         }
 
         #[test]
-        fn single_row_no_split() {
+        fn single_result_set_returns_unchanged() {
             let input = "col\n42";
             assert_eq!(extract_last_csv_block(input), input);
         }
 
         #[test]
-        fn empty_input() {
+        fn empty_input_returns_empty() {
             assert_eq!(extract_last_csv_block(""), "");
         }
 
         #[test]
-        fn header_only_no_split() {
+        fn header_only_returns_unchanged() {
             assert_eq!(extract_last_csv_block("col"), "col");
         }
     }
