@@ -1534,8 +1534,6 @@ mod tests {
             );
         }
 
-        // --- Context builders (7 kinds) ---
-
         fn explorer_ctx() -> AppState {
             browse_state()
         }
@@ -1586,8 +1584,6 @@ mod tests {
             focus_mode_state()
         }
 
-        // --- 1. vertical_jk (14 cases) ---
-
         #[rstest]
         #[case("explorer", Key::Char('j'), Action::SelectNext)]
         #[case("explorer", Key::Char('k'), Action::SelectPrevious)]
@@ -1619,8 +1615,6 @@ mod tests {
             assert_action(actual, expected, ctx_name, &key_label);
         }
 
-        // --- 2. ends_gG (14 cases) ---
-
         #[rstest]
         #[case("explorer", Key::Char('g'), Action::SelectFirst)]
         #[case("explorer", Key::Char('G'), Action::SelectLast)]
@@ -1651,8 +1645,6 @@ mod tests {
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
         }
-
-        // --- 3. viewport_hml (21 cases) ---
 
         #[rstest]
         #[case("explorer", Key::Char('H'), Action::SelectViewportTop)]
@@ -1708,8 +1700,6 @@ mod tests {
             assert_action(actual, expected, ctx_name, &key_label);
         }
 
-        // --- 4. scroll_to_cursor_zztb (21 cases) ---
-
         #[rstest]
         #[case("explorer", Key::Char('z'), Action::ScrollCursorCenter)]
         #[case("explorer", Key::Char('t'), Action::ScrollCursorTop)]
@@ -1753,8 +1743,6 @@ mod tests {
             assert_action(actual, expected, ctx_name, &key_label);
         }
 
-        // --- 5. z_prefix_returns_pending_z (7 cases) ---
-
         #[rstest]
         #[case("explorer", explorer_ctx())]
         #[case("result_scroll", result_scroll_ctx())]
@@ -1767,8 +1755,6 @@ mod tests {
             let actual = handle_normal_mode(combo(Key::Char('z')), &state);
             assert_action(actual, Action::PendingZ, ctx_name, "z");
         }
-
-        // --- Supplemental: history_pane_edges ---
 
         mod history_pane_edges {
             use super::*;
@@ -1846,8 +1832,6 @@ mod tests {
                 );
             }
         }
-
-        // --- Supplemental: history_whitelist_asymmetry ---
 
         mod history_whitelist_asymmetry {
             use super::*;
