@@ -89,8 +89,8 @@ mod tests {
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
 
-            // q in SqlModal (Normal mode, the default) should close modal
-            let result = handle_key_event(combo(Key::Char('q')), &state);
+            // Esc in SqlModal (Normal mode, the default) should close modal
+            let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
         }

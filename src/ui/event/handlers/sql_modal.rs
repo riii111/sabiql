@@ -35,7 +35,7 @@ pub fn handle_sql_modal_keys(
             Key::Right => Action::SqlModalMoveCursor(CursorMove::Right),
             Key::Home => Action::SqlModalMoveCursor(CursorMove::Home),
             Key::End => Action::SqlModalMoveCursor(CursorMove::End),
-            Key::Char('q') if plain => Action::CloseSqlModal,
+            Key::Esc if plain => Action::CloseSqlModal,
             _ => Action::None,
         };
     }
@@ -332,7 +332,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('y'), Expected::SqlModalYank)]
     #[case(Key::Enter, Expected::SqlModalEnterInsert)]
-    #[case(Key::Char('q'), Expected::CloseSqlModal)]
+    #[case(Key::Esc, Expected::CloseSqlModal)]
     #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
     #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
     #[case(Key::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
@@ -373,7 +373,7 @@ mod tests {
     fn success_error_share_normal_keybindings(#[case] status: SqlModalStatus) {
         let yank = handle_sql_modal_keys(combo(Key::Char('y')), false, &status);
         let enter = handle_sql_modal_keys(combo(Key::Enter), false, &status);
-        let close = handle_sql_modal_keys(combo(Key::Char('q')), false, &status);
+        let close = handle_sql_modal_keys(combo(Key::Esc), false, &status);
 
         assert_action(yank, Expected::SqlModalYank);
         assert_action(enter, Expected::SqlModalEnterInsert);

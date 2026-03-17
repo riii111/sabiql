@@ -20,8 +20,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ [NORMAL]                             ✓ table created (0.04s) │       │
-│       ╰ ⌥Enter: Run │ y: Yank │ Enter: Insert │ q: Close ────────────╯       │
+│       ╰ ⌥Enter: Run │ y: Yank │ Ctrl+O: History │ Enter: Insert │ Esc╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  y:Yank  Enter:Insert  q:Close
+⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close

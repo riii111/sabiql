@@ -45,12 +45,12 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
     },
     // idx 4: CLOSE
     KeyBinding {
-        key_short: "q",
-        key: "q",
+        key_short: "Esc",
+        key: "Esc",
         desc_short: "Close",
         description: "Close editor",
         action: Action::CloseSqlModal,
-        combos: &[KeyCombo::plain(Key::Char('q'))],
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
     // idx 5: CLEAR
     KeyBinding {
