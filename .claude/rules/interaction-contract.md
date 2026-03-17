@@ -40,7 +40,7 @@ crossterm::KeyEvent
 - `ui/event/key_translator.rs`: UI adapter — `crossterm::KeyEvent` → app 層の `KeyCombo` に変換
 - `ui/event/handlers/`: モードディスパッチ — `handlers/mod.rs` でディスパッチし、各モード固有ロジックは `normal.rs`, `connections.rs`, `sql_modal.rs`, `editors.rs`, `pickers.rs`, `overlays.rs` に分割
 
-**Char フォールバックルール**: フリーテキスト入力のあるモード（TablePicker, ErTablePicker, CommandLine, CellEdit）は `keymap::resolve()` を先に試し、その後 `Char(c)` にフォールスルーする。これらのモードにコマンドキーとして `KeyCombo::plain(Key::Char(x))` を追加してはならない。非 Char キー（Up/Down/Esc/Enter）を使うこと。
+**Char フォールバックルール**: フリーテキスト入力のあるモード（TablePicker, ErTablePicker, CommandLine, CellEdit, QueryHistoryPicker）は `keymap::resolve()` を先に試し、その後 `Char(c)` にフォールスルーする。これらのモードにコマンドキーとして `KeyCombo::plain(Key::Char(x))` を追加してはならない。非 Char キー（Up/Down/Esc/Enter）を使うこと。
 
 ## 新規キーバインド追加チェックリスト
 

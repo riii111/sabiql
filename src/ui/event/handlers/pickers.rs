@@ -116,6 +116,32 @@ mod tests {
         }
     }
 
+    mod query_history_picker {
+        use super::*;
+
+        #[rstest]
+        #[case(Key::Enter, Action::QueryHistoryConfirmSelection)]
+        #[case(Key::Up, Action::QueryHistorySelectPrevious)]
+        #[case(Key::Down, Action::QueryHistorySelectNext)]
+        #[case(Key::Backspace, Action::QueryHistoryFilterBackspace)]
+        #[case(Key::Esc, Action::CloseQueryHistoryPicker)]
+        fn picker_keys(#[case] key: Key, #[case] expected: Action) {
+            let result = handle_query_history_picker_keys(combo(key));
+
+            assert_eq!(
+                std::mem::discriminant(&result),
+                std::mem::discriminant(&expected)
+            );
+        }
+
+        #[test]
+        fn char_falls_through_to_filter_input() {
+            let result = handle_query_history_picker_keys(combo(Key::Char('a')));
+
+            assert!(matches!(result, Action::QueryHistoryFilterInput('a')));
+        }
+    }
+
     mod er_table_picker {
         use super::*;
 

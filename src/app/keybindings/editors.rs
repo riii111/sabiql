@@ -3,11 +3,10 @@ use super::types::{Key, KeyCombo};
 use crate::app::action::Action;
 
 // =============================================================================
-// SQL Modal
+// SQL Modal (Normal mode — default when opened)
 // =============================================================================
 
-pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
-    // idx 0: SQL_RUN
+pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "⌥Enter",
         key: "Alt+Enter",
@@ -16,16 +15,22 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalSubmit,
         combos: &[KeyCombo::alt(Key::Enter)],
     },
-    // idx 1: ESC_CLOSE
     KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Close",
-        description: "Close editor",
-        action: Action::CloseSqlModal,
-        combos: &[KeyCombo::plain(Key::Esc)],
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy query to clipboard",
+        action: Action::SqlModalYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
     },
-    // idx 2: SQL_MOVE
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Insert",
+        description: "Enter Insert mode",
+        action: Action::SqlModalEnterInsert,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
     KeyBinding {
         key_short: "↑↓←→",
         key: "↑↓←→",
@@ -34,7 +39,6 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 3: HOME_END
     KeyBinding {
         key_short: "Home/End",
         key: "Home/End",
@@ -43,25 +47,14 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 4: TAB
     KeyBinding {
-        key_short: "Tab",
-        key: "Tab",
-        desc_short: "Tab/Complete",
-        description: "Insert tab / Accept completion",
-        action: Action::None,
-        combos: &[],
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close editor",
+        action: Action::CloseSqlModal,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // idx 5: COMPLETION_TRIGGER
-    KeyBinding {
-        key_short: "^Space",
-        key: "Ctrl+Space",
-        desc_short: "Complete",
-        description: "Trigger completion",
-        action: Action::CompletionTrigger,
-        combos: &[KeyCombo::ctrl(Key::Char(' '))],
-    },
-    // idx 6: CLEAR
     KeyBinding {
         key_short: "^L",
         key: "Ctrl+L",
@@ -70,7 +63,77 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalClear,
         combos: &[KeyCombo::ctrl(Key::Char('l'))],
     },
-    // idx 7: QUERY_HISTORY
+    KeyBinding {
+        key_short: "^O",
+        key: "Ctrl+O",
+        desc_short: "History",
+        description: "Open Query History",
+        action: Action::OpenQueryHistoryPicker,
+        combos: &[KeyCombo::ctrl(Key::Char('o'))],
+    },
+];
+
+// =============================================================================
+// SQL Modal (Insert mode)
+// =============================================================================
+
+pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "⌥Enter",
+        key: "Alt+Enter",
+        desc_short: "Run",
+        description: "Execute query",
+        action: Action::SqlModalSubmit,
+        combos: &[KeyCombo::alt(Key::Enter)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Normal",
+        description: "Return to Normal mode",
+        action: Action::SqlModalEnterNormal,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
+    KeyBinding {
+        key_short: "↑↓←→",
+        key: "↑↓←→",
+        desc_short: "Move",
+        description: "Move cursor",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Home/End",
+        key: "Home/End",
+        desc_short: "Line",
+        description: "Line start/end",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Tab",
+        key: "Tab",
+        desc_short: "Tab/Complete",
+        description: "Insert tab / Accept completion",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "^Space",
+        key: "Ctrl+Space",
+        desc_short: "Complete",
+        description: "Trigger completion",
+        action: Action::CompletionTrigger,
+        combos: &[KeyCombo::ctrl(Key::Char(' '))],
+    },
+    KeyBinding {
+        key_short: "^L",
+        key: "Ctrl+L",
+        desc_short: "Clear",
+        description: "Clear editor",
+        action: Action::SqlModalClear,
+        combos: &[KeyCombo::ctrl(Key::Char('l'))],
+    },
     KeyBinding {
         key_short: "^O",
         key: "Ctrl+O",
@@ -83,7 +146,6 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
 
 // Keys active only while SqlModalStatus::Confirming — mutually exclusive with SQL_MODAL_KEYS.
 pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
-    // idx 0: CONFIRM_EXECUTE
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -92,7 +154,6 @@ pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalConfirmExecute,
         combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: CANCEL_CONFIRM
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -108,7 +169,6 @@ pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
-    // idx 0
     KeyBinding {
         key_short: ":quit",
         key: ":quit",
@@ -117,7 +177,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[], // command-line commands, not key combos
     },
-    // idx 1
     KeyBinding {
         key_short: ":help",
         key: ":help",
@@ -126,7 +185,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::OpenHelp,
         combos: &[],
     },
-    // idx 2
     KeyBinding {
         key_short: ":sql",
         key: ":sql",
@@ -135,7 +193,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::OpenSqlModal,
         combos: &[],
     },
-    // idx 3
     KeyBinding {
         key_short: ":erd",
         key: ":erd",
@@ -144,7 +201,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::OpenErTablePicker,
         combos: &[],
     },
-    // idx 4: SUBMIT (executable, not displayed)
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -153,7 +209,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         action: Action::CommandLineSubmit,
         combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 5: EXIT (executable, not displayed)
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -169,7 +224,6 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
-    // idx 0: WRITE
     KeyBinding {
         key_short: ":w",
         key: ":w",
@@ -178,7 +232,6 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::SubmitCellEditWrite,
         combos: &[], // :w is a command sequence, not a single combo
     },
-    // idx 1: TYPE (display-only)
     KeyBinding {
         key_short: "type",
         key: "type",
@@ -187,7 +240,6 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: MOVE (display-only)
     KeyBinding {
         key_short: "←→",
         key: "←→",
@@ -196,7 +248,6 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 3: HOME_END (display-only)
     KeyBinding {
         key_short: "Home/End",
         key: "Home/End",
@@ -205,7 +256,6 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 4: COMMAND
     KeyBinding {
         key_short: ":",
         key: ":",
@@ -214,7 +264,6 @@ pub const CELL_EDIT_KEYS: &[KeyBinding] = &[
         action: Action::EnterCommandLine,
         combos: &[KeyCombo::plain(Key::Char(':'))],
     },
-    // idx 5: ESC_CANCEL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",

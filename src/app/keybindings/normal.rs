@@ -7,7 +7,6 @@ use crate::app::action::Action;
 // =============================================================================
 
 pub const GLOBAL_KEYS: &[KeyBinding] = &[
-    // idx 0: QUIT
     KeyBinding {
         key_short: "q",
         key: "q",
@@ -16,7 +15,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::Quit,
         combos: &[KeyCombo::plain(Key::Char('q'))],
     },
-    // idx 1: HELP
     KeyBinding {
         key_short: "?",
         key: "?",
@@ -25,7 +23,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenHelp,
         combos: &[KeyCombo::plain(Key::Char('?'))],
     },
-    // idx 2: TABLE_PICKER
     KeyBinding {
         key_short: "^P",
         key: "Ctrl+P",
@@ -34,7 +31,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenTablePicker,
         combos: &[KeyCombo::ctrl(Key::Char('p'))],
     },
-    // idx 3: PALETTE
     KeyBinding {
         key_short: "^K",
         key: "Ctrl+K",
@@ -43,7 +39,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenCommandPalette,
         combos: &[KeyCombo::ctrl(Key::Char('k'))],
     },
-    // idx 4: COMMAND_LINE
     KeyBinding {
         key_short: ":",
         key: ":",
@@ -52,7 +47,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::EnterCommandLine,
         combos: &[KeyCombo::plain(Key::Char(':'))],
     },
-    // idx 5: FOCUS / idx 6: EXIT_FOCUS — intentionally duplicate combo ('f')
     // for the same Action::ToggleFocus. Two entries exist because the footer
     // shows different labels depending on whether focus mode is active.
     KeyBinding {
@@ -71,7 +65,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleFocus,
         combos: &[KeyCombo::plain(Key::Char('f'))],
     },
-    // idx 7: PANE_SWITCH
     KeyBinding {
         key_short: "1/2/3",
         key: "1/2/3",
@@ -80,7 +73,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 8: INSPECTOR_TABS
     KeyBinding {
         key_short: "Tab/⇧Tab",
         key: "Tab/⇧Tab",
@@ -89,7 +81,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 9: RELOAD
     KeyBinding {
         key_short: "r",
         key: "r",
@@ -98,7 +89,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ReloadMetadata,
         combos: &[KeyCombo::plain(Key::Char('r'))],
     },
-    // idx 10: SQL
     KeyBinding {
         key_short: "s",
         key: "s",
@@ -107,7 +97,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenSqlModal,
         combos: &[KeyCombo::plain(Key::Char('s'))],
     },
-    // idx 11: ER_DIAGRAM
     KeyBinding {
         key_short: "e",
         key: "e",
@@ -116,7 +105,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenErTablePicker,
         combos: &[KeyCombo::plain(Key::Char('e'))],
     },
-    // idx 12: CONNECTIONS
     KeyBinding {
         key_short: "c",
         key: "c",
@@ -125,7 +113,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::OpenConnectionSelector,
         combos: &[KeyCombo::plain(Key::Char('c'))],
     },
-    // idx 13: CSV_EXPORT
     KeyBinding {
         key_short: "^E",
         key: "Ctrl+E",
@@ -134,7 +121,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::RequestCsvExport,
         combos: &[KeyCombo::ctrl(Key::Char('e'))],
     },
-    // idx 14: READ_ONLY / idx 15: EXIT_READ_ONLY — intentionally duplicate combo (Ctrl+R)
     // for the same Action::ToggleReadOnly. Two entries exist because the footer
     // shows different labels depending on whether read-only mode is active.
     KeyBinding {
@@ -153,7 +139,6 @@ pub const GLOBAL_KEYS: &[KeyBinding] = &[
         action: Action::ToggleReadOnly,
         combos: &[KeyCombo::ctrl(Key::Char('r'))],
     },
-    // idx 16: QUERY_HISTORY
     KeyBinding {
         key_short: "^O",
         key: "Ctrl+O",
@@ -272,7 +257,6 @@ pub const NAVIGATION_KEYS: &[KeyBinding] = &[
 ];
 
 pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
-    // idx 0: SCROLL
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -281,7 +265,6 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 1: SCROLL_SHORT (same as SCROLL for now)
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -290,7 +273,6 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: TOP_BOTTOM
     KeyBinding {
         key_short: "g/G H/M/L",
         key: "g / G / H / M / L",
@@ -299,7 +281,6 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 3: H_SCROLL
     KeyBinding {
         key_short: "h/l / ←→",
         key: "h / l / ← / →",
@@ -308,7 +289,6 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 4: PAGE_NAV
     KeyBinding {
         key_short: "]/[",
         key: "] / [",
@@ -320,7 +300,6 @@ pub const FOOTER_NAV_KEYS: &[KeyBinding] = &[
 ];
 
 pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
-    // idx 0: ENTER_DEEPEN
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -329,7 +308,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultEnterRowActive,
         combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: YANK
     KeyBinding {
         key_short: "y",
         key: "y",
@@ -338,7 +316,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultCellYank,
         combos: &[KeyCombo::plain(Key::Char('y'))],
     },
-    // idx 2: STAGE_DELETE
     KeyBinding {
         key_short: "dd",
         key: "d, d",
@@ -347,7 +324,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::StageRowForDelete,
         combos: &[], // dd is a two-key sequence, not a single combo
     },
-    // idx 3: UNSTAGE_DELETE
     KeyBinding {
         key_short: "u",
         key: "u",
@@ -356,7 +332,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::UnstageLastStagedRow,
         combos: &[KeyCombo::plain(Key::Char('u'))],
     },
-    // idx 4: CELL_NAV (display-only)
     KeyBinding {
         key_short: "h/l",
         key: "h / l",
@@ -365,7 +340,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 5: ROW_NAV (display-only)
     KeyBinding {
         key_short: "j/k",
         key: "j / k",
@@ -374,7 +348,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 6: TOP_BOTTOM (display-only)
     KeyBinding {
         key_short: "g/G H/M/L",
         key: "g / G / H / M / L",
@@ -383,7 +356,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 7: ESC_BACK
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -392,7 +364,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultExitToScroll,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // idx 8: EDIT
     KeyBinding {
         key_short: "i",
         key: "i",
@@ -401,7 +372,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultEnterCellEdit,
         combos: &[KeyCombo::plain(Key::Char('i'))],
     },
-    // idx 9: DRAFT_DISCARD
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -410,7 +380,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
         action: Action::ResultDiscardCellEdit,
         combos: &[KeyCombo::plain(Key::Esc)],
     },
-    // idx 10: ROW_YANK
     KeyBinding {
         key_short: "yy",
         key: "y, y",
@@ -422,7 +391,6 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
 ];
 
 pub const HISTORY_KEYS: &[KeyBinding] = &[
-    // idx 0: OPEN
     KeyBinding {
         key_short: "^H",
         key: "Ctrl+H",
@@ -431,7 +399,6 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
         action: Action::OpenResultHistory,
         combos: &[KeyCombo::ctrl(Key::Char('h'))],
     },
-    // idx 1: NAV (display-only)
     KeyBinding {
         key_short: "]/[",
         key: "] / [",
@@ -440,7 +407,6 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: EXIT (display-only)
     KeyBinding {
         key_short: "^H",
         key: "Ctrl+H",
@@ -451,14 +417,11 @@ pub const HISTORY_KEYS: &[KeyBinding] = &[
     },
 ];
 
-pub const INSPECTOR_DDL_KEYS: &[KeyBinding] = &[
-    // idx 0: YANK
-    KeyBinding {
-        key_short: "y",
-        key: "y",
-        desc_short: "Yank",
-        description: "Copy DDL to clipboard",
-        action: Action::DdlYank,
-        combos: &[KeyCombo::plain(Key::Char('y'))],
-    },
-];
+pub const INSPECTOR_DDL_KEYS: &[KeyBinding] = &[KeyBinding {
+    key_short: "y",
+    key: "y",
+    desc_short: "Yank",
+    description: "Copy DDL to clipboard",
+    action: Action::DdlYank,
+    combos: &[KeyCombo::plain(Key::Char('y'))],
+}];

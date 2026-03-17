@@ -25,6 +25,7 @@ pub struct AdhocSuccessSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SqlModalStatus {
     #[default]
+    Normal,
     Editing,
     Confirming(AdhocRiskDecision),
     // HIGH risk confirmation requiring the user to type the target table name.
@@ -81,6 +82,7 @@ pub struct SqlModalContext {
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
+    pub yank_flash_until: Option<Instant>,
 }
 
 impl SqlModalContext {
@@ -171,7 +173,7 @@ mod tests {
 
         assert!(ctx.content.is_empty());
         assert_eq!(ctx.cursor, 0);
-        assert_eq!(ctx.status, SqlModalStatus::Editing);
+        assert_eq!(ctx.status, SqlModalStatus::Normal);
         assert!(!ctx.completion.visible);
         assert!(!ctx.is_prefetch_started());
     }

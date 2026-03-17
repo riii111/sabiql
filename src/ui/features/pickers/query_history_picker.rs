@@ -96,15 +96,17 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
+        let border_footer = format!(
+            " {} entries \u{2502} type to filter \u{2502} Enter Select ",
+            grouped_count,
+        );
+
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Max(desired_height),
             " Query History ",
-            &format!(
-                " {} entries \u{2502} \u{2191}\u{2193} Navigate \u{2502} Enter Select ",
-                grouped_count,
-            ),
+            &border_footer,
         );
 
         let preview_h = compute_preview_height(inner.height);
@@ -125,16 +127,23 @@ impl QueryHistoryPicker {
         };
         let (filter_area, list_area, preview_area) = areas;
 
-        let filter_line = Line::from(vec![
-            Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(filter_content),
-            Span::styled(
-                "\u{2588}",
-                Style::default()
-                    .fg(Theme::CURSOR_FG)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ]);
+        let filter_line = if filter_content.is_empty() {
+            Line::from(Span::styled(
+                "  type to filter",
+                Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            ))
+        } else {
+            Line::from(vec![
+                Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
+                Span::raw(filter_content),
+                Span::styled(
+                    "\u{2588}",
+                    Style::default()
+                        .fg(Theme::CURSOR_FG)
+                        .add_modifier(Modifier::SLOW_BLINK),
+                ),
+            ])
+        };
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 
         if grouped_count == 0 {
@@ -183,13 +192,13 @@ impl QueryHistoryPicker {
             }
         }
 
+        let highlight_style = Style::default()
+            .bg(Theme::COMPLETION_SELECTED_BG)
+            .fg(Theme::TEXT_PRIMARY)
+            .add_modifier(Modifier::BOLD);
+
         let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .bg(Theme::COMPLETION_SELECTED_BG)
-                    .fg(Theme::TEXT_PRIMARY)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(highlight_style)
             .highlight_symbol("\u{25b8} ");
 
         let mut list_state = ListState::default()

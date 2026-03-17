@@ -445,6 +445,51 @@ mod overlays {
 
         insta::assert_snapshot!(output);
     }
+
+    #[test]
+    fn query_history_picker_filter_mode() {
+        use sabiql::domain::ConnectionId;
+        use sabiql::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::QueryHistoryPicker);
+        state.query_history_picker.entries = vec![
+            QueryHistoryEntry::new(
+                "SELECT * FROM users".to_string(),
+                "2026-03-13T10:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                QueryResultStatus::Success,
+                None,
+            ),
+            QueryHistoryEntry::new(
+                "SELECT * FROM orders".to_string(),
+                "2026-03-13T11:00:00Z".to_string(),
+                ConnectionId::from_string("test-conn"),
+                QueryResultStatus::Success,
+                None,
+            ),
+        ];
+        state.query_history_picker.filter_input.insert_str("user");
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_normal_initial() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::SqlModal);
+        // Normal mode is the default — empty editor with placeholder
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
 }
 
 mod er_diagram {

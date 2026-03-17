@@ -19,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │✓ 3 rows deleted (0.01s)                                      │       │
-│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
+│       │ [NORMAL]                            ✓ 3 rows deleted (0.01s) │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Close
+⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close

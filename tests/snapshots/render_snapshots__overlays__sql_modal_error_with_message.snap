@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 307
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -20,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │✗ ERROR:  syntax error at or near "FORM"                      │       │
-│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
+│       │ [NORMAL]            ✗ ERROR:  syntax error at or near "FORM" │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Close
+⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close

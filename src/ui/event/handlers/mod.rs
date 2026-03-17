@@ -28,7 +28,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::CommandLine
         | InputMode::CellEdit
         | InputMode::ConnectionSetup
-        | InputMode::SqlModal => Action::Paste(text),
+        | InputMode::SqlModal
+        | InputMode::QueryHistoryPicker => Action::Paste(text),
         _ => Action::None,
     }
 }
@@ -87,7 +88,7 @@ mod tests {
         fn sql_modal_mode_routes_to_sql_modal_handler() {
             let state = make_state(InputMode::SqlModal);
 
-            // Esc in SqlModal should close modal (not Escape action)
+            // Esc in SqlModal (Normal mode, the default) should close modal
             let result = handle_key_event(combo(Key::Esc), &state);
 
             assert!(matches!(result, Action::CloseSqlModal));
@@ -128,6 +129,15 @@ mod tests {
             let result = handle_paste_event("public.users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
+        fn paste_event_in_query_history_picker_returns_paste_action() {
+            let state = make_state(InputMode::QueryHistoryPicker);
+
+            let result = handle_paste_event("users".to_string(), &state);
+
+            assert!(matches!(result, Action::Paste(t) if t == "users"));
         }
 
         #[test]

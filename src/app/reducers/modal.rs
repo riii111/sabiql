@@ -56,6 +56,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.modal.set_mode(InputMode::Normal);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = None;
+            state.sql_modal.yank_flash_until = None;
             Some(vec![])
         }
         Action::OpenErTablePicker => {

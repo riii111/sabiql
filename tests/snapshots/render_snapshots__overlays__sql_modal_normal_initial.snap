@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │SELECT 1█                                                     │       │
+│       │ Press Enter to edit...                                       │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -19,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │ [INSERT]                                               Ready │       │
-│       ╰ ⌥Enter: Run │ ^L: Clear │ ^O: Hist │ Esc: Normal ────────────╯       │
+│       │ [NORMAL]                                               Ready │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Normal
+⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close

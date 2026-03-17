@@ -1,6 +1,5 @@
 ---
 source: tests/render_snapshots.rs
-assertion_line: 281
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             
@@ -20,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │✓ table created (0.04s)                                       │       │
-│       ╰ Alt+Enter: Run │ Ctrl+L: Clear │ Esc: Close ─────────────────╯       │
+│       │ [NORMAL]                             ✓ table created (0.04s) │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Close
+⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close

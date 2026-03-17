@@ -8,19 +8,19 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
-│           │  type to filter                                      │           │
-│           │▸ ✗ SELECT count(*) FROM users      Mar 13 12:00 UTC  │           │
-│           │  ✓ INSERT INTO orders (user_id, …  Mar 13 11:00 UTC  │           │
-│           │  ✓ SELECT * FROM users WHERE id …  Mar 13 10:00 UTC  │           │
+│           │  > user█                                             │           │
+│           │▸ ✓ SELECT * FROM users             Mar 13 10:00 UTC  │           │
+│           │                                                      │           │
 │           │                                                      │───────────┘
 │           │                                                      │───────────┐
-│           │ Preview ─────────────────────────────────────────────│           │
-│           │✗ Failed  │ Mar 13 12:00 UTC                          │           │
 │           │                                                      │           │
-│           │SELECT count(*) FROM users                            │           │
 │           │                                                      │           │
-│           ╰ 3 entries │ type to filter │ Enter Select ───────────╯           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           ╰ 1 entries │ type to filter │ Enter Select ───────────╯           │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

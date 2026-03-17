@@ -7,7 +7,6 @@ use crate::app::action::Action;
 // =============================================================================
 
 pub const OVERLAY_KEYS: &[KeyBinding] = &[
-    // idx 0: ESC_CANCEL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -16,7 +15,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 1: ESC_CLOSE
     KeyBinding {
         key_short: "Esc",
         key: "Esc",
@@ -25,7 +23,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 2: ENTER_EXECUTE
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -34,7 +31,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 3: ENTER_SELECT
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -43,7 +39,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 4: NAVIGATE_JK
     KeyBinding {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -52,7 +47,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 5: TYPE_FILTER
     KeyBinding {
         key_short: "type",
         key: "type",
@@ -61,7 +55,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
         action: Action::None,
         combos: &[],
     },
-    // idx 6: ERROR_OPEN
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -77,7 +70,6 @@ pub const OVERLAY_KEYS: &[KeyBinding] = &[
 // =============================================================================
 
 pub const HELP_ROWS: &[ModeRow] = &[
-    // idx 0: SCROLL
     ModeRow {
         key_short: "j/k / ↑↓",
         key: "j / k / ↑ / ↓",
@@ -94,7 +86,6 @@ pub const HELP_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 1: CLOSE
     ModeRow {
         key_short: "?/Esc",
         key: "? / Esc",
@@ -112,7 +103,6 @@ pub const HELP_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
-    // idx 0: ENTER_SELECT
     ModeRow {
         key_short: "Enter",
         key: "Enter",
@@ -123,7 +113,6 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
     },
-    // idx 1: NAVIGATE
     ModeRow {
         key_short: "↑↓",
         key: "↑↓",
@@ -140,7 +129,6 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 2: TYPE_FILTER
     ModeRow {
         key_short: "type",
         key: "type",
@@ -151,7 +139,6 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
-    // idx 3: ESC_CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -169,7 +156,6 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const ER_PICKER_ROWS: &[ModeRow] = &[
-    // idx 0: ENTER_GENERATE
     ModeRow {
         key_short: "Enter",
         key: "Enter",
@@ -180,7 +166,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
     },
-    // idx 1: SELECT
     ModeRow {
         key_short: "Space",
         key: "Space",
@@ -191,7 +176,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Char(' '))],
         }],
     },
-    // idx 2: SELECT_ALL
     ModeRow {
         key_short: "^A",
         key: "Ctrl+A",
@@ -202,7 +186,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::ctrl(Key::Char('a'))],
         }],
     },
-    // idx 3: NAVIGATE
     ModeRow {
         key_short: "↑↓",
         key: "↑↓",
@@ -219,7 +202,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 4: TYPE_FILTER
     ModeRow {
         key_short: "type",
         key: "type",
@@ -230,7 +212,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
-    // idx 5: ESC_CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -248,7 +229,6 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
-    // idx 0: ENTER_SELECT
     ModeRow {
         key_short: "Enter",
         key: "Enter",
@@ -259,7 +239,6 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
     },
-    // idx 1: NAVIGATE
     ModeRow {
         key_short: "↑↓",
         key: "↑↓",
@@ -276,7 +255,6 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 2: TYPE_FILTER
     ModeRow {
         key_short: "type",
         key: "type",
@@ -287,7 +265,6 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
-    // idx 3: ESC_CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -305,7 +282,6 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
-    // idx 0: ENTER_EXECUTE
     ModeRow {
         key_short: "Enter",
         key: "Enter",
@@ -316,7 +292,6 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
             combos: &[KeyCombo::plain(Key::Enter)],
         }],
     },
-    // idx 1: NAVIGATE_JK
     ModeRow {
         key_short: "j/k / ↑↓",
         key: "j/k / ↑↓",
@@ -333,7 +308,6 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
             },
         ],
     },
-    // idx 2: ESC_CLOSE
     ModeRow {
         key_short: "Esc",
         key: "Esc",
@@ -351,7 +325,6 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
 // =============================================================================
 
 pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
-    // idx 0: CONFIRM
     KeyBinding {
         key_short: "Enter",
         key: "Enter",
@@ -360,7 +333,6 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         action: Action::ConfirmDialogConfirm,
         combos: &[KeyCombo::plain(Key::Enter)],
     },
-    // idx 1: CANCEL
     KeyBinding {
         key_short: "Esc",
         key: "Esc",

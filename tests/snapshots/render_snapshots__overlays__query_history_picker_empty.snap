@@ -13,9 +13,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 │           ╭ Query History ───────────────────────────────────────╮           │
-│           │  > █                                                 │───────────┘
+│           │  type to filter                                      │───────────┘
 │           │  No history yet                                      │───────────┐
-│           ╰ 0 entries │ ↑↓ Navigate │ Enter Select ──────────────╯           │
+│           ╰ 0 entries │ type to filter │ Enter Select ───────────╯           │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

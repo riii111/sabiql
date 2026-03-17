@@ -50,10 +50,7 @@ pub fn reduce_sql_modal(
 
         // Clipboard paste
         Action::Paste(text) if state.modal.active_mode() == InputMode::SqlModal => {
-            if matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh { .. }
-            ) {
+            if !matches!(state.sql_modal.status(), SqlModalStatus::Editing) {
                 return Some(vec![]);
             }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
@@ -178,11 +175,12 @@ pub fn reduce_sql_modal(
         // Modal open/submit
         Action::OpenSqlModal => {
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.set_status(SqlModalStatus::Editing);
+            state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
+            state.sql_modal.yank_flash_until = None;
             if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
@@ -255,7 +253,7 @@ pub fn reduce_sql_modal(
                 state.sql_modal.status(),
                 SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
             ) {
-                state.sql_modal.set_status(SqlModalStatus::Editing);
+                state.sql_modal.set_status(SqlModalStatus::Normal);
                 Some(vec![])
             } else {
                 None
@@ -349,6 +347,31 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
 
+        Action::SqlModalEnterInsert => {
+            state.sql_modal.set_status(SqlModalStatus::Editing);
+            Some(vec![])
+        }
+        Action::SqlModalEnterNormal => {
+            state.sql_modal.set_status(SqlModalStatus::Normal);
+            state.sql_modal.completion.visible = false;
+            state.sql_modal.completion_debounce = None;
+            Some(vec![])
+        }
+        Action::SqlModalYank => {
+            if state.sql_modal.content.is_empty() {
+                return Some(vec![]);
+            }
+            Some(vec![Effect::CopyToClipboard {
+                content: state.sql_modal.content.clone(),
+                on_success: Some(Action::SqlModalYankSuccess),
+                on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+            }])
+        }
+        Action::SqlModalYankSuccess => {
+            state.sql_modal.yank_flash_until = Some(now + Duration::from_millis(200));
+            Some(vec![])
+        }
+
         _ => None,
     }
 }
@@ -390,6 +413,7 @@ mod tests {
         fn sql_modal_state() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.set_status(SqlModalStatus::Editing);
             state
         }
 
@@ -684,12 +708,12 @@ mod tests {
         }
 
         #[test]
-        fn cancel_from_confirming_high_returns_to_editing() {
+        fn cancel_from_confirming_high_returns_to_normal() {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Editing));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
         }
 
         #[test]
@@ -944,13 +968,13 @@ mod tests {
         }
 
         #[test]
-        fn cancel_confirm_returns_to_editing() {
+        fn cancel_confirm_returns_to_normal() {
             let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
 
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Editing);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
         }
 
         #[test]
@@ -961,6 +985,93 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
             assert!(result.is_none());
+        }
+    }
+
+    mod normal_insert_mode {
+        use super::*;
+
+        fn sql_modal_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+        }
+
+        #[test]
+        fn enter_insert_transitions_to_editing() {
+            let mut state = sql_modal_state();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterInsert, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Editing);
+        }
+
+        #[test]
+        fn enter_normal_transitions_to_normal() {
+            let mut state = sql_modal_state();
+            state.sql_modal.set_status(SqlModalStatus::Editing);
+            state.sql_modal.completion.visible = true;
+
+            reduce_sql_modal(&mut state, &Action::SqlModalEnterNormal, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+            assert!(!state.sql_modal.completion.visible);
+        }
+
+        #[test]
+        fn yank_empty_content_is_noop() {
+            let mut state = sql_modal_state();
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn yank_non_empty_emits_copy_effect() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1".to_string();
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "SELECT 1")
+            );
+        }
+
+        #[test]
+        fn yank_success_sets_flash() {
+            let mut state = sql_modal_state();
+
+            reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, Instant::now());
+
+            assert!(state.sql_modal.yank_flash_until.is_some());
+        }
+
+        #[test]
+        fn open_sql_modal_starts_in_normal() {
+            let mut state = AppState::new("test".to_string());
+
+            reduce_sql_modal(&mut state, &Action::OpenSqlModal, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn paste_ignored_in_normal_mode() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "original".to_string();
+
+            reduce_sql_modal(
+                &mut state,
+                &Action::Paste("injected".to_string()),
+                Instant::now(),
+            );
+
+            assert_eq!(state.sql_modal.content, "original");
         }
     }
 }
