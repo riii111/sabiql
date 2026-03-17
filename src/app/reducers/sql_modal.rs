@@ -368,7 +368,6 @@ pub fn reduce_sql_modal(
             }])
         }
         Action::SqlModalYankSuccess => {
-            state.messages.set_success_at("Yanked!".to_string(), now);
             state.sql_modal.yank_flash_until = Some(now + Duration::from_millis(200));
             Some(vec![])
         }
@@ -1044,12 +1043,12 @@ mod tests {
         }
 
         #[test]
-        fn yank_success_sets_message() {
+        fn yank_success_sets_flash() {
             let mut state = sql_modal_state();
 
             reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, Instant::now());
 
-            assert_eq!(state.messages.last_success.as_deref(), Some("Yanked!"));
+            assert!(state.sql_modal.yank_flash_until.is_some());
         }
 
         #[test]

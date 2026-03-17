@@ -251,7 +251,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
         }
         Action::QueryHistoryYankSuccess => {
-            state.messages.set_success_at("Yanked!".to_string(), now);
             state.query_history_picker.yank_flash_until = Some(now + Duration::from_millis(200));
             Some(vec![])
         }
