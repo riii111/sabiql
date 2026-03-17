@@ -248,13 +248,13 @@ fn build_list_item(
     let pad = query_max.saturating_sub(used);
 
     if !badge.is_empty() {
-        spans.push(Span::styled(badge, Style::default().fg(Theme::TEXT_MUTED)));
+        spans.push(Span::styled(badge, Style::default().fg(Theme::TEXT_DIM)));
     }
 
     spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(
         format!("  {ts_short}"),
-        Style::default().fg(Theme::TEXT_MUTED),
+        Style::default().fg(Theme::TEXT_DIM),
     ));
 
     ListItem::new(Line::from(spans))
@@ -296,7 +296,7 @@ fn render_preview(frame: &mut Frame, area: ratatui::layout::Rect, pd: &PreviewDa
     }
     meta_spans.push(Span::styled(
         format!("  \u{2502} {}", pd.executed_at),
-        Style::default().fg(Theme::TEXT_MUTED),
+        Style::default().fg(Theme::TEXT_DIM),
     ));
     lines.push(Line::from(meta_spans));
     lines.push(Line::raw(""));
