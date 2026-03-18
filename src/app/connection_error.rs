@@ -120,7 +120,6 @@ impl ConnectionErrorInfo {
         Self::mask_env_passwords(&result)
     }
 
-    /// Replace password in URLs like `postgres://user:secret@host`
     fn mask_url_passwords(text: &str) -> String {
         let lower = text.to_lowercase();
         let mut result = String::with_capacity(text.len());
@@ -160,7 +159,6 @@ impl ConnectionErrorInfo {
         result
     }
 
-    /// Replace value after case-insensitive `password=`
     fn mask_kv_passwords(text: &str) -> String {
         let lower = text.to_lowercase();
         let needle = "password=";
@@ -187,7 +185,6 @@ impl ConnectionErrorInfo {
         result
     }
 
-    /// Replace value after env-var prefixes (case-sensitive)
     fn mask_env_passwords(text: &str) -> String {
         const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
         let mut result = String::with_capacity(text.len());
