@@ -27,6 +27,7 @@ pub mod message_state;
 pub mod modal_state;
 pub mod nav_intent;
 pub mod palette;
+pub mod picker_state;
 pub mod ports;
 pub mod query_execution;
 pub mod query_history_state;
