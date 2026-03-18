@@ -3,76 +3,50 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::key_sequence::Prefix;
 use crate::app::keybindings::{self as kb, Key, KeyCombo};
-use crate::app::navigation_context::NavigationContext;
+use crate::app::nav_intent::{NavIntent, NavigationContext, map_nav_intent, resolve};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 
-pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
-    let ctx = NavigationContext::from_state(state);
+fn resolve_nav(combo: &KeyCombo, nav_ctx: NavigationContext) -> Option<Action> {
+    map_nav_intent(combo).map(|intent| resolve(intent, nav_ctx))
+}
 
-    // Ctrl combos (context-independent)
+pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
+    let nav_ctx = NavigationContext::from_state(state);
+    let result_navigation = nav_ctx.is_result();
+    let inspector_navigation = nav_ctx.is_inspector();
+    let result_nav_mode = state.result_interaction.selection().mode();
+
+    // Ctrl combos
     if combo.modifiers.ctrl {
         match combo.key {
-            Key::Char('p') if !ctx.history_mode => {
+            Key::Char('p') if !state.query.is_history_mode() => {
                 return Action::OpenTablePicker;
             }
             Key::Char('h') => {
-                return if ctx.history_mode {
+                return if state.query.is_history_mode() {
                     Action::ExitResultHistory
                 } else {
                     Action::OpenResultHistory
                 };
             }
-            Key::Char('k') if !ctx.history_mode => {
+            Key::Char('k') if !state.query.is_history_mode() => {
                 return Action::OpenCommandPalette;
             }
             Key::Char('r') => {
                 return Action::ToggleReadOnly;
             }
-            Key::Char('o') if !ctx.history_mode => {
+            Key::Char('o') if !state.query.is_history_mode() => {
                 return Action::OpenQueryHistoryPicker;
             }
             Key::Char('e') if state.query.visible_result().is_some_and(|r| !r.is_error()) => {
                 return Action::RequestCsvExport;
             }
-            Key::Char('d') => {
-                return if ctx.result_navigation() {
-                    Action::ResultScrollHalfPageDown
-                } else if ctx.inspector_navigation() {
-                    Action::InspectorScrollHalfPageDown
-                } else {
-                    Action::SelectHalfPageDown
-                };
-            }
-            Key::Char('u') => {
-                return if ctx.result_navigation() {
-                    Action::ResultScrollHalfPageUp
-                } else if ctx.inspector_navigation() {
-                    Action::InspectorScrollHalfPageUp
-                } else {
-                    Action::SelectHalfPageUp
-                };
-            }
-            Key::Char('f') => {
-                return if ctx.result_navigation() {
-                    Action::ResultScrollFullPageDown
-                } else if ctx.inspector_navigation() {
-                    Action::InspectorScrollFullPageDown
-                } else {
-                    Action::SelectFullPageDown
-                };
-            }
-            Key::Char('b') => {
-                return if ctx.result_navigation() {
-                    Action::ResultScrollFullPageUp
-                } else if ctx.inspector_navigation() {
-                    Action::InspectorScrollFullPageUp
-                } else {
-                    Action::SelectFullPageUp
-                };
-            }
             _ => {
-                if ctx.history_mode {
+                if let Some(action) = resolve_nav(&combo, nav_ctx) {
+                    return action;
+                }
+                if state.query.is_history_mode() {
                     return Action::None;
                 }
             }
@@ -82,64 +56,38 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before history whitelist and global actions so that
     // the second key (t, b, z) is never swallowed and the sequence is always cleared.
-    if let Some(prefix) = ctx.pending_prefix() {
+    if let Some(prefix) = state.ui.key_sequence.pending_prefix() {
         if combo.modifiers.ctrl || combo.modifiers.alt {
             return Action::CancelKeySequence;
         }
         return match prefix {
             Prefix::Z => {
-                if ctx.inspector_navigation() {
+                if inspector_navigation {
                     return Action::CancelKeySequence;
                 }
-                match combo.key {
-                    Key::Char('z') => {
-                        if ctx.result_navigation() {
-                            Action::ResultScrollCursorCenter
-                        } else {
-                            Action::ScrollCursorCenter
-                        }
-                    }
-                    Key::Char('t') => {
-                        if ctx.result_navigation() {
-                            Action::ResultScrollCursorTop
-                        } else {
-                            Action::ScrollCursorTop
-                        }
-                    }
-                    Key::Char('b') => {
-                        if ctx.result_navigation() {
-                            Action::ResultScrollCursorBottom
-                        } else {
-                            Action::ScrollCursorBottom
-                        }
-                    }
-                    _ => Action::CancelKeySequence,
-                }
+                let intent = match combo.key {
+                    Key::Char('z') => NavIntent::ScrollCursorCenter,
+                    Key::Char('t') => NavIntent::ScrollCursorTop,
+                    Key::Char('b') => NavIntent::ScrollCursorBottom,
+                    _ => return Action::CancelKeySequence,
+                };
+                resolve(intent, nav_ctx)
             }
         };
     }
 
     // History mode: whitelist — only history nav, help, and scroll allowed
-    if ctx.history_mode {
+    if state.query.is_history_mode() {
         match combo.key {
             Key::Char('[') => return Action::HistoryOlder,
             Key::Char(']') => return Action::HistoryNewer,
             Key::Char('?') => return Action::OpenHelp,
-            // Scroll keys fall through to normal handling
-            Key::Char('j')
-            | Key::Char('k')
-            | Key::Up
-            | Key::Down
-            | Key::Char('h')
-            | Key::Char('l')
-            | Key::Left
-            | Key::Right
-            | Key::Char('g')
-            | Key::Char('G')
-            | Key::Char('H')
-            | Key::Char('L')
-            | Key::Char('M')
-            | Key::Char('z') => {}
+            // Home/End/PageDown/PageUp are blocked in history mode
+            // (only char keys g/G and Ctrl+D/U/F/B are allowed for these motions)
+            Key::Home | Key::End | Key::PageDown | Key::PageUp => return Action::None,
+            // Scroll keys fall through to normal handling via NavIntent
+            _ if map_nav_intent(&combo).is_some() => {}
+            Key::Char('z') => {}
             _ => return Action::None,
         }
     }
@@ -161,10 +109,16 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         return Action::ToggleFocus;
     }
 
+    // NavIntent-based navigation (context-dependent)
+    if let Some(action) = resolve_nav(&combo, nav_ctx) {
+        return action;
+    }
+
+    // Non-navigation context keys
     match combo.key {
         Key::Esc => {
-            if ctx.result_navigation() {
-                match ctx.result_nav_mode {
+            if result_navigation {
+                match result_nav_mode {
                     ResultNavMode::CellActive => {
                         if state.result_interaction.cell_edit().has_pending_draft() {
                             Action::ResultDiscardCellEdit
@@ -180,134 +134,24 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             }
         }
 
-        Key::Up | Key::Char('k') => {
-            if ctx.result_navigation() {
-                Action::ResultScrollUp
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollUp
-            } else {
-                Action::SelectPrevious
-            }
-        }
-        Key::Down | Key::Char('j') => {
-            if ctx.result_navigation() {
-                Action::ResultScrollDown
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollDown
-            } else {
-                Action::SelectNext
-            }
-        }
-        Key::Char('g') | Key::Home => {
-            if ctx.result_navigation() {
-                Action::ResultScrollTop
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollTop
-            } else {
-                Action::SelectFirst
-            }
-        }
-        Key::Char('G') | Key::End => {
-            if ctx.result_navigation() {
-                Action::ResultScrollBottom
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollBottom
-            } else {
-                Action::SelectLast
-            }
-        }
-        Key::Char('H') => {
-            if ctx.result_navigation() {
-                Action::ResultScrollViewportTop
-            } else if ctx.inspector_navigation() {
-                Action::None
-            } else {
-                Action::SelectViewportTop
-            }
-        }
-        Key::Char('M') => {
-            if ctx.result_navigation() {
-                Action::ResultScrollViewportMiddle
-            } else if ctx.inspector_navigation() {
-                Action::None
-            } else {
-                Action::SelectViewportMiddle
-            }
-        }
-        Key::Char('L') => {
-            if ctx.result_navigation() {
-                Action::ResultScrollViewportBottom
-            } else if ctx.inspector_navigation() {
-                Action::None
-            } else {
-                Action::SelectViewportBottom
-            }
-        }
-
-        Key::Char('h') | Key::Left => {
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::CellActive {
-                Action::ResultCellLeft
-            } else if ctx.result_navigation() {
-                Action::ResultScrollLeft
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollLeft
-            } else if ctx.explorer_navigation() {
-                Action::ExplorerScrollLeft
-            } else {
-                Action::None
-            }
-        }
-        Key::Char('l') | Key::Right => {
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::CellActive {
-                Action::ResultCellRight
-            } else if ctx.result_navigation() {
-                Action::ResultScrollRight
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollRight
-            } else if ctx.explorer_navigation() {
-                Action::ExplorerScrollRight
-            } else {
-                Action::None
-            }
-        }
-
         Key::Char(']') => {
-            if ctx.result_navigation() {
+            if result_navigation {
                 Action::ResultNextPage
             } else {
                 Action::None
             }
         }
         Key::Char('[') => {
-            if ctx.result_navigation() {
+            if result_navigation {
                 Action::ResultPrevPage
             } else {
                 Action::None
             }
         }
 
-        Key::PageDown => {
-            if ctx.result_navigation() {
-                Action::ResultScrollFullPageDown
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollFullPageDown
-            } else {
-                Action::SelectFullPageDown
-            }
-        }
-        Key::PageUp => {
-            if ctx.result_navigation() {
-                Action::ResultScrollFullPageUp
-            } else if ctx.inspector_navigation() {
-                Action::InspectorScrollFullPageUp
-            } else {
-                Action::SelectFullPageUp
-            }
-        }
-
         // Pane switching: exit focus mode first if active
         Key::Char(c @ '1'..='3') => {
-            if ctx.focus_mode {
+            if state.ui.focus_mode {
                 Action::ToggleFocus
             } else {
                 FocusedPane::from_browse_key(c)
@@ -317,63 +161,53 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         }
 
         // Inspector sub-tab navigation (Tab/Shift+Tab, only when Inspector focused)
-        Key::Tab if ctx.inspector_navigation() => Action::InspectorNextTab,
-        Key::BackTab if ctx.inspector_navigation() => Action::InspectorPrevTab,
+        Key::Tab if inspector_navigation => Action::InspectorNextTab,
+        Key::BackTab if inspector_navigation => Action::InspectorPrevTab,
 
-        Key::Char('y')
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::RowActive =>
-        {
+        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             if state.result_interaction.yank_op_pending {
                 Action::ResultRowYank
             } else {
                 Action::ResultRowYankOperatorPending
             }
         }
-        Key::Char('y')
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::CellActive =>
-        {
+        Key::Char('y') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultCellYank
         }
-        Key::Char('y')
-            if ctx.inspector_navigation() && state.ui.inspector_tab == InspectorTab::Ddl =>
-        {
+        Key::Char('y') if inspector_navigation && state.ui.inspector_tab == InspectorTab::Ddl => {
             Action::DdlYank
         }
-        Key::Char('d')
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::RowActive =>
-        {
+        Key::Char('d') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             if state.result_interaction.delete_op_pending {
                 Action::StageRowForDelete
             } else {
                 Action::ResultDeleteOperatorPending
             }
         }
-        Key::Char('u')
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::RowActive =>
-        {
+        Key::Char('u') if result_navigation && result_nav_mode == ResultNavMode::RowActive => {
             Action::UnstageLastStagedRow
         }
-        Key::Char('i')
-            if ctx.result_navigation() && ctx.result_nav_mode == ResultNavMode::CellActive =>
-        {
+        Key::Char('i') if result_navigation && result_nav_mode == ResultNavMode::CellActive => {
             Action::ResultEnterCellEdit
         }
         Key::Char('s') => Action::OpenSqlModal,
         Key::Char('e') => Action::OpenErTablePicker,
-        Key::Char('c') if ctx.explorer_navigation() => Action::OpenConnectionSelector,
+        Key::Char('c') if state.ui.focused_pane == FocusedPane::Explorer => {
+            Action::OpenConnectionSelector
+        }
 
         Key::Char('z') => Action::BeginKeySequence(Prefix::Z),
 
         Key::Enter => {
             if state.connection_error.error_info.is_some() {
                 Action::ConfirmSelection
-            } else if ctx.result_navigation() {
-                match ctx.result_nav_mode {
+            } else if result_navigation {
+                match result_nav_mode {
                     ResultNavMode::Scroll => Action::ResultEnterRowActive,
                     ResultNavMode::RowActive => Action::ResultEnterCellActive,
                     ResultNavMode::CellActive => Action::None,
                 }
-            } else if ctx.explorer_navigation() {
+            } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection
             } else {
                 Action::None
@@ -1864,6 +1698,20 @@ mod tests {
                 let state = history_result_ctx();
                 let actual = handle_normal_mode(combo(Key::End), &state);
                 assert_action(actual, Action::None, "history+result", "End");
+            }
+
+            #[test]
+            fn pagedown_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::PageDown), &state);
+                assert_action(actual, Action::None, "history+result", "PageDown");
+            }
+
+            #[test]
+            fn pageup_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::PageUp), &state);
+                assert_action(actual, Action::None, "history+result", "PageUp");
             }
 
             #[test]
