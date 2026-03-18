@@ -21,10 +21,10 @@ pub fn render_striped_table<'a>(
     config: &StripedTableConfig<'_>,
     scroll_offset: usize,
     row_fn: impl Fn(usize) -> Vec<Cell<'a>>,
-) -> usize {
+) {
     if config.total_items == 0 {
         frame.render_widget(Paragraph::new(config.empty_message), area);
-        return 0;
+        return;
     }
 
     let header = Row::new(config.headers.iter().map(|&h| Cell::from(h)))
@@ -66,6 +66,4 @@ pub fn render_striped_table<'a>(
             total_items: config.total_items,
         },
     );
-
-    clamped_scroll_offset
 }
