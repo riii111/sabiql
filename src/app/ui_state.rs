@@ -218,7 +218,6 @@ impl UiState {
             }
         }
     }
-
 }
 
 pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {

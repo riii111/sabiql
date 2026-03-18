@@ -273,7 +273,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input ="".to_string();
+        state.ui.table_picker.filter_input = "".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -292,7 +292,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input ="user".to_string();
+        state.ui.table_picker.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -314,7 +314,7 @@ mod tests {
             )],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input ="user".to_string();
+        state.ui.table_picker.filter_input = "user".to_string();
 
         let filtered = state.filtered_tables();
 

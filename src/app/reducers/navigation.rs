@@ -175,19 +175,28 @@ pub fn reduce_navigation(
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
                     if state.ui.table_picker.selected < max {
-                        state.ui.table_picker.set_selection(state.ui.table_picker.selected + 1);
+                        state
+                            .ui
+                            .table_picker
+                            .set_selection(state.ui.table_picker.selected + 1);
                     }
                 }
                 InputMode::ErTablePicker => {
                     let max = state.er_filtered_tables().len().saturating_sub(1);
                     if state.ui.er_picker.selected < max {
-                        state.ui.er_picker.set_selection(state.ui.er_picker.selected + 1);
+                        state
+                            .ui
+                            .er_picker
+                            .set_selection(state.ui.er_picker.selected + 1);
                     }
                 }
                 InputMode::CommandPalette => {
                     let max = palette_command_count() - 1;
                     if state.ui.table_picker.selected < max {
-                        state.ui.table_picker.set_selection(state.ui.table_picker.selected + 1);
+                        state
+                            .ui
+                            .table_picker
+                            .set_selection(state.ui.table_picker.selected + 1);
                     }
                 }
                 InputMode::Normal => {
