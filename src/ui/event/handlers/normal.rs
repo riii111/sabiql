@@ -3,7 +3,7 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::key_sequence::Prefix;
 use crate::app::keybindings::{self as kb, Key, KeyCombo};
-use crate::app::nav_intent::{NavigationContext, map_nav_intent, resolve};
+use crate::app::nav_intent::{NavIntent, NavigationContext, map_nav_intent, resolve};
 use crate::app::state::AppState;
 use crate::app::ui_state::ResultNavMode;
 
@@ -71,9 +71,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                     return Action::CancelKeySequence;
                 }
                 let intent = match combo.key {
-                    Key::Char('z') => crate::app::nav_intent::NavIntent::ScrollCursorCenter,
-                    Key::Char('t') => crate::app::nav_intent::NavIntent::ScrollCursorTop,
-                    Key::Char('b') => crate::app::nav_intent::NavIntent::ScrollCursorBottom,
+                    Key::Char('z') => NavIntent::ScrollCursorCenter,
+                    Key::Char('t') => NavIntent::ScrollCursorTop,
+                    Key::Char('b') => NavIntent::ScrollCursorBottom,
                     _ => return Action::CancelKeySequence,
                 };
                 resolve(intent, nav_ctx)
@@ -87,8 +87,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('[') => return Action::HistoryOlder,
             Key::Char(']') => return Action::HistoryNewer,
             Key::Char('?') => return Action::OpenHelp,
-            // Home/End are blocked in history mode (only g/G allowed for first/last)
-            Key::Home | Key::End => return Action::None,
+            // Home/End/PageDown/PageUp are blocked in history mode
+            // (only char keys g/G and Ctrl+D/U/F/B are allowed for these motions)
+            Key::Home | Key::End | Key::PageDown | Key::PageUp => return Action::None,
             // Scroll keys fall through to normal handling via NavIntent
             _ if map_nav_intent(&combo).is_some() => {}
             Key::Char('z') => {}
@@ -1702,6 +1703,20 @@ mod tests {
                 let state = history_result_ctx();
                 let actual = handle_normal_mode(combo(Key::End), &state);
                 assert_action(actual, Action::None, "history+result", "End");
+            }
+
+            #[test]
+            fn pagedown_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::PageDown), &state);
+                assert_action(actual, Action::None, "history+result", "PageDown");
+            }
+
+            #[test]
+            fn pageup_blocked_in_history() {
+                let state = history_result_ctx();
+                let actual = handle_normal_mode(combo(Key::PageUp), &state);
+                assert_action(actual, Action::None, "history+result", "PageUp");
             }
 
             #[test]
