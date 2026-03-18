@@ -25,11 +25,11 @@ impl TablePicker {
         let [filter_area, list_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
 
-        state.ui.picker_pane_height = list_area.height;
+        state.ui.table_picker.pane_height = list_area.height;
 
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(&state.ui.filter_input),
+            Span::raw(&state.ui.table_picker.filter_input),
             Span::styled(
                 "█",
                 Style::default()
@@ -59,13 +59,13 @@ impl TablePicker {
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {
-            Some(state.ui.picker_selected)
+            Some(state.ui.table_picker.selected())
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.picker_scroll_offset);
+            .with_offset(state.ui.table_picker.scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

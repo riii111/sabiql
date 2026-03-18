@@ -372,7 +372,7 @@ mod overlays {
             .session
             .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::TablePicker);
-        state.ui.filter_input = "user".to_string();
+        state.ui.table_picker.filter_input = "user".to_string();
 
         let output = render_to_string(&mut terminal, &mut state);
 
@@ -548,7 +548,7 @@ mod er_diagram {
             .session
             .mark_connected(Arc::new(fixtures::sample_metadata(now)));
         state.modal.set_mode(InputMode::ErTablePicker);
-        state.ui.er_filter_input = "user".to_string();
+        state.ui.er_picker.filter_input = "user".to_string();
 
         let output = render_to_string(&mut terminal, &mut state);
 
