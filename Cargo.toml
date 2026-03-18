@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "database"]
 [dependencies]
 ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
-tokio = { version = "1", features = ["full", "test-util"] }
+tokio = { version = "1", features = ["sync", "time", "io-util", "process", "rt-multi-thread", "macros", "fs"] }
 tokio-util = "0.7"
 futures = "0.3"
 color-eyre = "0.6"
@@ -27,7 +27,6 @@ dotenvy = "0.15"
 csv = "1"
 uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
-regex = "1"
 arboard = "3"
 nucleo-matcher = "0.3"
 lru = "0.16"
@@ -44,6 +43,7 @@ rstest = "0.19"
 tempfile = "3"
 insta = "1"
 mockall = "0.13"
+tokio = { version = "1", features = ["test-util"] }
 
 [[test]]
 name = "render_snapshots"
