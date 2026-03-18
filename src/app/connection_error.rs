@@ -1,11 +1,3 @@
-use std::sync::OnceLock;
-
-use regex::Regex;
-
-static URL_RE: OnceLock<Regex> = OnceLock::new();
-static PARAM_RE: OnceLock<Regex> = OnceLock::new();
-static ENV_RE: OnceLock<Regex> = OnceLock::new();
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
     CliNotFound,
@@ -123,17 +115,89 @@ impl ConnectionErrorInfo {
     }
 
     fn mask_password(text: &str) -> String {
-        let url_re = URL_RE.get_or_init(|| {
-            Regex::new(r"(?i)((?:postgres(?:ql)?|mysql)://[^:]+:)[^@]+(@)").unwrap()
-        });
-        let result = url_re.replace_all(text, "${1}****${2}");
+        let result = Self::mask_url_passwords(text);
+        let result = Self::mask_kv_passwords(&result);
+        Self::mask_env_passwords(&result)
+    }
 
-        let param_re = PARAM_RE.get_or_init(|| Regex::new(r"(?i)(password=)[^\s]+").unwrap());
-        let result = param_re.replace_all(&result, "${1}****");
+    fn mask_url_passwords(text: &str) -> String {
+        let lower = text.to_lowercase();
+        let mut result = String::with_capacity(text.len());
+        let mut i = 0;
 
-        let env_re = ENV_RE
-            .get_or_init(|| Regex::new(r"((?:PG|MYSQL_)PASSWORD|MYSQL_PWD)(=)[^\s]+").unwrap());
-        env_re.replace_all(&result, "${1}${2}****").into_owned()
+        while i < text.len() {
+            let remaining = &lower[i..];
+            let scheme_len = if remaining.starts_with("postgresql://") {
+                "postgresql://".len()
+            } else if remaining.starts_with("postgres://") {
+                "postgres://".len()
+            } else if remaining.starts_with("mysql://") {
+                "mysql://".len()
+            } else {
+                0
+            };
+
+            if scheme_len > 0 {
+                let after_scheme = i + scheme_len;
+                if let Some(colon_off) = text[after_scheme..].find(':') {
+                    let colon = after_scheme + colon_off;
+                    if let Some(at_off) = text[(colon + 1)..].find('@') {
+                        let at = colon + 1 + at_off;
+                        result.push_str(&text[i..=colon]);
+                        result.push_str("****");
+                        i = at; // '@' will be pushed next iteration
+                        continue;
+                    }
+                }
+            }
+
+            let ch = text[i..].chars().next().unwrap();
+            result.push(ch);
+            i += ch.len_utf8();
+        }
+
+        result
+    }
+
+    fn mask_kv_passwords(text: &str) -> String {
+        let lower = text.to_lowercase();
+        Self::mask_after_prefix(text, |pos| {
+            let needle = "password=";
+            lower[pos..].starts_with(needle).then_some(needle.len())
+        })
+    }
+
+    fn mask_env_passwords(text: &str) -> String {
+        const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
+        Self::mask_after_prefix(text, |pos| {
+            PREFIXES
+                .iter()
+                .find_map(|p| text[pos..].starts_with(p).then_some(p.len()))
+        })
+    }
+
+    fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
+        let mut result = String::with_capacity(text.len());
+        let mut i = 0;
+
+        while i < text.len() {
+            if let Some(prefix_len) = find_prefix(i) {
+                let eq_end = i + prefix_len;
+                result.push_str(&text[i..eq_end]);
+                result.push_str("****");
+                let mut j = eq_end;
+                while j < text.len() && !text.as_bytes()[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                i = j;
+            } else {
+                let ch = text[i..].chars().next().unwrap();
+                result.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+
+        result
     }
 }
 
