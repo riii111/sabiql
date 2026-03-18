@@ -28,7 +28,7 @@ paths:
 2. `map_nav_intent()` に KeyCombo → NavIntent マッピング追加
 3. `resolve()` に全 NavigationContext × NavIntent の match arm 追加
 4. `keybindings/normal.rs` に display-only エントリ追加
-5. matrix テスト（`normal.rs`）に全 context のテストケース追加
+5. matrix テスト（`handlers/normal.rs`）に全 context のテストケース追加
 6. `resolve()` のユニットテスト（`nav_intent.rs`）に新 intent の全 context パターン追加
 
 ## アンチパターン

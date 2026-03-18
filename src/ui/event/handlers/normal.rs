@@ -13,13 +13,8 @@ fn resolve_nav(combo: &KeyCombo, nav_ctx: NavigationContext) -> Option<Action> {
 
 pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let nav_ctx = NavigationContext::from_state(state);
-    let result_navigation = matches!(
-        nav_ctx,
-        NavigationContext::ResultScroll
-            | NavigationContext::ResultRowActive
-            | NavigationContext::ResultCellActive
-    );
-    let inspector_navigation = nav_ctx == NavigationContext::Inspector;
+    let result_navigation = nav_ctx.is_result();
+    let inspector_navigation = nav_ctx.is_inspector();
     let result_nav_mode = state.result_interaction.selection().mode();
 
     // Ctrl combos

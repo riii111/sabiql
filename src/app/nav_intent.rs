@@ -14,6 +14,17 @@ pub enum NavigationContext {
 }
 
 impl NavigationContext {
+    pub fn is_result(self) -> bool {
+        matches!(
+            self,
+            Self::ResultScroll | Self::ResultRowActive | Self::ResultCellActive
+        )
+    }
+
+    pub fn is_inspector(self) -> bool {
+        self == Self::Inspector
+    }
+
     pub fn from_state(state: &AppState) -> Self {
         let result_nav = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
         if result_nav {
@@ -255,6 +266,13 @@ mod tests {
     )]
     #[case(
         FocusedPane::Explorer,
+        true,
+        None,
+        None,
+        NavigationContext::ResultScroll
+    )]
+    #[case(
+        FocusedPane::Inspector,
         true,
         None,
         None,
