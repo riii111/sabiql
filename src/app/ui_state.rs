@@ -5,7 +5,10 @@ use super::focused_pane::FocusedPane;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::keybindings::help_content_line_count;
+use super::picker_state::PickerState;
 use super::viewport::ViewportPlan;
+
+pub use super::picker_state::clamp_scroll_offset;
 
 // header (1) + scroll indicators (2), used by rendering (border already excluded)
 pub const RESULT_INNER_OVERHEAD: u16 = 3;
@@ -111,15 +114,9 @@ pub struct UiState {
     pub connection_list_scroll_offset: usize,
     pub connection_list_pane_height: u16,
 
-    pub picker_selected: usize,
-    pub picker_scroll_offset: usize,
-    pub picker_pane_height: u16,
-    pub filter_input: String,
+    pub table_picker: PickerState,
 
-    pub er_filter_input: String,
-    pub er_picker_selected: usize,
-    pub er_picker_scroll_offset: usize,
-    pub er_picker_pane_height: u16,
+    pub er_picker: PickerState,
     pub er_selected_tables: BTreeSet<String>,
     pub pending_er_picker: bool,
 
@@ -163,14 +160,6 @@ impl UiState {
 
     pub fn connection_list_visible_items(&self) -> usize {
         self.connection_list_pane_height as usize
-    }
-
-    pub fn picker_visible_items(&self) -> usize {
-        self.picker_pane_height as usize
-    }
-
-    pub fn er_picker_visible_items(&self) -> usize {
-        self.er_picker_pane_height as usize
     }
 
     pub fn inspector_ddl_visible_rows(&self) -> usize {
@@ -230,49 +219,6 @@ impl UiState {
         }
     }
 
-    pub fn set_picker_selection(&mut self, index: usize) {
-        self.picker_scroll_offset = clamp_scroll_offset(
-            index,
-            self.picker_scroll_offset,
-            self.picker_visible_items(),
-        );
-        self.picker_selected = index;
-    }
-
-    pub fn reset_picker_selection(&mut self) {
-        self.picker_selected = 0;
-        self.picker_scroll_offset = 0;
-    }
-
-    pub fn set_er_picker_selection(&mut self, index: usize) {
-        self.er_picker_scroll_offset = clamp_scroll_offset(
-            index,
-            self.er_picker_scroll_offset,
-            self.er_picker_visible_items(),
-        );
-        self.er_picker_selected = index;
-    }
-
-    pub fn reset_er_picker_selection(&mut self) {
-        self.er_picker_selected = 0;
-        self.er_picker_scroll_offset = 0;
-    }
-}
-
-pub fn clamp_scroll_offset(selected: usize, current_offset: usize, viewport: usize) -> usize {
-    if viewport == 0 {
-        return 0;
-    }
-    let bottom_edge = current_offset + viewport.saturating_sub(1);
-    if selected > bottom_edge {
-        // selected fell below viewport bottom — scroll down minimally
-        selected - viewport.saturating_sub(1)
-    } else if selected < current_offset {
-        // selected rose above viewport top — scroll up minimally
-        selected
-    } else {
-        current_offset
-    }
 }
 
 pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
@@ -292,7 +238,7 @@ mod tests {
         assert!(!state.focus_mode);
         assert!(state.focus_mode_prev_pane.is_none());
         assert_eq!(state.explorer_selected, 0);
-        assert!(state.filter_input.is_empty());
+        assert!(state.table_picker.filter_input.is_empty());
     }
 
     #[test]
