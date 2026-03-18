@@ -183,8 +183,9 @@ impl Inspector {
 
         let total_lines = lines.len();
         let visible_lines = area.height as usize;
-        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        use crate::ui::primitives::atoms::scroll_indicator::clamp_scroll_offset;
+        let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -656,52 +657,5 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
     } else {
         let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
         format!("{}...", truncated)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn scroll_offset_clamping_with_large_offset_and_small_table() {
-        let total_rows: usize = 5;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 100_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 0);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_with_exact_fit() {
-        let total_rows: usize = 10;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 5_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 0);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_with_normal_scroll() {
-        let total_rows: usize = 100;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 50_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 50);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_when_offset_exceeds_max() {
-        let total_rows: usize = 20;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 100_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 10);
     }
 }
