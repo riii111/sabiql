@@ -337,17 +337,15 @@ impl Inspector {
         frame.render_widget(table_widget, area);
 
         use crate::ui::primitives::atoms::scroll_indicator::{
-            HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
-            render_vertical_scroll_indicator_bar,
+            HorizontalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator_clamped,
         };
-        render_vertical_scroll_indicator_bar(
+        render_vertical_scroll_indicator_clamped(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: scroll_viewport_size,
-                total_items: total_rows,
-            },
+            clamped_scroll_offset,
+            scroll_viewport_size,
+            total_rows,
         );
         render_horizontal_scroll_indicator(
             frame,
@@ -438,18 +436,13 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+        render_vertical_scroll_indicator_clamped(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
-            },
+            clamped_scroll_offset,
+            visible_rows,
+            total_rows,
         );
     }
 
@@ -536,18 +529,13 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+        render_vertical_scroll_indicator_clamped(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
-            },
+            clamped_scroll_offset,
+            visible_rows,
+            total_rows,
         );
     }
 
@@ -610,27 +598,20 @@ impl Inspector {
 
                 let total_lines = lines.len();
                 let visible_lines = area.height as usize;
-                let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-                let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+                use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+                let clamped_scroll_offset = render_vertical_scroll_indicator_clamped(
+                    frame,
+                    area,
+                    scroll_offset,
+                    visible_lines,
+                    total_lines,
+                );
 
                 let paragraph = Paragraph::new(lines)
                     .wrap(Wrap { trim: false })
                     .scroll((clamped_scroll_offset as u16, 0));
                 frame.render_widget(paragraph, area);
-
-                // Vertical scroll indicator
-                use crate::ui::primitives::atoms::scroll_indicator::{
-                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
-                };
-                render_vertical_scroll_indicator_bar(
-                    frame,
-                    area,
-                    VerticalScrollParams {
-                        position: clamped_scroll_offset,
-                        viewport_size: visible_lines,
-                        total_items: total_lines,
-                    },
-                );
             }
         }
     }
@@ -708,18 +689,13 @@ impl Inspector {
         let table_widget = Table::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+        render_vertical_scroll_indicator_clamped(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
-            },
+            clamped_scroll_offset,
+            visible_rows,
+            total_rows,
         );
     }
 
@@ -734,28 +710,21 @@ impl Inspector {
 
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
-        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+        let clamped_scroll_offset = render_vertical_scroll_indicator_clamped(
+            frame,
+            area,
+            scroll_offset,
+            visible_lines,
+            total_lines,
+        );
 
         let paragraph = Paragraph::new(ddl)
             .wrap(Wrap { trim: false })
             .style(Style::default().fg(Theme::TEXT_PRIMARY))
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
-
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
-            frame,
-            area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_lines,
-                total_items: total_lines,
-            },
-        );
     }
 }
 
