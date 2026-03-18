@@ -117,7 +117,7 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.filter_input.to_lowercase();
+        let filter_lower = self.ui.table_picker.filter_input.to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -130,7 +130,7 @@ impl AppState {
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.er_filter_input.to_lowercase();
+        let filter_lower = self.ui.er_picker.filter_input.to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -273,7 +273,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.filter_input = "".to_string();
+        state.ui.table_picker.filter_input ="".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -292,7 +292,7 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.filter_input = "user".to_string();
+        state.ui.table_picker.filter_input ="user".to_string();
 
         let filtered = state.filtered_tables();
 
@@ -314,7 +314,7 @@ mod tests {
             )],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.filter_input = "user".to_string();
+        state.ui.table_picker.filter_input ="user".to_string();
 
         let filtered = state.filtered_tables();
 

@@ -62,12 +62,12 @@ impl ErTablePicker {
         ])
         .areas(inner);
 
-        state.ui.er_picker_pane_height = list_area.height;
+        state.ui.er_picker.pane_height = list_area.height;
 
         // Filter input
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(&state.ui.er_filter_input),
+            Span::raw(&state.ui.er_picker.filter_input),
             Span::styled(
                 "█",
                 Style::default()
@@ -121,13 +121,13 @@ impl ErTablePicker {
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {
-            Some(state.ui.er_picker_selected)
+            Some(state.ui.er_picker.selected)
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.er_picker_scroll_offset);
+            .with_offset(state.ui.er_picker.scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }
