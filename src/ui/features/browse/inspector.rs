@@ -183,8 +183,9 @@ impl Inspector {
 
         let total_lines = lines.len();
         let visible_lines = area.height as usize;
-        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        use crate::ui::primitives::atoms::scroll_indicator::clamp_scroll_offset;
+        let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -363,33 +364,8 @@ impl Inspector {
     }
 
     fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
-        if table.indexes.is_empty() {
-            let msg = Paragraph::new("No indexes");
-            frame.render_widget(msg, area);
-            return;
-        }
-
-        let header = Row::new(vec![
-            Cell::from("Name"),
-            Cell::from("Columns"),
-            Cell::from("Type"),
-            Cell::from("Unique"),
-        ])
-        .style(
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(Modifier::UNDERLINED)
-                .fg(Theme::TEXT_PRIMARY),
-        )
-        .height(1);
-
-        // -2: header (1) + scroll indicator (1)
-        let visible_rows = area.height.saturating_sub(2) as usize;
-        let total_rows = table.indexes.len();
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
-
         let headers = ["Name", "Columns", "Type", "Unique"];
+        // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
             .indexes
             .iter()
@@ -408,47 +384,27 @@ impl Inspector {
             })
             .collect();
         let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
-
-        let rows: Vec<Row> = table
-            .indexes
-            .iter()
-            .enumerate()
-            .skip(clamped_scroll_offset)
-            .take(visible_rows)
-            .map(|(row_idx, idx)| {
-                let unique_marker = if idx.is_unique { "✓" } else { "" };
-                let type_str = format!("{:?}", idx.index_type).to_lowercase();
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
-                Row::new(vec![
-                    Cell::from(idx.name.clone()),
-                    Cell::from(idx.columns.join(", ")),
-                    Cell::from(type_str),
-                    Cell::from(unique_marker),
-                ])
-                .style(style)
-            })
-            .collect();
-
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
-        let table_widget = Table::new(rows, widths).header(header);
-        frame.render_widget(table_widget, area);
-
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        render_striped_table(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
+            &StripedTableConfig {
+                headers: &headers,
+                widths: &widths,
+                total_items: table.indexes.len(),
+                empty_message: "No indexes",
+            },
+            scroll_offset,
+            |idx| {
+                let index = &table.indexes[idx];
+                vec![
+                    Cell::from(index.name.clone()),
+                    Cell::from(index.columns.join(", ")),
+                    Cell::from(format!("{:?}", index.index_type).to_lowercase()),
+                    Cell::from(if index.is_unique { "✓" } else { "" }),
+                ]
             },
         );
     }
@@ -459,32 +415,8 @@ impl Inspector {
         table: &TableDetail,
         scroll_offset: usize,
     ) {
-        if table.foreign_keys.is_empty() {
-            let msg = Paragraph::new("No foreign keys");
-            frame.render_widget(msg, area);
-            return;
-        }
-
-        let header = Row::new(vec![
-            Cell::from("Name"),
-            Cell::from("Columns"),
-            Cell::from("References"),
-        ])
-        .style(
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(Modifier::UNDERLINED)
-                .fg(Theme::TEXT_PRIMARY),
-        )
-        .height(1);
-
-        // -2: header (1) + scroll indicator (1)
-        let visible_rows = area.height.saturating_sub(2) as usize;
-        let total_rows = table.foreign_keys.len();
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
-
         let headers = ["Name", "Columns", "References"];
+        // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
             .foreign_keys
             .iter()
@@ -503,50 +435,31 @@ impl Inspector {
             })
             .collect();
         let (col_widths, _) = calculate_column_widths(&headers, &data_rows);
-
-        let rows: Vec<Row> = table
-            .foreign_keys
-            .iter()
-            .enumerate()
-            .skip(clamped_scroll_offset)
-            .take(visible_rows)
-            .map(|(row_idx, fk)| {
-                let refs = format!(
-                    "{}.{}({})",
-                    fk.to_schema,
-                    fk.to_table,
-                    fk.to_columns.join(", ")
-                );
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
-                Row::new(vec![
-                    Cell::from(fk.name.clone()),
-                    Cell::from(fk.from_columns.join(", ")),
-                    Cell::from(refs),
-                ])
-                .style(style)
-            })
-            .collect();
-
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
-        let table_widget = Table::new(rows, widths).header(header);
-        frame.render_widget(table_widget, area);
-
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        render_striped_table(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
+            &StripedTableConfig {
+                headers: &headers,
+                widths: &widths,
+                total_items: table.foreign_keys.len(),
+                empty_message: "No foreign keys",
+            },
+            scroll_offset,
+            |idx| {
+                let fk = &table.foreign_keys[idx];
+                vec![
+                    Cell::from(fk.name.clone()),
+                    Cell::from(fk.from_columns.join(", ")),
+                    Cell::from(format!(
+                        "{}.{}({})",
+                        fk.to_schema,
+                        fk.to_table,
+                        fk.to_columns.join(", ")
+                    )),
+                ]
             },
         );
     }
@@ -610,18 +523,18 @@ impl Inspector {
 
                 let total_lines = lines.len();
                 let visible_lines = area.height as usize;
-                let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-                let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+                use crate::ui::primitives::atoms::scroll_indicator::{
+                    VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+                };
+                let clamped_scroll_offset =
+                    clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
                 let paragraph = Paragraph::new(lines)
                     .wrap(Wrap { trim: false })
                     .scroll((clamped_scroll_offset as u16, 0));
                 frame.render_widget(paragraph, area);
 
-                // Vertical scroll indicator
-                use crate::ui::primitives::atoms::scroll_indicator::{
-                    VerticalScrollParams, render_vertical_scroll_indicator_bar,
-                };
                 render_vertical_scroll_indicator_bar(
                     frame,
                     area,
@@ -636,67 +549,7 @@ impl Inspector {
     }
 
     fn render_triggers(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
-        if table.triggers.is_empty() {
-            let msg = Paragraph::new("No triggers");
-            frame.render_widget(msg, area);
-            return;
-        }
-
-        let header = Row::new(vec![
-            Cell::from("Name"),
-            Cell::from("Timing"),
-            Cell::from("Event"),
-            Cell::from("Function"),
-            Cell::from("SecDef"),
-        ])
-        .style(
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(Modifier::UNDERLINED)
-                .fg(Theme::TEXT_PRIMARY),
-        )
-        .height(1);
-
-        // -2: header (1) + scroll indicator (1)
-        let visible_rows = area.height.saturating_sub(2) as usize;
-        let total_rows = table.triggers.len();
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
-
-        let rows: Vec<Row> = table
-            .triggers
-            .iter()
-            .enumerate()
-            .skip(clamped_scroll_offset)
-            .take(visible_rows)
-            .map(|(row_idx, trigger)| {
-                let events_str = trigger
-                    .events
-                    .iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join("/");
-                let secdef = if trigger.security_definer {
-                    "\u{2713}"
-                } else {
-                    ""
-                };
-                let style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
-                    Style::default().bg(Theme::STRIPED_ROW_BG)
-                } else {
-                    Style::default()
-                };
-                Row::new(vec![
-                    Cell::from(trigger.name.clone()),
-                    Cell::from(trigger.timing.to_string()),
-                    Cell::from(events_str),
-                    Cell::from(trigger.function_name.clone()),
-                    Cell::from(secdef),
-                ])
-                .style(style)
-            })
-            .collect();
-
+        let headers = ["Name", "Timing", "Event", "Function", "SecDef"];
         let widths = [
             Constraint::Percentage(25),
             Constraint::Percentage(15),
@@ -705,20 +558,36 @@ impl Inspector {
             Constraint::Percentage(15),
         ];
 
-        let table_widget = Table::new(rows, widths).header(header);
-        frame.render_widget(table_widget, area);
-
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
-        render_vertical_scroll_indicator_bar(
+        use crate::ui::primitives::molecules::{StripedTableConfig, render_striped_table};
+        render_striped_table(
             frame,
             area,
-            VerticalScrollParams {
-                position: clamped_scroll_offset,
-                viewport_size: visible_rows,
-                total_items: total_rows,
+            &StripedTableConfig {
+                headers: &headers,
+                widths: &widths,
+                total_items: table.triggers.len(),
+                empty_message: "No triggers",
+            },
+            scroll_offset,
+            |idx| {
+                let trigger = &table.triggers[idx];
+                let events_str = trigger
+                    .events
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                vec![
+                    Cell::from(trigger.name.clone()),
+                    Cell::from(trigger.timing.to_string()),
+                    Cell::from(events_str),
+                    Cell::from(trigger.function_name.clone()),
+                    Cell::from(if trigger.security_definer {
+                        "\u{2713}"
+                    } else {
+                        ""
+                    }),
+                ]
             },
         );
     }
@@ -734,8 +603,11 @@ impl Inspector {
 
         let total_lines = ddl.lines().count();
         let visible_lines = area.height as usize;
-        let max_scroll_offset = total_lines.saturating_sub(visible_lines);
-        let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+
+        use crate::ui::primitives::atoms::scroll_indicator::{
+            VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+        };
+        let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let paragraph = Paragraph::new(ddl)
             .wrap(Wrap { trim: false })
@@ -743,10 +615,6 @@ impl Inspector {
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 
-        // Vertical scroll indicator
-        use crate::ui::primitives::atoms::scroll_indicator::{
-            VerticalScrollParams, render_vertical_scroll_indicator_bar,
-        };
         render_vertical_scroll_indicator_bar(
             frame,
             area,
@@ -789,52 +657,5 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
     } else {
         let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
         format!("{}...", truncated)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn scroll_offset_clamping_with_large_offset_and_small_table() {
-        let total_rows: usize = 5;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 100_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 0);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_with_exact_fit() {
-        let total_rows: usize = 10;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 5_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 0);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_with_normal_scroll() {
-        let total_rows: usize = 100;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 50_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 50);
-    }
-
-    #[test]
-    fn scroll_offset_clamping_when_offset_exceeds_max() {
-        let total_rows: usize = 20;
-        let visible_rows: usize = 10;
-
-        let max_scroll_offset = total_rows.saturating_sub(visible_rows);
-        let clamped = 100_usize.min(max_scroll_offset);
-
-        assert_eq!(clamped, 10);
     }
 }

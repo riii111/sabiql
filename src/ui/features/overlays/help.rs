@@ -16,7 +16,7 @@ use crate::app::keybindings::{
 use crate::app::state::AppState;
 
 use crate::ui::primitives::atoms::scroll_indicator::{
-    VerticalScrollParams, render_vertical_scroll_indicator_bar,
+    VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
 };
 use crate::ui::primitives::molecules::render_modal;
 
@@ -149,8 +149,8 @@ impl HelpOverlay {
 
         let total_lines = help_lines.len();
         let viewport_height = inner.height as usize;
-        let max_scroll = total_lines.saturating_sub(viewport_height);
-        let scroll_offset = state.ui.help_scroll_offset.min(max_scroll);
+        let scroll_offset =
+            clamp_scroll_offset(state.ui.help_scroll_offset, viewport_height, total_lines);
 
         let help = Paragraph::new(help_lines)
             .wrap(Wrap { trim: false })
