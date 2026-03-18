@@ -3,7 +3,9 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
-use crate::ui::primitives::atoms::scroll_indicator::render_vertical_scroll_indicator_clamped;
+use crate::ui::primitives::atoms::scroll_indicator::{
+    VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+};
 use crate::ui::theme::Theme;
 
 pub struct StripedTableConfig<'b> {
@@ -21,7 +23,7 @@ pub fn render_striped_table<'a>(
     row_fn: impl Fn(usize) -> Vec<Cell<'a>>,
 ) -> usize {
     if config.total_items == 0 {
-        frame.render_widget(Paragraph::new(config.empty_message.to_string()), area);
+        frame.render_widget(Paragraph::new(config.empty_message), area);
         return 0;
     }
 
@@ -36,8 +38,8 @@ pub fn render_striped_table<'a>(
 
     // -2: header (1) + scroll indicator (1)
     let visible_rows = area.height.saturating_sub(2) as usize;
-    let max_scroll_offset = config.total_items.saturating_sub(visible_rows);
-    let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
+    let clamped_scroll_offset =
+        clamp_scroll_offset(scroll_offset, visible_rows, config.total_items);
 
     let rows: Vec<Row> = (clamped_scroll_offset..config.total_items)
         .take(visible_rows)
@@ -55,12 +57,14 @@ pub fn render_striped_table<'a>(
     let table_widget = Table::new(rows, config.widths).header(header);
     frame.render_widget(table_widget, area);
 
-    render_vertical_scroll_indicator_clamped(
+    render_vertical_scroll_indicator_bar(
         frame,
         area,
-        clamped_scroll_offset,
-        visible_rows,
-        config.total_items,
+        VerticalScrollParams {
+            position: clamped_scroll_offset,
+            viewport_size: visible_rows,
+            total_items: config.total_items,
+        },
     );
 
     clamped_scroll_offset

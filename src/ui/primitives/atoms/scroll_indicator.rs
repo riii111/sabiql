@@ -191,23 +191,10 @@ pub fn render_vertical_scroll_indicator_bar(
     frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
 
-pub fn render_vertical_scroll_indicator_clamped(
-    frame: &mut Frame,
-    area: Rect,
+pub fn clamp_scroll_offset(
     scroll_offset: usize,
     viewport_size: usize,
     total_items: usize,
 ) -> usize {
-    let max = total_items.saturating_sub(viewport_size);
-    let clamped = scroll_offset.min(max);
-    render_vertical_scroll_indicator_bar(
-        frame,
-        area,
-        VerticalScrollParams {
-            position: clamped,
-            viewport_size,
-            total_items,
-        },
-    );
-    clamped
+    scroll_offset.min(total_items.saturating_sub(viewport_size))
 }
