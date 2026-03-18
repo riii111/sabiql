@@ -40,6 +40,7 @@ pub fn handle_sql_modal_keys(
             return match combo.key {
                 Key::Char('j') | Key::Down if plain => Action::ExplainPlanScrollDown,
                 Key::Char('k') | Key::Up if plain => Action::ExplainPlanScrollUp,
+                Key::Enter if plain => Action::SqlModalEnterInsert,
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };
@@ -560,6 +561,7 @@ mod tests {
     #[case(Key::Down, Expected::ExplainPlanScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainPlanScrollUp)]
     #[case(Key::Up, Expected::ExplainPlanScrollUp)]
+    #[case(Key::Enter, Expected::SqlModalEnterInsert)]
     #[case(Key::Esc, Expected::CloseSqlModal)]
     #[case(Key::Char('a'), Expected::None)]
     fn plan_tab_key_behavior(#[case] code: Key, #[case] expected: Expected) {

@@ -7,9 +7,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │ [SQL]  [Plan]                                                │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
 │       │CREATE TABLE backup AS SELECT * FROM users                    │       │
+│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Tab  Esc:Close
+⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Plan  Esc:Close

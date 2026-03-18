@@ -7,9 +7,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │ [SQL]  [Plan]                                                │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
 │       │SELECT 1█                                                     │       │
+│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │

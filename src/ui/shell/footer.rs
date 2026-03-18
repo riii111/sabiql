@@ -232,7 +232,8 @@ impl Footer {
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::EXPLAIN].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::ANALYZE].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::SCROLL].as_hint(),
-                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::TAB].as_hint(),
+                            ("Enter", "Edit"),
+                            ("Tab", "SQL"),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
                         ]
                     } else {
@@ -241,7 +242,7 @@ impl Footer {
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::EXPLAIN].as_hint(),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::TAB].as_hint(),
+                            ("Tab", "Plan"),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
                         ]
                     }

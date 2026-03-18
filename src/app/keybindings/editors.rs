@@ -105,7 +105,7 @@ pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "Tab",
         key: "Tab",
-        desc_short: "Tab",
+        desc_short: "Switch",
         description: "Switch tab",
         action: Action::SqlModalNextTab,
         combos: &[KeyCombo::plain(Key::Tab)],
