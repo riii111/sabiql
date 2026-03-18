@@ -34,7 +34,7 @@ pub fn text_cursor_spans(
         let text: String = visible.iter().collect();
         vec![
             Span::raw(text),
-            Span::styled("\u{2588}", Style::default().fg(Theme::CURSOR_FG)),
+            Span::styled("\u{258F}", Style::default().fg(Theme::CURSOR_FG)),
         ]
     } else if cursor_in_view < visible.len() {
         // Cursor on a visible character: before + reversed char + after
@@ -82,7 +82,7 @@ mod tests {
         let spans = text_cursor_spans("abc", 3, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc", "\u{2588}"]);
+        assert_eq!(texts, vec!["abc", "\u{258F}"]);
     }
 
     #[test]
@@ -90,7 +90,7 @@ mod tests {
         let spans = text_cursor_spans("", 0, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "\u{2588}"]);
+        assert_eq!(texts, vec!["", "\u{258F}"]);
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
 
         // vp clamped to 3 (total), visible is empty, cursor at end
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "\u{2588}"]);
+        assert_eq!(texts, vec!["", "\u{258F}"]);
     }
 
     #[test]
