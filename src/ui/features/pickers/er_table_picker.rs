@@ -121,13 +121,13 @@ impl ErTablePicker {
             .highlight_symbol("▸ ");
 
         let selected = if filtered_count > 0 {
-            Some(state.ui.er_picker.selected)
+            Some(state.ui.er_picker.selected())
         } else {
             None
         };
         let mut list_state = ListState::default()
             .with_selected(selected)
-            .with_offset(state.ui.er_picker.scroll_offset);
+            .with_offset(state.ui.er_picker.scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
     }
 }

@@ -91,7 +91,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
         }
         Action::ErToggleSelection => {
             let filtered = state.er_filtered_tables();
-            if let Some(table) = filtered.get(state.ui.er_picker.selected) {
+            if let Some(table) = filtered.get(state.ui.er_picker.selected()) {
                 let name = table.qualified_name();
                 if !state.ui.er_selected_tables.remove(&name) {
                     state.ui.er_selected_tables.insert(name);

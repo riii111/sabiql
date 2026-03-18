@@ -88,7 +88,7 @@ fn reduce_inner(
             if state.modal.active_mode() == InputMode::TablePicker {
                 let table = state
                     .filtered_tables()
-                    .get(state.ui.table_picker.selected)
+                    .get(state.ui.table_picker.selected())
                     .cloned()
                     .cloned();
                 if let Some(table) = table {
@@ -114,7 +114,7 @@ fn reduce_inner(
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::app::palette::palette_action_for_index;
 
-                let cmd_action = palette_action_for_index(state.ui.table_picker.selected);
+                let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
             }
@@ -310,7 +310,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
             assert!(state.ui.table_picker.filter_input.is_empty());
-            assert_eq!(state.ui.table_picker.selected, 0);
+            assert_eq!(state.ui.table_picker.selected(), 0);
             assert!(effects.is_empty());
         }
 
@@ -759,7 +759,7 @@ mod tests {
                 .session
                 .set_table_detail_raw(Some(stale_table_detail()));
             state.modal.set_mode(InputMode::TablePicker);
-            state.ui.table_picker.selected = 0;
+            state.ui.table_picker.set_selection(0);
 
             reduce(
                 &mut state,
@@ -2245,7 +2245,7 @@ mod tests {
             });
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.selected = entry_index;
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             reduce(
@@ -2264,7 +2264,7 @@ mod tests {
 
             let mut state = state_in_palette_mode();
             state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.ui.table_picker.selected = entry_index;
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             let effects = reduce(
@@ -2286,7 +2286,7 @@ mod tests {
             let entry_index = palette_index_of(|a| matches!(a, Action::OpenConnectionSelector));
 
             let mut state = state_in_palette_mode();
-            state.ui.table_picker.selected = entry_index;
+            state.ui.table_picker.set_selection(entry_index);
             let now = Instant::now();
 
             reduce(

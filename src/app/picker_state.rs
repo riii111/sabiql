@@ -1,12 +1,20 @@
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
-    pub selected: usize,
-    pub scroll_offset: usize,
+    selected: usize,
+    scroll_offset: usize,
     pub pane_height: u16,
     pub filter_input: String,
 }
 
 impl PickerState {
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
     pub fn visible_items(&self) -> usize {
         self.pane_height as usize
     }
