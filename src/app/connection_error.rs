@@ -161,42 +161,27 @@ impl ConnectionErrorInfo {
 
     fn mask_kv_passwords(text: &str) -> String {
         let lower = text.to_lowercase();
-        let needle = "password=";
-        let mut result = String::with_capacity(text.len());
-        let mut i = 0;
-
-        while i < text.len() {
-            if lower[i..].starts_with(needle) {
-                let eq_end = i + needle.len();
-                result.push_str(&text[i..eq_end]);
-                result.push_str("****");
-                let mut j = eq_end;
-                while j < text.len() && !text.as_bytes()[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                i = j;
-            } else {
-                let ch = text[i..].chars().next().unwrap();
-                result.push(ch);
-                i += ch.len_utf8();
-            }
-        }
-
-        result
+        Self::mask_after_prefix(text, |pos| {
+            let needle = "password=";
+            lower[pos..].starts_with(needle).then_some(needle.len())
+        })
     }
 
     fn mask_env_passwords(text: &str) -> String {
         const PREFIXES: &[&str] = &["PGPASSWORD=", "MYSQL_PASSWORD=", "MYSQL_PWD="];
+        Self::mask_after_prefix(text, |pos| {
+            PREFIXES
+                .iter()
+                .find_map(|p| text[pos..].starts_with(p).then_some(p.len()))
+        })
+    }
+
+    fn mask_after_prefix(text: &str, find_prefix: impl Fn(usize) -> Option<usize>) -> String {
         let mut result = String::with_capacity(text.len());
         let mut i = 0;
 
         while i < text.len() {
-            let matched = PREFIXES
-                .iter()
-                .find(|p| text[i..].starts_with(*p))
-                .map(|p| p.len());
-
-            if let Some(prefix_len) = matched {
+            if let Some(prefix_len) = find_prefix(i) {
                 let eq_end = i + prefix_len;
                 result.push_str(&text[i..eq_end]);
                 result.push_str("****");
