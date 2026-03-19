@@ -14,8 +14,10 @@ use sabiql::app::er_state::ErStatus;
 use sabiql::app::focused_pane::FocusedPane;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
+use sabiql::app::text_input::TextInputState;
 use sabiql::app::write_guardrails::{
-    ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+    AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
+    WritePreview,
 };
 use sabiql::domain::{CommandTag, QuerySource};
 
@@ -324,6 +326,90 @@ mod overlays {
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "SELECT * FORM users".to_string();
         state.sql_modal.mark_adhoc_error("ERROR:  syntax error at or near \"FORM\"\nLINE 1: SELECT * FORM users\n                 ^".to_string());
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_confirming_medium() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+        state.sql_modal.set_status(SqlModalStatus::Confirming(AdhocRiskDecision {
+            risk_level: RiskLevel::Medium,
+            label: "DELETE",
+        }));
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_confirming_high_matched() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.content = "DROP TABLE users".to_string();
+        let mut input = TextInputState::default();
+        input.set_content("users".to_string());
+        state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input,
+            target_name: Some("users".to_string()),
+        });
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_confirming_high_unmatched() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.content = "DROP TABLE users".to_string();
+        let mut input = TextInputState::default();
+        input.set_content("use".to_string());
+        state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input,
+            target_name: Some("users".to_string()),
+        });
+
+        let output = render_to_string(&mut terminal, &mut state);
+
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
+    fn sql_modal_confirming_high_no_target() {
+        let mut state = create_test_state();
+        let mut terminal = create_test_terminal();
+
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.content = "DROP TABLE users".to_string();
+        state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
+            decision: AdhocRiskDecision {
+                risk_level: RiskLevel::High,
+                label: "DROP",
+            },
+            input: TextInputState::default(),
+            target_name: None,
+        });
 
         let output = render_to_string(&mut terminal, &mut state);
 
