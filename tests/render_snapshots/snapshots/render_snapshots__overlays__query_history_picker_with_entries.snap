@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│           ╭ Query History ───────────────────────────────────────╮           │
+│           │  type to filter                                      │           │
+│           │▸ ✗ SELECT count(*) FROM users      Mar 13 12:00 UTC  │           │
+│           │  ✓ INSERT INTO orders (user_id, …  Mar 13 11:00 UTC  │           │
+│           │  ✓ SELECT * FROM users WHERE id …  Mar 13 10:00 UTC  │           │
+│           │                                                      │───────────┘
+│           │                                                      │───────────┐
+│           │ Preview ─────────────────────────────────────────────│           │
+│           │✗ Failed  │ Mar 13 12:00 UTC                          │           │
+│           │                                                      │           │
+│           │SELECT count(*) FROM users                            │           │
+│           │                                                      │           │
+│           ╰ 3 entries │ type to filter │ Enter Select ───────────╯           │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close
