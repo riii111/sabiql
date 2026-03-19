@@ -109,6 +109,7 @@ mod tests {
             assert_eq!(result.execution_time_ms, 42);
             assert_eq!(result.source, QuerySource::Adhoc);
             assert!(result.error.is_none());
+            assert!(!result.is_error());
             assert!(result.command_tag.is_none());
         }
 

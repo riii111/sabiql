@@ -158,6 +158,13 @@ mod tests {
         }
 
         #[test]
+        fn display_name_keeps_non_public_schema() {
+            let summary = make_summary("audit", "logs");
+
+            assert_eq!(summary.display_name(true), "audit.logs");
+        }
+
+        #[test]
         fn qualified_name_lower_returns_lowercased() {
             let summary = make_summary("MySchema", "MyTable");
 
