@@ -121,7 +121,7 @@ impl AppState {
         self.session
             .metadata()
             .map(|m| {
-                m.tables
+                m.table_summaries
                     .iter()
                     .filter(|t| t.qualified_name_lower().contains(&filter_lower))
                     .collect()
@@ -134,7 +134,7 @@ impl AppState {
         self.session
             .metadata()
             .map(|m| {
-                m.tables
+                m.table_summaries
                     .iter()
                     .filter(|t| t.qualified_name_lower().contains(&filter_lower))
                     .collect()
@@ -267,7 +267,7 @@ mod tests {
         state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            tables: vec![
+            table_summaries: vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
@@ -286,7 +286,7 @@ mod tests {
         state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            tables: vec![
+            table_summaries: vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
@@ -306,7 +306,7 @@ mod tests {
         state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
             database_name: "test".to_string(),
             schemas: vec![],
-            tables: vec![TableSummary::new(
+            table_summaries: vec![TableSummary::new(
                 "public".to_string(),
                 "Users".to_string(),
                 Some(100),

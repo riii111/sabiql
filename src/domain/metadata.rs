@@ -7,7 +7,7 @@ use std::time::Instant;
 pub struct DatabaseMetadata {
     pub database_name: String,
     pub schemas: Vec<Schema>,
-    pub tables: Vec<TableSummary>,
+    pub table_summaries: Vec<TableSummary>,
     pub fetched_at: Instant,
 }
 
@@ -16,14 +16,14 @@ impl DatabaseMetadata {
         Self {
             database_name,
             schemas: Vec::new(),
-            tables: Vec::new(),
+            table_summaries: Vec::new(),
             fetched_at: Instant::now(),
         }
     }
 
     pub fn tables_by_schema(&self) -> HashMap<&str, Vec<&TableSummary>> {
         let mut map: HashMap<&str, Vec<&TableSummary>> = HashMap::new();
-        for table in &self.tables {
+        for table in &self.table_summaries {
             map.entry(&table.schema).or_default().push(table);
         }
         map
@@ -53,7 +53,7 @@ mod tests {
         #[test]
         fn multiple_schemas_groups_correctly() {
             let mut meta = DatabaseMetadata::new("testdb".to_string());
-            meta.tables = vec![
+            meta.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
                 TableSummary::new("audit".to_string(), "logs".to_string(), None, false),

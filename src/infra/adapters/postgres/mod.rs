@@ -56,7 +56,7 @@ impl MetadataProvider for PostgresAdapter {
         let db_name = Self::extract_database_name(dsn);
         let mut metadata = DatabaseMetadata::new(db_name);
         metadata.schemas = schemas;
-        metadata.tables = tables;
+        metadata.table_summaries = tables;
 
         Ok(metadata)
     }
@@ -98,15 +98,15 @@ impl MetadataProvider for PostgresAdapter {
         })
     }
 
-    async fn fetch_table_detail_light(
+    async fn fetch_table_columns_and_fks(
         &self,
         dsn: &str,
         schema: &str,
         table: &str,
     ) -> Result<Table, MetadataError> {
-        let query = Self::table_detail_light_query(schema, table);
+        let query = Self::table_columns_and_fks_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
-        let (columns, foreign_keys) = Self::parse_table_detail_light(&json)?;
+        let (columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
         let primary_key = Self::extract_primary_key(&columns);
 
         Ok(Table {

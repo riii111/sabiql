@@ -39,7 +39,7 @@ impl MetadataProvider for MySqlAdapter {
         ))
     }
 
-    async fn fetch_table_detail_light(
+    async fn fetch_table_columns_and_fks(
         &self,
         _dsn: &str,
         _schema: &str,

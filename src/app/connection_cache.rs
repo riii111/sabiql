@@ -9,7 +9,7 @@ use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 pub struct ConnectionCache {
     pub metadata: Option<Arc<DatabaseMetadata>>,
     pub table_detail: Option<Table>,
-    pub current_table: Option<String>,
+    pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
     pub explorer_selected: usize,
@@ -53,7 +53,7 @@ mod tests {
 
         assert!(cache.metadata.is_none());
         assert!(cache.table_detail.is_none());
-        assert!(cache.current_table.is_none());
+        assert!(cache.selected_table_key.is_none());
         assert!(cache.query_result.is_none());
         assert_eq!(cache.explorer_selected, 0);
         assert_eq!(cache.inspector_tab, InspectorTab::default());
@@ -121,7 +121,7 @@ mod tests {
         let metadata = Arc::new(DatabaseMetadata {
             database_name: "test_db".to_string(),
             schemas: vec![],
-            tables: vec![TableSummary::new(
+            table_summaries: vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 Some(100),
@@ -140,7 +140,7 @@ mod tests {
         assert!(retrieved.metadata.is_some());
         let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
         assert_eq!(retrieved_metadata.database_name, "test_db");
-        assert_eq!(retrieved_metadata.tables.len(), 1);
+        assert_eq!(retrieved_metadata.table_summaries.len(), 1);
     }
 
     #[test]
