@@ -83,10 +83,8 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 
         tokio::task::spawn_blocking(move || {
             append_entry(&path, &history_dir, &line)?;
-            // Trim is best-effort: history is auxiliary data, so a trim failure
-            // should not mask a successful append. The file may temporarily
-            // exceed MAX_HISTORY_ENTRIES; the next successful trim will fix it.
-            let _ = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES);
+            // Trim is best-effort: auxiliary data, next successful append will retry.
+            if let Err(_err) = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES) {}
             Ok(())
         })
         .await
@@ -325,7 +323,7 @@ mod tests {
                 .unwrap();
         }
 
-        // Make the .tmp file path a directory so rename in trim_if_exceeded fails
+        // Make the .tmp path a directory so fs::write in trim_if_exceeded fails
         let history_dir = tmp.path().join("history");
         let tmp_path = history_dir.join(format!("{}.jsonl.tmp", conn_id));
         std::fs::create_dir_all(&tmp_path).unwrap();
