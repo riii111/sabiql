@@ -181,10 +181,9 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
 
         let svg_path = dot_path.with_extension("svg");
         self.graphviz.convert_dot_to_svg(&dot_path, &svg_path)?;
+        self.viewer.open_file(&svg_path)?;
 
         Self::cleanup_er_files(cache_dir, &[&dot_path, &svg_path]);
-
-        self.viewer.open_file(&svg_path)?;
 
         Ok(svg_path)
     }
@@ -504,14 +503,21 @@ mod tests {
         }
 
         #[test]
-        fn viewer_failure_preserves_new_files() {
+        fn viewer_failure_preserves_old_and_new_files() {
             let temp_dir = tempfile::tempdir().unwrap();
+            let old_dot = temp_dir.path().join("er_old_tables.dot");
+            let old_svg = temp_dir.path().join("er_old_tables.svg");
+            std::fs::write(&old_dot, "old dot").unwrap();
+            std::fs::write(&old_svg, "old svg").unwrap();
+
             let exporter =
                 DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::failing());
             let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path());
 
             assert!(result.is_err());
             assert!(temp_dir.path().join("er_new.dot").exists());
+            assert!(old_dot.exists());
+            assert!(old_svg.exists());
         }
     }
 }
