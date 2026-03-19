@@ -83,7 +83,10 @@ impl QueryHistoryStore for FileQueryHistoryStore {
 
         tokio::task::spawn_blocking(move || {
             append_entry(&path, &history_dir, &line)?;
-            trim_if_exceeded(&path, MAX_HISTORY_ENTRIES)?;
+            // Trim is best-effort: history is auxiliary data, so a trim failure
+            // should not mask a successful append. The file may temporarily
+            // exceed MAX_HISTORY_ENTRIES; the next successful trim will fix it.
+            let _ = trim_if_exceeded(&path, MAX_HISTORY_ENTRIES);
             Ok(())
         })
         .await
@@ -244,7 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trim_failure_preserves_existing_history() {
+    async fn below_limit_entries_are_preserved_without_trim() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
@@ -306,6 +309,37 @@ mod tests {
             entries[MAX_HISTORY_ENTRIES - 1].query,
             format!("SELECT {}", total - 1)
         );
+    }
+
+    #[tokio::test]
+    async fn append_succeeds_even_when_trim_would_fail() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+
+        // Fill to just above the limit so trim fires on next append
+        for i in 0..MAX_HISTORY_ENTRIES {
+            store
+                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .await
+                .unwrap();
+        }
+
+        // Make the .tmp file path a directory so rename in trim_if_exceeded fails
+        let history_dir = tmp.path().join("history");
+        let tmp_path = history_dir.join(format!("{}.jsonl.tmp", conn_id));
+        std::fs::create_dir_all(&tmp_path).unwrap();
+
+        // append should still succeed (trim failure is best-effort)
+        let result = store
+            .append("test", &conn_id, &make_entry("SELECT final"))
+            .await;
+        assert!(result.is_ok());
+
+        // The entry was written even though trim failed
+        let entries = store.load("test", &conn_id).await.unwrap();
+        assert!(entries.len() > MAX_HISTORY_ENTRIES);
+        assert_eq!(entries.last().unwrap().query, "SELECT final");
     }
 
     #[tokio::test]
