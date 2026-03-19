@@ -1,5 +1,6 @@
 pub mod fixtures;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use ratatui::Terminal;
@@ -8,6 +9,7 @@ use ratatui::buffer::Buffer;
 
 use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
+use sabiql::domain::QueryResult;
 use sabiql::ui::shell::layout::MainLayout;
 
 pub const TEST_WIDTH: u16 = 80;
@@ -63,4 +65,33 @@ fn buffer_to_string(buffer: &Buffer) -> String {
         }
     }
     result
+}
+
+pub fn connected_state() -> (AppState, Instant) {
+    let now = test_instant();
+    let mut state = create_test_state();
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+    (state, now)
+}
+
+pub fn explorer_selected_state() -> (AppState, Instant) {
+    let (mut state, now) = connected_state();
+    state.ui.set_explorer_selection(Some(0));
+    (state, now)
+}
+
+pub fn table_detail_loaded_state() -> (AppState, Instant) {
+    let (mut state, now) = explorer_selected_state();
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+    (state, now)
+}
+
+pub fn with_current_result(state: &mut AppState, now: Instant) {
+    state
+        .query
+        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
 }
