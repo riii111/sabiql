@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -8,6 +8,34 @@ use crate::domain::query_history::QueryHistoryEntry;
 use crate::infra::config::cache::get_cache_dir;
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
+
+fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    if !dir.exists() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    writeln!(file, "{}", line).map_err(|e| e.to_string())
+}
+
+fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), String> {
+    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() > max {
+        let trimmed = &lines[lines.len() - max..];
+        let tmp_path = path.with_extension("jsonl.tmp");
+        std::fs::write(&tmp_path, trimmed.join("\n") + "\n").map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_path, path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 
 pub struct FileQueryHistoryStore {
     base_dir: Option<PathBuf>,
@@ -54,32 +82,8 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
 
         tokio::task::spawn_blocking(move || {
-            if !history_dir.exists() {
-                std::fs::create_dir_all(&history_dir).map_err(|e| e.to_string())?;
-            }
-
-            use std::fs::OpenOptions;
-            use std::io::Write;
-
-            {
-                let mut file = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&path)
-                    .map_err(|e| e.to_string())?;
-                writeln!(file, "{}", line).map_err(|e| e.to_string())?;
-            }
-
-            // Trim to MAX_HISTORY_ENTRIES if exceeded
-            let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            let lines: Vec<&str> = content.lines().collect();
-            if lines.len() > MAX_HISTORY_ENTRIES {
-                let trimmed = &lines[lines.len() - MAX_HISTORY_ENTRIES..];
-                let tmp_path = path.with_extension("jsonl.tmp");
-                std::fs::write(&tmp_path, trimmed.join("\n") + "\n").map_err(|e| e.to_string())?;
-                std::fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
-            }
-
+            append_entry(&path, &history_dir, &line)?;
+            trim_if_exceeded(&path, MAX_HISTORY_ENTRIES)?;
             Ok(())
         })
         .await
@@ -256,6 +260,52 @@ mod tests {
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].query, "SELECT 0");
         assert_eq!(entries[4].query, "SELECT 4");
+    }
+
+    #[tokio::test]
+    async fn trim_does_not_trigger_at_exact_limit() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+
+        for i in 0..MAX_HISTORY_ENTRIES {
+            store
+                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .await
+                .unwrap();
+        }
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+        assert_eq!(entries[0].query, "SELECT 0");
+        assert_eq!(
+            entries[MAX_HISTORY_ENTRIES - 1].query,
+            format!("SELECT {}", MAX_HISTORY_ENTRIES - 1)
+        );
+    }
+
+    #[tokio::test]
+    async fn multiple_appends_beyond_limit_preserves_latest() {
+        let tmp = TempDir::new().unwrap();
+        let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
+        let conn_id = ConnectionId::from_string("test-conn");
+
+        let total = MAX_HISTORY_ENTRIES + 5;
+        for i in 0..total {
+            store
+                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .await
+                .unwrap();
+        }
+
+        let entries = store.load("test", &conn_id).await.unwrap();
+        assert_eq!(entries.len(), MAX_HISTORY_ENTRIES);
+        // Oldest 5 entries (0..5) should be trimmed
+        assert_eq!(entries[0].query, "SELECT 5");
+        assert_eq!(
+            entries[MAX_HISTORY_ENTRIES - 1].query,
+            format!("SELECT {}", total - 1)
+        );
     }
 
     #[tokio::test]
