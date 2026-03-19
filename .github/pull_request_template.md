@@ -1,11 +1,15 @@
-## 課題
-<!-- 何が問題か -->
+## Problem
+<!-- What is the problem? 1-2 lines -->
 
-## 背景
-<!-- なぜその問題が生まれたか。省略可 -->
+## Background
+<!-- Why did this problem arise? Optional -->
 
-## アプローチ
-<!-- 課題に対してどう設計したか。関数名やファイル名など実装詳細は差分を見ればわかるので不要 -->
+## Approach
+<!-- How did you design the solution? 1-3 lines.
+     Do NOT write what is obvious from the diff:
+     - function/variable/file names
+     - number of changes or lines
+     - step-by-step procedures or phases -->
 
-## 動作確認
-<!-- スクショ/GIF。不要なら省略 -->
+## Screenshots
+<!-- Screenshots/GIF. Optional -->

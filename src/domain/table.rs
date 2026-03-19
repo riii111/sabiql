@@ -4,6 +4,18 @@ use super::index::Index;
 use super::rls::RlsInfo;
 use super::trigger::Trigger;
 
+fn make_qualified_name(schema: &str, name: &str) -> String {
+    format!("{}.{}", schema, name)
+}
+
+fn make_display_name(schema: &str, name: &str, omit_public: bool) -> String {
+    if omit_public && schema == "public" {
+        name.to_string()
+    } else {
+        make_qualified_name(schema, name)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Table {
     pub schema: String,
@@ -21,15 +33,11 @@ pub struct Table {
 
 impl Table {
     pub fn qualified_name(&self) -> String {
-        format!("{}.{}", self.schema, self.name)
+        make_qualified_name(&self.schema, &self.name)
     }
 
     pub fn display_name(&self, omit_public: bool) -> String {
-        if omit_public && self.schema == "public" {
-            self.name.clone()
-        } else {
-            self.qualified_name()
-        }
+        make_display_name(&self.schema, &self.name, omit_public)
     }
 }
 
@@ -52,7 +60,7 @@ pub struct TableSignature {
 
 impl TableSignature {
     pub fn qualified_name(&self) -> String {
-        format!("{}.{}", self.schema, self.name)
+        make_qualified_name(&self.schema, &self.name)
     }
 }
 
@@ -63,7 +71,7 @@ impl TableSummary {
         row_count_estimate: Option<i64>,
         has_rls: bool,
     ) -> Self {
-        let qualified_name_lower = format!("{}.{}", schema.to_lowercase(), name.to_lowercase());
+        let qualified_name_lower = make_qualified_name(&schema, &name).to_lowercase();
         Self {
             schema,
             name,
@@ -74,7 +82,7 @@ impl TableSummary {
     }
 
     pub fn qualified_name(&self) -> String {
-        format!("{}.{}", self.schema, self.name)
+        make_qualified_name(&self.schema, &self.name)
     }
 
     pub fn qualified_name_lower(&self) -> &str {
@@ -82,11 +90,7 @@ impl TableSummary {
     }
 
     pub fn display_name(&self, omit_public: bool) -> String {
-        if omit_public && self.schema == "public" {
-            self.name.clone()
-        } else {
-            self.qualified_name()
-        }
+        make_display_name(&self.schema, &self.name, omit_public)
     }
 }
 
