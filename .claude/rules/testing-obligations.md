@@ -16,7 +16,7 @@ paths:
 | **Infra (parsers)** | 各 adapter の CLI 出力パース | `psql` テーブル出力 → `QueryResult` |
 | **Infra (adapters)** | SQL 生成（方言固有） | PG 用 `build_update_sql`（MySQL 実装時はそちらも） |
 | **UI (components)** | 描画の境界条件 | 空テーブル、オーバーフロー、エラー状態 |
-| **Integration** | レイヤ横断のラウンドトリップ | `tests/render_snapshots.rs` |
+| **Integration** | レイヤ横断のラウンドトリップ | `tests/render_snapshots/<category>.rs` |
 
 ## `#[ignore]` トラッキングルール
 
@@ -32,7 +32,7 @@ fn mysql_query_parsing() { ... }
 
 ## スナップショットテスト義務
 
-- 新しい `InputMode` バリアントには `tests/render_snapshots.rs` に最低1つのスナップショットが必要
+- 新しい `InputMode` バリアントには `tests/render_snapshots/<category>.rs` に最低1つのスナップショットが必要
 - 詳細なカバレッジ基準は `visual-regression.md` を参照
 
 ## PR セルフチェック
