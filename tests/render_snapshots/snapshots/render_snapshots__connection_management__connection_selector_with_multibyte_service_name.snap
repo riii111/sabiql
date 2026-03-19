@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/connection_management.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│               ╭ Select Connection ───────────────────────────╮               │
+│               │>   本 番 デ ー タ ベ ー ス 接 続      from pg_service.c│               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │───────────────┘
+│               │                                              │───────────────┐
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               │                                              │               │
+│               ╰ Enter Confirm  ↑/↓ Select  n New  Esc Close ─╯               │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+Enter:Confirm  ↑/↓:Select  n:New  Esc:Close

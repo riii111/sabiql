@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│           ╭ Query History ───────────────────────────────────────╮           │
+│           │  type to filter                                      │───────────┘
+│           │  No history yet                                      │───────────┐
+│           ╰ 0 entries │ type to filter │ Enter Select ───────────╯           │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+Enter:Select  type:Filter  ↑↓:Navigate  Esc:Close

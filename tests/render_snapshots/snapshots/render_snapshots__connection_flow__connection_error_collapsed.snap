@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/connection_flow.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│           ╭ Connection Error ────────────────────────────────────╮           │
+│           │✗ Could not resolve host                              │           │
+│           │                                                      │           │
+│           │Hint: Check the hostname                              │           │
+│           │                                                      │           │
+│           │▶ Details (press d to expand)                         │───────────┘
+│           │                                                      │───────────┐
+│           │                                                      │           │
+│           │                                                      │           │
+│           │                                                      │           │
+│           │Actions:  e  Re-enter   s  Switch   d  Details   c  Co│           │
+│           ╰ Esc to close ────────────────────────────────────────╯           │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+e:Edit  s:Switch  d:Details  c:Copy  Esc:Close
