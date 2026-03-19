@@ -1,5 +1,7 @@
 use super::*;
-use harness::{TEST_HEIGHT, TEST_WIDTH};
+use harness::{
+    TEST_HEIGHT, TEST_WIDTH, connected_state, table_detail_loaded_state, with_current_result,
+};
 use ratatui::style::{Color, Modifier};
 use sabiql::app::input_mode::InputMode;
 
@@ -14,19 +16,10 @@ fn help_modal_origin() -> (u16, u16) {
 
 #[test]
 fn pending_draft_cell_uses_orange_fg() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -53,19 +46,10 @@ fn pending_draft_cell_uses_orange_fg() {
 
 #[test]
 fn active_cell_edit_uses_yellow_fg() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -92,19 +76,10 @@ fn active_cell_edit_uses_yellow_fg() {
 
 #[test]
 fn staged_delete_row_uses_dark_red_bg() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(0);
     state.result_interaction.stage_row(1);
@@ -123,13 +98,9 @@ fn staged_delete_row_uses_dark_red_bg() {
 
 #[test]
 fn scrim_applies_dim_modifier() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::Help);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -144,13 +115,9 @@ fn scrim_applies_dim_modifier() {
 
 #[test]
 fn modal_border_uses_ansi_darkgray() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::Help);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);

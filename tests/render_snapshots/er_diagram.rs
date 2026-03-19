@@ -1,15 +1,10 @@
 use super::*;
+use harness::{connected_state, explorer_selected_state};
 
 #[test]
 fn er_waiting_progress() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
-
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
 
     state.er_preparation.status = ErStatus::Waiting;
     state.er_preparation.total_tables = 3;
@@ -29,13 +24,9 @@ fn er_waiting_progress() {
 
 #[test]
 fn er_table_picker_modal() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::ErTablePicker);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -45,13 +36,9 @@ fn er_table_picker_modal() {
 
 #[test]
 fn er_table_picker_filtered() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::ErTablePicker);
     state.ui.er_picker.filter_input = "user".to_string();
 
@@ -62,13 +49,9 @@ fn er_table_picker_filtered() {
 
 #[test]
 fn er_table_picker_single_select() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
@@ -82,13 +65,9 @@ fn er_table_picker_single_select() {
 
 #[test]
 fn er_table_picker_multi_select() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui
@@ -106,13 +85,9 @@ fn er_table_picker_multi_select() {
 
 #[test]
 fn er_table_picker_all_selected() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::ErTablePicker);
     state
         .ui

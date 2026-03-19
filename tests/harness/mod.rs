@@ -9,7 +9,6 @@ use ratatui::buffer::Buffer;
 
 use sabiql::app::services::AppServices;
 use sabiql::app::state::AppState;
-use sabiql::domain::QueryResult;
 use sabiql::ui::shell::layout::MainLayout;
 
 pub const TEST_WIDTH: u16 = 80;

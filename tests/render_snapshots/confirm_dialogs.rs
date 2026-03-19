@@ -1,4 +1,5 @@
 use super::*;
+use harness::connected_state;
 
 #[test]
 fn confirm_dialog() {
@@ -19,13 +20,9 @@ fn confirm_dialog() {
 
 #[test]
 fn confirm_dialog_update_preview() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     let _ = state
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
@@ -46,13 +43,9 @@ fn confirm_dialog_update_preview() {
 
 #[test]
 fn confirm_dialog_update_preview_rich() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     let _ = state
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
@@ -96,13 +89,9 @@ fn confirm_dialog_update_preview_rich() {
 
 #[test]
 fn confirm_dialog_delete_preview_low_risk() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     let _ = state
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);

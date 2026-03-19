@@ -1,14 +1,11 @@
 use super::*;
+use harness::connected_state;
 
 #[test]
 fn sql_modal_with_completion() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.content = "SELECT * FROM us".to_string();
     state.sql_modal.cursor = 16;
@@ -21,13 +18,9 @@ fn sql_modal_with_completion() {
 
 #[test]
 fn sql_modal_completion_popup_with_scroll() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.content = "SELECT ".to_string();
     state.sql_modal.cursor = 7;
@@ -342,13 +335,9 @@ fn sql_modal_confirming_high_no_target() {
 
 #[test]
 fn help_overlay() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::Help);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -358,13 +347,9 @@ fn help_overlay() {
 
 #[test]
 fn command_palette_overlay() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::CommandPalette);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -374,13 +359,9 @@ fn command_palette_overlay() {
 
 #[test]
 fn table_picker_overlay() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::TablePicker);
     state.ui.table_picker.filter_input = "user".to_string();
 
@@ -391,13 +372,9 @@ fn table_picker_overlay() {
 
 #[test]
 fn command_line_input() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
     state.modal.set_mode(InputMode::CommandLine);
     state.command_line_input = "sql".to_string();
 

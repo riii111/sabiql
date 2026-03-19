@@ -1,4 +1,5 @@
 use super::*;
+use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
 use sabiql::domain::QuerySource;
 
 fn adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryResult {
@@ -17,21 +18,11 @@ fn adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryRe
 
 #[test]
 fn preview_with_history_hint() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
     // Current result is Preview, but history has adhoc entries
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state
         .query
         .result_history
@@ -45,14 +36,8 @@ fn preview_with_history_hint() {
 
 #[test]
 fn result_pane_history_mode() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
-
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
 
     // Push 3 adhoc results
     for i in 1..=3 {
@@ -88,14 +73,8 @@ fn wide_adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::Qu
 
 #[test]
 fn history_mode_with_horizontal_scroll() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
-
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
 
     let long_query = "SELECT column_1, column_2, column_3, column_4, column_5 FROM very_long_table_name WHERE id > 100";
     for i in 1..=3 {
@@ -117,14 +96,8 @@ fn history_mode_with_horizontal_scroll() {
 
 #[test]
 fn result_query_with_history_hint() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
-
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
 
     // Push history but do NOT enter history mode (history_index = None)
     for i in 1..=2 {
@@ -145,14 +118,8 @@ fn result_query_with_history_hint() {
 
 #[test]
 fn focus_mode_history_mode() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = explorer_selected_state();
     let mut terminal = create_test_terminal();
-
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
 
     for i in 1..=3 {
         state

@@ -1,21 +1,12 @@
 use super::*;
+use harness::{table_detail_loaded_state, with_current_result};
 
 #[test]
 fn result_pane_row_active_mode() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(0);
 
@@ -26,20 +17,10 @@ fn result_pane_row_active_mode() {
 
 #[test]
 fn result_pane_cell_active_mode() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -51,20 +32,10 @@ fn result_pane_cell_active_mode() {
 
 #[test]
 fn result_pane_cell_edit_mode() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -84,20 +55,10 @@ fn result_pane_cell_edit_mode() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_head() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -114,20 +75,10 @@ fn result_pane_cell_edit_cursor_at_head() {
 
 #[test]
 fn result_pane_cell_edit_cursor_at_middle() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -144,20 +95,10 @@ fn result_pane_cell_edit_cursor_at_middle() {
 
 #[test]
 fn result_pane_cell_active_pending_draft() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(1);
     state.result_interaction.enter_cell(2);
@@ -177,20 +118,10 @@ fn result_pane_cell_active_pending_draft() {
 
 #[test]
 fn result_pane_staged_delete_row() {
-    let now = test_instant();
-    let mut state = create_test_state();
+    let (mut state, now) = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
 
-    state
-        .session
-        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
-    state.ui.set_explorer_selection(Some(0));
-    let _ = state
-        .session
-        .set_table_detail(fixtures::sample_table_detail(), 0);
-    state
-        .query
-        .set_current_result(Arc::new(fixtures::sample_query_result(now)));
+    with_current_result(&mut state, now);
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(0);
     state.result_interaction.stage_row(1);
