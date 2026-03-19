@@ -2,6 +2,7 @@
 paths:
   - "**/src/domain/**/*.rs"
   - "**/src/infra/adapters/**/parser*.rs"
+  - "**/src/infra/adapters/**/parser/**/*.rs"
   - "**/src/infra/adapters/**/sql/**/*.rs"
 ---
 

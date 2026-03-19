@@ -9,6 +9,7 @@ use crate::app::ports::MetadataError;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
+use super::parser::split_sql_statements;
 
 fn csv_field_count(line: &str) -> usize {
     let mut count = 1;
@@ -23,27 +24,86 @@ fn csv_field_count(line: &str) -> usize {
     count
 }
 
+fn first_keyword(stmt: &str) -> &str {
+    let bytes = stmt.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+            }
+            b if b.is_ascii_alphabetic() => {
+                let start = i;
+                while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+                    i += 1;
+                }
+                return &stmt[start..i];
+            }
+            _ => i += 1,
+        }
+    }
+    ""
+}
+
+fn count_select_statements(sql: &str) -> usize {
+    split_sql_statements(sql)
+        .iter()
+        .filter(|s| {
+            let kw = first_keyword(s);
+            kw.eq_ignore_ascii_case("SELECT") || kw.eq_ignore_ascii_case("WITH")
+        })
+        .count()
+}
+
 // psql --csv concatenates multiple result sets without separators;
 // keep only the last one.
-fn extract_last_csv_block(stdout: &str) -> &str {
+fn extract_last_csv_block<'a>(stdout: &'a str, sql: &str) -> &'a str {
     let lines: Vec<&str> = stdout.lines().collect();
     if lines.len() <= 2 {
         return stdout;
     }
 
+    let expected_sets = count_select_statements(sql);
     let first_header = lines[0];
-    let mut current_header = first_header;
     let mut current_fc = csv_field_count(first_header);
+    let mut known_headers: Vec<&str> = vec![first_header];
     let mut last_header_idx = 0;
+    let mut data_rows_since_header = 0usize;
 
     for (i, &line) in lines.iter().enumerate().skip(1) {
         let fc = csv_field_count(line);
         if fc != current_fc {
             last_header_idx = i;
-            current_header = line;
             current_fc = fc;
-        } else if line == current_header {
+            data_rows_since_header = 0;
+            if !known_headers.contains(&line) {
+                known_headers.push(line);
+            }
+        } else if known_headers.contains(&line) {
             last_header_idx = i;
+            data_rows_since_header = 0;
+        } else if expected_sets > 1
+            && data_rows_since_header >= 1
+            && known_headers.len() < expected_sets
+        {
+            // Require at least one data row before accepting a new header
+            // candidate, bounded by SELECT/WITH count
+            last_header_idx = i;
+            known_headers.push(line);
+            data_rows_since_header = 0;
+        } else {
+            data_rows_since_header += 1;
         }
     }
 
@@ -204,7 +264,7 @@ impl PostgresAdapter {
             return Ok(result.with_command_tag(tag));
         }
 
-        let csv_block = extract_last_csv_block(stdout_trimmed);
+        let csv_block = extract_last_csv_block(stdout_trimmed, query);
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(csv_block.as_bytes());
@@ -384,43 +444,137 @@ mod tests {
         #[test]
         fn single_result_set_returned_as_is() {
             let input = "id,name\n1,alice\n2,bob";
-            assert_eq!(extract_last_csv_block(input), input);
+            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
         }
 
         #[test]
         fn two_selects_same_header_returns_last() {
-            // SELECT 1; SELECT 2; → psql outputs ?column?\n1\n?column?\n2
             let input = "?column?\n1\n?column?\n2";
-            assert_eq!(extract_last_csv_block(input), "?column?\n2");
+            assert_eq!(
+                extract_last_csv_block(input, "SELECT 1; SELECT 2"),
+                "?column?\n2"
+            );
         }
 
         #[test]
         fn two_selects_different_column_count_returns_last() {
-            // SELECT 1 AS a; SELECT 2 AS b, 3 AS c;
             let input = "a\n1\nb,c\n2,3";
-            assert_eq!(extract_last_csv_block(input), "b,c\n2,3");
+            assert_eq!(
+                extract_last_csv_block(input, "SELECT 1 AS a; SELECT 2 AS b, 3 AS c"),
+                "b,c\n2,3"
+            );
         }
 
         #[test]
         fn three_selects_returns_last() {
             let input = "?column?\n1\n?column?\n2\n?column?\n3";
-            assert_eq!(extract_last_csv_block(input), "?column?\n3");
+            assert_eq!(
+                extract_last_csv_block(input, "SELECT 1; SELECT 2; SELECT 3"),
+                "?column?\n3"
+            );
         }
 
         #[test]
         fn single_result_set_returns_unchanged() {
             let input = "col\n42";
-            assert_eq!(extract_last_csv_block(input), input);
+            assert_eq!(extract_last_csv_block(input, "SELECT 1"), input);
         }
 
         #[test]
         fn empty_input_returns_empty() {
-            assert_eq!(extract_last_csv_block(""), "");
+            assert_eq!(extract_last_csv_block("", "SELECT 1"), "");
         }
 
         #[test]
         fn header_only_returns_unchanged() {
-            assert_eq!(extract_last_csv_block("col"), "col");
+            assert_eq!(extract_last_csv_block("col", "SELECT 1"), "col");
+        }
+
+        #[test]
+        fn same_field_count_different_headers_returns_last() {
+            let input = "id,name\n1,Alice\nage,email\n30,alice@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "SELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,alice@example.com"
+            );
+        }
+
+        #[test]
+        fn single_statement_falls_back() {
+            let input = "id,name\n1,Alice\n2,Bob";
+            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
+        }
+
+        #[test]
+        fn three_different_headers_same_field_count() {
+            let input = "x,y\n1,2\na,b\n3,4\np,q\n5,6";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "SELECT 1 AS x, 2 AS y; SELECT 3 AS a, 4 AS b; SELECT 5 AS p, 6 AS q"
+                ),
+                "p,q\n5,6"
+            );
+        }
+
+        #[test]
+        fn non_select_statements_excluded_from_hint() {
+            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "SET search_path TO public; SELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,bob@example.com"
+            );
+        }
+
+        #[test]
+        fn data_row_not_mistaken_when_single_select() {
+            let input = "x,y\na,b\n1,2";
+            assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
+        }
+
+        #[test]
+        fn leading_line_comment_does_not_break_hint() {
+            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "-- note\nSELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,bob@example.com"
+            );
+        }
+
+        #[test]
+        fn leading_block_comment_does_not_break_hint() {
+            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "/* note */ SELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,bob@example.com"
+            );
+        }
+
+        // Known limitation: when the leading result set has 0 data rows,
+        // the data_rows_since_header guard prevents detecting the next header.
+        // Fixing this requires redesigning how boundary info flows from
+        // parse_aggregate_command_tag, which is out of scope here.
+        #[test]
+        #[ignore = "empty leading result set — needs boundary redesign"]
+        fn empty_leading_result_returns_last_block() {
+            let input = "id,name\nage,email\n30,alice@example.com";
+            let sql = "SELECT id, name FROM users WHERE false; SELECT age, email FROM contacts";
+            assert_eq!(
+                extract_last_csv_block(input, sql),
+                "age,email\n30,alice@example.com"
+            );
         }
     }
 
