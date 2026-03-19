@@ -339,10 +339,12 @@ mod overlays {
 
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
-        state.sql_modal.set_status(SqlModalStatus::Confirming(AdhocRiskDecision {
-            risk_level: RiskLevel::Medium,
-            label: "DELETE",
-        }));
+        state
+            .sql_modal
+            .set_status(SqlModalStatus::Confirming(AdhocRiskDecision {
+                risk_level: RiskLevel::Medium,
+                label: "DELETE",
+            }));
 
         let output = render_to_string(&mut terminal, &mut state);
 
