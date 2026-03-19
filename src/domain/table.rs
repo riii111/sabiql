@@ -89,3 +89,75 @@ impl TableSummary {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_table(schema: &str, name: &str) -> Table {
+        Table {
+            schema: schema.to_string(),
+            name: name.to_string(),
+            owner: None,
+            columns: Vec::new(),
+            primary_key: None,
+            foreign_keys: Vec::new(),
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+        }
+    }
+
+    fn make_summary(schema: &str, name: &str) -> TableSummary {
+        TableSummary::new(schema.to_string(), name.to_string(), None, false)
+    }
+
+    mod qualified_name {
+        use super::*;
+
+        #[test]
+        fn returns_schema_dot_name() {
+            let table = make_table("public", "users");
+
+            assert_eq!(table.qualified_name(), "public.users");
+        }
+    }
+
+    mod display_name {
+        use super::*;
+
+        #[test]
+        fn omit_public_true_returns_name_only() {
+            let table = make_table("public", "users");
+
+            assert_eq!(table.display_name(true), "users");
+        }
+
+        #[test]
+        fn omit_public_false_returns_qualified() {
+            let table = make_table("public", "users");
+
+            assert_eq!(table.display_name(false), "public.users");
+        }
+    }
+
+    mod summary {
+        use super::*;
+
+        #[test]
+        fn display_name_omits_public() {
+            let summary = make_summary("public", "orders");
+
+            assert_eq!(summary.display_name(true), "orders");
+        }
+
+        #[test]
+        fn qualified_name_lower_returns_lowercased() {
+            let summary = make_summary("MySchema", "MyTable");
+
+            assert_eq!(summary.qualified_name_lower(), "myschema.mytable");
+        }
+    }
+}

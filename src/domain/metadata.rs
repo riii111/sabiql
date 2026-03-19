@@ -42,3 +42,35 @@ pub enum MetadataState {
     Loaded,
     Error(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod tables_by_schema {
+        use super::*;
+
+        #[test]
+        fn multiple_schemas_groups_correctly() {
+            let mut meta = DatabaseMetadata::new("testdb".to_string());
+            meta.tables = vec![
+                TableSummary::new("public".to_string(), "users".to_string(), None, false),
+                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("audit".to_string(), "logs".to_string(), None, false),
+            ];
+
+            let grouped = meta.tables_by_schema();
+
+            assert_eq!(grouped.len(), 2);
+            assert_eq!(grouped["public"].len(), 2);
+            assert_eq!(grouped["audit"].len(), 1);
+        }
+
+        #[test]
+        fn empty_tables_returns_empty_map() {
+            let meta = DatabaseMetadata::new("testdb".to_string());
+
+            assert!(meta.tables_by_schema().is_empty());
+        }
+    }
+}
