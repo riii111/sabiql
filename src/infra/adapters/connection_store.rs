@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::ports::connection_store::{ConnectionStore, ConnectionStoreError};
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
@@ -8,6 +9,8 @@ use crate::infra::config::connection_config::{
 };
 
 const CONFIG_FILE_NAME: &str = "connections.toml";
+
+static WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
@@ -43,10 +46,27 @@ impl TomlConnectionStore {
         );
 
         let path = self.config_file_path();
-        fs::write(&path, content_with_header)
-            .map_err(|e| ConnectionStoreError::WriteError(e.to_string()))?;
+        let counter = WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = self.config_dir.join(format!(
+            ".connections.toml.{}-{}.tmp",
+            std::process::id(),
+            counter,
+        ));
 
-        set_file_permissions(&path)?;
+        if let Err(e) = fs::write(&tmp_path, &content_with_header) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(ConnectionStoreError::WriteError(e.to_string()));
+        }
+
+        if let Err(e) = set_file_permissions(&tmp_path) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(e);
+        }
+
+        if let Err(e) = fs::rename(&tmp_path, &path) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(ConnectionStoreError::WriteError(e.to_string()));
+        }
 
         Ok(())
     }
@@ -88,11 +108,7 @@ impl ConnectionStore for TomlConnectionStore {
     }
 
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError> {
-        let mut profiles = match self.load_all() {
-            Ok(p) => p,
-            Err(ConnectionStoreError::VersionMismatch { .. }) => vec![],
-            Err(e) => return Err(e),
-        };
+        let mut profiles = self.load_all()?;
 
         let normalized_name = profile.name.normalized();
         if profiles
@@ -392,6 +408,87 @@ ssl_mode = "prefer"
             let path = store.storage_path();
 
             assert_eq!(path, temp_dir.path().join(CONFIG_FILE_NAME));
+        }
+    }
+
+    mod version_mismatch {
+        use super::*;
+
+        #[test]
+        fn save_returns_error_instead_of_losing_data() {
+            let temp_dir = TempDir::new().unwrap();
+            let config_path = temp_dir.path().join(CONFIG_FILE_NAME);
+
+            let v1_content = r#"
+version = 1
+
+[connection]
+id = "test-id"
+host = "localhost"
+port = 5432
+database = "testdb"
+username = "testuser"
+password = "testpass"
+ssl_mode = "prefer"
+"#;
+            fs::write(&config_path, v1_content).unwrap();
+
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profile = make_test_profile("New Connection");
+            let result = store.save(&profile);
+
+            assert!(matches!(
+                result,
+                Err(ConnectionStoreError::VersionMismatch {
+                    found: 1,
+                    expected: 2
+                })
+            ));
+
+            let content_after = fs::read_to_string(&config_path).unwrap();
+            assert!(content_after.contains("version = 1"));
+        }
+    }
+
+    mod atomic_write {
+        use super::*;
+
+        #[test]
+        fn leaves_no_temp_file() {
+            let temp_dir = TempDir::new().unwrap();
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+            let profile = make_test_profile("Test");
+
+            store.save(&profile).unwrap();
+
+            let tmp_files: Vec<_> = fs::read_dir(temp_dir.path())
+                .unwrap()
+                .flatten()
+                .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".tmp")))
+                .collect();
+            assert!(tmp_files.is_empty());
+        }
+
+        #[test]
+        fn existing_file_preserved_on_save_roundtrip() {
+            let temp_dir = TempDir::new().unwrap();
+            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
+
+            let profile1 = make_test_profile("First");
+            let mut profile2 = make_test_profile("Second");
+            store.save(&profile1).unwrap();
+            store.save(&profile2).unwrap();
+
+            profile2.host = "updated-host".to_string();
+            store.save(&profile2).unwrap();
+
+            let all = store.load_all().unwrap();
+            assert_eq!(all.len(), 2);
+            assert!(all.iter().any(|p| p.name.as_str() == "First"));
+            assert!(
+                all.iter()
+                    .any(|p| p.name.as_str() == "Second" && p.host == "updated-host")
+            );
         }
     }
 }

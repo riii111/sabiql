@@ -176,8 +176,6 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         filename: &str,
         cache_dir: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-        Self::cleanup_er_files(cache_dir);
-
         let dot_path = cache_dir.join(filename);
         std::fs::write(&dot_path, dot_content)?;
 
@@ -185,15 +183,20 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         self.graphviz.convert_dot_to_svg(&dot_path, &svg_path)?;
         self.viewer.open_file(&svg_path)?;
 
+        Self::cleanup_er_files(cache_dir, &[&dot_path, &svg_path]);
+
         Ok(svg_path)
     }
 
-    fn cleanup_er_files(cache_dir: &Path) {
+    fn cleanup_er_files(cache_dir: &Path, skip: &[&Path]) {
         let Ok(entries) = std::fs::read_dir(cache_dir) else {
             return;
         };
         for entry in entries.flatten() {
             let path = entry.path();
+            if skip.iter().any(|s| **s == path) {
+                continue;
+            }
             if let Some(name) = path.file_name().and_then(|n| n.to_str())
                 && name.starts_with("er_")
                 && (name.ends_with(".dot") || name.ends_with(".svg"))
@@ -462,6 +465,7 @@ mod tests {
 
             assert!(!old_dot.exists());
             assert!(!old_svg.exists());
+            assert!(temp_dir.path().join("er_new.dot").exists());
         }
 
         #[test]
@@ -479,6 +483,41 @@ mod tests {
 
             assert!(log_file.exists());
             assert!(other_file.exists());
+        }
+
+        #[test]
+        fn graphviz_failure_preserves_old_files() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let old_dot = temp_dir.path().join("er_old_tables.dot");
+            let old_svg = temp_dir.path().join("er_old_tables.svg");
+            std::fs::write(&old_dot, "old dot").unwrap();
+            std::fs::write(&old_svg, "old svg").unwrap();
+
+            let exporter =
+                DotExporter::with_dependencies(MockGraphviz::not_installed(), MockViewer::new());
+            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path());
+
+            assert!(result.is_err());
+            assert!(old_dot.exists());
+            assert!(old_svg.exists());
+        }
+
+        #[test]
+        fn viewer_failure_preserves_old_and_new_files() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let old_dot = temp_dir.path().join("er_old_tables.dot");
+            let old_svg = temp_dir.path().join("er_old_tables.svg");
+            std::fs::write(&old_dot, "old dot").unwrap();
+            std::fs::write(&old_svg, "old svg").unwrap();
+
+            let exporter =
+                DotExporter::with_dependencies(MockGraphviz::new(), MockViewer::failing());
+            let result = exporter.export("digraph {}", "er_new.dot", temp_dir.path());
+
+            assert!(result.is_err());
+            assert!(temp_dir.path().join("er_new.dot").exists());
+            assert!(old_dot.exists());
+            assert!(old_svg.exists());
         }
     }
 }
