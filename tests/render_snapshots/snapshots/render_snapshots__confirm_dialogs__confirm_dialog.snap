@@ -1,5 +1,5 @@
 ---
-source: tests/render_snapshots.rs
+source: tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                             

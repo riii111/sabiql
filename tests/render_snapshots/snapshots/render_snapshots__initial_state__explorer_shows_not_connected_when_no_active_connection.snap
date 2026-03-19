@@ -1,5 +1,5 @@
 ---
-source: tests/render_snapshots.rs
+source: tests/render_snapshots/initial_state.rs
 expression: output
 ---
 test_project | - | - | no dsn | -                                               

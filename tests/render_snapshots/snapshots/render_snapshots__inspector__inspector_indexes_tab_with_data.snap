@@ -1,5 +1,5 @@
 ---
-source: tests/render_snapshots.rs
+source: tests/render_snapshots/inspector.rs
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                       
