@@ -9,7 +9,7 @@ use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 pub struct ConnectionCache {
     pub metadata: Option<Arc<DatabaseMetadata>>,
     pub table_detail: Option<Table>,
-    pub current_table: Option<String>,
+    pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
     pub explorer_selected: usize,
@@ -53,7 +53,7 @@ mod tests {
 
         assert!(cache.metadata.is_none());
         assert!(cache.table_detail.is_none());
-        assert!(cache.current_table.is_none());
+        assert!(cache.selected_table_key.is_none());
         assert!(cache.query_result.is_none());
         assert_eq!(cache.explorer_selected, 0);
         assert_eq!(cache.inspector_tab, InspectorTab::default());
