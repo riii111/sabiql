@@ -1,6 +1,6 @@
 ---
 paths:
-  - "**/src/infra/adapters/postgres/psql/parser.rs"
+  - "**/src/infra/adapters/postgres/psql/parser/**"
 ---
 
 # Command tag aggregation rollback policy

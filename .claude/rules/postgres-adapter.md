@@ -14,7 +14,11 @@ src/infra/adapters/postgres/
 ├── psql/               # psql プロセス操作
 │   ├── mod.rs          #   re-exports
 │   ├── executor.rs     #   プロセス起動（I/O、副作用あり）
-│   └── parser.rs       #   stdout → ドメイン型への変換（純粋関数）
+│   └── parser/         #   stdout → ドメイン型への変換（純粋関数）
+│       ├── mod.rs      #     submodule 宣言
+│       ├── metadata.rs #     JSON → ドメイン型パース
+│       ├── command_tag.rs #  command tag 解析・集約 + ResolvedTags
+│       └── lexer.rs    #     SQL lexer helpers + split_sql_statements
 ├── sql/                # SQL文字列生成（すべて純粋関数）
 │   ├── mod.rs          #   re-exports
 │   ├── query.rs        #   メタデータクエリ + プレビュー
@@ -26,7 +30,7 @@ src/infra/adapters/postgres/
 
 ## データフロー
 
-`mod.rs` がオーケストレーション → `sql/` でSQL生成 → `psql/executor.rs` で psql 実行 → `psql/parser.rs` で出力パース
+`mod.rs` がオーケストレーション → `sql/` でSQL生成 → `psql/executor.rs` で psql 実行 → `psql/parser/` で出力パース
 
 ## 可視性ルール
 
