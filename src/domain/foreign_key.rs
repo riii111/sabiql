@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForeignKey {
     pub name: String,
     pub from_schema: String,
@@ -36,5 +36,27 @@ impl std::fmt::Display for FkAction {
             FkAction::SetNull => write!(f, "SET NULL"),
             FkAction::SetDefault => write!(f, "SET DEFAULT"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn referenced_table_returns_schema_dot_table() {
+        let fk = ForeignKey {
+            name: "fk_order_user".to_string(),
+            from_schema: "public".to_string(),
+            from_table: "orders".to_string(),
+            from_columns: vec!["user_id".to_string()],
+            to_schema: "public".to_string(),
+            to_table: "users".to_string(),
+            to_columns: vec!["id".to_string()],
+            on_delete: FkAction::default(),
+            on_update: FkAction::default(),
+        };
+
+        assert_eq!(fk.referenced_table(), "public.users");
     }
 }

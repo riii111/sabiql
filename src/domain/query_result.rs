@@ -83,3 +83,96 @@ impl QueryResult {
         self.executed_at.elapsed().as_secs()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    mod success {
+        use super::*;
+
+        #[test]
+        fn creates_with_correct_fields() {
+            let result = QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["id".to_string()],
+                vec![vec!["1".to_string()]],
+                42,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(result.query, "SELECT 1");
+            assert_eq!(result.columns, vec!["id"]);
+            assert_eq!(result.rows, vec![vec!["1"]]);
+            assert_eq!(result.row_count, 1);
+            assert_eq!(result.execution_time_ms, 42);
+            assert_eq!(result.source, QuerySource::Adhoc);
+            assert!(result.error.is_none());
+            assert!(!result.is_error());
+            assert!(result.command_tag.is_none());
+        }
+
+        #[test]
+        fn row_count_matches_rows_len() {
+            let result = QueryResult::success(
+                "SELECT".to_string(),
+                vec![],
+                vec![vec![], vec![], vec![]],
+                0,
+                QuerySource::Preview,
+            );
+
+            assert_eq!(result.row_count, 3);
+        }
+    }
+
+    mod error {
+        use super::*;
+
+        #[test]
+        fn creates_with_empty_rows_and_error_message() {
+            let result = QueryResult::error(
+                "BAD SQL".to_string(),
+                "syntax error".to_string(),
+                10,
+                QuerySource::Adhoc,
+            );
+
+            assert!(result.is_error());
+            assert_eq!(result.error.as_deref(), Some("syntax error"));
+            assert!(result.columns.is_empty());
+            assert!(result.rows.is_empty());
+            assert_eq!(result.row_count, 0);
+        }
+    }
+
+    mod builder {
+        use super::*;
+
+        #[test]
+        fn with_command_tag_sets_tag() {
+            let result =
+                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc)
+                    .with_command_tag(CommandTag::Select(1));
+
+            assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+    }
+
+    mod row_count_display {
+        use super::*;
+
+        #[rstest]
+        #[case(0, "0 rows")]
+        #[case(1, "1 row")]
+        #[case(5, "5 rows")]
+        fn returns_expected(#[case] count: usize, #[case] expected: &str) {
+            let mut result =
+                QueryResult::success("SELECT".to_string(), vec![], vec![], 0, QuerySource::Adhoc);
+            result.row_count = count;
+
+            assert_eq!(result.row_count_display(), expected);
+        }
+    }
+}

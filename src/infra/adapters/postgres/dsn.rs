@@ -11,6 +11,7 @@ impl PostgresAdapter {
         if let Some(db) = dsn
             .rsplit('/')
             .next()
+            .map(|s| s.split('?').next().unwrap_or(s))
             .filter(|s| !s.is_empty() && !s.contains('='))
         {
             return db.to_string();
@@ -44,26 +45,26 @@ mod tests {
     use super::*;
     use crate::domain::connection::SslMode;
 
+    fn make_test_profile() -> ConnectionProfile {
+        ConnectionProfile::new(
+            "Test Connection",
+            "localhost",
+            5432,
+            "testdb",
+            "testuser",
+            "testpass",
+            SslMode::Prefer,
+        )
+        .unwrap()
+    }
+
     mod dsn_builder {
         use super::*;
-
-        fn make_test_profile() -> ConnectionProfile {
-            ConnectionProfile::new(
-                "Test Connection",
-                "localhost",
-                5432,
-                "testdb",
-                "testuser",
-                "testpass",
-                SslMode::Prefer,
-            )
-            .unwrap()
-        }
 
         #[test]
         fn includes_all_connection_fields() {
             let adapter = PostgresAdapter::new();
-            let profile = make_test_profile();
+            let profile = super::make_test_profile();
             let dsn = adapter.build_dsn(&profile);
             assert!(dsn.starts_with("postgres://"));
             assert!(dsn.contains("testuser"));
@@ -96,21 +97,17 @@ mod tests {
 
     mod extract_database_name {
         use super::*;
+        use rstest::rstest;
 
-        #[test]
-        fn uri_format() {
-            assert_eq!(
-                PostgresAdapter::extract_database_name("postgres://user:pass@host:5432/mydb"),
-                "mydb"
-            );
-        }
-
-        #[test]
-        fn simple_uri() {
-            assert_eq!(
-                PostgresAdapter::extract_database_name("postgres://localhost/testdb"),
-                "testdb"
-            );
+        #[rstest]
+        #[case("postgres://user:pass@host:5432/mydb", "mydb")]
+        #[case("postgres://localhost/testdb", "testdb")]
+        #[case(
+            "postgres://user:pass@host:5432/mydb?sslmode=prefer&connect_timeout=10",
+            "mydb"
+        )]
+        fn uri_path_returns_dbname(#[case] dsn: &str, #[case] expected: &str) {
+            assert_eq!(PostgresAdapter::extract_database_name(dsn), expected);
         }
 
         #[test]
@@ -153,6 +150,15 @@ mod tests {
                 PostgresAdapter::extract_database_name("service=mydb"),
                 "mydb"
             );
+        }
+
+        #[test]
+        fn roundtrip_build_then_extract_returns_original_dbname() {
+            let adapter = PostgresAdapter::new();
+            let profile = super::make_test_profile();
+            let dsn = adapter.build_dsn(&profile);
+
+            assert_eq!(PostgresAdapter::extract_database_name(&dsn), "testdb");
         }
     }
 }
