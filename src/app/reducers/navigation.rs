@@ -1252,7 +1252,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables,
+                table_summaries: tables,
                 fetched_at: Instant::now(),
             })));
             state.ui.set_explorer_selection(Some(0));

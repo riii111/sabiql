@@ -121,7 +121,7 @@ mod tests {
         let metadata = Arc::new(DatabaseMetadata {
             database_name: "test_db".to_string(),
             schemas: vec![],
-            tables: vec![TableSummary::new(
+            table_summaries: vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 Some(100),
@@ -140,7 +140,7 @@ mod tests {
         assert!(retrieved.metadata.is_some());
         let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
         assert_eq!(retrieved_metadata.database_name, "test_db");
-        assert_eq!(retrieved_metadata.tables.len(), 1);
+        assert_eq!(retrieved_metadata.table_summaries.len(), 1);
     }
 
     #[test]

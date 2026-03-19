@@ -201,7 +201,7 @@ impl BrowseSession {
     pub fn tables(&self) -> Vec<&TableSummary> {
         self.metadata
             .as_ref()
-            .map(|m| m.tables.iter().collect())
+            .map(|m| m.table_summaries.iter().collect())
             .unwrap_or_default()
     }
 
@@ -242,7 +242,7 @@ mod tests {
         Arc::new(DatabaseMetadata {
             database_name: db_name.to_string(),
             schemas: vec![],
-            tables: vec![
+            table_summaries: vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],

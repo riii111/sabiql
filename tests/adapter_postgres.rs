@@ -44,11 +44,11 @@ mod metadata_fetch {
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
 
         assert!(
-            !metadata.tables.is_empty(),
+            !metadata.table_summaries.is_empty(),
             "Test DB must have at least one table; create one before running integration tests"
         );
 
-        let first_table = &metadata.tables[0];
+        let first_table = &metadata.table_summaries[0];
         let detail = adapter
             .fetch_table_detail(&dsn, &first_table.schema, &first_table.name)
             .await
@@ -74,11 +74,11 @@ mod query_execution {
         let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
 
         assert!(
-            !metadata.tables.is_empty(),
+            !metadata.table_summaries.is_empty(),
             "Test DB must have at least one table; create one before running integration tests"
         );
 
-        let table = &metadata.tables[0];
+        let table = &metadata.table_summaries[0];
         let result = adapter
             .execute_preview(&dsn, &table.schema, &table.name, 10, 0, false)
             .await

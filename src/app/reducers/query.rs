@@ -2251,7 +2251,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: tables
+                table_summaries: tables
                     .into_iter()
                     .map(|(schema, name)| {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)

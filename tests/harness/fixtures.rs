@@ -9,7 +9,7 @@ pub fn sample_metadata(now: Instant) -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "test_db".to_string(),
         schemas: vec![],
-        tables: vec![
+        table_summaries: vec![
             TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
             TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             TableSummary::new(

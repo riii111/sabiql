@@ -129,7 +129,7 @@ pub(crate) fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "testdb".to_string(),
         schemas: vec![],
-        tables: vec![],
+        table_summaries: vec![],
         fetched_at: Instant::now(),
     }
 }

@@ -56,7 +56,7 @@ impl MetadataProvider for PostgresAdapter {
         let db_name = Self::extract_database_name(dsn);
         let mut metadata = DatabaseMetadata::new(db_name);
         metadata.schemas = schemas;
-        metadata.tables = tables;
+        metadata.table_summaries = tables;
 
         Ok(metadata)
     }

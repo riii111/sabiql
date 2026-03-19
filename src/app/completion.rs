@@ -641,7 +641,7 @@ impl CompletionEngine {
 
         let prefix_lower = prefix.to_lowercase();
         let mut candidates: Vec<_> = metadata
-            .tables
+            .table_summaries
             .iter()
             .filter(|t| {
                 prefix.is_empty()
@@ -779,7 +779,7 @@ impl CompletionEngine {
         let prefix_lower = prefix.to_lowercase();
 
         let mut candidates: Vec<_> = metadata
-            .tables
+            .table_summaries
             .iter()
             .filter(|t| {
                 t.schema.to_lowercase() == schema_lower
@@ -862,7 +862,7 @@ impl CompletionEngine {
 
         // Add regular tables
         if let Some(metadata) = metadata {
-            for t in &metadata.tables {
+            for t in &metadata.table_summaries {
                 if prefix.is_empty()
                     || t.name.to_lowercase().starts_with(&prefix_lower)
                     || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
@@ -899,7 +899,7 @@ impl CompletionEngine {
         } else if let Some(metadata) = metadata {
             // Try to find the table and get its schema
             metadata
-                .tables
+                .table_summaries
                 .iter()
                 .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
                 .map(|t| t.qualified_name())
@@ -1151,7 +1151,7 @@ mod tests {
             }
 
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
-            metadata.tables = tables;
+            metadata.table_summaries = tables;
 
             let candidates = e.schema_qualified_candidates(Some(&metadata), "public", "table");
 
@@ -1175,7 +1175,7 @@ mod tests {
             }
 
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
-            metadata.tables = tables;
+            metadata.table_summaries = tables;
 
             let candidates = e.schema_qualified_candidates(Some(&metadata), "myschema", "");
 
@@ -1210,7 +1210,7 @@ mod tests {
             let e = engine();
 
             let mut metadata = DatabaseMetadata::new("test_db".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("users".to_string(), "data".to_string(), None, false),
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
             ];
@@ -1575,7 +1575,7 @@ mod tests {
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![crate::domain::TableSummary::new(
+            metadata.table_summaries = vec![crate::domain::TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -1673,7 +1673,7 @@ mod tests {
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -1770,7 +1770,7 @@ mod tests {
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2093,7 +2093,7 @@ mod tests {
         fn simple_from_returns_table() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2120,7 +2120,7 @@ mod tests {
         fn multiple_tables_returns_all() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
@@ -2163,7 +2163,7 @@ mod tests {
             e.cache_table_detail("public.users".to_string(), table);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
@@ -2182,7 +2182,7 @@ mod tests {
         fn cte_tables_are_excluded() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2203,7 +2203,7 @@ mod tests {
         fn duplicate_tables_are_deduplicated() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2386,7 +2386,7 @@ mod tests {
             e.cache_table_detail("public.users".to_string(), table);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2446,7 +2446,7 @@ mod tests {
             let e = engine();
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2648,7 +2648,7 @@ mod tests {
             e.cache_table_detail("public.orders".to_string(), orders.clone());
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
@@ -2688,7 +2688,7 @@ mod tests {
             e.cache_table_detail("public.users".to_string(), users.clone());
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -2750,7 +2750,7 @@ mod tests {
             e.cache_table_detail("public.users".to_string(), users);
             e.cache_table_detail("public.orders".to_string(), orders);
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "users".to_string(), None, false),
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
@@ -2789,7 +2789,7 @@ mod tests {
 
             // Create metadata with all tables
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![
+            metadata.table_summaries = vec![
                 TableSummary::new("public".to_string(), "t1".to_string(), None, false),
                 TableSummary::new("public".to_string(), "t2".to_string(), None, false),
                 TableSummary::new("public".to_string(), "t3".to_string(), None, false),
@@ -2808,7 +2808,7 @@ mod tests {
             e.cache_table_detail("public.t1".to_string(), t1);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.tables = vec![TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "t1".to_string(),
                 None,
@@ -2884,7 +2884,7 @@ mod tests {
         fn meta_with_tables(tables: &[(&str, &str, &[&str])]) -> DatabaseMetadata {
             use crate::domain::TableSummary;
             let mut meta = DatabaseMetadata::new("test".to_string());
-            meta.tables = tables
+            meta.table_summaries = tables
                 .iter()
                 .map(|(schema, name, _cols)| {
                     TableSummary::new(schema.to_string(), name.to_string(), None, false)
