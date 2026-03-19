@@ -13,7 +13,7 @@ use crate::domain::{
 //
 // - `connection_state` and `metadata_state` always transition as a pair
 //   (e.g. `begin_connecting` sets both to Connecting/Loading).
-// - `current_table`, `table_detail`, and `selection_generation` change
+// - `selected_table_key`, `table_detail`, and `selection_generation` change
 //   together via `select_table` / `clear_table_selection`.
 // - `database_name` is derived from `metadata` (single source of truth).
 //
@@ -29,7 +29,7 @@ pub struct BrowseSession {
     metadata_state: MetadataState,
 
     // -- co-dependent: table selection --
-    current_table: Option<String>,
+    selected_table_key: Option<String>,
     table_detail: Option<Table>,
     selection_generation: u64,
 
@@ -54,7 +54,7 @@ impl BrowseSession {
         table: &str,
         pagination: &mut PaginationState,
     ) -> u64 {
-        self.current_table = Some(format!("{}.{}", schema, table));
+        self.selected_table_key = Some(format!("{}.{}", schema, table));
         self.table_detail = None;
         self.selection_generation += 1;
         pagination.reset();
@@ -74,7 +74,7 @@ impl BrowseSession {
     }
 
     pub fn clear_table_selection(&mut self, pagination: &mut PaginationState) {
-        self.current_table = None;
+        self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
         pagination.reset();
@@ -124,7 +124,7 @@ impl BrowseSession {
         ConnectionCache {
             metadata: self.metadata.clone(),
             table_detail: self.table_detail.clone(),
-            current_table: self.current_table.clone(),
+            selected_table_key: self.selected_table_key.clone(),
             query_result,
             result_history,
             explorer_selected,
@@ -136,7 +136,7 @@ impl BrowseSession {
     pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         self.metadata = cache.metadata.clone();
         self.table_detail = cache.table_detail.clone();
-        self.current_table = cache.current_table.clone();
+        self.selected_table_key = cache.selected_table_key.clone();
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
@@ -153,7 +153,7 @@ impl BrowseSession {
     pub fn reset(&mut self, query: &mut QueryExecution) {
         self.metadata = None;
         self.table_detail = None;
-        self.current_table = None;
+        self.selected_table_key = None;
         self.selection_generation = 0;
         self.connection_state = ConnectionState::default();
         self.metadata_state = MetadataState::default();
@@ -186,8 +186,8 @@ impl BrowseSession {
         self.metadata.as_ref().map(|m| m.database_name.as_str())
     }
 
-    pub fn current_table(&self) -> Option<&str> {
-        self.current_table.as_deref()
+    pub fn selected_table_key(&self) -> Option<&str> {
+        self.selected_table_key.as_deref()
     }
 
     pub fn table_detail(&self) -> Option<&Table> {
@@ -201,7 +201,7 @@ impl BrowseSession {
     pub fn tables(&self) -> Vec<&TableSummary> {
         self.metadata
             .as_ref()
-            .map(|m| m.tables.iter().collect())
+            .map(|m| m.table_summaries.iter().collect())
             .unwrap_or_default()
     }
 
@@ -242,7 +242,7 @@ mod tests {
         Arc::new(DatabaseMetadata {
             database_name: db_name.to_string(),
             schemas: vec![],
-            tables: vec![
+            table_summaries: vec![
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
@@ -305,13 +305,13 @@ mod tests {
         }
 
         #[test]
-        fn sets_current_table() {
+        fn sets_selected_table_key() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
 
             let _ = session.select_table("public", "users", &mut pagination);
 
-            assert_eq!(session.current_table(), Some("public.users"));
+            assert_eq!(session.selected_table_key(), Some("public.users"));
         }
 
         #[test]
@@ -377,7 +377,7 @@ mod tests {
 
         session.clear_table_selection(&mut pagination);
 
-        assert!(session.current_table().is_none());
+        assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
         assert_eq!(pagination.current_page, 0);
     }
@@ -494,7 +494,7 @@ mod tests {
 
             assert_eq!(new_session.database_name(), Some("round_trip_db"));
             assert!(new_session.table_detail().is_some());
-            assert_eq!(new_session.current_table(), Some("public.users"));
+            assert_eq!(new_session.selected_table_key(), Some("public.users"));
             assert!(new_session.connection_state().is_connected());
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
@@ -543,7 +543,7 @@ mod tests {
             restored.restore_from_cache(&cache, &mut query);
             restored.begin_reload();
 
-            assert_eq!(restored.current_table(), Some("public.users"));
+            assert_eq!(restored.selected_table_key(), Some("public.users"));
             assert!(restored.table_detail().is_some());
             assert!(restored.is_reloading);
             assert!(restored.connection_state().is_connected());
@@ -581,7 +581,7 @@ mod tests {
             assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
             assert!(session.metadata().is_none());
             assert!(session.database_name().is_none());
-            assert!(session.current_table().is_none());
+            assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
             assert!(session.dsn.is_none());
@@ -689,7 +689,7 @@ mod tests {
             assert!(session.connection_state().is_not_connected());
             assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
             assert!(session.metadata().is_none());
-            assert!(session.current_table().is_none());
+            assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
         }

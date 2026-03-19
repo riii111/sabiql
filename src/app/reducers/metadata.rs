@@ -50,7 +50,7 @@ fn check_er_completion(state: &mut AppState) -> Vec<Effect> {
 pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::MetadataLoaded(metadata) => {
-            let has_tables = !metadata.tables.is_empty();
+            let has_tables = !metadata.table_summaries.is_empty();
             state.session.mark_connected(Arc::clone(metadata));
 
             let mut effects = vec![];
@@ -59,7 +59,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 let prev_schema = &state.query.pagination.schema;
                 let prev_table = &state.query.pagination.table;
                 let found_index = metadata
-                    .tables
+                    .table_summaries
                     .iter()
                     .position(|t| &t.schema == prev_schema && &t.name == prev_table);
                 match found_index {
@@ -208,13 +208,13 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
-                state.er_preparation.total_tables = metadata.tables.len();
+                state.er_preparation.total_tables = metadata.table_summaries.len();
                 state.er_preparation.fk_expanded = true;
 
-                let table_count = metadata.tables.len();
+                let table_count = metadata.table_summaries.len();
                 let resize_capacity = table_count.clamp(500, 10_000);
 
-                for table_summary in &metadata.tables {
+                for table_summary in &metadata.table_summaries {
                     let qualified_name = table_summary.qualified_name();
                     state
                         .sql_modal
@@ -741,7 +741,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: tables
+                table_summaries: tables
                     .into_iter()
                     .map(|(schema, name)| {
                         TableSummary::new(schema.to_string(), name.to_string(), None, false)
@@ -768,7 +768,7 @@ mod tests {
             assert!(state.query.pagination.table.is_empty());
             assert!(state.query.current_result().is_none());
             assert!(state.session.table_detail().is_none());
-            assert!(state.session.current_table().is_none());
+            assert!(state.session.selected_table_key().is_none());
             assert_eq!(state.ui.explorer_selected, 0);
         }
 
@@ -855,7 +855,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables,
+                table_summaries: tables,
                 fetched_at: Instant::now(),
             })
         }

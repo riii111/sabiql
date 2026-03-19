@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Cell, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::focused_pane::FocusedPane;
 use crate::app::inspector_tab::InspectorTab;
@@ -12,7 +12,7 @@ use crate::app::state::AppState;
 use crate::app::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
-use crate::domain::Table as TableDetail;
+use crate::domain::Table;
 use crate::ui::primitives::atoms::panel_block;
 use crate::ui::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths,
@@ -131,7 +131,7 @@ impl Inspector {
         }
     }
 
-    fn render_info(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+    fn render_info(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         let label_style = Style::default().add_modifier(Modifier::BOLD);
         let none_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
 
@@ -196,7 +196,7 @@ impl Inspector {
     fn render_columns(
         frame: &mut Frame,
         area: Rect,
-        table: &TableDetail,
+        table: &Table,
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
@@ -334,7 +334,7 @@ impl Inspector {
             })
             .collect();
 
-        let table_widget = Table::new(rows, widths).header(header);
+        let table_widget = RatatuiTable::new(rows, widths).header(header);
         frame.render_widget(table_widget, area);
 
         use crate::ui::primitives::atoms::scroll_indicator::{
@@ -363,7 +363,7 @@ impl Inspector {
         plan
     }
 
-    fn render_indexes(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+    fn render_indexes(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         let headers = ["Name", "Columns", "Type", "Unique"];
         // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
@@ -409,12 +409,7 @@ impl Inspector {
         );
     }
 
-    fn render_foreign_keys(
-        frame: &mut Frame,
-        area: Rect,
-        table: &TableDetail,
-        scroll_offset: usize,
-    ) {
+    fn render_foreign_keys(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         let headers = ["Name", "Columns", "References"];
         // Width sampling only — row_fn rebuilds cell text for actual rendering
         let data_rows: Vec<Vec<String>> = table
@@ -464,7 +459,7 @@ impl Inspector {
         );
     }
 
-    fn render_rls(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+    fn render_rls(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         match &table.rls {
             None => {
                 let msg = Paragraph::new("RLS not enabled");
@@ -548,7 +543,7 @@ impl Inspector {
         }
     }
 
-    fn render_triggers(frame: &mut Frame, area: Rect, table: &TableDetail, scroll_offset: usize) {
+    fn render_triggers(frame: &mut Frame, area: Rect, table: &Table, scroll_offset: usize) {
         let headers = ["Name", "Timing", "Event", "Function", "SecDef"];
         let widths = [
             Constraint::Percentage(25),
@@ -595,7 +590,7 @@ impl Inspector {
     fn render_ddl(
         frame: &mut Frame,
         area: Rect,
-        table: &TableDetail,
+        table: &Table,
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
     ) {

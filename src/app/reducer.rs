@@ -469,7 +469,7 @@ mod tests {
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             };
             let now = Instant::now();
@@ -492,7 +492,7 @@ mod tests {
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![TableSummary::new(
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     None,
@@ -718,7 +718,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![TableSummary::new(
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
@@ -862,7 +862,7 @@ mod tests {
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: now,
             };
             reduce(
@@ -918,7 +918,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
             state.sql_modal.begin_prefetch();
@@ -943,7 +943,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
             state.sql_modal.begin_prefetch();
@@ -963,7 +963,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
             let now = Instant::now();
@@ -1567,7 +1567,7 @@ mod tests {
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             };
             let now = Instant::now();
@@ -1772,7 +1772,7 @@ mod tests {
                 metadata: Some(Arc::new(DatabaseMetadata {
                     database_name: "cached_db".to_string(),
                     schemas: vec![],
-                    tables: vec![],
+                    table_summaries: vec![],
                     fetched_at: Instant::now(),
                 })),
                 ..Default::default()
@@ -1812,7 +1812,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![
+                table_summaries: vec![
                     TableSummary::new("public".to_string(), "users".to_string(), None, false),
                     TableSummary::new("public".to_string(), "posts".to_string(), None, false),
                 ],
@@ -1866,7 +1866,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test_db".to_string(),
                 schemas: vec![],
-                tables: vec![TableSummary::new(
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(100),
@@ -2104,7 +2104,7 @@ mod tests {
             let metadata = DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![TableSummary::new(
+                table_summaries: vec![TableSummary::new(
                     "public".to_string(),
                     "users".to_string(),
                     Some(1200),

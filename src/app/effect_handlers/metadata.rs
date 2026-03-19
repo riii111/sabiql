@@ -89,7 +89,7 @@ pub(crate) async fn run(
             tokio::spawn(async move {
                 let result = tokio::time::timeout(
                     tokio::time::Duration::from_secs(10),
-                    provider.fetch_table_detail_light(&dsn, &schema, &table),
+                    provider.fetch_table_columns_and_fks(&dsn, &schema, &table),
                 )
                 .await;
                 match result {
@@ -347,7 +347,7 @@ mod tests {
                 .expect_fetch_table_detail()
                 .once()
                 .returning(|_, _, _| Ok(sample_table()));
-            mock_provider.expect_fetch_table_detail_light().never();
+            mock_provider.expect_fetch_table_columns_and_fks().never();
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
@@ -395,7 +395,7 @@ mod tests {
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider.expect_fetch_table_detail().never();
             mock_provider
-                .expect_fetch_table_detail_light()
+                .expect_fetch_table_columns_and_fks()
                 .once()
                 .returning(|_, _, _| Ok(sample_table()));
 

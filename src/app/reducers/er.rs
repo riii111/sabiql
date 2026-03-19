@@ -74,7 +74,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
             state.er_preparation.last_signatures = new_signatures.clone();
-            state.er_preparation.total_tables = new_metadata.tables.len();
+            state.er_preparation.total_tables = new_metadata.table_summaries.len();
 
             let mut effects: Vec<Effect> = Vec::new();
 
@@ -132,7 +132,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
                 state.set_error("Metadata not loaded yet".to_string());
                 return Some(vec![]);
             };
-            let total_table_count = metadata.tables.len();
+            let total_table_count = metadata.table_summaries.len();
             let is_scoped = !state.er_preparation.target_tables.is_empty()
                 && state.er_preparation.target_tables.len() < total_table_count;
 
@@ -171,7 +171,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let total_tables = state
                 .session
                 .metadata()
-                .map(|m| m.tables.len())
+                .map(|m| m.table_summaries.len())
                 .unwrap_or(0);
 
             Some(vec![Effect::GenerateErDiagramFromCache {
@@ -209,7 +209,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables,
+                table_summaries: tables,
                 fetched_at: Instant::now(),
             })
         }
@@ -313,7 +313,7 @@ mod tests {
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables: vec![],
+                table_summaries: vec![],
                 fetched_at: Instant::now(),
             })));
             state.er_preparation.target_tables = vec!["public.users".to_string()];
@@ -355,7 +355,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables,
+                table_summaries: tables,
                 fetched_at: Instant::now(),
             })
         }
@@ -540,7 +540,16 @@ mod tests {
 
             reduce_er(&mut state, &action, Instant::now());
 
-            assert_eq!(state.session.metadata().as_ref().unwrap().tables.len(), 5);
+            assert_eq!(
+                state
+                    .session
+                    .metadata()
+                    .as_ref()
+                    .unwrap()
+                    .table_summaries
+                    .len(),
+                5
+            );
             assert_eq!(state.er_preparation.last_signatures, new_sigs);
         }
     }
@@ -556,7 +565,7 @@ mod tests {
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
                 schemas: vec![],
-                tables,
+                table_summaries: tables,
                 fetched_at: Instant::now(),
             })
         }
@@ -690,7 +699,16 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.session.metadata().as_ref().unwrap().tables.len(), 20);
+            assert_eq!(
+                state
+                    .session
+                    .metadata()
+                    .as_ref()
+                    .unwrap()
+                    .table_summaries
+                    .len(),
+                20
+            );
             assert!(
                 effects
                     .iter()

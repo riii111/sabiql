@@ -390,12 +390,12 @@ impl PostgresAdapter {
         Ok((columns, indexes, foreign_keys, rls, triggers, table_info))
     }
 
-    pub(in crate::infra::adapters::postgres) fn parse_table_detail_light(
+    pub(in crate::infra::adapters::postgres) fn parse_table_columns_and_fks(
         json: &str,
     ) -> Result<(Vec<Column>, Vec<ForeignKey>), MetadataError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Err(MetadataError::InvalidJson(
-                "table_detail_light: empty response".to_string(),
+                "table_columns_and_fks: empty response".to_string(),
             ));
         };
 
@@ -1141,7 +1141,7 @@ mod tests {
         }
     }
 
-    mod table_detail_light_parsing {
+    mod table_columns_and_fks_parsing {
         use super::*;
 
         fn build_light_json(columns: &str, fks: &str) -> String {
@@ -1155,7 +1155,7 @@ mod tests {
                 r#"[{"name":"fk_1","from_schema":"public","from_table":"orders","from_columns":["user_id"],"to_schema":"public","to_table":"users","to_columns":["id"],"on_delete":"c","on_update":"a"}]"#,
             );
 
-            let (columns, fks) = PostgresAdapter::parse_table_detail_light(&json).unwrap();
+            let (columns, fks) = PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
 
             assert_eq!(columns.len(), 1);
             assert_eq!(columns[0].name, "id");
@@ -1167,7 +1167,7 @@ mod tests {
         fn null_sub_values_parse_to_empty() {
             let json = build_light_json("null", "null");
 
-            let (columns, fks) = PostgresAdapter::parse_table_detail_light(&json).unwrap();
+            let (columns, fks) = PostgresAdapter::parse_table_columns_and_fks(&json).unwrap();
 
             assert!(columns.is_empty());
             assert!(fks.is_empty());
@@ -1176,26 +1176,26 @@ mod tests {
         #[test]
         fn missing_key_returns_error() {
             let json = r#"{"columns": null}"#;
-            let result = PostgresAdapter::parse_table_detail_light(json);
+            let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
 
         #[test]
         fn unknown_key_returns_error() {
             let json = r#"{"columns": null, "foreign_keys": null, "extra": null}"#;
-            let result = PostgresAdapter::parse_table_detail_light(json);
+            let result = PostgresAdapter::parse_table_columns_and_fks(json);
             assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
 
         #[test]
         fn empty_input_returns_error() {
-            let result = PostgresAdapter::parse_table_detail_light("");
+            let result = PostgresAdapter::parse_table_columns_and_fks("");
             assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
 
         #[test]
         fn null_input_returns_error() {
-            let result = PostgresAdapter::parse_table_detail_light("null");
+            let result = PostgresAdapter::parse_table_columns_and_fks("null");
             assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
         }
     }

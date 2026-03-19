@@ -341,7 +341,7 @@ impl PostgresAdapter {
         )
     }
 
-    pub(in crate::infra::adapters::postgres) fn table_detail_light_query(
+    pub(in crate::infra::adapters::postgres) fn table_columns_and_fks_query(
         schema: &str,
         table: &str,
     ) -> String {
@@ -542,12 +542,12 @@ mod tests {
         }
     }
 
-    mod table_detail_light_query {
+    mod table_columns_and_fks_query {
         use super::*;
 
         #[test]
         fn wraps_columns_and_fks_only_in_json_build_object() {
-            let sql = PostgresAdapter::table_detail_light_query("public", "users");
+            let sql = PostgresAdapter::table_columns_and_fks_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
             assert!(sql.contains("'columns'"));
@@ -560,7 +560,7 @@ mod tests {
 
         #[test]
         fn uses_quoted_schema_and_table() {
-            let sql = PostgresAdapter::table_detail_light_query("my_schema", "my_table");
+            let sql = PostgresAdapter::table_columns_and_fks_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));
             assert!(sql.contains("'my_table'"));
@@ -596,12 +596,12 @@ mod tests {
             PostgresAdapter::table_detail_query("public", HOSTILE)
         )]
         #[case(
-            "table_detail_light_query",
-            PostgresAdapter::table_detail_light_query(HOSTILE, "t")
+            "table_columns_and_fks_query",
+            PostgresAdapter::table_columns_and_fks_query(HOSTILE, "t")
         )]
         #[case(
-            "table_detail_light_query_table",
-            PostgresAdapter::table_detail_light_query("public", HOSTILE)
+            "table_columns_and_fks_query_table",
+            PostgresAdapter::table_columns_and_fks_query("public", HOSTILE)
         )]
         fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
             assert!(

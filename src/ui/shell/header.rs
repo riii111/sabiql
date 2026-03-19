@@ -12,7 +12,7 @@ pub struct Header;
 impl Header {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let db_name = state.session.database_name().unwrap_or("-");
-        let table = state.session.current_table().unwrap_or("-");
+        let table = state.session.selected_table_key().unwrap_or("-");
 
         let (status_text, status_color) = if state.session.dsn.is_none() {
             ("no dsn", Color::Red)
