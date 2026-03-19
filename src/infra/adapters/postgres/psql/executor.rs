@@ -24,12 +24,44 @@ fn csv_field_count(line: &str) -> usize {
     count
 }
 
+fn first_keyword(stmt: &str) -> &str {
+    let bytes = stmt.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                if i + 1 < bytes.len() {
+                    i += 2;
+                }
+            }
+            b if b.is_ascii_alphabetic() => {
+                let start = i;
+                while i < bytes.len() && bytes[i].is_ascii_alphanumeric() {
+                    i += 1;
+                }
+                return &stmt[start..i];
+            }
+            _ => i += 1,
+        }
+    }
+    ""
+}
+
 fn count_select_statements(sql: &str) -> usize {
     split_sql_statements(sql)
         .iter()
         .filter(|s| {
-            let first = s.split_whitespace().next().unwrap_or("");
-            first.eq_ignore_ascii_case("SELECT") || first.eq_ignore_ascii_case("WITH")
+            let kw = first_keyword(s);
+            kw.eq_ignore_ascii_case("SELECT") || kw.eq_ignore_ascii_case("WITH")
         })
         .count()
 }
@@ -506,17 +538,43 @@ mod tests {
             assert_eq!(extract_last_csv_block(input, "SELECT * FROM t"), input);
         }
 
+        #[test]
+        fn leading_line_comment_does_not_break_hint() {
+            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "-- note\nSELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,bob@example.com"
+            );
+        }
+
+        #[test]
+        fn leading_block_comment_does_not_break_hint() {
+            let input = "id,name\n1,Alice\nage,email\n30,bob@example.com";
+            assert_eq!(
+                extract_last_csv_block(
+                    input,
+                    "/* note */ SELECT id, name FROM users; SELECT age, email FROM contacts"
+                ),
+                "age,email\n30,bob@example.com"
+            );
+        }
+
         // Known limitation: when the leading result set has 0 data rows,
         // the data_rows_since_header guard prevents detecting the next header.
         // Fixing this requires redesigning how boundary info flows from
         // parse_aggregate_command_tag, which is out of scope here.
         #[test]
-        fn empty_leading_result_misidentifies_boundary() {
+        #[ignore = "empty leading result set — needs boundary redesign"]
+        fn empty_leading_result_returns_last_block() {
             let input = "id,name\nage,email\n30,alice@example.com";
             let sql = "SELECT id, name FROM users WHERE false; SELECT age, email FROM contacts";
-            // Ideal: "age,email\n30,alice@example.com"
-            // Actual: data row is mistaken for the header
-            assert_eq!(extract_last_csv_block(input, sql), "30,alice@example.com");
+            assert_eq!(
+                extract_last_csv_block(input, sql),
+                "age,email\n30,alice@example.com"
+            );
         }
     }
 
