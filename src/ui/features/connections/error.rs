@@ -159,7 +159,7 @@ impl ConnectionError {
             Span::raw(" Switch  "),
             key_chip("d"),
             Span::raw(" Details  "),
-            key_chip("c"),
+            key_chip("y"),
             Span::raw(" Copy"),
         ]);
 
