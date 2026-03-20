@@ -341,6 +341,13 @@ mod tests {
     #[case(KeyCombo::ctrl(Key::Char('e')))]
     #[case(KeyCombo::alt(Key::Char('j')))]
     #[case(KeyCombo::shift(Key::Char('j')))]
+    // Shift guard contract: shift+uppercase is blocked at NavIntent level.
+    // The key_translator normalizes these before they reach here, but
+    // the guard documents the contract for any caller bypassing the translator.
+    #[case(KeyCombo::shift(Key::Char('G')))]
+    #[case(KeyCombo::shift(Key::Char('H')))]
+    #[case(KeyCombo::shift(Key::Char('M')))]
+    #[case(KeyCombo::shift(Key::Char('L')))]
     fn map_nav_intent_negative(#[case] combo: KeyCombo) {
         assert_eq!(map_nav_intent(&combo), None);
     }

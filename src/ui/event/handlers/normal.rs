@@ -1186,6 +1186,24 @@ mod tests {
         }
     }
 
+    mod shift_uppercase_regression {
+        use super::*;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        use crate::ui::event::key_translator::translate;
+
+        #[test]
+        fn shift_g_key_event_produces_select_last_via_translator() {
+            let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
+            let combo = translate(event);
+            let state = browse_state();
+
+            let result = handle_normal_mode(combo, &state);
+
+            assert!(matches!(result, Action::SelectLast));
+        }
+    }
+
     mod key_sequence {
         use super::*;
 
