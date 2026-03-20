@@ -191,7 +191,9 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
             state.sql_modal.completion_debounce = None;
-            state.sql_modal.yank_flash_until = None;
+            state
+                .flash_timers
+                .clear(crate::app::flash_timer::FlashId::SqlModal);
             if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
@@ -387,7 +389,9 @@ pub fn reduce_sql_modal(
             }])
         }
         Action::SqlModalYankSuccess => {
-            state.sql_modal.yank_flash_until = Some(now + Duration::from_millis(200));
+            state
+                .flash_timers
+                .set(crate::app::flash_timer::FlashId::SqlModal, now);
             Some(vec![])
         }
 
@@ -1090,10 +1094,15 @@ mod tests {
         #[test]
         fn yank_success_sets_flash() {
             let mut state = sql_modal_state();
+            let now = Instant::now();
 
-            reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, Instant::now());
+            reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, now);
 
-            assert!(state.sql_modal.yank_flash_until.is_some());
+            assert!(
+                state
+                    .flash_timers
+                    .is_active(crate::app::flash_timer::FlashId::SqlModal, now)
+            );
         }
 
         #[test]

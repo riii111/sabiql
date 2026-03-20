@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -13,11 +11,6 @@ use crate::ui::theme::Theme;
 
 pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
     let content = &state.sql_modal.content;
-    let now = Instant::now();
-    let yank_flash_active = state
-        .sql_modal
-        .yank_flash_until
-        .is_some_and(|until| now < until);
 
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
     if matches!(
@@ -102,14 +95,11 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         );
     }
 
-    if yank_flash_active {
-        let flash_style = Style::default()
-            .fg(Theme::YANK_FLASH_FG)
-            .bg(Theme::YANK_FLASH_BG);
-        for line in &mut lines {
-            *line = std::mem::take(line).style(flash_style);
-        }
-    }
+    let now = std::time::Instant::now();
+    let flash_active = state
+        .flash_timers
+        .is_active(crate::app::flash_timer::FlashId::SqlModal, now);
+    crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
     frame.render_widget(
         Paragraph::new(lines)

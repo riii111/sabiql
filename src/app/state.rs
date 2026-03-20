@@ -4,6 +4,7 @@ use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
 use super::explain_context::ExplainContext;
+use super::flash_timer::FlashTimerStore;
 use super::input_mode::InputMode;
 use super::message_state::MessageState;
 use super::modal_state::ModalState;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub query_history_picker: QueryHistoryPickerState,
     pub explain: ExplainContext,
     pub modal: ModalState,
+    pub flash_timers: FlashTimerStore,
     pub connection_caches: ConnectionCacheStore,
     connections: Vec<ConnectionProfile>,
     service_entries: Vec<ServiceEntry>,
@@ -64,6 +66,7 @@ impl AppState {
             query_history_picker: QueryHistoryPickerState::default(),
             explain: ExplainContext::default(),
             modal: ModalState::default(),
+            flash_timers: FlashTimerStore::default(),
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),
             service_entries: Vec::new(),
@@ -101,6 +104,7 @@ impl AppState {
         self.messages.clear_expired();
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
+        self.flash_timers.clear_expired(now);
     }
 
     pub fn result_visible_rows(&self) -> usize {

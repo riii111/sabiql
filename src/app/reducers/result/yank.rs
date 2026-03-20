@@ -54,6 +54,9 @@ pub fn reduce(
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
+                state
+                    .flash_timers
+                    .set(crate::app::flash_timer::FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
@@ -420,6 +423,20 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
+            );
+        }
+
+        #[test]
+        fn ddl_yank_sets_flash() {
+            let mut state = state_with_ddl_tab();
+            let now = Instant::now();
+
+            reduce(&mut state, &Action::DdlYank, &fake_services(), now);
+
+            assert!(
+                state
+                    .flash_timers
+                    .is_active(crate::app::flash_timer::FlashId::Ddl, now)
             );
         }
 

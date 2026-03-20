@@ -89,7 +89,6 @@ pub struct SqlModalContext {
     pub prefetching_tables: HashSet<String>,
     pub failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     prefetch_started: bool,
-    pub yank_flash_until: Option<Instant>,
     pub active_tab: SqlModalTab,
 }
 

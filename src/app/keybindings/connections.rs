@@ -103,13 +103,13 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         }],
     },
     ModeRow {
-        key_short: "c",
-        key: "c",
+        key_short: "y",
+        key: "y",
         desc_short: "Copy",
         description: "Copy error to clipboard",
         bindings: &[ExecBinding {
             action: Action::CopyConnectionError,
-            combos: &[KeyCombo::plain(Key::Char('c'))],
+            combos: &[KeyCombo::plain(Key::Char('y'))],
         }],
     },
     ModeRow {

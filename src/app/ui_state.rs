@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
+
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::keybindings::help_content_line_count;

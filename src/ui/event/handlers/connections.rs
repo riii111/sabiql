@@ -276,7 +276,7 @@ mod tests {
         #[case(Key::Char('e'), Expected::Reenter)]
         #[case(Key::Char('s'), Expected::OpenSelector)]
         #[case(Key::Char('d'), Expected::ToggleDetails)]
-        #[case(Key::Char('c'), Expected::Copy)]
+        #[case(Key::Char('y'), Expected::Copy)]
         fn connection_error_action_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
