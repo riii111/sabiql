@@ -124,6 +124,10 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Guards env-var–mutating tests so they don't race each other.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn empty_content_returns_no_entries() {
@@ -297,12 +301,14 @@ application_name=myapp
 
     #[test]
     fn find_service_file_uses_pgservicefile_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
         let tmpdir = std::env::temp_dir();
         let path = tmpdir.join("test_pg_service.conf");
         std::fs::write(&path, "[test]\nhost=localhost\n").unwrap();
 
         let original = std::env::var("PGSERVICEFILE").ok();
-        // SAFETY: test-only, single-threaded access
+        // SAFETY: test-only, serialized by ENV_LOCK
         unsafe { std::env::set_var("PGSERVICEFILE", &path) };
 
         let result = find_service_file();
@@ -320,8 +326,10 @@ application_name=myapp
 
     #[test]
     fn find_service_file_errors_when_pgservicefile_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
         let original = std::env::var("PGSERVICEFILE").ok();
-        // SAFETY: test-only, single-threaded access
+        // SAFETY: test-only, serialized by ENV_LOCK
         unsafe { std::env::set_var("PGSERVICEFILE", "/nonexistent/path/pg_service.conf") };
 
         let result = find_service_file();
