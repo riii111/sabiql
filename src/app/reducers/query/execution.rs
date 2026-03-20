@@ -176,8 +176,8 @@ pub fn reduce(
                         vec![]
                     }
                 }
-                Action::ErOpenDiagram => {
-                    vec![Effect::DispatchActions(vec![Action::ErOpenDiagram])]
+                Action::OpenErTablePicker => {
+                    vec![Effect::DispatchActions(vec![Action::OpenErTablePicker])]
                 }
                 Action::SubmitCellEditWrite => {
                     vec![Effect::DispatchActions(vec![Action::SubmitCellEditWrite])]
