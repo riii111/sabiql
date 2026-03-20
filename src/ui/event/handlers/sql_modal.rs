@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 
@@ -43,8 +43,16 @@ pub fn handle_sql_modal_keys(
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
             return match combo.key {
-                Key::Char('j') | Key::Down if plain => Action::ExplainPlanScrollDown,
-                Key::Char('k') | Key::Up if plain => Action::ExplainPlanScrollUp,
+                Key::Char('j') | Key::Down if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Char('k') | Key::Up if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
                 Key::Esc if plain => Action::CloseSqlModal,
                 _ => Action::None,
             };
@@ -61,12 +69,30 @@ pub fn handle_sql_modal_keys(
             Key::Enter if alt => Action::SqlModalSubmit,
             Key::Char('y') if plain => Action::SqlModalYank,
             Key::Enter if plain => Action::SqlModalEnterInsert,
-            Key::Up => Action::SqlModalMoveCursor(CursorMove::Up),
-            Key::Down => Action::SqlModalMoveCursor(CursorMove::Down),
-            Key::Left => Action::SqlModalMoveCursor(CursorMove::Left),
-            Key::Right => Action::SqlModalMoveCursor(CursorMove::Right),
-            Key::Home => Action::SqlModalMoveCursor(CursorMove::Home),
-            Key::End => Action::SqlModalMoveCursor(CursorMove::End),
+            Key::Up => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Up,
+            },
+            Key::Down => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Down,
+            },
+            Key::Left => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Left,
+            },
+            Key::Right => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Right,
+            },
+            Key::Home => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::Home,
+            },
+            Key::End => Action::TextMoveCursor {
+                target: InputTarget::SqlModal,
+                direction: CursorMove::End,
+            },
             Key::Esc if plain => Action::CloseSqlModal,
             _ => Action::None,
         };
@@ -75,12 +101,29 @@ pub fn handle_sql_modal_keys(
     if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
         let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {
-            Key::Char(c) if plain => Action::SqlModalHighRiskInput(c),
-            Key::Backspace if plain => Action::SqlModalHighRiskBackspace,
-            Key::Left => Action::SqlModalHighRiskMoveCursor(CursorMove::Left),
-            Key::Right => Action::SqlModalHighRiskMoveCursor(CursorMove::Right),
-            Key::Home => Action::SqlModalHighRiskMoveCursor(CursorMove::Home),
-            Key::End => Action::SqlModalHighRiskMoveCursor(CursorMove::End),
+            Key::Char(c) if plain => Action::TextInput {
+                target: InputTarget::SqlModalHighRisk,
+                ch: c,
+            },
+            Key::Backspace if plain => Action::TextBackspace {
+                target: InputTarget::SqlModalHighRisk,
+            },
+            Key::Left => Action::TextMoveCursor {
+                target: InputTarget::SqlModalHighRisk,
+                direction: CursorMove::Left,
+            },
+            Key::Right => Action::TextMoveCursor {
+                target: InputTarget::SqlModalHighRisk,
+                direction: CursorMove::Right,
+            },
+            Key::Home => Action::TextMoveCursor {
+                target: InputTarget::SqlModalHighRisk,
+                direction: CursorMove::Home,
+            },
+            Key::End => Action::TextMoveCursor {
+                target: InputTarget::SqlModalHighRisk,
+                direction: CursorMove::End,
+            },
             Key::Enter if plain => Action::SqlModalHighRiskConfirmExecute,
             Key::Esc => Action::SqlModalCancelConfirm,
             _ => Action::None,
@@ -132,18 +175,43 @@ pub fn handle_sql_modal_keys(
         (Key::Left | Key::Right, true) => Action::CompletionDismiss,
 
         (Key::Esc, false) => Action::SqlModalEnterNormal,
-        (Key::Left, false) => Action::SqlModalMoveCursor(CursorMove::Left),
-        (Key::Right, false) => Action::SqlModalMoveCursor(CursorMove::Right),
-        (Key::Up, false) => Action::SqlModalMoveCursor(CursorMove::Up),
-        (Key::Down, false) => Action::SqlModalMoveCursor(CursorMove::Down),
-        (Key::Home, _) => Action::SqlModalMoveCursor(CursorMove::Home),
-        (Key::End, _) => Action::SqlModalMoveCursor(CursorMove::End),
+        (Key::Left, false) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::Left,
+        },
+        (Key::Right, false) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::Right,
+        },
+        (Key::Up, false) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::Up,
+        },
+        (Key::Down, false) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::Down,
+        },
+        (Key::Home, _) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::Home,
+        },
+        (Key::End, _) => Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: CursorMove::End,
+        },
         // Editing
-        (Key::Backspace, _) => Action::SqlModalBackspace,
-        (Key::Delete, _) => Action::SqlModalDelete,
+        (Key::Backspace, _) => Action::TextBackspace {
+            target: InputTarget::SqlModal,
+        },
+        (Key::Delete, _) => Action::TextDelete {
+            target: InputTarget::SqlModal,
+        },
         (Key::Enter, false) => Action::SqlModalNewLine,
         (Key::Tab, false) => Action::SqlModalTab,
-        (Key::Char(c), _) => Action::SqlModalInput(c),
+        (Key::Char(c), _) => Action::TextInput {
+            target: InputTarget::SqlModal,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -203,13 +271,27 @@ mod tests {
             Expected::SqlModalSubmit => assert!(matches!(result, Action::SqlModalSubmit)),
             Expected::SqlModalNewLine => assert!(matches!(result, Action::SqlModalNewLine)),
             Expected::SqlModalTab => assert!(matches!(result, Action::SqlModalTab)),
-            Expected::SqlModalBackspace => assert!(matches!(result, Action::SqlModalBackspace)),
-            Expected::SqlModalDelete => assert!(matches!(result, Action::SqlModalDelete)),
+            Expected::SqlModalBackspace => assert!(matches!(
+                result,
+                Action::TextBackspace {
+                    target: InputTarget::SqlModal
+                }
+            )),
+            Expected::SqlModalDelete => assert!(matches!(
+                result,
+                Action::TextDelete {
+                    target: InputTarget::SqlModal
+                }
+            )),
             Expected::SqlModalInput(c) => {
-                assert!(matches!(result, Action::SqlModalInput(x) if x == c))
+                assert!(
+                    matches!(result, Action::TextInput { target: InputTarget::SqlModal, ch: x } if x == c)
+                )
             }
             Expected::SqlModalMoveCursor(m) => {
-                assert!(matches!(result, Action::SqlModalMoveCursor(x) if x == m))
+                assert!(
+                    matches!(result, Action::TextMoveCursor { target: InputTarget::SqlModal, direction: x } if x == m)
+                )
             }
             Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
             Expected::SqlModalEnterInsert => {
@@ -241,10 +323,24 @@ mod tests {
             Expected::SqlModalNextTab => assert!(matches!(result, Action::SqlModalNextTab)),
             Expected::SqlModalPrevTab => assert!(matches!(result, Action::SqlModalPrevTab)),
             Expected::ExplainPlanScrollUp => {
-                assert!(matches!(result, Action::ExplainPlanScrollUp))
+                assert!(matches!(
+                    result,
+                    Action::Scroll {
+                        target: ScrollTarget::ExplainPlan,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line
+                    }
+                ))
             }
             Expected::ExplainPlanScrollDown => {
-                assert!(matches!(result, Action::ExplainPlanScrollDown))
+                assert!(matches!(
+                    result,
+                    Action::Scroll {
+                        target: ScrollTarget::ExplainPlan,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line
+                    }
+                ))
             }
             Expected::None => assert!(matches!(result, Action::None)),
         }

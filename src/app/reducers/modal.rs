@@ -1,6 +1,8 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+};
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
@@ -42,11 +44,19 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.help_scroll_offset = 0;
             Some(vec![])
         }
-        Action::HelpScrollUp => {
+        Action::Scroll {
+            target: ScrollTarget::Help,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
             state.ui.help_scroll_offset = state.ui.help_scroll_offset.saturating_sub(1);
             Some(vec![])
         }
-        Action::HelpScrollDown => {
+        Action::Scroll {
+            target: ScrollTarget::Help,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
             let max_scroll = state.ui.help_max_scroll();
             if state.ui.help_scroll_offset < max_scroll {
                 state.ui.help_scroll_offset += 1;
@@ -80,12 +90,17 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.pending_er_picker = false;
             Some(vec![])
         }
-        Action::ErFilterInput(c) => {
+        Action::TextInput {
+            target: InputTarget::ErFilter,
+            ch: c,
+        } => {
             state.ui.er_picker.filter_input.push(*c);
             state.ui.er_picker.reset();
             Some(vec![])
         }
-        Action::ErFilterBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::ErFilter,
+        } => {
             state.ui.er_picker.filter_input.pop();
             state.ui.er_picker.reset();
             Some(vec![])
@@ -169,26 +184,37 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.messages.set_error_at(msg.clone(), now);
             Some(vec![])
         }
-        Action::QueryHistoryFilterInput(c) => {
+        Action::TextInput {
+            target: InputTarget::QueryHistoryFilter,
+            ch: c,
+        } => {
             state.query_history_picker.filter_input.insert_char(*c);
             state.query_history_picker.selected = 0;
             state.query_history_picker.scroll_offset = 0;
             Some(vec![])
         }
-        Action::QueryHistoryFilterBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::QueryHistoryFilter,
+        } => {
             state.query_history_picker.filter_input.backspace();
             state.query_history_picker.selected = 0;
             state.query_history_picker.scroll_offset = 0;
             Some(vec![])
         }
-        Action::QueryHistorySelectNext => {
+        Action::ListSelect {
+            target: ListTarget::QueryHistory,
+            motion: ListMotion::Next,
+        } => {
             let count = state.query_history_picker.grouped_count();
             if count > 0 && state.query_history_picker.selected < count - 1 {
                 state.query_history_picker.selected += 1;
             }
             Some(vec![])
         }
-        Action::QueryHistorySelectPrevious => {
+        Action::ListSelect {
+            target: ListTarget::QueryHistory,
+            motion: ListMotion::Previous,
+        } => {
             state.query_history_picker.selected =
                 state.query_history_picker.selected.saturating_sub(1);
             Some(vec![])
@@ -693,7 +719,10 @@ mod tests {
 
             let effects = reduce_modal(
                 &mut state,
-                &Action::QueryHistoryFilterInput('a'),
+                &Action::TextInput {
+                    target: InputTarget::QueryHistoryFilter,
+                    ch: 'a',
+                },
                 Instant::now(),
             )
             .unwrap();
@@ -795,7 +824,15 @@ mod tests {
             ];
             state.query_history_picker.selected = 0;
 
-            reduce_modal(&mut state, &Action::QueryHistorySelectNext, Instant::now()).unwrap();
+            reduce_modal(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                },
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(state.query_history_picker.selected, 1);
         }
@@ -807,7 +844,15 @@ mod tests {
             state.query_history_picker.entries = vec![make_entry("SELECT 1", &test_conn)];
             state.query_history_picker.selected = 0;
 
-            reduce_modal(&mut state, &Action::QueryHistorySelectNext, Instant::now()).unwrap();
+            reduce_modal(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                },
+                Instant::now(),
+            )
+            .unwrap();
 
             assert_eq!(state.query_history_picker.selected, 0);
         }
@@ -819,7 +864,10 @@ mod tests {
 
             reduce_modal(
                 &mut state,
-                &Action::QueryHistorySelectPrevious,
+                &Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Previous,
+                },
                 Instant::now(),
             )
             .unwrap();

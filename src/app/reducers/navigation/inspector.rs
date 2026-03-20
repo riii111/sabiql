@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::app::effect::Effect;
 use crate::app::inspector_tab::InspectorTab;
 use crate::app::services::AppServices;
@@ -13,26 +13,46 @@ pub fn reduce(
     services: &AppServices,
 ) -> Option<Vec<Effect>> {
     match action {
-        Action::InspectorScrollUp => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
             state.ui.inspector_scroll_offset = state.ui.inspector_scroll_offset.saturating_sub(1);
             Some(vec![])
         }
-        Action::InspectorScrollDown => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
             let max_offset = inspector_max_scroll(state, services);
             if state.ui.inspector_scroll_offset < max_offset {
                 state.ui.inspector_scroll_offset += 1;
             }
             Some(vec![])
         }
-        Action::InspectorScrollTop => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::ToStart,
+        } => {
             state.ui.inspector_scroll_offset = 0;
             Some(vec![])
         }
-        Action::InspectorScrollBottom => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::ToEnd,
+        } => {
             state.ui.inspector_scroll_offset = inspector_max_scroll(state, services);
             Some(vec![])
         }
-        Action::InspectorScrollHalfPageDown => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::HalfPage,
+        } => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
@@ -42,7 +62,11 @@ pub fn reduce(
             state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
             Some(vec![])
         }
-        Action::InspectorScrollHalfPageUp => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::HalfPage,
+        } => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
@@ -52,7 +76,11 @@ pub fn reduce(
                 state.ui.inspector_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
-        Action::InspectorScrollFullPageDown => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::FullPage,
+        } => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
@@ -62,7 +90,11 @@ pub fn reduce(
             state.ui.inspector_scroll_offset = (state.ui.inspector_scroll_offset + delta).min(max);
             Some(vec![])
         }
-        Action::InspectorScrollFullPageUp => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::FullPage,
+        } => {
             let visible = match state.ui.inspector_tab {
                 InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
                 _ => state.inspector_visible_rows(),
@@ -72,12 +104,20 @@ pub fn reduce(
                 state.ui.inspector_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
-        Action::InspectorScrollLeft => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        } => {
             state.ui.inspector_horizontal_offset =
                 calculate_prev_column_offset(state.ui.inspector_horizontal_offset);
             Some(vec![])
         }
-        Action::InspectorScrollRight => {
+        Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        } => {
             let plan = &state.ui.inspector_viewport_plan;
             let all_widths_len = plan.max_offset + plan.column_count;
             state.ui.inspector_horizontal_offset = calculate_next_column_offset(
@@ -141,7 +181,11 @@ mod tests {
 
             let effects = reduce_navigation(
                 &mut state,
-                &Action::InspectorScrollTop,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -159,7 +203,11 @@ mod tests {
 
             let effects = reduce_navigation(
                 &mut state,
-                &Action::InspectorScrollBottom,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -175,7 +223,11 @@ mod tests {
 
             let effects = reduce_navigation(
                 &mut state,
-                &Action::InspectorScrollBottom,
+                &Action::Scroll {
+                    target: ScrollTarget::Inspector,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );

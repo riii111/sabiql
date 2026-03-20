@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ConnectionTarget, CursorMove};
+use crate::app::action::{Action, ConnectionTarget, CursorMove, InputTarget};
 use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
@@ -79,7 +79,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         // ===== Connection Setup Form =====
-        Action::ConnectionSetupInput(c) => {
+        Action::TextInput {
+            target: InputTarget::ConnectionSetup,
+            ch: c,
+        } => {
             let setup = &mut state.connection_setup;
             match setup.focused_field {
                 ConnectionField::Name => {
@@ -118,7 +121,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             Some(vec![])
         }
-        Action::ConnectionSetupBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::ConnectionSetup,
+        } => {
             let setup = &mut state.connection_setup;
             if setup.cursor_position == 0 {
                 return Some(vec![]);
@@ -139,7 +144,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             Some(vec![])
         }
-        Action::ConnectionSetupMoveCursor(movement) => {
+        Action::TextMoveCursor {
+            target: InputTarget::ConnectionSetup,
+            direction: movement,
+        } => {
             let setup = &mut state.connection_setup;
             let field_str = match setup.focused_field {
                 ConnectionField::Name => &setup.name,

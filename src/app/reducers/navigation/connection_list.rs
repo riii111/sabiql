@@ -1,13 +1,16 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ConnectionsLoadedPayload};
+use crate::app::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
-        Action::ConnectionListSelectNext => {
+        Action::ListSelect {
+            target: ListTarget::ConnectionList,
+            motion: ListMotion::Next,
+        } => {
             let len = state.connection_list_items().len();
             let next = state.ui.connection_list_selected + 1;
             if next < len {
@@ -15,7 +18,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }
             Some(vec![])
         }
-        Action::ConnectionListSelectPrevious => {
+        Action::ListSelect {
+            target: ListTarget::ConnectionList,
+            motion: ListMotion::Previous,
+        } => {
             if state.ui.connection_list_selected > 0 {
                 state
                     .ui
@@ -127,7 +133,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionListSelectNext,
+                &Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Next,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -143,7 +152,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionListSelectNext,
+                &Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Next,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -159,7 +171,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionListSelectPrevious,
+                &Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Previous,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -175,7 +190,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ConnectionListSelectPrevious,
+                &Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Previous,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );

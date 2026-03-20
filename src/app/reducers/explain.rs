@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::app::adhoc_risk::split_statements;
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
@@ -117,12 +117,20 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
-        Action::ExplainPlanScrollUp => {
+        Action::Scroll {
+            target: ScrollTarget::ExplainPlan,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
             state.explain.scroll_offset = state.explain.scroll_offset.saturating_sub(1);
             Some(vec![])
         }
 
-        Action::ExplainPlanScrollDown => {
+        Action::Scroll {
+            target: ScrollTarget::ExplainPlan,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
             let max = state.explain.line_count().saturating_sub(1);
             if state.explain.scroll_offset < max {
                 state.explain.scroll_offset += 1;
@@ -368,7 +376,15 @@ mod tests {
             let mut state = sql_modal_state();
             state.explain.scroll_offset = 0;
 
-            reduce_explain(&mut state, &Action::ExplainPlanScrollUp, Instant::now());
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.explain.scroll_offset, 0);
         }
@@ -380,7 +396,15 @@ mod tests {
                 .explain
                 .set_plan("line1\nline2\nline3".to_string(), false, 0);
 
-            reduce_explain(&mut state, &Action::ExplainPlanScrollDown, Instant::now());
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.explain.scroll_offset, 1);
         }
@@ -391,7 +415,15 @@ mod tests {
             state.explain.set_plan("line1\nline2".to_string(), false, 0);
             state.explain.scroll_offset = 1;
 
-            reduce_explain(&mut state, &Action::ExplainPlanScrollDown, Instant::now());
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.explain.scroll_offset, 1);
         }

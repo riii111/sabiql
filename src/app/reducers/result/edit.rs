@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
@@ -84,22 +84,32 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
-        Action::ResultCellEditInput(c) => {
+        Action::TextInput {
+            target: InputTarget::ResultCellEdit,
+            ch: c,
+        } => {
             state
                 .result_interaction
                 .cell_edit_input_mut()
                 .insert_char(*c);
             Some(vec![])
         }
-        Action::ResultCellEditBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::ResultCellEdit,
+        } => {
             state.result_interaction.cell_edit_input_mut().backspace();
             Some(vec![])
         }
-        Action::ResultCellEditDelete => {
+        Action::TextDelete {
+            target: InputTarget::ResultCellEdit,
+        } => {
             state.result_interaction.cell_edit_input_mut().delete();
             Some(vec![])
         }
-        Action::ResultCellEditMoveCursor(m) => {
+        Action::TextMoveCursor {
+            target: InputTarget::ResultCellEdit,
+            direction: m,
+        } => {
             state
                 .result_interaction
                 .cell_edit_input_mut()
@@ -268,7 +278,13 @@ mod tests {
         fn delete_removes_char_at_cursor() {
             let mut state = state_in_cell_edit("abcd", 1);
 
-            reduce(&mut state, &Action::ResultCellEditDelete, Instant::now());
+            reduce(
+                &mut state,
+                &Action::TextDelete {
+                    target: InputTarget::ResultCellEdit,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "acd");
             assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
@@ -278,7 +294,13 @@ mod tests {
         fn delete_at_end_is_noop() {
             let mut state = state_in_cell_edit("abc", 3);
 
-            reduce(&mut state, &Action::ResultCellEditDelete, Instant::now());
+            reduce(
+                &mut state,
+                &Action::TextDelete {
+                    target: InputTarget::ResultCellEdit,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "abc");
         }
@@ -289,7 +311,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ResultCellEditMoveCursor(CursorMove::Left),
+                &Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Left,
+                },
                 Instant::now(),
             );
 
@@ -302,7 +327,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ResultCellEditMoveCursor(CursorMove::Right),
+                &Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Right,
+                },
                 Instant::now(),
             );
 
@@ -315,7 +343,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ResultCellEditMoveCursor(CursorMove::Home),
+                &Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Home,
+                },
                 Instant::now(),
             );
 
@@ -328,7 +359,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ResultCellEditMoveCursor(CursorMove::End),
+                &Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::End,
+                },
                 Instant::now(),
             );
 
@@ -341,7 +375,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ResultCellEditInput('b'),
+                &Action::TextInput {
+                    target: InputTarget::ResultCellEdit,
+                    ch: 'b',
+                },
                 Instant::now(),
             );
 
@@ -353,7 +390,13 @@ mod tests {
         fn backspace_removes_char_before_cursor() {
             let mut state = state_in_cell_edit("abc", 2);
 
-            reduce(&mut state, &Action::ResultCellEditBackspace, Instant::now());
+            reduce(
+                &mut state,
+                &Action::TextBackspace {
+                    target: InputTarget::ResultCellEdit,
+                },
+                Instant::now(),
+            );
 
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
             assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);

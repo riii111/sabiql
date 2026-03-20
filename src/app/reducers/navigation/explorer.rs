@@ -1,4 +1,7 @@
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
+    SelectMotion,
+};
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
@@ -10,7 +13,7 @@ use super::explorer_item_count;
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
-        Action::SelectNext => {
+        Action::Select(SelectMotion::Next) => {
             match state.modal.active_mode() {
                 InputMode::TablePicker => {
                     let max = state.filtered_tables().len().saturating_sub(1);
@@ -53,7 +56,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::SelectPrevious => {
+        Action::Select(SelectMotion::Previous) => {
             match state.modal.active_mode() {
                 InputMode::TablePicker | InputMode::CommandPalette => {
                     state
@@ -78,13 +81,13 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::SelectFirst => {
+        Action::Select(SelectMotion::First) => {
             if state.ui.focused_pane == FocusedPane::Explorer && !state.tables().is_empty() {
                 state.ui.set_explorer_selection(Some(0));
             }
             Some(vec![])
         }
-        Action::SelectLast => {
+        Action::Select(SelectMotion::Last) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = state.tables().len();
                 if len > 0 {
@@ -93,7 +96,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::SelectViewportMiddle => {
+        Action::Select(SelectMotion::ViewportMiddle) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
@@ -106,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::SelectViewportTop => {
+        Action::Select(SelectMotion::ViewportTop) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 if len > 0 {
@@ -116,7 +119,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::SelectViewportBottom => {
+        Action::Select(SelectMotion::ViewportBottom) => {
             if state.ui.focused_pane == FocusedPane::Explorer {
                 let len = explorer_item_count(state);
                 let visible = state.ui.explorer_visible_items();
@@ -130,7 +133,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
 
-        Action::ScrollCursorCenter => {
+        Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Center,
+        } => {
             state.ui.key_sequence = KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -142,7 +148,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::ScrollCursorTop => {
+        Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Top,
+        } => {
             state.ui.key_sequence = KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -153,7 +162,10 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             }
             Some(vec![])
         }
-        Action::ScrollCursorBottom => {
+        Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Bottom,
+        } => {
             state.ui.key_sequence = KeySequenceState::Idle;
             let len = explorer_item_count(state);
             let visible = state.ui.explorer_visible_items();
@@ -167,7 +179,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
 
-        Action::SelectHalfPageDown => {
+        Action::Select(SelectMotion::HalfPageDown) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -185,7 +197,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 (state.ui.explorer_scroll_offset + delta).min(max_offset);
             Some(vec![])
         }
-        Action::SelectHalfPageUp => {
+        Action::Select(SelectMotion::HalfPageUp) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -200,7 +212,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.ui.explorer_scroll_offset = state.ui.explorer_scroll_offset.saturating_sub(delta);
             Some(vec![])
         }
-        Action::SelectFullPageDown => {
+        Action::Select(SelectMotion::FullPageDown) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -218,7 +230,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 (state.ui.explorer_scroll_offset + delta).min(max_offset);
             Some(vec![])
         }
-        Action::SelectFullPageUp => {
+        Action::Select(SelectMotion::FullPageUp) => {
             let len = explorer_item_count(state);
             if len == 0 {
                 return Some(vec![]);
@@ -234,12 +246,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
 
-        Action::ExplorerScrollLeft => {
+        Action::Scroll {
+            target: ScrollTarget::Explorer,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        } => {
             state.ui.explorer_horizontal_offset =
                 state.ui.explorer_horizontal_offset.saturating_sub(1);
             Some(vec![])
         }
-        Action::ExplorerScrollRight => {
+        Action::Scroll {
+            target: ScrollTarget::Explorer,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        } => {
             let max_name_width = state
                 .tables()
                 .iter()
@@ -293,7 +313,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -308,7 +328,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -323,7 +343,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageUp,
+                &Action::Select(SelectMotion::HalfPageUp),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -336,7 +356,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             reduce_navigation(
                 &mut state,
-                &Action::SelectFullPageDown,
+                &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -351,7 +371,7 @@ mod tests {
 
             let effects = reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -365,7 +385,7 @@ mod tests {
             let mut state = state_with_tables(50, 0);
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -382,7 +402,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -399,7 +419,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageUp,
+                &Action::Select(SelectMotion::HalfPageUp),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -416,7 +436,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -432,7 +452,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectHalfPageDown,
+                &Action::Select(SelectMotion::HalfPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -449,7 +469,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectFullPageDown,
+                &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -466,7 +486,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectFullPageUp,
+                &Action::Select(SelectMotion::FullPageUp),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -483,7 +503,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectFullPageDown,
+                &Action::Select(SelectMotion::FullPageDown),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -500,7 +520,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectFullPageUp,
+                &Action::Select(SelectMotion::FullPageUp),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -514,7 +534,7 @@ mod tests {
             let mut state = state_with_tables(50, 23);
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportMiddle,
+                &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -530,7 +550,7 @@ mod tests {
             state.ui.explorer_selected = 15;
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportMiddle,
+                &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -547,7 +567,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportTop,
+                &Action::Select(SelectMotion::ViewportTop),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -563,7 +583,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportBottom,
+                &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -576,7 +596,7 @@ mod tests {
             let mut state = state_with_tables(10, 23);
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportBottom,
+                &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -592,7 +612,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportMiddle,
+                &Action::Select(SelectMotion::ViewportMiddle),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -608,7 +628,7 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::SelectViewportBottom,
+                &Action::Select(SelectMotion::ViewportBottom),
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -625,7 +645,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ScrollCursorCenter,
+                &Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Center,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -643,7 +666,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ScrollCursorTop,
+                &Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Top,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -661,7 +687,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ScrollCursorBottom,
+                &Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Bottom,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );
@@ -679,7 +708,10 @@ mod tests {
 
             reduce_navigation(
                 &mut state,
-                &Action::ScrollCursorTop,
+                &Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Top,
+                },
                 &AppServices::stub(),
                 Instant::now(),
             );

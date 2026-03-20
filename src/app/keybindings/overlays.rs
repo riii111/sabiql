@@ -1,6 +1,9 @@
 use super::types::{Key, KeyCombo};
 use super::{ExecBinding, KeyBinding, ModeRow};
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    SelectMotion,
+};
 
 // =============================================================================
 // Overlays (common display hints)
@@ -77,11 +80,19 @@ pub const HELP_ROWS: &[ModeRow] = &[
         description: "Scroll down / up",
         bindings: &[
             ExecBinding {
-                action: Action::HelpScrollDown,
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
                 combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::HelpScrollUp,
+                action: Action::Scroll {
+                    target: ScrollTarget::Help,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
         ],
@@ -120,11 +131,11 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::SelectNext,
+                action: Action::Select(SelectMotion::Next),
                 combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::SelectPrevious,
+                action: Action::Select(SelectMotion::Previous),
                 combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
@@ -135,7 +146,9 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
         desc_short: "Filter",
         description: "Type to filter",
         bindings: &[ExecBinding {
-            action: Action::FilterBackspace,
+            action: Action::TextBackspace {
+                target: InputTarget::Filter,
+            },
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
@@ -193,11 +206,11 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::SelectNext,
+                action: Action::Select(SelectMotion::Next),
                 combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::SelectPrevious,
+                action: Action::Select(SelectMotion::Previous),
                 combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
@@ -208,7 +221,9 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
         desc_short: "Filter",
         description: "Type to filter",
         bindings: &[ExecBinding {
-            action: Action::ErFilterBackspace,
+            action: Action::TextBackspace {
+                target: InputTarget::ErFilter,
+            },
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
@@ -246,11 +261,17 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::QueryHistorySelectNext,
+                action: Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::QueryHistorySelectPrevious,
+                action: Action::ListSelect {
+                    target: ListTarget::QueryHistory,
+                    motion: ListMotion::Previous,
+                },
                 combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
@@ -261,7 +282,9 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
         desc_short: "Filter",
         description: "Type to filter",
         bindings: &[ExecBinding {
-            action: Action::QueryHistoryFilterBackspace,
+            action: Action::TextBackspace {
+                target: InputTarget::QueryHistoryFilter,
+            },
             combos: &[KeyCombo::plain(Key::Backspace)],
         }],
     },
@@ -299,11 +322,11 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::SelectNext,
+                action: Action::Select(SelectMotion::Next),
                 combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::SelectPrevious,
+                action: Action::Select(SelectMotion::Previous),
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
         ],

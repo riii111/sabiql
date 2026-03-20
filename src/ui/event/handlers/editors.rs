@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget};
 use crate::app::keybindings;
 use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::keymap;
@@ -9,13 +9,32 @@ pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
         return action;
     }
     match combo.key {
-        Key::Backspace => Action::ResultCellEditBackspace,
-        Key::Delete => Action::ResultCellEditDelete,
-        Key::Left => Action::ResultCellEditMoveCursor(CursorMove::Left),
-        Key::Right => Action::ResultCellEditMoveCursor(CursorMove::Right),
-        Key::Home => Action::ResultCellEditMoveCursor(CursorMove::Home),
-        Key::End => Action::ResultCellEditMoveCursor(CursorMove::End),
-        Key::Char(c) => Action::ResultCellEditInput(c),
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::ResultCellEdit,
+        },
+        Key::Delete => Action::TextDelete {
+            target: InputTarget::ResultCellEdit,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::ResultCellEdit,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::ResultCellEdit,
+            direction: CursorMove::Right,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::ResultCellEdit,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::ResultCellEdit,
+            direction: CursorMove::End,
+        },
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::ResultCellEdit,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -25,8 +44,13 @@ pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
         return action;
     }
     match combo.key {
-        Key::Backspace => Action::CommandLineBackspace,
-        Key::Char(c) => Action::CommandLineInput(c),
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::CommandLine,
+        },
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::CommandLine,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -56,21 +80,37 @@ mod tests {
         fn char_input_returns_cell_edit_input() {
             let result = handle_cell_edit_keys(combo(Key::Char('x')));
 
-            assert!(matches!(result, Action::ResultCellEditInput('x')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ResultCellEdit,
+                    ch: 'x'
+                }
+            ));
         }
 
         #[test]
         fn backspace_returns_cell_edit_backspace() {
             let result = handle_cell_edit_keys(combo(Key::Backspace));
 
-            assert!(matches!(result, Action::ResultCellEditBackspace));
+            assert!(matches!(
+                result,
+                Action::TextBackspace {
+                    target: InputTarget::ResultCellEdit
+                }
+            ));
         }
 
         #[test]
         fn delete_returns_cell_edit_delete() {
             let result = handle_cell_edit_keys(combo(Key::Delete));
 
-            assert!(matches!(result, Action::ResultCellEditDelete));
+            assert!(matches!(
+                result,
+                Action::TextDelete {
+                    target: InputTarget::ResultCellEdit
+                }
+            ));
         }
 
         #[test]
@@ -79,7 +119,10 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Action::ResultCellEditMoveCursor(CursorMove::Left)
+                Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Left
+                }
             ));
         }
 
@@ -89,7 +132,10 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Action::ResultCellEditMoveCursor(CursorMove::Right)
+                Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Right
+                }
             ));
         }
 
@@ -99,7 +145,10 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Action::ResultCellEditMoveCursor(CursorMove::Home)
+                Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::Home
+                }
             ));
         }
 
@@ -109,7 +158,10 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Action::ResultCellEditMoveCursor(CursorMove::End)
+                Action::TextMoveCursor {
+                    target: InputTarget::ResultCellEdit,
+                    direction: CursorMove::End
+                }
             ));
         }
     }
@@ -137,9 +189,16 @@ mod tests {
             match expected {
                 Expected::Submit => assert!(matches!(result, Action::CommandLineSubmit)),
                 Expected::Exit => assert!(matches!(result, Action::ExitCommandLine)),
-                Expected::Backspace => assert!(matches!(result, Action::CommandLineBackspace)),
+                Expected::Backspace => assert!(matches!(
+                    result,
+                    Action::TextBackspace {
+                        target: InputTarget::CommandLine
+                    }
+                )),
                 Expected::Input(ch) => {
-                    assert!(matches!(result, Action::CommandLineInput(c) if c == ch))
+                    assert!(
+                        matches!(result, Action::TextInput { target: InputTarget::CommandLine, ch: c } if c == ch)
+                    )
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }

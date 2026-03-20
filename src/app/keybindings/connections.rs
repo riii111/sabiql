@@ -1,6 +1,8 @@
 use super::types::{Key, KeyCombo};
 use super::{ExecBinding, KeyBinding, ModeRow};
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+};
 
 // =============================================================================
 // Connection Setup
@@ -117,11 +119,19 @@ pub const CONNECTION_ERROR_ROWS: &[ModeRow] = &[
         description: "Scroll error",
         bindings: &[
             ExecBinding {
-                action: Action::ScrollConnectionErrorDown,
+                action: Action::Scroll {
+                    target: ScrollTarget::ConnectionError,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
                 combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::ScrollConnectionErrorUp,
+                action: Action::Scroll {
+                    target: ScrollTarget::ConnectionError,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
         ],
@@ -170,11 +180,17 @@ pub const CONNECTION_SELECTOR_ROWS: &[ModeRow] = &[
         description: "Select connection",
         bindings: &[
             ExecBinding {
-                action: Action::ConnectionListSelectNext,
+                action: Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::ConnectionListSelectPrevious,
+                action: Action::ListSelect {
+                    target: ListTarget::ConnectionList,
+                    motion: ListMotion::Previous,
+                },
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
         ],

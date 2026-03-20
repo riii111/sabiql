@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
@@ -41,12 +41,17 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             _ => None,
         },
 
-        Action::FilterInput(c) => {
+        Action::TextInput {
+            target: InputTarget::Filter,
+            ch: c,
+        } => {
             state.ui.table_picker.filter_input.push(*c);
             state.ui.table_picker.reset();
             Some(vec![])
         }
-        Action::FilterBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::Filter,
+        } => {
             state.ui.table_picker.filter_input.pop();
             state.ui.table_picker.reset();
             Some(vec![])
@@ -61,11 +66,16 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.modal.pop_mode();
             Some(vec![])
         }
-        Action::CommandLineInput(c) => {
+        Action::TextInput {
+            target: InputTarget::CommandLine,
+            ch: c,
+        } => {
             state.command_line_input.push(*c);
             Some(vec![])
         }
-        Action::CommandLineBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::CommandLine,
+        } => {
             state.command_line_input.pop();
             Some(vec![])
         }
