@@ -8,11 +8,11 @@ paths:
 
 ## 構造
 
-`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/`, `connection/`, `query/` は sub-dispatcher（`mod.rs` は dispatch のみ）。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
+`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/`, `connection/`, `query/`, `navigation/` は sub-dispatcher（`mod.rs` は dispatch のみ）。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
 
 ## Dispatcher パターン
 
-`result/mod.rs`, `connection/mod.rs`, `query/mod.rs` は dispatcher のみ。ロジックは各 `<feature>.rs` に配置する。
+`result/mod.rs`, `connection/mod.rs`, `query/mod.rs`, `navigation/mod.rs` は dispatcher のみ。ロジックは各 `<feature>.rs` に配置する。
 
 Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順序は任意）。
 
@@ -28,9 +28,9 @@ Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順
 
 **順序依存**: passthrough は `reduce_result` が `reduce_query` より前に dispatch される前提に依存する。chain を並べ替える際はこの依存を壊さないこと。
 
-## navigation.rs の境界
+## navigation/ の境界
 
-Focus/Pane, Inspector, Explorer, Filter, CommandLine, Paste, ConnectionList は navigation.rs に残す。Result 系・Connection 系ロジックはそれぞれ `result/`, `connection/` に配置すること。
+`navigation/` は Focus/Pane (`focus.rs`)、Inspector スクロール (`inspector.rs`)、Explorer ナビゲーション (`explorer.rs`)、テキスト入力 (`input.rs`)、接続リスト (`connection_list.rs`) に分割。Result 系・Connection 系ロジックはそれぞれ `result/`, `connection/` に配置すること。
 
 ## Result pane 表示切り替え時の不変条件
 
