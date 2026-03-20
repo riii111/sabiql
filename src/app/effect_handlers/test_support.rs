@@ -8,11 +8,13 @@ use crate::app::action::Action;
 use crate::app::cache::TtlCache;
 use crate::app::effect_runner::EffectRunner;
 use crate::app::ports::{
-    ConfigWriter, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter, MetadataProvider,
-    QueryExecutor, ServiceFileReader,
+    ClipboardError, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter,
+    ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider, QueryExecutor,
+    QueryHistoryError, QueryHistoryStore, ServiceFileError, ServiceFileReader,
 };
-use crate::domain::connection::ConnectionProfile;
-use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
+use crate::domain::connection::{ConnectionProfile, ServiceEntry};
+use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
 
 pub(crate) struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {
@@ -25,7 +27,7 @@ pub(crate) struct NoopErExporter;
 impl ErDiagramExporter for NoopErExporter {
     fn generate_and_export(
         &self,
-        _tables: &[crate::domain::ErTableInfo],
+        _tables: &[ErTableInfo],
         _filename: &str,
         _cache_dir: &Path,
     ) -> ErExportResult<PathBuf> {
@@ -53,53 +55,42 @@ impl DsnBuilder for NoopDsnBuilder {
 
 pub(crate) struct NoopServiceFileReader;
 impl ServiceFileReader for NoopServiceFileReader {
-    fn read_services(
-        &self,
-    ) -> Result<
-        (
-            Vec<crate::domain::connection::ServiceEntry>,
-            std::path::PathBuf,
-        ),
-        crate::app::ports::ServiceFileError,
-    > {
-        Ok((vec![], std::path::PathBuf::new()))
+    fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
+        Ok((vec![], PathBuf::new()))
     }
 }
 
 pub(crate) struct NoopClipboardWriter;
-impl crate::app::ports::ClipboardWriter for NoopClipboardWriter {
-    fn copy_text(&self, _content: &str) -> Result<(), crate::app::ports::ClipboardError> {
+impl ClipboardWriter for NoopClipboardWriter {
+    fn copy_text(&self, _content: &str) -> Result<(), ClipboardError> {
         Ok(())
     }
 }
 
 pub(crate) struct NoopFolderOpener;
-impl crate::app::ports::FolderOpener for NoopFolderOpener {
-    fn open(&self, _path: &Path) -> Result<(), crate::app::ports::FolderOpenError> {
+impl FolderOpener for NoopFolderOpener {
+    fn open(&self, _path: &Path) -> Result<(), FolderOpenError> {
         Ok(())
     }
 }
 
 pub(crate) struct NoopQueryHistoryStore;
 #[async_trait::async_trait]
-impl crate::app::ports::QueryHistoryStore for NoopQueryHistoryStore {
+impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn append(
         &self,
         _project_name: &str,
-        _connection_id: &crate::domain::ConnectionId,
-        _entry: &crate::domain::query_history::QueryHistoryEntry,
-    ) -> Result<(), crate::app::ports::QueryHistoryError> {
+        _connection_id: &ConnectionId,
+        _entry: &QueryHistoryEntry,
+    ) -> Result<(), QueryHistoryError> {
         Ok(())
     }
 
     async fn load(
         &self,
         _project_name: &str,
-        _connection_id: &crate::domain::ConnectionId,
-    ) -> Result<
-        Vec<crate::domain::query_history::QueryHistoryEntry>,
-        crate::app::ports::QueryHistoryError,
-    > {
+        _connection_id: &ConnectionId,
+    ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         Ok(Vec::new())
     }
 }
@@ -107,7 +98,7 @@ impl crate::app::ports::QueryHistoryStore for NoopQueryHistoryStore {
 pub(crate) fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
-    connection_store: Arc<dyn crate::app::ports::ConnectionStore>,
+    connection_store: Arc<dyn ConnectionStore>,
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
