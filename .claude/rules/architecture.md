@@ -24,11 +24,9 @@ src/
 
 ### NG
 
-- `app/` → `ui/` — 代わりに Renderer port を使う
-- `app/` → `infra/` — MetadataProvider, ConfigWriter 等の port を使う
+- `app/` → `ui/` — Renderer port 経由で行うこと
+- `app/` → `infra/` — port 経由で行うこと（`app/ports/` に trait を定義し `infra/adapters/` で実装）
 - `ui/` → `infra/`
-
-app→infra の通信が必要な場合、`app/ports/` に port trait を定義し `infra/adapters/` で実装すること。
 
 ## Ports & Adapters パターン
 
