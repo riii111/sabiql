@@ -8,17 +8,17 @@ paths:
 
 ## 構造
 
-`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/` と `connection/` は sub-dispatcher（`mod.rs` は dispatch のみ）。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
+`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/`, `connection/`, `query/` は sub-dispatcher（`mod.rs` は dispatch のみ）。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
 
 ## Dispatcher パターン
 
-`result/mod.rs` および `connection/mod.rs` は dispatcher のみ。ロジックは各 `<feature>.rs` に配置する。
+`result/mod.rs`, `connection/mod.rs`, `query/mod.rs` は dispatcher のみ。ロジックは各 `<feature>.rs` に配置する。
 
 Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順序は任意）。
 
 ## サブモジュール間共有ヘルパー
 
-- サブモジュール間（result, connection）: `pub(super)` で公開
+- サブモジュール間（result, connection, query）: `pub(super)` で公開
 - crate 全体: `reducers/helpers.rs` に配置
 
 ## Passthrough パターン
