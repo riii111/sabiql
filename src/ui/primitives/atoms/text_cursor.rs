@@ -1,4 +1,4 @@
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::Span;
 
 use crate::ui::theme::Theme;
@@ -26,11 +26,10 @@ pub fn text_cursor_spans(
 
     let cursor_style = Style::default()
         .bg(Theme::CURSOR_FG)
-        .fg(Theme::SELECTION_BG)
-        .add_modifier(Modifier::BOLD);
+        .fg(Theme::SELECTION_BG);
 
     if cursor >= total {
-        // Cursor at end: show text + block cursor "█"
+        // Cursor at end: show text + thin bar cursor
         let text: String = visible.iter().collect();
         vec![
             Span::raw(text),
@@ -141,5 +140,19 @@ mod tests {
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["he", "l", "lo"]);
+    }
+
+    #[test]
+    fn mid_text_cursor_style_has_no_bold() {
+        use ratatui::style::Modifier;
+
+        let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
+
+        // spans[1] is the cursor span
+        let cursor_span = &spans[1];
+        assert!(
+            !cursor_span.style.add_modifier.contains(Modifier::BOLD),
+            "mid-text cursor span must not have BOLD modifier"
+        );
     }
 }
