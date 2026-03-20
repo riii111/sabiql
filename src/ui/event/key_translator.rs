@@ -24,10 +24,18 @@ pub fn translate(event: KeyEvent) -> KeyCombo {
         _ => Key::Other,
     };
 
+    // Normalize: uppercase Key::Char already encodes shift, so drop the shift
+    // flag to prevent double-encoding (e.g. Kitty sends 'G' + SHIFT).
+    let raw_shift = event.modifiers.contains(KeyModifiers::SHIFT);
+    let shift = match key {
+        Key::Char(c) if c.is_ascii_uppercase() => false,
+        _ => raw_shift,
+    };
+
     let modifiers = Modifiers {
         ctrl: event.modifiers.contains(KeyModifiers::CONTROL),
         alt: event.modifiers.contains(KeyModifiers::ALT),
-        shift: event.modifiers.contains(KeyModifiers::SHIFT),
+        shift,
     };
 
     KeyCombo { key, modifiers }
@@ -128,5 +136,39 @@ mod tests {
         let combo = translate(event);
 
         assert_eq!(combo, KeyCombo::plain(Key::F(1)));
+    }
+
+    #[test]
+    fn uppercase_char_with_shift_normalizes_to_plain() {
+        for c in ['G', 'H', 'M', 'L'] {
+            let event = KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+
+            let combo = translate(event);
+
+            assert_eq!(
+                combo,
+                KeyCombo::plain(Key::Char(c)),
+                "Shift+{c} should normalize to plain {c}"
+            );
+        }
+    }
+
+    #[test]
+    fn lowercase_char_with_shift_preserves_shift() {
+        let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::SHIFT);
+
+        let combo = translate(event);
+
+        assert_eq!(combo, KeyCombo::shift(Key::Char('j')),);
+    }
+
+    #[test]
+    fn backtab_with_shift_preserves_shift() {
+        let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
+
+        let combo = translate(event);
+
+        assert!(combo.modifiers.shift);
+        assert_eq!(combo.key, Key::BackTab);
     }
 }
