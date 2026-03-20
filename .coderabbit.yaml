@@ -1,0 +1,26 @@
+# .coderabbit.yaml
+language: "en-US"
+tone_instructions: "Be concise and direct."
+
+reviews:
+  profile: "assertive"
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: ".claude/rules/**"
+      instructions: |
+        AI コーディングアシスタント用のルールファイル。
+        以下の観点でレビューすること:
+        1. ディレクトリツリーの列挙がないか（AIはソースを直接読める）
+        2. AIがコードを読めばわかる内容（API一覧、setter名等）が含まれていないか
+        3. 原則に「なぜ」が書かれているか（理由が自明でない場合）
+        4. 他のルールファイルとの重複がないか（重複する場合は相互参照を使う）
+        5. フロントマターの `paths` glob が正しいか
+        6. CLAUDE.md の Available Rules テーブルとの整合性があるか
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - ".claude/rules/*"
