@@ -5,7 +5,7 @@ use crate::app::adhoc_risk::{ConfirmationType, MultiStatementDecision, evaluate_
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
-use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
 use crate::app::text_input::TextInputState;
@@ -176,6 +176,7 @@ pub fn reduce_sql_modal(
         Action::OpenSqlModal => {
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.set_status(SqlModalStatus::Normal);
+            state.sql_modal.active_tab = SqlModalTab::Sql;
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
             state.sql_modal.completion.selected_index = 0;
@@ -1058,6 +1059,16 @@ mod tests {
             reduce_sql_modal(&mut state, &Action::OpenSqlModal, Instant::now());
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn open_sql_modal_resets_active_tab_to_sql() {
+            let mut state = AppState::new("test".to_string());
+            state.sql_modal.active_tab = SqlModalTab::Plan;
+
+            reduce_sql_modal(&mut state, &Action::OpenSqlModal, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
         }
 
         #[test]

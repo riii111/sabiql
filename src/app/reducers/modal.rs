@@ -299,6 +299,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                         state.sql_modal.set_status(SqlModalStatus::Running);
                         state.sql_modal.active_tab = SqlModalTab::Plan;
                         state.explain.reset();
+                        state.query.begin_running(now);
                         Some(vec![Effect::ExecuteExplain {
                             dsn: dsn.clone(),
                             query: explain_query,

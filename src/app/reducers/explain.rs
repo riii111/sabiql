@@ -8,10 +8,15 @@ use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::app::statement_classifier::{self, StatementKind};
 
-pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
+fn contains_multiple_statements(content: &str) -> bool {
+    content.contains(';')
+}
+
+pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ExplainRequest => {
-            if state.sql_modal.content.trim().is_empty() {
+            let content = state.sql_modal.content.trim().to_string();
+            if content.is_empty() {
                 return Some(vec![]);
             }
             let Some(dsn) = &state.session.dsn else {
@@ -20,11 +25,15 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> O
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
+            if contains_multiple_statements(&content) {
+                return Some(vec![]);
+            }
 
-            let query = format!("EXPLAIN {}", state.sql_modal.content.trim());
+            let query = format!("EXPLAIN {}", content);
             state.sql_modal.set_status(SqlModalStatus::Running);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.explain.reset();
+            state.query.begin_running(now);
 
             Some(vec![Effect::ExecuteExplain {
                 dsn: dsn.clone(),
@@ -35,7 +44,8 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> O
         }
 
         Action::ExplainAnalyzeRequest => {
-            if state.sql_modal.content.trim().is_empty() {
+            let content = state.sql_modal.content.trim().to_string();
+            if content.is_empty() {
                 return Some(vec![]);
             }
             if state.session.dsn.is_none() {
@@ -44,8 +54,9 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> O
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
-
-            let content = state.sql_modal.content.trim().to_string();
+            if contains_multiple_statements(&content) {
+                return Some(vec![]);
+            }
             let kind = statement_classifier::classify(&content);
             let is_dml = matches!(
                 kind,
@@ -85,6 +96,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> O
                 .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms);
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
+            state.query.mark_idle();
             Some(vec![])
         }
 
@@ -92,6 +104,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, _now: Instant) -> O
             state.explain.set_error(error.clone());
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
+            state.query.mark_idle();
             Some(vec![])
         }
 
@@ -179,6 +192,30 @@ mod tests {
         }
 
         #[test]
+        fn multi_statement_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn starts_query_timer() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+
+            reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
+
+            assert!(state.query.is_running());
+            assert!(state.query.start_time().is_some());
+        }
+
+        #[test]
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "SELECT 1".to_string();
@@ -214,6 +251,19 @@ mod tests {
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn multi_statement_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(state.confirm_dialog.intent().is_none());
         }
 
         #[test]
@@ -266,6 +316,7 @@ mod tests {
             assert_eq!(state.explain.plan_text.as_deref(), Some("Seq Scan"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
+            assert!(!state.query.is_running());
         }
     }
 
@@ -286,6 +337,7 @@ mod tests {
             assert_eq!(state.explain.error.as_deref(), Some("syntax error"));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
+            assert!(!state.query.is_running());
         }
     }
 
