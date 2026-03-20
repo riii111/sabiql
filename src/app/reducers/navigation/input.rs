@@ -372,4 +372,170 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::CellEdit);
         }
     }
+
+    mod picker_navigation {
+        use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+        use std::sync::Arc;
+
+        fn state_with_tables(count: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let tables: Vec<TableSummary> = (0..count)
+                .map(|i| TableSummary::new("public".to_string(), format!("t{}", i), Some(0), false))
+                .collect();
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+                fetched_at: Instant::now(),
+            })));
+            state
+        }
+
+        #[test]
+        fn table_picker_next_increments() {
+            let mut state = state_with_tables(5);
+            state.modal.set_mode(InputMode::TablePicker);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Next,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 1);
+        }
+
+        #[test]
+        fn table_picker_next_stops_at_last() {
+            let mut state = state_with_tables(3);
+            state.modal.set_mode(InputMode::TablePicker);
+            state.ui.table_picker.set_selection(2);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Next,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 2);
+        }
+
+        #[test]
+        fn table_picker_previous_decrements() {
+            let mut state = state_with_tables(5);
+            state.modal.set_mode(InputMode::TablePicker);
+            state.ui.table_picker.set_selection(3);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Previous,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 2);
+        }
+
+        #[test]
+        fn table_picker_previous_stops_at_zero() {
+            let mut state = state_with_tables(5);
+            state.modal.set_mode(InputMode::TablePicker);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Previous,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 0);
+        }
+
+        #[test]
+        fn er_picker_next_increments() {
+            let mut state = state_with_tables(5);
+            state.modal.set_mode(InputMode::ErTablePicker);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Next,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.er_picker.selected(), 1);
+        }
+
+        #[test]
+        fn er_picker_previous_stops_at_zero() {
+            let mut state = state_with_tables(5);
+            state.modal.set_mode(InputMode::ErTablePicker);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Previous,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.er_picker.selected(), 0);
+        }
+
+        #[test]
+        fn command_palette_next_increments() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::CommandPalette);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Next,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 1);
+        }
+
+        #[test]
+        fn command_palette_previous_stops_at_zero() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::CommandPalette);
+
+            reduce_navigation(
+                &mut state,
+                &Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Previous,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.table_picker.selected(), 0);
+        }
+    }
 }

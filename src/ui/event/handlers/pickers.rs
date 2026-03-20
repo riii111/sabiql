@@ -49,7 +49,7 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::{ListMotion, ListTarget, SelectMotion};
+    use crate::app::action::{ListMotion, ListTarget};
     use crate::app::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -86,10 +86,22 @@ mod tests {
                 Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
                 Expected::SelectPrev => {
-                    assert!(matches!(result, Action::Select(SelectMotion::Previous)))
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::TablePicker,
+                            motion: ListMotion::Previous,
+                        }
+                    ))
                 }
                 Expected::SelectNext => {
-                    assert!(matches!(result, Action::Select(SelectMotion::Next)))
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::TablePicker,
+                            motion: ListMotion::Next,
+                        }
+                    ))
                 }
                 Expected::FilterBackspace => assert!(matches!(
                     result,
@@ -131,10 +143,22 @@ mod tests {
                 Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
                 Expected::SelectPrev => {
-                    assert!(matches!(result, Action::Select(SelectMotion::Previous)))
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::CommandPalette,
+                            motion: ListMotion::Previous,
+                        }
+                    ))
                 }
                 Expected::SelectNext => {
-                    assert!(matches!(result, Action::Select(SelectMotion::Next)))
+                    assert!(matches!(
+                        result,
+                        Action::ListSelect {
+                            target: ListTarget::CommandPalette,
+                            motion: ListMotion::Next,
+                        }
+                    ))
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
@@ -191,14 +215,26 @@ mod tests {
         fn up_returns_select_previous() {
             let result = handle_er_table_picker_keys(combo(Key::Up));
 
-            assert!(matches!(result, Action::Select(SelectMotion::Previous)));
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Previous,
+                }
+            ));
         }
 
         #[test]
         fn down_returns_select_next() {
             let result = handle_er_table_picker_keys(combo(Key::Down));
 
-            assert!(matches!(result, Action::Select(SelectMotion::Next)));
+            assert!(matches!(
+                result,
+                Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Next,
+                }
+            ));
         }
 
         #[test]
