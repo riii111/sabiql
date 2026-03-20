@@ -289,6 +289,31 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(!state.should_quit);
         }
+
+        #[test]
+        fn submit_erd_dispatches_open_er_table_picker() {
+            let mut state = create_test_state();
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input = "erd".to_string();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.command_line_input.is_empty());
+            assert_eq!(effects.len(), 1);
+            match &effects[0] {
+                Effect::DispatchActions(actions) => {
+                    assert!(matches!(actions[0], Action::OpenErTablePicker));
+                }
+                other => panic!("expected DispatchActions, got {:?}", other),
+            }
+        }
     }
 
     mod execute_preview {
