@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL ── ⚠ HIGH ───────────────────────────────────────────────╮       │
-│       │DROP TABLE users                                              │       │
+│       │ DROP TABLE users                                             │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -16,9 +16,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │───────┘
 │       │                                                              │───────┐
 │       │                                                              │       │
-│       │                                                              │       │
-│       │⚠ HIGH RISK  DROP                                             │       │
-│       │Cannot execute: unable to identify target table.  Esc: Back   │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │ ⚠ HIGH RISK  DROP                                            │       │
+│       │ Cannot execute: unable to identify target table.  Esc: Back  │       │
 │       │                                                              │       │
 │       ╰ Esc: Back ───────────────────────────────────────────────────╯       │
 │                  ││                                                          │

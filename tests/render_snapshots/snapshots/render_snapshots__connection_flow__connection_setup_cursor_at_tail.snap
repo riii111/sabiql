@@ -11,7 +11,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │        ╭ New Connection ────────────────────────────────────────────╮        │
 │        │                                                            │        │
 │        │  Name:       [                            ]                │        │
-│        │  Host:       [ db.example.com█            ]                │        │
+│        │  Host:       [ db.example.com▏            ]                │        │
 │        │  Port:       [ 5432                       ]                │        │
 │        │  Database:   [                            ]                │────────┘
 │        │  User:       [                            ]                │────────┐

@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL ── ⚠ MEDIUM ─────────────────────────────────────────────╮       │
-│       │DELETE FROM users WHERE id = 1                                │       │
+│       │ DELETE FROM users WHERE id = 1                               │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,8 +18,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [CONFIRM]                              ⚠ MEDIUM RISK  DELETE │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [CONFIRM]                            ⚠ MEDIUM RISK  DELETE  │       │
 │       ╰ Enter: Execute │ Esc: Back ──────────────────────────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │

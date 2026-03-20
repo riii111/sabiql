@@ -8,10 +8,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
-│       │ SELECT * FROM users                                          │       │
+│       │ EXPLAIN (0.04s)                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │                                                              │       │
+│       │ Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)     │       │
+│       │   Filter: (id > 10)                                          │       │
 │       │                                                              │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐
@@ -19,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
-│       │  [NORMAL]                                  ✓ 2 rows (0.01s)  │       │
+│       │  [NORMAL]                                             Ready  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Plan  Esc:Close
+^E:Explain  ⌥E:Analyze  ↑↓:Scroll  Tab:SQL  Esc:Close

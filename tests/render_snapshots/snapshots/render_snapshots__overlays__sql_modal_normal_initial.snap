@@ -7,8 +7,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │ Press Enter to edit...                                       │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
+│       │  Press Enter to edit...                                      │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,10 +18,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [NORMAL]                                               Ready │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]                                             Ready  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close
+⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Plan  Esc:Close

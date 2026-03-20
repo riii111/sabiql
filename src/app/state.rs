@@ -3,6 +3,7 @@ use super::confirm_dialog_state::ConfirmDialogState;
 use super::connection_cache::ConnectionCacheStore;
 use super::connection_error_state::ConnectionErrorState;
 use super::connection_setup_state::ConnectionSetupState;
+use super::explain_context::ExplainContext;
 use super::input_mode::InputMode;
 use super::message_state::MessageState;
 use super::modal_state::ModalState;
@@ -35,6 +36,7 @@ pub struct AppState {
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
     pub query_history_picker: QueryHistoryPickerState,
+    pub explain: ExplainContext,
     pub modal: ModalState,
     pub connection_caches: ConnectionCacheStore,
     connections: Vec<ConnectionProfile>,
@@ -60,6 +62,7 @@ impl AppState {
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
             query_history_picker: QueryHistoryPickerState::default(),
+            explain: ExplainContext::default(),
             modal: ModalState::default(),
             connection_caches: ConnectionCacheStore::default(),
             connections: Vec::new(),

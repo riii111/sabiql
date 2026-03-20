@@ -1,5 +1,6 @@
 mod connection;
 mod er;
+mod explain;
 mod helpers;
 mod metadata;
 mod modal;
@@ -10,6 +11,7 @@ mod sql_modal;
 
 pub use connection::reduce_connection;
 pub use er::reduce_er;
+pub use explain::reduce_explain;
 pub use helpers::{
     char_count, char_to_byte_index, insert_char_at_cursor, insert_str_at_cursor, validate_all,
     validate_field,

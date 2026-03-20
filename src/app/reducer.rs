@@ -12,8 +12,8 @@ use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::key_sequence::KeySequenceState;
 use crate::app::reducers::{
-    reduce_connection, reduce_er, reduce_metadata, reduce_modal, reduce_navigation, reduce_query,
-    reduce_result, reduce_sql_modal,
+    reduce_connection, reduce_er, reduce_explain, reduce_metadata, reduce_modal, reduce_navigation,
+    reduce_query, reduce_result, reduce_sql_modal,
 };
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
@@ -55,6 +55,7 @@ fn reduce_inner(
         .or_else(|| reduce_result(state, &action, services, now))
         .or_else(|| reduce_navigation(state, &action, services, now))
         .or_else(|| reduce_sql_modal(state, &action, now))
+        .or_else(|| reduce_explain(state, &action, now))
         .or_else(|| reduce_metadata(state, &action, now))
         .or_else(|| reduce_er(state, &action, now))
         .or_else(|| reduce_query(state, &action, now, services))

@@ -7,8 +7,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │SELECT * FORM users                                           │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
+│       │ SELECT * FORM users                                          │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,10 +18,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [NORMAL]            ✗ ERROR:  syntax error at or near "FORM" │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]          ✗ ERROR:  syntax error at or near "FORM"  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  y:Yank  Enter:Insert  Esc:Close
+⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Plan  Esc:Close

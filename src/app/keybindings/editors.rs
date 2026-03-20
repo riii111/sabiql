@@ -74,6 +74,45 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
+// SQL Modal — Shared EXPLAIN keys (used across Normal/Editing/Plan contexts)
+// =============================================================================
+
+pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "^E",
+        key: "Ctrl+E",
+        desc_short: "Explain",
+        description: "Run EXPLAIN on current query",
+        action: Action::ExplainRequest,
+        combos: &[KeyCombo::ctrl(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "\u{2325}E",
+        key: "Alt+E",
+        desc_short: "Analyze",
+        description: "Run EXPLAIN ANALYZE on current query",
+        action: Action::ExplainAnalyzeRequest,
+        combos: &[KeyCombo::alt(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "\u{2191}\u{2193}",
+        key: "↑↓/jk",
+        desc_short: "Scroll",
+        description: "Scroll plan text",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Tab",
+        key: "Tab",
+        desc_short: "Switch",
+        description: "Switch tab",
+        action: Action::SqlModalNextTab,
+        combos: &[KeyCombo::plain(Key::Tab)],
+    },
+];
+
+// =============================================================================
 // SQL Modal (Insert mode)
 // =============================================================================
 

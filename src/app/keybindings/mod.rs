@@ -149,6 +149,13 @@ pub mod idx {
         pub const QUERY_HISTORY: usize = 7;
     }
 
+    pub mod sql_modal_explain {
+        pub const EXPLAIN: usize = 0;
+        pub const ANALYZE: usize = 1;
+        pub const SCROLL: usize = 2;
+        pub const TAB: usize = 3;
+    }
+
     pub mod sql_modal_confirming {
         pub const CONFIRM_EXECUTE: usize = 0;
         pub const CANCEL_CONFIRM: usize = 1;
@@ -276,12 +283,13 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    22 + 17 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
+    23 + 18 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
         + SQL_MODAL_NORMAL_KEYS.len()
         + SQL_MODAL_KEYS.len()
+        + SQL_MODAL_EXPLAIN_KEYS.len()
         + SQL_MODAL_CONFIRMING_KEYS.len()
         + OVERLAY_KEYS.len()
         + COMMAND_LINE_KEYS.len()
@@ -406,6 +414,12 @@ mod tests {
         assert!(idx::sql_modal::CLEAR < SQL_MODAL_KEYS.len());
         assert!(idx::sql_modal::QUERY_HISTORY < SQL_MODAL_KEYS.len());
 
+        // SQL_MODAL_EXPLAIN_KEYS
+        assert!(idx::sql_modal_explain::EXPLAIN < SQL_MODAL_EXPLAIN_KEYS.len());
+        assert!(idx::sql_modal_explain::ANALYZE < SQL_MODAL_EXPLAIN_KEYS.len());
+        assert!(idx::sql_modal_explain::SCROLL < SQL_MODAL_EXPLAIN_KEYS.len());
+        assert!(idx::sql_modal_explain::TAB < SQL_MODAL_EXPLAIN_KEYS.len());
+
         // SQL_MODAL_CONFIRMING_KEYS
         assert!(idx::sql_modal_confirming::CONFIRM_EXECUTE < SQL_MODAL_CONFIRMING_KEYS.len());
         assert!(idx::sql_modal_confirming::CANCEL_CONFIRM < SQL_MODAL_CONFIRMING_KEYS.len());
@@ -518,6 +532,7 @@ mod tests {
             CELL_EDIT_KEYS.len(),
             SQL_MODAL_NORMAL_KEYS.len(),
             SQL_MODAL_KEYS.len(),
+            SQL_MODAL_EXPLAIN_KEYS.len(),
             SQL_MODAL_CONFIRMING_KEYS.len(),
             OVERLAY_KEYS.len(),
             COMMAND_LINE_KEYS.len(),
@@ -855,6 +870,10 @@ mod tests {
                 "SQL_MODAL_NORMAL_KEYS",
             );
             check_none_action_entries_have_no_combos(SQL_MODAL_KEYS, "SQL_MODAL_KEYS");
+            check_none_action_entries_have_no_combos(
+                SQL_MODAL_EXPLAIN_KEYS,
+                "SQL_MODAL_EXPLAIN_KEYS",
+            );
             check_none_action_entries_have_no_combos(
                 SQL_MODAL_CONFIRMING_KEYS,
                 "SQL_MODAL_CONFIRMING_KEYS",

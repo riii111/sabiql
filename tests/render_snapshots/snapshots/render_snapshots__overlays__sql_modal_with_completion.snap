@@ -7,8 +7,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │SELECT * FROM us█                                             │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
+│       │ SELECT * FROM us▏                                            │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,10 +18,10 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [INSERT]                                               Ready │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [INSERT]                                             Ready  │       │
 │       ╰ ⌥Enter: Run │ ^L: Clear │ ^O: Hist │ Esc: Normal ────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Normal
+⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

@@ -143,6 +143,59 @@ pub(crate) async fn run(
             Ok(())
         }
 
+        Effect::ExecuteExplain {
+            dsn,
+            query,
+            is_analyze,
+            read_only,
+        } => {
+            let executor = Arc::clone(query_executor);
+            let tx = action_tx.clone();
+
+            tokio::spawn(async move {
+                let start = std::time::Instant::now();
+                match executor.execute_adhoc(&dsn, &query, read_only).await {
+                    Ok(result) => {
+                        let elapsed = start.elapsed().as_millis() as u64;
+                        if result.is_error() {
+                            let error_text = result
+                                .rows
+                                .iter()
+                                .filter_map(|row| row.first())
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let error_text = if error_text.is_empty() {
+                                "EXPLAIN failed".to_string()
+                            } else {
+                                error_text
+                            };
+                            tx.send(Action::ExplainFailed(error_text)).await.ok();
+                        } else {
+                            let plan_text = result
+                                .rows
+                                .iter()
+                                .filter_map(|row| row.first())
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            tx.send(Action::ExplainCompleted {
+                                plan_text,
+                                is_analyze,
+                                execution_time_ms: elapsed,
+                            })
+                            .await
+                            .ok();
+                        }
+                    }
+                    Err(e) => {
+                        tx.send(Action::ExplainFailed(e.to_string())).await.ok();
+                    }
+                }
+            });
+            Ok(())
+        }
+
         Effect::ExecuteAdhoc {
             dsn,
             query,

@@ -14,6 +14,10 @@ pub enum ConfirmIntent {
         row_count: Option<usize>,
     },
     DisableReadOnly,
+    ExplainAnalyze {
+        query: String,
+        is_dml: bool,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -11,7 +11,7 @@ use crate::app::keybindings::{
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
     GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS, INSPECTOR_DDL_KEYS, KeyBinding, NAVIGATION_KEYS,
     OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS,
-    SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS,
+    SQL_MODAL_EXPLAIN_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS,
 };
 use crate::app::state::AppState;
 
@@ -72,6 +72,12 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("SQL Editor (Insert)"));
         for kb in SQL_MODAL_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("SQL Editor (Explain)"));
+        for kb in SQL_MODAL_EXPLAIN_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 

@@ -261,6 +261,22 @@ pub enum Action {
     SqlModalHighRiskMoveCursor(CursorMove),
     SqlModalHighRiskConfirmExecute,
 
+    // SQL Modal tabs
+    SqlModalNextTab,
+    SqlModalPrevTab,
+
+    // EXPLAIN
+    ExplainRequest,
+    ExplainAnalyzeRequest,
+    ExplainCompleted {
+        plan_text: String,
+        is_analyze: bool,
+        execution_time_ms: u64,
+    },
+    ExplainFailed(String),
+    ExplainPlanScrollUp,
+    ExplainPlanScrollDown,
+
     // SQL Modal completion
     CompletionTrigger,
     CompletionUpdated {

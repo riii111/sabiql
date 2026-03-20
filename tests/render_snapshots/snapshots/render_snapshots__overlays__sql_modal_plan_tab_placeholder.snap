@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
-│       │ SELECT * FROM users                                          │       │
+│       │  Press Ctrl+E to run EXPLAIN                                 │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -19,9 +19,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
-│       │  [NORMAL]                                  ✓ 2 rows (0.01s)  │       │
+│       │  [NORMAL]                                             Ready  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  y:Yank  Enter:Insert  Tab:Plan  Esc:Close
+^E:Explain  ⌥E:Analyze  ↑↓:Scroll  Tab:SQL  Esc:Close
