@@ -77,7 +77,9 @@ impl SqlModal {
                     " \u{2325}Enter: Run \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
-                _ => " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close ",
+                _ => {
+                    " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close "
+                }
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
