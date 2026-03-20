@@ -232,7 +232,6 @@ impl Footer {
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::EXPLAIN].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::ANALYZE].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::SCROLL].as_hint(),
-                            ("Enter", "Edit"),
                             ("Tab", "SQL"),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
                         ]

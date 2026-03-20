@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
-│       │SELECT * FORM users                                           │       │
+│       │ SELECT * FORM users                                          │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,8 +18,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [NORMAL]            ✗ ERROR:  syntax error at or near "FORM" │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]          ✗ ERROR:  syntax error at or near "FORM"  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │

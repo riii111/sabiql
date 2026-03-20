@@ -5,7 +5,7 @@ use crate::app::adhoc_risk::{ConfirmationType, MultiStatementDecision, evaluate_
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
-use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
+use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::state::AppState;
 use crate::app::statement_classifier;
 use crate::app::text_input::TextInputState;
@@ -349,7 +349,6 @@ pub fn reduce_sql_modal(
 
         Action::SqlModalEnterInsert => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            state.sql_modal.active_tab = SqlModalTab::Sql;
             Some(vec![])
         }
         Action::SqlModalEnterNormal => {

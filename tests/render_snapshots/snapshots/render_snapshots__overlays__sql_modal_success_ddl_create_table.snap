@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
-│       │CREATE TABLE backup AS SELECT * FROM users                    │       │
+│       │ CREATE TABLE backup AS SELECT * FROM users                   │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -18,8 +18,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │ [NORMAL]                             ✓ table created (0.04s) │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]                           ✓ table created (0.04s)  │       │
 │       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
 │                  ││                                                          │
 │                  ││                                                          │

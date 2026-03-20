@@ -7,21 +7,21 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
-│       ╭ SQL Editor ──────────────────────────────────────────────────╮       │
-│       │SELECT █                                                      │       │
-│       │       ┌───────────────────────────────────────────┐          │       │
-│       │       │ posts       table                         │          │       │
-│       │       │ comments    table                         │          │       │
-│       │       │ id          column                        │          │       │
-│       │       │ name        column                        │          │───────┘
-│       │       │ email       column                        │          │───────┐
-│       │       │ created_at  column                        │          │       │
-│       │       │ updated_at  column                        │          │       │
-│       │       │ COUNT       keyword                       │          │       │
-│       │       └───────────────────────────────────────────┘          │       │
-│       │ [INSERT]                                               Ready │       │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
+│       │ SELECT ▏                                                     │       │
+│       │        ┌───────────────────────────────────────────┐         │       │
+│       │        │ posts       table                         │         │       │
+│       │        │ comments    table                         │         │       │
+│       │        │ id          column                        │         │       │
+│       │        │ name        column                        │         │───────┘
+│       │        │ email       column                        │         │───────┐
+│       │        │ created_at  column                        │         │       │
+│       │        │ updated_at  column                        │         │       │
+│       │        │ COUNT       keyword                       │         │       │
+│       │ ───────└───────────────────────────────────────────┘──────── │       │
+│       │  [INSERT]                                             Ready  │       │
 │       ╰ ⌥Enter: Run │ ^L: Clear │ ^O: Hist │ Esc: Normal ────────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ↑↓←→:Move  Esc:Normal
+⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal
