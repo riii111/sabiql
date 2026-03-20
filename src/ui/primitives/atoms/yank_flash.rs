@@ -1,12 +1,9 @@
-use std::time::Instant;
-
 use ratatui::style::Style;
 use ratatui::text::Line;
 
 use crate::ui::theme::Theme;
 
-pub fn apply_yank_flash(lines: &mut [Line], flash_until: Option<Instant>) {
-    let active = flash_until.is_some_and(|until| Instant::now() < until);
+pub fn apply_yank_flash(lines: &mut [Line], active: bool) {
     if !active {
         return;
     }

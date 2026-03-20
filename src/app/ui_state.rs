@@ -137,8 +137,6 @@ pub struct UiState {
     pub terminal_height: u16,
 
     pub key_sequence: KeySequenceState,
-
-    pub ddl_yank_flash_until: Option<Instant>,
 }
 
 impl UiState {

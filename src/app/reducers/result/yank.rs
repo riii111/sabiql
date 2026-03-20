@@ -54,7 +54,9 @@ pub fn reduce(
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
-                state.ui.ddl_yank_flash_until = Some(now + Duration::from_millis(200));
+                state
+                    .flash_timers
+                    .set(crate::app::flash_timer::FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
@@ -431,8 +433,11 @@ mod tests {
 
             reduce(&mut state, &Action::DdlYank, &fake_services(), now);
 
-            let flash_until = state.ui.ddl_yank_flash_until.expect("flash should be set");
-            assert!(flash_until > now);
+            assert!(
+                state
+                    .flash_timers
+                    .is_active(crate::app::flash_timer::FlashId::Ddl, now)
+            );
         }
 
         #[test]

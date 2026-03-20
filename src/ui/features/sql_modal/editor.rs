@@ -95,7 +95,11 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         );
     }
 
-    crate::ui::primitives::atoms::apply_yank_flash(&mut lines, state.sql_modal.yank_flash_until);
+    let now = std::time::Instant::now();
+    let flash_active = state
+        .flash_timers
+        .is_active(crate::app::flash_timer::FlashId::SqlModal, now);
+    crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
     frame.render_widget(
         Paragraph::new(lines)

@@ -118,7 +118,7 @@ impl Inspector {
                         table,
                         state.ui.inspector_scroll_offset,
                         &*services.ddl_generator,
-                        state.ui.ddl_yank_flash_until,
+                        &state.flash_timers,
                     );
                     ViewportPlan::default()
                 }
@@ -594,7 +594,7 @@ impl Inspector {
         table: &Table,
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
-        ddl_yank_flash_until: Option<std::time::Instant>,
+        flash_timers: &crate::app::flash_timer::FlashTimerStore,
     ) {
         let ddl = ddl_gen.generate_ddl(table);
 
@@ -606,12 +606,15 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
+        let now = std::time::Instant::now();
+        let flash_active = flash_timers.is_active(crate::app::flash_timer::FlashId::Ddl, now);
+
         let mut lines: Vec<Line> = ddl
             .lines()
             .map(|l| Line::from(l.to_string()).style(Style::default().fg(Theme::TEXT_PRIMARY)))
             .collect();
 
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, ddl_yank_flash_until);
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
