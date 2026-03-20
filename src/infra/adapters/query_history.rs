@@ -3,36 +3,39 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::app::ports::QueryHistoryStore;
+use crate::app::ports::query_history::QueryHistoryError;
 use crate::domain::connection::ConnectionId;
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::infra::config::cache::get_cache_dir;
 
 const MAX_HISTORY_ENTRIES: usize = 1000;
 
-fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), String> {
+fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), QueryHistoryError> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
     if !dir.exists() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
     }
 
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
-        .map_err(|e| e.to_string())?;
-    writeln!(file, "{}", line).map_err(|e| e.to_string())
+        .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+    writeln!(file, "{}", line).map_err(|e| QueryHistoryError::IoError(e.to_string()))
 }
 
-fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), QueryHistoryError> {
+    let content =
+        std::fs::read_to_string(path).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
     let lines: Vec<&str> = content.lines().collect();
     if lines.len() > max {
         let trimmed = &lines[lines.len() - max..];
         let tmp_path = path.with_extension("jsonl.tmp");
-        std::fs::write(&tmp_path, trimmed.join("\n") + "\n").map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp_path, path).map_err(|e| e.to_string())?;
+        std::fs::write(&tmp_path, trimmed.join("\n") + "\n")
+            .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
+        std::fs::rename(&tmp_path, path).map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
     }
     Ok(())
 }
@@ -59,11 +62,12 @@ impl FileQueryHistoryStore {
         }
     }
 
-    fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, String> {
+    fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, QueryHistoryError> {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
         } else {
-            let cache_dir = get_cache_dir(project_name).map_err(|e| e.to_string())?;
+            let cache_dir = get_cache_dir(project_name)
+                .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
             Ok(cache_dir.join("history"))
         }
     }
@@ -76,10 +80,11 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         project_name: &str,
         connection_id: &ConnectionId,
         entry: &QueryHistoryEntry,
-    ) -> Result<(), String> {
+    ) -> Result<(), QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
         let path = history_dir.join(format!("{}.jsonl", connection_id));
-        let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
+        let line = serde_json::to_string(entry)
+            .map_err(|e| QueryHistoryError::SerializationError(e.to_string()))?;
 
         tokio::task::spawn_blocking(move || {
             append_entry(&path, &history_dir, &line)?;
@@ -88,14 +93,14 @@ impl QueryHistoryStore for FileQueryHistoryStore {
             Ok(())
         })
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| QueryHistoryError::JoinError(e.to_string()))?
     }
 
     async fn load(
         &self,
         project_name: &str,
         connection_id: &ConnectionId,
-    ) -> Result<Vec<QueryHistoryEntry>, String> {
+    ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
         let path = history_dir.join(format!("{}.jsonl", connection_id));
 
@@ -104,7 +109,8 @@ impl QueryHistoryStore for FileQueryHistoryStore {
                 return Ok(Vec::new());
             }
 
-            let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
             let entries: Vec<QueryHistoryEntry> = content
                 .lines()
                 .filter(|line| !line.trim().is_empty())
@@ -114,7 +120,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
             Ok(entries)
         })
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| QueryHistoryError::JoinError(e.to_string()))?
     }
 }
 
