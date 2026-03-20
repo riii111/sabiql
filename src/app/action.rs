@@ -98,6 +98,9 @@ pub enum SelectMotion {
 pub enum ListTarget {
     ConnectionList,
     QueryHistory,
+    TablePicker,
+    ErTablePicker,
+    CommandPalette,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
