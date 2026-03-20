@@ -7,22 +7,9 @@ paths:
 
 # Effect 実行ルール
 
-## ディレクトリ構造
+## 構造
 
-```
-src/app/
-├── effect.rs              # Effect enum 定義
-├── effect_runner.rs       # Dispatcher（run / run_single / run_normal）+ EffectRunner builder
-└── effect_handlers/
-    ├── mod.rs             # re-exports
-    ├── connection.rs      # SaveAndConnect, LoadConnectionForEdit, LoadConnections, DeleteConnection, SwitchConnection, SwitchToService
-    ├── metadata.rs        # FetchMetadata, FetchTableDetail, PrefetchTableDetail, ProcessPrefetchQueue, DelayedProcessPrefetchQueue, CacheInvalidate
-    ├── query.rs           # ExecutePreview, ExecuteAdhoc, ExecuteWrite, CountRowsForExport, ExportCsv
-    ├── er.rs              # GenerateErDiagramFromCache, WriteErFailureLog, ExtractFkNeighbors, SmartErRefresh
-    ├── completion.rs      # CacheTableInCompletionEngine, EvictTablesFromCompletionCache, ClearCompletionEngineCache, ResizeCompletionCache, TriggerCompletion
-    ├── utility.rs         # CopyToClipboard, OpenFolder
-    └── test_support.rs    # Noop* stubs, make_runner(), sample helpers (#[cfg(test)])
-```
+`effect.rs`（enum 定義）→ `effect_runner.rs`（dispatcher のみ）→ `effect_handlers/<feature>.rs`（ビジネスロジック）。
 
 ## Dispatcher パターン
 
@@ -39,13 +26,11 @@ src/app/
 - 新しい port を追加する場合は `EffectRunner` struct にフィールドを追加し、dispatcher で該当 handler にだけ渡す
 
 ```rust
-// handler シグネチャテンプレート
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    // handler 固有の port をここに並べる
-    state: &mut AppState,              // 必要な handler のみ
-    completion_engine: &RefCell<...>,   // 必要な handler のみ
+    state: &mut AppState,
+    completion_engine: &RefCell<...>,
 ) -> Result<()>
 ```
 
