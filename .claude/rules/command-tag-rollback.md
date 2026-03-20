@@ -46,4 +46,4 @@ psql の completion tag には savepoint 名が含まれないため、`discard_
 - `correct_ctas_tags` が rollback filtering の**前**に Select→Create 変換を行う
 - これにより rolled-back な Create は `discard_rolled_back` で自然に破棄される
 - 補正は adapter-local helper (`detect_ctas_kind`) で判定。app 層の classifier に依存しない
-- SQL 文と tag の positional mapping が不一致の場合は補正スキップ（安全 fallback）
+- SQL 文と tag の positional mapping が不一致の場合は補正をスキップする。これは general policy（missed refresh を避ける）の例外で、存在しないテーブルの Create 表示を防ぐために refresh の見逃しを許容する判断
