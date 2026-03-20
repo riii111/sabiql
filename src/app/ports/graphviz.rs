@@ -1,67 +1,21 @@
-use std::error::Error;
-use std::fmt;
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GraphvizError {
+    #[error(
+        "Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"
+    )]
     NotInstalled,
+    #[error("Graphviz failed (exit code {0:?}). Check DOT syntax.")]
     CommandFailed(Option<i32>),
-    IoError(std::io::Error),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
-impl fmt::Display for GraphvizError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            GraphvizError::NotInstalled => write!(
-                f,
-                "Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"
-            ),
-            GraphvizError::CommandFailed(code) => {
-                write!(
-                    f,
-                    "Graphviz failed (exit code {:?}). Check DOT syntax.",
-                    code
-                )
-            }
-            GraphvizError::IoError(e) => write!(f, "IO error: {}", e),
-        }
-    }
-}
-
-impl Error for GraphvizError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            GraphvizError::IoError(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for GraphvizError {
-    fn from(e: std::io::Error) -> Self {
-        GraphvizError::IoError(e)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ViewerError {
-    LaunchFailed(std::io::Error),
-}
-
-impl fmt::Display for ViewerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ViewerError::LaunchFailed(e) => write!(f, "Failed to open viewer: {}", e),
-        }
-    }
-}
-
-impl Error for ViewerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ViewerError::LaunchFailed(e) => Some(e),
-        }
-    }
+    #[error("Failed to open viewer: {0}")]
+    LaunchFailed(#[source] std::io::Error),
 }
 
 pub trait GraphvizRunner: Send + Sync {

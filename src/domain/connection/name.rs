@@ -4,24 +4,13 @@ use serde::{Deserialize, Serialize};
 
 const MAX_LENGTH: usize = 50;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectionNameError {
+    #[error("Connection name cannot be empty")]
     Empty,
+    #[error("Connection name too long: {len} chars (max {max})")]
     TooLong { len: usize, max: usize },
 }
-
-impl fmt::Display for ConnectionNameError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => write!(f, "Connection name cannot be empty"),
-            Self::TooLong { len, max } => {
-                write!(f, "Connection name too long: {} chars (max {})", len, max)
-            }
-        }
-    }
-}
-
-impl std::error::Error for ConnectionNameError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectionName(String);
