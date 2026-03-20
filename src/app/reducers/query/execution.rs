@@ -9,9 +9,47 @@ use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::app::services::AppServices;
 use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::state::AppState;
-use crate::domain::QuerySource;
+use crate::domain::{QueryResult, QuerySource};
 
-use super::try_adhoc_refresh;
+fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
+    if result.source != QuerySource::Adhoc || result.is_error() {
+        return vec![];
+    }
+    let Some(tag) = &result.command_tag else {
+        return vec![];
+    };
+    if !tag.needs_refresh() {
+        return vec![];
+    }
+    let Some(dsn) = state.session.dsn.clone() else {
+        return vec![];
+    };
+
+    let mut effects = vec![];
+
+    if tag.is_schema_modifying() {
+        state.sql_modal.reset_prefetch();
+        state.session.set_table_detail_raw(None);
+
+        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
+        effects.push(Effect::ClearCompletionEngineCache);
+        effects.push(Effect::FetchMetadata { dsn });
+    } else if !state.query.pagination.table.is_empty() {
+        let page = state.query.pagination.current_page;
+        effects.push(Effect::ExecutePreview {
+            dsn,
+            schema: state.query.pagination.schema.clone(),
+            table: state.query.pagination.table.clone(),
+            generation: state.session.selection_generation(),
+            limit: PREVIEW_PAGE_SIZE,
+            offset: page * PREVIEW_PAGE_SIZE,
+            target_page: page,
+            read_only: state.session.read_only,
+        });
+    }
+
+    effects
+}
 
 pub fn reduce(
     state: &mut AppState,

@@ -4,12 +4,116 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::app::reducers::helpers::{build_bulk_delete_preview, editable_preview_base};
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
-use crate::app::write_guardrails::WriteOperation;
+use crate::app::write_guardrails::{
+    ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
+};
+use crate::app::write_update::{build_pk_pairs, escape_preview_value};
 
-use super::{build_update_preview, build_write_preview_fallback_message};
-use crate::app::reducers::helpers::build_bulk_delete_preview;
+fn build_update_preview(state: &AppState, services: &AppServices) -> Result<WritePreview, String> {
+    if !state.result_interaction.cell_edit().is_active() {
+        return Err("No active cell edit session".to_string());
+    }
+
+    let (result, pk_cols) = editable_preview_base(state)?;
+
+    let row_idx = state
+        .result_interaction
+        .cell_edit()
+        .row
+        .ok_or_else(|| "No row selected for edit".to_string())?;
+    let col_idx = state
+        .result_interaction
+        .cell_edit()
+        .col
+        .ok_or_else(|| "No column selected for edit".to_string())?;
+
+    let row = result
+        .rows
+        .get(row_idx)
+        .ok_or_else(|| "Row index out of bounds".to_string())?;
+    let column_name = result
+        .columns
+        .get(col_idx)
+        .ok_or_else(|| "Column index out of bounds".to_string())?
+        .clone();
+
+    if pk_cols.iter().any(|pk| pk == &column_name) {
+        return Err("Primary key columns are read-only".to_string());
+    }
+
+    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
+    let target = crate::app::write_guardrails::TargetSummary {
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
+        key_values: pk_pairs.clone().unwrap_or_default(),
+    };
+    let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
+    let has_stable_row_identity = pk_pairs.is_some();
+    let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
+    if guardrail.blocked {
+        let reason = guardrail
+            .reason
+            .clone()
+            .unwrap_or_else(|| "Write blocked by guardrails".to_string());
+        return Err(reason);
+    }
+
+    let sql = services.sql_dialect.build_update_sql(
+        &target.schema,
+        &target.table,
+        &column_name,
+        state.result_interaction.cell_edit().draft_value(),
+        &target.key_values,
+    );
+    let preview = WritePreview {
+        operation: WriteOperation::Update,
+        sql,
+        target_summary: target,
+        diff: vec![ColumnDiff {
+            column: column_name,
+            before: state.result_interaction.cell_edit().original_value.clone(),
+            after: state
+                .result_interaction
+                .cell_edit()
+                .draft_value()
+                .to_string(),
+        }],
+        guardrail,
+    };
+    Ok(preview)
+}
+
+fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
+    let mut lines = Vec::new();
+    if preview.guardrail.risk_level != RiskLevel::Low {
+        lines.push(format!("Risk: {}", preview.guardrail.risk_level.as_str()));
+    }
+    match preview.operation {
+        WriteOperation::Update => {
+            lines.push(preview.diff.first().map_or_else(
+                || "(no changes)".to_string(),
+                |d| {
+                    format!(
+                        "{}: \"{}\" -> \"{}\"",
+                        d.column,
+                        escape_preview_value(&d.before),
+                        escape_preview_value(&d.after)
+                    )
+                },
+            ));
+        }
+        WriteOperation::Delete => {
+            lines.push(format!(
+                "Target: {}",
+                preview.target_summary.format_compact()
+            ));
+        }
+    }
+    lines.join("\n")
+}
 
 pub fn reduce(
     state: &mut AppState,
