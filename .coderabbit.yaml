@@ -1,13 +1,25 @@
 # .coderabbit.yaml
 language: "en-US"
 tone_instructions: "Be concise and direct."
+enable_free_tier: true
 
 reviews:
   profile: "assertive"
+  request_changes_workflow: false
+  review_status: true
+  commit_status: true
+  assess_linked_issues: true
   auto_review:
     enabled: true
     drafts: false
   path_instructions:
+    - path: "**/*"
+      instructions: |
+        すべてのレビュー指摘には温度感ラベルを付与すること:
+        - [must]: 修正必須。バグ、セキュリティ、設計違反
+        - [imo]: 意見。改善提案だが必須ではない
+        - [nits]: 些細な指摘。スタイル、命名等
+        - [question]: 質問。意図や背景の確認
     - path: ".claude/rules/**"
       instructions: |
         AI コーディングアシスタント用のルールファイル。
@@ -18,9 +30,27 @@ reviews:
         4. 他のルールファイルとの重複がないか（重複する場合は相互参照を使う）
         5. フロントマターの `paths` glob が正しいか
         6. CLAUDE.md の Available Rules テーブルとの整合性があるか
+  tools:
+    gitleaks:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    clippy:
+      enabled: false
+
+chat:
+  auto_reply: true
 
 knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
       - ".claude/rules/*"
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
