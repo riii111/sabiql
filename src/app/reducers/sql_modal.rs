@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::app::action::{Action, CursorMove};
+use crate::app::action::{Action, CursorMove, InputTarget};
 use crate::app::adhoc_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
@@ -64,7 +64,10 @@ pub fn reduce_sql_modal(
         }
 
         // Text editing
-        Action::SqlModalInput(c) => {
+        Action::TextInput {
+            target: InputTarget::SqlModal,
+            ch: c,
+        } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
             state.sql_modal.content.insert(byte_idx, *c);
@@ -72,7 +75,9 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
-        Action::SqlModalBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::SqlModal,
+        } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             if state.sql_modal.cursor > 0 {
                 state.sql_modal.cursor -= 1;
@@ -82,7 +87,9 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
-        Action::SqlModalDelete => {
+        Action::TextDelete {
+            target: InputTarget::SqlModal,
+        } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             let total_chars = char_count(&state.sql_modal.content);
             if state.sql_modal.cursor < total_chars {
@@ -108,7 +115,10 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
-        Action::SqlModalMoveCursor(movement) => {
+        Action::TextMoveCursor {
+            target: InputTarget::SqlModal,
+            direction: movement,
+        } => {
             let content = &state.sql_modal.content;
             let cursor = state.sql_modal.cursor;
             let total_chars = char_count(content);
@@ -262,21 +272,29 @@ pub fn reduce_sql_modal(
         }
 
         // HIGH risk confirmation input
-        Action::SqlModalHighRiskInput(c) => {
+        Action::TextInput {
+            target: InputTarget::SqlModalHighRisk,
+            ch: c,
+        } => {
             if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.insert_char(*c);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
-        Action::SqlModalHighRiskBackspace => {
+        Action::TextBackspace {
+            target: InputTarget::SqlModalHighRisk,
+        } => {
             if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.backspace();
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
-        Action::SqlModalHighRiskMoveCursor(movement) => {
+        Action::TextMoveCursor {
+            target: InputTarget::SqlModalHighRisk,
+            direction: movement,
+        } => {
             if let Some(input) = state.sql_modal.confirming_high_input_mut() {
                 input.move_cursor(*movement);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
@@ -608,7 +626,10 @@ mod tests {
 
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskInput('u'),
+                &Action::TextInput {
+                    target: InputTarget::SqlModalHighRisk,
+                    ch: 'u',
+                },
                 Instant::now(),
             );
 
@@ -624,18 +645,26 @@ mod tests {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskInput('a'),
+                &Action::TextInput {
+                    target: InputTarget::SqlModalHighRisk,
+                    ch: 'a',
+                },
                 Instant::now(),
             );
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskInput('b'),
+                &Action::TextInput {
+                    target: InputTarget::SqlModalHighRisk,
+                    ch: 'b',
+                },
                 Instant::now(),
             );
 
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskBackspace,
+                &Action::TextBackspace {
+                    target: InputTarget::SqlModalHighRisk,
+                },
                 Instant::now(),
             );
 
@@ -653,7 +682,10 @@ mod tests {
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
-                    &Action::SqlModalHighRiskInput(c),
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
                     Instant::now(),
                 );
             }
@@ -676,7 +708,10 @@ mod tests {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskInput('x'),
+                &Action::TextInput {
+                    target: InputTarget::SqlModalHighRisk,
+                    ch: 'x',
+                },
                 Instant::now(),
             );
 
@@ -723,14 +758,20 @@ mod tests {
             for c in "ab".chars() {
                 reduce_sql_modal(
                     &mut state,
-                    &Action::SqlModalHighRiskInput(c),
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
                     Instant::now(),
                 );
             }
 
             reduce_sql_modal(
                 &mut state,
-                &Action::SqlModalHighRiskMoveCursor(CursorMove::Left),
+                &Action::TextMoveCursor {
+                    target: InputTarget::SqlModalHighRisk,
+                    direction: CursorMove::Left,
+                },
                 Instant::now(),
             );
 
@@ -814,7 +855,10 @@ mod tests {
             for c in full_name.chars() {
                 reduce_sql_modal(
                     &mut state,
-                    &Action::SqlModalHighRiskInput(c),
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
                     Instant::now(),
                 );
             }

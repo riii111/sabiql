@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget};
 use crate::app::keybindings::{self, Key, KeyCombo};
 use crate::app::state::AppState;
 
@@ -36,14 +36,31 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         }
 
         // Cursor movement
-        Key::Left => Action::ConnectionSetupMoveCursor(CursorMove::Left),
-        Key::Right => Action::ConnectionSetupMoveCursor(CursorMove::Right),
-        Key::Home => Action::ConnectionSetupMoveCursor(CursorMove::Home),
-        Key::End => Action::ConnectionSetupMoveCursor(CursorMove::End),
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::ConnectionSetup,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::ConnectionSetup,
+            direction: CursorMove::Right,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::ConnectionSetup,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::ConnectionSetup,
+            direction: CursorMove::End,
+        },
 
         // Text input (allow Alt for international keyboards, block Ctrl-only)
-        Key::Backspace => Action::ConnectionSetupBackspace,
-        Key::Char(c) if !ctrl || alt => Action::ConnectionSetupInput(c),
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::ConnectionSetup,
+        },
+        Key::Char(c) if !ctrl || alt => Action::TextInput {
+            target: InputTarget::ConnectionSetup,
+            ch: c,
+        },
 
         _ => Action::None,
     }
@@ -64,6 +81,7 @@ pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::action::{ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::app::input_mode::InputMode;
     use crate::app::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -132,7 +150,13 @@ mod tests {
 
             let result = handle_connection_setup_keys(combo(Key::Char('a')), &state);
 
-            assert!(matches!(result, Action::ConnectionSetupInput('a')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ConnectionSetup,
+                    ch: 'a'
+                }
+            ));
         }
 
         #[test]
@@ -141,7 +165,12 @@ mod tests {
 
             let result = handle_connection_setup_keys(combo(Key::Backspace), &state);
 
-            assert!(matches!(result, Action::ConnectionSetupBackspace));
+            assert!(matches!(
+                result,
+                Action::TextBackspace {
+                    target: InputTarget::ConnectionSetup
+                }
+            ));
         }
 
         #[test]
@@ -159,7 +188,13 @@ mod tests {
 
             let result = handle_connection_setup_keys(combo_alt(Key::Char('q')), &state);
 
-            assert!(matches!(result, Action::ConnectionSetupInput('q')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ConnectionSetup,
+                    ch: 'q'
+                }
+            ));
         }
 
         #[test]
@@ -177,7 +212,13 @@ mod tests {
 
             let result = handle_connection_setup_keys(altgr, &state);
 
-            assert!(matches!(result, Action::ConnectionSetupInput('@')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ConnectionSetup,
+                    ch: '@'
+                }
+            ));
         }
 
         #[test]
@@ -262,9 +303,23 @@ mod tests {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
-                Expected::ScrollUp => assert!(matches!(result, Action::ScrollConnectionErrorUp)),
+                Expected::ScrollUp => assert!(matches!(
+                    result,
+                    Action::Scroll {
+                        target: ScrollTarget::ConnectionError,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line
+                    }
+                )),
                 Expected::ScrollDown => {
-                    assert!(matches!(result, Action::ScrollConnectionErrorDown))
+                    assert!(matches!(
+                        result,
+                        Action::Scroll {
+                            target: ScrollTarget::ConnectionError,
+                            direction: ScrollDirection::Down,
+                            amount: ScrollAmount::Line
+                        }
+                    ))
                 }
                 _ => unreachable!(),
             }
@@ -289,17 +344,14 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case(Key::Char('j'), Action::ConnectionListSelectNext)]
-        #[case(Key::Down, Action::ConnectionListSelectNext)]
-        #[case(Key::Char('k'), Action::ConnectionListSelectPrevious)]
-        #[case(Key::Up, Action::ConnectionListSelectPrevious)]
+        #[case(Key::Char('j'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
+        #[case(Key::Down, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
+        #[case(Key::Char('k'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
+        #[case(Key::Up, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         fn selector_navigation_keys(#[case] code: Key, #[case] expected: Action) {
             let result = handle_connection_selector_keys(combo(code));
 
-            assert_eq!(
-                std::mem::discriminant(&result),
-                std::mem::discriminant(&expected)
-            );
+            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[rstest]

@@ -221,6 +221,10 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::action::{
+        CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
+        SelectMotion,
+    };
     use crate::app::key_sequence::KeySequenceState;
     use crate::app::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -319,7 +323,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::SelectPrevious));
+        assert!(matches!(result, Action::Select(SelectMotion::Previous)));
     }
 
     #[rstest]
@@ -330,7 +334,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::SelectNext));
+        assert!(matches!(result, Action::Select(SelectMotion::Next)));
     }
 
     #[rstest]
@@ -341,7 +345,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::SelectFirst));
+        assert!(matches!(result, Action::Select(SelectMotion::First)));
     }
 
     #[rstest]
@@ -352,7 +356,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::SelectLast));
+        assert!(matches!(result, Action::Select(SelectMotion::Last)));
     }
 
     #[test]
@@ -476,7 +480,14 @@ mod tests {
     fn focus_mode_j_scrolls_down(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[rstest]
@@ -485,7 +496,14 @@ mod tests {
     fn focus_mode_k_scrolls_up(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollUp));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[rstest]
@@ -494,7 +512,14 @@ mod tests {
     fn focus_mode_g_scrolls_top(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollTop));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::ToStart
+            }
+        ));
     }
 
     #[rstest]
@@ -503,7 +528,14 @@ mod tests {
     fn focus_mode_shift_g_scrolls_bottom(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollBottom));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::ToEnd
+            }
+        ));
     }
 
     #[rstest]
@@ -512,7 +544,14 @@ mod tests {
     fn focus_mode_h_scrolls_left(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollLeft));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Left,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[rstest]
@@ -521,7 +560,14 @@ mod tests {
     fn focus_mode_l_scrolls_right(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
-        assert!(matches!(result, Action::ResultScrollRight));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Right,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -530,7 +576,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('j')), &state);
 
-        assert!(matches!(result, Action::ResultScrollDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -539,7 +592,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('h')), &state);
 
-        assert!(matches!(result, Action::ResultScrollLeft));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Left,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -548,7 +608,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('l')), &state);
 
-        assert!(matches!(result, Action::ResultScrollRight));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Right,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -628,7 +695,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('h')), &state);
 
-        assert!(matches!(result, Action::ExplorerScrollLeft));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Explorer,
+                direction: ScrollDirection::Left,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -637,7 +711,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('l')), &state);
 
-        assert!(matches!(result, Action::ExplorerScrollRight));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Explorer,
+                direction: ScrollDirection::Right,
+                amount: ScrollAmount::Line
+            }
+        ));
     }
 
     #[test]
@@ -722,7 +803,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
 
-        assert!(matches!(result, Action::SelectViewportTop));
+        assert!(matches!(result, Action::Select(SelectMotion::ViewportTop)));
     }
 
     #[test]
@@ -731,7 +812,10 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::SelectViewportMiddle));
+        assert!(matches!(
+            result,
+            Action::Select(SelectMotion::ViewportMiddle)
+        ));
     }
 
     #[test]
@@ -740,7 +824,10 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
 
-        assert!(matches!(result, Action::SelectViewportBottom));
+        assert!(matches!(
+            result,
+            Action::Select(SelectMotion::ViewportBottom)
+        ));
     }
 
     #[test]
@@ -749,7 +836,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
 
-        assert!(matches!(result, Action::ResultScrollViewportTop));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::ViewportTop
+            }
+        ));
     }
 
     #[test]
@@ -758,7 +852,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::ResultScrollViewportMiddle));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::ViewportMiddle
+            }
+        ));
     }
 
     #[test]
@@ -767,7 +868,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
 
-        assert!(matches!(result, Action::ResultScrollViewportBottom));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::ViewportBottom
+            }
+        ));
     }
 
     #[test]
@@ -776,7 +884,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
 
-        assert!(matches!(result, Action::ResultScrollViewportMiddle));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::ViewportMiddle
+            }
+        ));
     }
 
     fn inspector_focused_state() -> AppState {
@@ -793,7 +908,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::InspectorScrollTop));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Inspector,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::ToStart
+            }
+        ));
     }
 
     #[rstest]
@@ -804,7 +926,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(code), &state);
 
-        assert!(matches!(result, Action::InspectorScrollBottom));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Inspector,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::ToEnd
+            }
+        ));
     }
 
     #[rstest]
@@ -900,7 +1029,14 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
-        assert!(matches!(result, Action::ResultScrollHalfPageDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage
+            }
+        ));
     }
 
     #[test]
@@ -909,7 +1045,14 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('u')), &state);
 
-        assert!(matches!(result, Action::ResultScrollHalfPageUp));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::HalfPage
+            }
+        ));
     }
 
     #[test]
@@ -918,7 +1061,14 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
 
-        assert!(matches!(result, Action::ResultScrollFullPageDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::FullPage
+            }
+        ));
     }
 
     #[test]
@@ -927,7 +1077,14 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
 
-        assert!(matches!(result, Action::ResultScrollFullPageUp));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::FullPage
+            }
+        ));
     }
 
     #[test]
@@ -936,7 +1093,14 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
-        assert!(matches!(result, Action::InspectorScrollHalfPageDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Inspector,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::HalfPage
+            }
+        ));
     }
 
     #[test]
@@ -945,7 +1109,7 @@ mod tests {
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
 
-        assert!(matches!(result, Action::SelectHalfPageDown));
+        assert!(matches!(result, Action::Select(SelectMotion::HalfPageDown)));
     }
 
     #[test]
@@ -954,7 +1118,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
 
-        assert!(matches!(result, Action::ResultScrollFullPageDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::FullPage
+            }
+        ));
     }
 
     #[test]
@@ -963,7 +1134,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::PageUp), &state);
 
-        assert!(matches!(result, Action::ResultScrollFullPageUp));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Result,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::FullPage
+            }
+        ));
     }
 
     #[test]
@@ -972,7 +1150,14 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
 
-        assert!(matches!(result, Action::InspectorScrollFullPageDown));
+        assert!(matches!(
+            result,
+            Action::Scroll {
+                target: ScrollTarget::Inspector,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::FullPage
+            }
+        ));
     }
 
     #[test]
@@ -981,7 +1166,7 @@ mod tests {
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
 
-        assert!(matches!(result, Action::SelectFullPageDown));
+        assert!(matches!(result, Action::Select(SelectMotion::FullPageDown)));
     }
 
     mod result_history {
@@ -1090,39 +1275,75 @@ mod tests {
 
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('j')), &state),
-                Action::ResultScrollDown
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('k')), &state),
-                Action::ResultScrollUp
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('h')), &state),
-                Action::ResultScrollLeft
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('l')), &state),
-                Action::ResultScrollRight
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Right,
+                    amount: ScrollAmount::Line
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('g')), &state),
-                Action::ResultScrollTop
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('G')), &state),
-                Action::ResultScrollBottom
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ToEnd
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('H')), &state),
-                Action::ResultScrollViewportTop
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ViewportTop
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('M')), &state),
-                Action::ResultScrollViewportMiddle
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ViewportMiddle
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('L')), &state),
-                Action::ResultScrollViewportBottom
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::ViewportBottom
+                }
             ));
         }
 
@@ -1165,11 +1386,19 @@ mod tests {
 
             assert!(matches!(
                 handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
-                Action::ResultScrollHalfPageDown
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::HalfPage
+                }
             ));
             assert!(matches!(
                 handle_normal_mode(combo_ctrl(Key::Char('u')), &state),
-                Action::ResultScrollHalfPageUp
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::HalfPage
+                }
             ));
         }
 
@@ -1200,7 +1429,7 @@ mod tests {
 
             let result = handle_normal_mode(combo, &state);
 
-            assert!(matches!(result, Action::SelectLast));
+            assert!(matches!(result, Action::Select(SelectMotion::Last)));
         }
     }
 
@@ -1223,7 +1452,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::ScrollCursorCenter));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Center
+                }
+            ));
         }
 
         #[test]
@@ -1233,7 +1468,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
-            assert!(matches!(result, Action::ScrollCursorTop));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Top
+                }
+            ));
         }
 
         #[test]
@@ -1243,7 +1484,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
-            assert!(matches!(result, Action::ScrollCursorBottom));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Bottom
+                }
+            ));
         }
 
         #[test]
@@ -1263,7 +1510,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::ResultScrollCursorCenter));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Result,
+                    position: CursorPosition::Center
+                }
+            ));
         }
 
         #[test]
@@ -1273,7 +1526,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
-            assert!(matches!(result, Action::ResultScrollCursorTop));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Result,
+                    position: CursorPosition::Top
+                }
+            ));
         }
 
         #[test]
@@ -1283,7 +1542,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
-            assert!(matches!(result, Action::ResultScrollCursorBottom));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Result,
+                    position: CursorPosition::Bottom
+                }
+            ));
         }
 
         #[test]
@@ -1312,7 +1577,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
 
-            assert!(matches!(result, Action::ResultScrollCursorCenter));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Result,
+                    position: CursorPosition::Center
+                }
+            ));
         }
 
         #[test]
@@ -1372,7 +1643,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
-            assert!(matches!(result, Action::ScrollCursorTop));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Top
+                }
+            ));
         }
 
         #[test]
@@ -1381,7 +1658,13 @@ mod tests {
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
-            assert!(matches!(result, Action::ScrollCursorBottom));
+            assert!(matches!(
+                result,
+                Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Explorer,
+                    position: CursorPosition::Bottom
+                }
+            ));
         }
     }
 
@@ -1392,9 +1675,9 @@ mod tests {
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
             assert_eq!(
-                std::mem::discriminant(&actual),
-                std::mem::discriminant(&expected),
-                "[{ctx} + {key}] expected {expected:?}, got {actual:?}"
+                format!("{actual:?}"),
+                format!("{expected:?}"),
+                "[{ctx} + {key}]"
             );
         }
 
@@ -1449,20 +1732,20 @@ mod tests {
         }
 
         #[rstest]
-        #[case("explorer", Key::Char('j'), Action::SelectNext)]
-        #[case("explorer", Key::Char('k'), Action::SelectPrevious)]
-        #[case("result_scroll", Key::Char('j'), Action::ResultScrollDown)]
-        #[case("result_scroll", Key::Char('k'), Action::ResultScrollUp)]
-        #[case("result_row_active", Key::Char('j'), Action::ResultScrollDown)]
-        #[case("result_row_active", Key::Char('k'), Action::ResultScrollUp)]
-        #[case("result_cell_active", Key::Char('j'), Action::ResultScrollDown)]
-        #[case("result_cell_active", Key::Char('k'), Action::ResultScrollUp)]
-        #[case("inspector", Key::Char('j'), Action::InspectorScrollDown)]
-        #[case("inspector", Key::Char('k'), Action::InspectorScrollUp)]
-        #[case("history_focus", Key::Char('j'), Action::ResultScrollDown)]
-        #[case("history_focus", Key::Char('k'), Action::ResultScrollUp)]
-        #[case("focus_mode", Key::Char('j'), Action::ResultScrollDown)]
-        #[case("focus_mode", Key::Char('k'), Action::ResultScrollUp)]
+        #[case("explorer", Key::Char('j'), Action::Select(SelectMotion::Next))]
+        #[case("explorer", Key::Char('k'), Action::Select(SelectMotion::Previous))]
+        #[case("result_scroll", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("result_scroll", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("result_row_active", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("result_row_active", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("result_cell_active", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("result_cell_active", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("inspector", Key::Char('j'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("inspector", Key::Char('k'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("history_focus", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("history_focus", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+        #[case("focus_mode", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+        #[case("focus_mode", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         fn vertical_jk(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
@@ -1480,20 +1763,20 @@ mod tests {
         }
 
         #[rstest]
-        #[case("explorer", Key::Char('g'), Action::SelectFirst)]
-        #[case("explorer", Key::Char('G'), Action::SelectLast)]
-        #[case("result_scroll", Key::Char('g'), Action::ResultScrollTop)]
-        #[case("result_scroll", Key::Char('G'), Action::ResultScrollBottom)]
-        #[case("result_row_active", Key::Char('g'), Action::ResultScrollTop)]
-        #[case("result_row_active", Key::Char('G'), Action::ResultScrollBottom)]
-        #[case("result_cell_active", Key::Char('g'), Action::ResultScrollTop)]
-        #[case("result_cell_active", Key::Char('G'), Action::ResultScrollBottom)]
-        #[case("inspector", Key::Char('g'), Action::InspectorScrollTop)]
-        #[case("inspector", Key::Char('G'), Action::InspectorScrollBottom)]
-        #[case("history_focus", Key::Char('g'), Action::ResultScrollTop)]
-        #[case("history_focus", Key::Char('G'), Action::ResultScrollBottom)]
-        #[case("focus_mode", Key::Char('g'), Action::ResultScrollTop)]
-        #[case("focus_mode", Key::Char('G'), Action::ResultScrollBottom)]
+        #[case("explorer", Key::Char('g'), Action::Select(SelectMotion::First))]
+        #[case("explorer", Key::Char('G'), Action::Select(SelectMotion::Last))]
+        #[case("result_scroll", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("result_scroll", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("result_row_active", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("result_row_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("result_cell_active", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("result_cell_active", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("inspector", Key::Char('g'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("inspector", Key::Char('G'), Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("history_focus", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("history_focus", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+        #[case("focus_mode", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+        #[case("focus_mode", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         fn ends_g_shift_g(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
@@ -1511,43 +1794,51 @@ mod tests {
         }
 
         #[rstest]
-        #[case("explorer", Key::Char('H'), Action::SelectViewportTop)]
-        #[case("explorer", Key::Char('M'), Action::SelectViewportMiddle)]
-        #[case("explorer", Key::Char('L'), Action::SelectViewportBottom)]
-        #[case("result_scroll", Key::Char('H'), Action::ResultScrollViewportTop)]
-        #[case("result_scroll", Key::Char('M'), Action::ResultScrollViewportMiddle)]
-        #[case("result_scroll", Key::Char('L'), Action::ResultScrollViewportBottom)]
-        #[case("result_row_active", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case("explorer", Key::Char('H'), Action::Select(SelectMotion::ViewportTop))]
+        #[case(
+            "explorer",
+            Key::Char('M'),
+            Action::Select(SelectMotion::ViewportMiddle)
+        )]
+        #[case(
+            "explorer",
+            Key::Char('L'),
+            Action::Select(SelectMotion::ViewportBottom)
+        )]
+        #[case("result_scroll", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
+        #[case("result_scroll", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
+        #[case("result_scroll", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
+        #[case("result_row_active", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case(
             "result_row_active",
             Key::Char('M'),
-            Action::ResultScrollViewportMiddle
+            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle }
         )]
         #[case(
             "result_row_active",
             Key::Char('L'),
-            Action::ResultScrollViewportBottom
+            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom }
         )]
-        #[case("result_cell_active", Key::Char('H'), Action::ResultScrollViewportTop)]
+        #[case("result_cell_active", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case(
             "result_cell_active",
             Key::Char('M'),
-            Action::ResultScrollViewportMiddle
+            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle }
         )]
         #[case(
             "result_cell_active",
             Key::Char('L'),
-            Action::ResultScrollViewportBottom
+            Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom }
         )]
         #[case("inspector", Key::Char('H'), Action::None)]
         #[case("inspector", Key::Char('M'), Action::None)]
         #[case("inspector", Key::Char('L'), Action::None)]
-        #[case("history_focus", Key::Char('H'), Action::ResultScrollViewportTop)]
-        #[case("history_focus", Key::Char('M'), Action::ResultScrollViewportMiddle)]
-        #[case("history_focus", Key::Char('L'), Action::ResultScrollViewportBottom)]
-        #[case("focus_mode", Key::Char('H'), Action::ResultScrollViewportTop)]
-        #[case("focus_mode", Key::Char('M'), Action::ResultScrollViewportMiddle)]
-        #[case("focus_mode", Key::Char('L'), Action::ResultScrollViewportBottom)]
+        #[case("history_focus", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
+        #[case("history_focus", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
+        #[case("history_focus", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
+        #[case("focus_mode", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
+        #[case("focus_mode", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
+        #[case("focus_mode", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
         fn viewport_hml(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
@@ -1565,27 +1856,27 @@ mod tests {
         }
 
         #[rstest]
-        #[case("explorer", Key::Char('z'), Action::ScrollCursorCenter)]
-        #[case("explorer", Key::Char('t'), Action::ScrollCursorTop)]
-        #[case("explorer", Key::Char('b'), Action::ScrollCursorBottom)]
-        #[case("result_scroll", Key::Char('z'), Action::ResultScrollCursorCenter)]
-        #[case("result_scroll", Key::Char('t'), Action::ResultScrollCursorTop)]
-        #[case("result_scroll", Key::Char('b'), Action::ResultScrollCursorBottom)]
-        #[case("result_row_active", Key::Char('z'), Action::ResultScrollCursorCenter)]
-        #[case("result_row_active", Key::Char('t'), Action::ResultScrollCursorTop)]
-        #[case("result_row_active", Key::Char('b'), Action::ResultScrollCursorBottom)]
-        #[case("result_cell_active", Key::Char('z'), Action::ResultScrollCursorCenter)]
-        #[case("result_cell_active", Key::Char('t'), Action::ResultScrollCursorTop)]
-        #[case("result_cell_active", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("explorer", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Center })]
+        #[case("explorer", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Top })]
+        #[case("explorer", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Bottom })]
+        #[case("result_scroll", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+        #[case("result_scroll", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+        #[case("result_scroll", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
+        #[case("result_row_active", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+        #[case("result_row_active", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+        #[case("result_row_active", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
+        #[case("result_cell_active", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+        #[case("result_cell_active", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+        #[case("result_cell_active", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
         #[case("inspector", Key::Char('z'), Action::CancelKeySequence)]
         #[case("inspector", Key::Char('t'), Action::CancelKeySequence)]
         #[case("inspector", Key::Char('b'), Action::CancelKeySequence)]
-        #[case("history_focus", Key::Char('z'), Action::ResultScrollCursorCenter)]
-        #[case("history_focus", Key::Char('t'), Action::ResultScrollCursorTop)]
-        #[case("history_focus", Key::Char('b'), Action::ResultScrollCursorBottom)]
-        #[case("focus_mode", Key::Char('z'), Action::ResultScrollCursorCenter)]
-        #[case("focus_mode", Key::Char('t'), Action::ResultScrollCursorTop)]
-        #[case("focus_mode", Key::Char('b'), Action::ResultScrollCursorBottom)]
+        #[case("history_focus", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+        #[case("history_focus", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+        #[case("history_focus", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
+        #[case("focus_mode", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+        #[case("focus_mode", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+        #[case("focus_mode", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
         fn scroll_to_cursor_zztb(
             #[case] ctx_name: &str,
             #[case] key: Key,
@@ -1641,14 +1932,24 @@ mod tests {
             fn history_explorer_j_selects_next() {
                 let state = history_explorer_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('j')), &state);
-                assert_action(actual, Action::SelectNext, "history+explorer", "j");
+                assert_action(
+                    actual,
+                    Action::Select(SelectMotion::Next),
+                    "history+explorer",
+                    "j",
+                );
             }
 
             #[test]
             fn history_explorer_h_selects_viewport_top() {
                 let state = history_explorer_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('H')), &state);
-                assert_action(actual, Action::SelectViewportTop, "history+explorer", "H");
+                assert_action(
+                    actual,
+                    Action::Select(SelectMotion::ViewportTop),
+                    "history+explorer",
+                    "H",
+                );
             }
 
             #[test]
@@ -1657,7 +1958,11 @@ mod tests {
                 let actual = handle_normal_mode(combo(Key::Char('j')), &state);
                 assert_action(
                     actual,
-                    Action::InspectorScrollDown,
+                    Action::Scroll {
+                        target: ScrollTarget::Inspector,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    },
                     "history+inspector",
                     "j",
                 );
@@ -1677,7 +1982,10 @@ mod tests {
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);
                 assert_action(
                     actual,
-                    Action::ScrollCursorCenter,
+                    Action::ScrollToCursor {
+                        target: ScrollToCursorTarget::Explorer,
+                        position: CursorPosition::Center,
+                    },
                     "history+explorer+key_sequence",
                     "z",
                 );
@@ -1736,14 +2044,32 @@ mod tests {
             fn up_allowed_in_history() {
                 let state = history_result_ctx();
                 let actual = handle_normal_mode(combo(Key::Up), &state);
-                assert_action(actual, Action::ResultScrollUp, "history+result", "Up");
+                assert_action(
+                    actual,
+                    Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line,
+                    },
+                    "history+result",
+                    "Up",
+                );
             }
 
             #[test]
             fn down_allowed_in_history() {
                 let state = history_result_ctx();
                 let actual = handle_normal_mode(combo(Key::Down), &state);
-                assert_action(actual, Action::ResultScrollDown, "history+result", "Down");
+                assert_action(
+                    actual,
+                    Action::Scroll {
+                        target: ScrollTarget::Result,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    },
+                    "history+result",
+                    "Down",
+                );
             }
         }
     }

@@ -1,4 +1,7 @@
-use crate::app::action::Action;
+use crate::app::action::{
+    Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
+    SelectMotion,
+};
 use crate::app::focused_pane::FocusedPane;
 use crate::app::keybindings::{Key, KeyCombo};
 use crate::app::state::AppState;
@@ -98,107 +101,209 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
 
     match (intent, ctx) {
         // MoveDown
-        (MoveDown, Explorer) => Action::SelectNext,
-        (MoveDown, Inspector) => Action::InspectorScrollDown,
-        (MoveDown, ResultScroll | ResultRowActive | ResultCellActive) => Action::ResultScrollDown,
+        (MoveDown, Explorer) => Action::Select(SelectMotion::Next),
+        (MoveDown, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        },
+        (MoveDown, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        },
 
         // MoveUp
-        (MoveUp, Explorer) => Action::SelectPrevious,
-        (MoveUp, Inspector) => Action::InspectorScrollUp,
-        (MoveUp, ResultScroll | ResultRowActive | ResultCellActive) => Action::ResultScrollUp,
+        (MoveUp, Explorer) => Action::Select(SelectMotion::Previous),
+        (MoveUp, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        },
+        (MoveUp, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        },
 
         // MoveToFirst
-        (MoveToFirst, Explorer) => Action::SelectFirst,
-        (MoveToFirst, Inspector) => Action::InspectorScrollTop,
-        (MoveToFirst, ResultScroll | ResultRowActive | ResultCellActive) => Action::ResultScrollTop,
+        (MoveToFirst, Explorer) => Action::Select(SelectMotion::First),
+        (MoveToFirst, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::ToStart,
+        },
+        (MoveToFirst, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::ToStart,
+        },
 
         // MoveToLast
-        (MoveToLast, Explorer) => Action::SelectLast,
-        (MoveToLast, Inspector) => Action::InspectorScrollBottom,
-        (MoveToLast, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollBottom
-        }
+        (MoveToLast, Explorer) => Action::Select(SelectMotion::Last),
+        (MoveToLast, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::ToEnd,
+        },
+        (MoveToLast, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::ToEnd,
+        },
 
         // ViewportTop
-        (ViewportTop, Explorer) => Action::SelectViewportTop,
+        (ViewportTop, Explorer) => Action::Select(SelectMotion::ViewportTop),
         (ViewportTop, Inspector) => Action::None,
-        (ViewportTop, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollViewportTop
-        }
+        (ViewportTop, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::ViewportTop,
+        },
 
         // ViewportMiddle
-        (ViewportMiddle, Explorer) => Action::SelectViewportMiddle,
+        (ViewportMiddle, Explorer) => Action::Select(SelectMotion::ViewportMiddle),
         (ViewportMiddle, Inspector) => Action::None,
-        (ViewportMiddle, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollViewportMiddle
-        }
+        (ViewportMiddle, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::ViewportMiddle,
+        },
 
         // ViewportBottom
-        (ViewportBottom, Explorer) => Action::SelectViewportBottom,
+        (ViewportBottom, Explorer) => Action::Select(SelectMotion::ViewportBottom),
         (ViewportBottom, Inspector) => Action::None,
-        (ViewportBottom, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollViewportBottom
-        }
+        (ViewportBottom, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::ViewportBottom,
+        },
 
         // MoveLeft
-        (MoveLeft, Explorer) => Action::ExplorerScrollLeft,
-        (MoveLeft, Inspector) => Action::InspectorScrollLeft,
-        (MoveLeft, ResultScroll | ResultRowActive) => Action::ResultScrollLeft,
+        (MoveLeft, Explorer) => Action::Scroll {
+            target: ScrollTarget::Explorer,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        },
+        (MoveLeft, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        },
+        (MoveLeft, ResultScroll | ResultRowActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Left,
+            amount: ScrollAmount::Line,
+        },
         (MoveLeft, ResultCellActive) => Action::ResultCellLeft,
 
         // MoveRight
-        (MoveRight, Explorer) => Action::ExplorerScrollRight,
-        (MoveRight, Inspector) => Action::InspectorScrollRight,
-        (MoveRight, ResultScroll | ResultRowActive) => Action::ResultScrollRight,
+        (MoveRight, Explorer) => Action::Scroll {
+            target: ScrollTarget::Explorer,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        },
+        (MoveRight, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        },
+        (MoveRight, ResultScroll | ResultRowActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Right,
+            amount: ScrollAmount::Line,
+        },
         (MoveRight, ResultCellActive) => Action::ResultCellRight,
 
         // HalfPageDown
-        (HalfPageDown, Explorer) => Action::SelectHalfPageDown,
-        (HalfPageDown, Inspector) => Action::InspectorScrollHalfPageDown,
-        (HalfPageDown, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollHalfPageDown
-        }
+        (HalfPageDown, Explorer) => Action::Select(SelectMotion::HalfPageDown),
+        (HalfPageDown, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::HalfPage,
+        },
+        (HalfPageDown, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::HalfPage,
+        },
 
         // HalfPageUp
-        (HalfPageUp, Explorer) => Action::SelectHalfPageUp,
-        (HalfPageUp, Inspector) => Action::InspectorScrollHalfPageUp,
-        (HalfPageUp, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollHalfPageUp
-        }
+        (HalfPageUp, Explorer) => Action::Select(SelectMotion::HalfPageUp),
+        (HalfPageUp, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::HalfPage,
+        },
+        (HalfPageUp, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::HalfPage,
+        },
 
         // FullPageDown
-        (FullPageDown, Explorer) => Action::SelectFullPageDown,
-        (FullPageDown, Inspector) => Action::InspectorScrollFullPageDown,
-        (FullPageDown, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollFullPageDown
-        }
+        (FullPageDown, Explorer) => Action::Select(SelectMotion::FullPageDown),
+        (FullPageDown, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::FullPage,
+        },
+        (FullPageDown, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::FullPage,
+        },
 
         // FullPageUp
-        (FullPageUp, Explorer) => Action::SelectFullPageUp,
-        (FullPageUp, Inspector) => Action::InspectorScrollFullPageUp,
-        (FullPageUp, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollFullPageUp
-        }
+        (FullPageUp, Explorer) => Action::Select(SelectMotion::FullPageUp),
+        (FullPageUp, Inspector) => Action::Scroll {
+            target: ScrollTarget::Inspector,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::FullPage,
+        },
+        (FullPageUp, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::FullPage,
+        },
 
         // ScrollCursorCenter
-        (ScrollCursorCenter, Explorer) => Action::ScrollCursorCenter,
+        (ScrollCursorCenter, Explorer) => Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Center,
+        },
         (ScrollCursorCenter, Inspector) => Action::None,
         (ScrollCursorCenter, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollCursorCenter
+            Action::ScrollToCursor {
+                target: ScrollToCursorTarget::Result,
+                position: CursorPosition::Center,
+            }
         }
 
         // ScrollCursorTop
-        (ScrollCursorTop, Explorer) => Action::ScrollCursorTop,
+        (ScrollCursorTop, Explorer) => Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Top,
+        },
         (ScrollCursorTop, Inspector) => Action::None,
         (ScrollCursorTop, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollCursorTop
+            Action::ScrollToCursor {
+                target: ScrollToCursorTarget::Result,
+                position: CursorPosition::Top,
+            }
         }
 
         // ScrollCursorBottom
-        (ScrollCursorBottom, Explorer) => Action::ScrollCursorBottom,
+        (ScrollCursorBottom, Explorer) => Action::ScrollToCursor {
+            target: ScrollToCursorTarget::Explorer,
+            position: CursorPosition::Bottom,
+        },
         (ScrollCursorBottom, Inspector) => Action::None,
         (ScrollCursorBottom, ResultScroll | ResultRowActive | ResultCellActive) => {
-            Action::ResultScrollCursorBottom
+            Action::ScrollToCursor {
+                target: ScrollToCursorTarget::Result,
+                position: CursorPosition::Bottom,
+            }
         }
     }
 }
@@ -210,7 +315,6 @@ mod tests {
     use crate::app::keybindings::{Key, KeyCombo};
     use crate::app::state::AppState;
     use rstest::rstest;
-    use std::mem::discriminant;
 
     // =========================================================================
     // NavigationContext::from_state
@@ -361,106 +465,111 @@ mod tests {
 
     #[rstest]
     // MoveDown (5)
-    #[case(MoveDown, Explorer, Action::SelectNext)]
-    #[case(MoveDown, Inspector, Action::InspectorScrollDown)]
-    #[case(MoveDown, ResultScroll, Action::ResultScrollDown)]
-    #[case(MoveDown, ResultRowActive, Action::ResultScrollDown)]
-    #[case(MoveDown, ResultCellActive, Action::ResultScrollDown)]
+    #[case(MoveDown, Explorer, Action::Select(SelectMotion::Next))]
+    #[case(MoveDown, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+    #[case(MoveDown, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+    #[case(MoveDown, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
+    #[case(MoveDown, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
     // MoveUp (5)
-    #[case(MoveUp, Explorer, Action::SelectPrevious)]
-    #[case(MoveUp, Inspector, Action::InspectorScrollUp)]
-    #[case(MoveUp, ResultScroll, Action::ResultScrollUp)]
-    #[case(MoveUp, ResultRowActive, Action::ResultScrollUp)]
-    #[case(MoveUp, ResultCellActive, Action::ResultScrollUp)]
+    #[case(MoveUp, Explorer, Action::Select(SelectMotion::Previous))]
+    #[case(MoveUp, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+    #[case(MoveUp, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+    #[case(MoveUp, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
+    #[case(MoveUp, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
     // MoveToFirst (5)
-    #[case(MoveToFirst, Explorer, Action::SelectFirst)]
-    #[case(MoveToFirst, Inspector, Action::InspectorScrollTop)]
-    #[case(MoveToFirst, ResultScroll, Action::ResultScrollTop)]
-    #[case(MoveToFirst, ResultRowActive, Action::ResultScrollTop)]
-    #[case(MoveToFirst, ResultCellActive, Action::ResultScrollTop)]
+    #[case(MoveToFirst, Explorer, Action::Select(SelectMotion::First))]
+    #[case(MoveToFirst, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+    #[case(MoveToFirst, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+    #[case(MoveToFirst, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
+    #[case(MoveToFirst, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
     // MoveToLast (5)
-    #[case(MoveToLast, Explorer, Action::SelectLast)]
-    #[case(MoveToLast, Inspector, Action::InspectorScrollBottom)]
-    #[case(MoveToLast, ResultScroll, Action::ResultScrollBottom)]
-    #[case(MoveToLast, ResultRowActive, Action::ResultScrollBottom)]
-    #[case(MoveToLast, ResultCellActive, Action::ResultScrollBottom)]
+    #[case(MoveToLast, Explorer, Action::Select(SelectMotion::Last))]
+    #[case(MoveToLast, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+    #[case(MoveToLast, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+    #[case(MoveToLast, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
+    #[case(MoveToLast, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
     // ViewportTop (5)
-    #[case(ViewportTop, Explorer, Action::SelectViewportTop)]
+    #[case(ViewportTop, Explorer, Action::Select(SelectMotion::ViewportTop))]
     #[case(ViewportTop, Inspector, Action::None)]
-    #[case(ViewportTop, ResultScroll, Action::ResultScrollViewportTop)]
-    #[case(ViewportTop, ResultRowActive, Action::ResultScrollViewportTop)]
-    #[case(ViewportTop, ResultCellActive, Action::ResultScrollViewportTop)]
+    #[case(ViewportTop, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
+    #[case(ViewportTop, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
+    #[case(ViewportTop, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
     // ViewportMiddle (5)
-    #[case(ViewportMiddle, Explorer, Action::SelectViewportMiddle)]
+    #[case(ViewportMiddle, Explorer, Action::Select(SelectMotion::ViewportMiddle))]
     #[case(ViewportMiddle, Inspector, Action::None)]
-    #[case(ViewportMiddle, ResultScroll, Action::ResultScrollViewportMiddle)]
-    #[case(ViewportMiddle, ResultRowActive, Action::ResultScrollViewportMiddle)]
-    #[case(ViewportMiddle, ResultCellActive, Action::ResultScrollViewportMiddle)]
+    #[case(ViewportMiddle, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
+    #[case(ViewportMiddle, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
+    #[case(ViewportMiddle, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
     // ViewportBottom (5)
-    #[case(ViewportBottom, Explorer, Action::SelectViewportBottom)]
+    #[case(ViewportBottom, Explorer, Action::Select(SelectMotion::ViewportBottom))]
     #[case(ViewportBottom, Inspector, Action::None)]
-    #[case(ViewportBottom, ResultScroll, Action::ResultScrollViewportBottom)]
-    #[case(ViewportBottom, ResultRowActive, Action::ResultScrollViewportBottom)]
-    #[case(ViewportBottom, ResultCellActive, Action::ResultScrollViewportBottom)]
+    #[case(ViewportBottom, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
+    #[case(ViewportBottom, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
+    #[case(ViewportBottom, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
     // MoveLeft (5)
-    #[case(MoveLeft, Explorer, Action::ExplorerScrollLeft)]
-    #[case(MoveLeft, Inspector, Action::InspectorScrollLeft)]
-    #[case(MoveLeft, ResultScroll, Action::ResultScrollLeft)]
-    #[case(MoveLeft, ResultRowActive, Action::ResultScrollLeft)]
+    #[case(MoveLeft, Explorer, Action::Scroll { target: ScrollTarget::Explorer, direction: ScrollDirection::Left, amount: ScrollAmount::Line })]
+    #[case(MoveLeft, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Left, amount: ScrollAmount::Line })]
+    #[case(MoveLeft, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Left, amount: ScrollAmount::Line })]
+    #[case(MoveLeft, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Left, amount: ScrollAmount::Line })]
     #[case(MoveLeft, ResultCellActive, Action::ResultCellLeft)]
     // MoveRight (5)
-    #[case(MoveRight, Explorer, Action::ExplorerScrollRight)]
-    #[case(MoveRight, Inspector, Action::InspectorScrollRight)]
-    #[case(MoveRight, ResultScroll, Action::ResultScrollRight)]
-    #[case(MoveRight, ResultRowActive, Action::ResultScrollRight)]
+    #[case(MoveRight, Explorer, Action::Scroll { target: ScrollTarget::Explorer, direction: ScrollDirection::Right, amount: ScrollAmount::Line })]
+    #[case(MoveRight, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Right, amount: ScrollAmount::Line })]
+    #[case(MoveRight, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Right, amount: ScrollAmount::Line })]
+    #[case(MoveRight, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Right, amount: ScrollAmount::Line })]
     #[case(MoveRight, ResultCellActive, Action::ResultCellRight)]
     // HalfPageDown (5)
-    #[case(HalfPageDown, Explorer, Action::SelectHalfPageDown)]
-    #[case(HalfPageDown, Inspector, Action::InspectorScrollHalfPageDown)]
-    #[case(HalfPageDown, ResultScroll, Action::ResultScrollHalfPageDown)]
-    #[case(HalfPageDown, ResultRowActive, Action::ResultScrollHalfPageDown)]
-    #[case(HalfPageDown, ResultCellActive, Action::ResultScrollHalfPageDown)]
+    #[case(HalfPageDown, Explorer, Action::Select(SelectMotion::HalfPageDown))]
+    #[case(HalfPageDown, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageDown, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageDown, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageDown, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::HalfPage })]
     // HalfPageUp (5)
-    #[case(HalfPageUp, Explorer, Action::SelectHalfPageUp)]
-    #[case(HalfPageUp, Inspector, Action::InspectorScrollHalfPageUp)]
-    #[case(HalfPageUp, ResultScroll, Action::ResultScrollHalfPageUp)]
-    #[case(HalfPageUp, ResultRowActive, Action::ResultScrollHalfPageUp)]
-    #[case(HalfPageUp, ResultCellActive, Action::ResultScrollHalfPageUp)]
+    #[case(HalfPageUp, Explorer, Action::Select(SelectMotion::HalfPageUp))]
+    #[case(HalfPageUp, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageUp, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageUp, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::HalfPage })]
+    #[case(HalfPageUp, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::HalfPage })]
     // FullPageDown (5)
-    #[case(FullPageDown, Explorer, Action::SelectFullPageDown)]
-    #[case(FullPageDown, Inspector, Action::InspectorScrollFullPageDown)]
-    #[case(FullPageDown, ResultScroll, Action::ResultScrollFullPageDown)]
-    #[case(FullPageDown, ResultRowActive, Action::ResultScrollFullPageDown)]
-    #[case(FullPageDown, ResultCellActive, Action::ResultScrollFullPageDown)]
+    #[case(FullPageDown, Explorer, Action::Select(SelectMotion::FullPageDown))]
+    #[case(FullPageDown, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Down, amount: ScrollAmount::FullPage })]
+    #[case(FullPageDown, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::FullPage })]
+    #[case(FullPageDown, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::FullPage })]
+    #[case(FullPageDown, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::FullPage })]
     // FullPageUp (5)
-    #[case(FullPageUp, Explorer, Action::SelectFullPageUp)]
-    #[case(FullPageUp, Inspector, Action::InspectorScrollFullPageUp)]
-    #[case(FullPageUp, ResultScroll, Action::ResultScrollFullPageUp)]
-    #[case(FullPageUp, ResultRowActive, Action::ResultScrollFullPageUp)]
-    #[case(FullPageUp, ResultCellActive, Action::ResultScrollFullPageUp)]
+    #[case(FullPageUp, Explorer, Action::Select(SelectMotion::FullPageUp))]
+    #[case(FullPageUp, Inspector, Action::Scroll { target: ScrollTarget::Inspector, direction: ScrollDirection::Up, amount: ScrollAmount::FullPage })]
+    #[case(FullPageUp, ResultScroll, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::FullPage })]
+    #[case(FullPageUp, ResultRowActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::FullPage })]
+    #[case(FullPageUp, ResultCellActive, Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::FullPage })]
     // ScrollCursorCenter (5)
-    #[case(ScrollCursorCenter, Explorer, Action::ScrollCursorCenter)]
+    #[case(ScrollCursorCenter, Explorer, Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Center })]
     #[case(ScrollCursorCenter, Inspector, Action::None)]
-    #[case(ScrollCursorCenter, ResultScroll, Action::ResultScrollCursorCenter)]
-    #[case(ScrollCursorCenter, ResultRowActive, Action::ResultScrollCursorCenter)]
-    #[case(ScrollCursorCenter, ResultCellActive, Action::ResultScrollCursorCenter)]
+    #[case(ScrollCursorCenter, ResultScroll, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+    #[case(ScrollCursorCenter, ResultRowActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
+    #[case(ScrollCursorCenter, ResultCellActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
     // ScrollCursorTop (5)
-    #[case(ScrollCursorTop, Explorer, Action::ScrollCursorTop)]
+    #[case(ScrollCursorTop, Explorer, Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Top })]
     #[case(ScrollCursorTop, Inspector, Action::None)]
-    #[case(ScrollCursorTop, ResultScroll, Action::ResultScrollCursorTop)]
-    #[case(ScrollCursorTop, ResultRowActive, Action::ResultScrollCursorTop)]
-    #[case(ScrollCursorTop, ResultCellActive, Action::ResultScrollCursorTop)]
+    #[case(ScrollCursorTop, ResultScroll, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+    #[case(ScrollCursorTop, ResultRowActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
+    #[case(ScrollCursorTop, ResultCellActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
     // ScrollCursorBottom (5)
-    #[case(ScrollCursorBottom, Explorer, Action::ScrollCursorBottom)]
+    #[case(ScrollCursorBottom, Explorer, Action::ScrollToCursor { target: ScrollToCursorTarget::Explorer, position: CursorPosition::Bottom })]
     #[case(ScrollCursorBottom, Inspector, Action::None)]
-    #[case(ScrollCursorBottom, ResultScroll, Action::ResultScrollCursorBottom)]
-    #[case(ScrollCursorBottom, ResultRowActive, Action::ResultScrollCursorBottom)]
-    #[case(ScrollCursorBottom, ResultCellActive, Action::ResultScrollCursorBottom)]
+    #[case(ScrollCursorBottom, ResultScroll, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
+    #[case(ScrollCursorBottom, ResultRowActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
+    #[case(ScrollCursorBottom, ResultCellActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
     fn resolve_matrix(
         #[case] intent: NavIntent,
         #[case] ctx: NavigationContext,
         #[case] expected: Action,
     ) {
-        assert_eq!(discriminant(&resolve(intent, ctx)), discriminant(&expected));
+        let actual = resolve(intent, ctx);
+        assert_eq!(
+            format!("{actual:?}"),
+            format!("{expected:?}"),
+            "resolve({intent:?}, {ctx:?})"
+        );
     }
 }

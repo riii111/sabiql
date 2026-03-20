@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
+use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
@@ -25,11 +25,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.connection_error.toggle_details();
             Some(vec![])
         }
-        Action::ScrollConnectionErrorUp => {
+        Action::Scroll {
+            target: ScrollTarget::ConnectionError,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
             state.connection_error.scroll_up();
             Some(vec![])
         }
-        Action::ScrollConnectionErrorDown => {
+        Action::Scroll {
+            target: ScrollTarget::ConnectionError,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
             state.connection_error.scroll_down(100);
             Some(vec![])
         }

@@ -20,6 +20,92 @@ pub enum CursorMove {
     End,
 }
 
+// ---------------------------------------------------------------------------
+// Parametric Action types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollTarget {
+    Result,
+    Inspector,
+    Help,
+    ConnectionError,
+    ExplainPlan,
+    Explorer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollAmount {
+    Line,
+    ToStart,
+    ToEnd,
+    ViewportTop,
+    ViewportMiddle,
+    ViewportBottom,
+    HalfPage,
+    FullPage,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollToCursorTarget {
+    Explorer,
+    Result,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorPosition {
+    Center,
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputTarget {
+    SqlModal,
+    SqlModalHighRisk,
+    ResultCellEdit,
+    ConnectionSetup,
+    CommandLine,
+    Filter,
+    ErFilter,
+    QueryHistoryFilter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectMotion {
+    Next,
+    Previous,
+    First,
+    Last,
+    ViewportTop,
+    ViewportMiddle,
+    ViewportBottom,
+    HalfPageDown,
+    HalfPageUp,
+    FullPageDown,
+    FullPageUp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListTarget {
+    ConnectionList,
+    QueryHistory,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListMotion {
+    Next,
+    Previous,
+}
+
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshResult {
     pub run_id: u64,
@@ -76,6 +162,36 @@ pub enum Action {
     Resize(u16, u16),
     SetFocusedPane(FocusedPane),
 
+    // Parametric variants (consolidation targets)
+    Scroll {
+        target: ScrollTarget,
+        direction: ScrollDirection,
+        amount: ScrollAmount,
+    },
+    ScrollToCursor {
+        target: ScrollToCursorTarget,
+        position: CursorPosition,
+    },
+    TextInput {
+        target: InputTarget,
+        ch: char,
+    },
+    TextBackspace {
+        target: InputTarget,
+    },
+    TextDelete {
+        target: InputTarget,
+    },
+    TextMoveCursor {
+        target: InputTarget,
+        direction: CursorMove,
+    },
+    Select(SelectMotion),
+    ListSelect {
+        target: ListTarget,
+        motion: ListMotion,
+    },
+
     // Overlay toggles
     OpenTablePicker,
     CloseTablePicker,
@@ -83,8 +199,6 @@ pub enum Action {
     CloseCommandPalette,
     OpenHelp,
     CloseHelp,
-    HelpScrollUp,
-    HelpScrollDown,
 
     // Connection lifecycle
     TryConnect,
@@ -94,9 +208,6 @@ pub enum Action {
     OpenConnectionSetup,
     StartEditConnection(ConnectionId),
     CloseConnectionSetup,
-    ConnectionSetupInput(char),
-    ConnectionSetupBackspace,
-    ConnectionSetupMoveCursor(CursorMove),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
     ConnectionSetupToggleDropdown,
@@ -118,8 +229,6 @@ pub enum Action {
     ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
-    ScrollConnectionErrorUp,
-    ScrollConnectionErrorDown,
     CopyConnectionError,
     ConnectionErrorCopied,
     ReenterConnectionSetup,
@@ -141,34 +250,9 @@ pub enum Action {
     // Command line actions
     EnterCommandLine,
     ExitCommandLine,
-    CommandLineInput(char),
-    CommandLineBackspace,
     CommandLineSubmit,
 
-    // Filter actions (for Table Picker)
-    FilterInput(char),
-    FilterBackspace,
-
-    // Navigation
-    SelectNext,
-    SelectPrevious,
-    SelectFirst,
-    SelectLast,
-    SelectViewportMiddle,
-    SelectViewportTop,
-    SelectViewportBottom,
-    SelectHalfPageDown,
-    SelectHalfPageUp,
-    SelectFullPageDown,
-    SelectFullPageUp,
-
-    // Explorer horizontal scroll
-    ExplorerScrollLeft,
-    ExplorerScrollRight,
-
     // Connection list navigation
-    ConnectionListSelectNext,
-    ConnectionListSelectPrevious,
     ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
 
@@ -224,18 +308,6 @@ pub enum Action {
     InspectorNextTab,
     InspectorPrevTab,
 
-    // Inspector scroll
-    InspectorScrollUp,
-    InspectorScrollDown,
-    InspectorScrollTop,
-    InspectorScrollBottom,
-    InspectorScrollHalfPageDown,
-    InspectorScrollHalfPageUp,
-    InspectorScrollFullPageDown,
-    InspectorScrollFullPageUp,
-    InspectorScrollLeft,
-    InspectorScrollRight,
-
     // Clipboard paste (bracketed paste)
     Paste(String),
 
@@ -246,19 +318,12 @@ pub enum Action {
     SqlModalEnterNormal,
     SqlModalYank,
     SqlModalYankSuccess,
-    SqlModalInput(char),
-    SqlModalBackspace,
-    SqlModalDelete,
     SqlModalNewLine,
     SqlModalTab,
-    SqlModalMoveCursor(CursorMove),
     SqlModalSubmit,
     SqlModalClear,
     SqlModalConfirmExecute,
     SqlModalCancelConfirm,
-    SqlModalHighRiskInput(char),
-    SqlModalHighRiskBackspace,
-    SqlModalHighRiskMoveCursor(CursorMove),
     SqlModalHighRiskConfirmExecute,
 
     // SQL Modal tabs
@@ -274,8 +339,6 @@ pub enum Action {
         execution_time_ms: u64,
     },
     ExplainFailed(String),
-    ExplainPlanScrollUp,
-    ExplainPlanScrollDown,
 
     // SQL Modal completion
     CompletionTrigger,
@@ -305,19 +368,6 @@ pub enum Action {
     ExecuteWriteFailed(String),
 
     // Result pane
-    ResultScrollUp,
-    ResultScrollDown,
-    ResultScrollTop,
-    ResultScrollBottom,
-    ResultScrollViewportMiddle,
-    ResultScrollViewportTop,
-    ResultScrollViewportBottom,
-    ResultScrollHalfPageDown,
-    ResultScrollHalfPageUp,
-    ResultScrollFullPageDown,
-    ResultScrollFullPageUp,
-    ResultScrollLeft,
-    ResultScrollRight,
     ResultNextPage,
     ResultPrevPage,
 
@@ -340,10 +390,6 @@ pub enum Action {
     ResultEnterCellEdit,
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
-    ResultCellEditInput(char),
-    ResultCellEditBackspace,
-    ResultCellEditDelete,
-    ResultCellEditMoveCursor(CursorMove),
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
     CellCopied,
@@ -360,16 +406,6 @@ pub enum Action {
     BeginKeySequence(Prefix),
     CancelKeySequence,
 
-    // Scroll-to-cursor (zz/zt/zb) — Explorer
-    ScrollCursorCenter,
-    ScrollCursorTop,
-    ScrollCursorBottom,
-
-    // Scroll-to-cursor (zz/zt/zb) — Result
-    ResultScrollCursorCenter,
-    ResultScrollCursorTop,
-    ResultScrollCursorBottom,
-
     // Focus mode
     ToggleFocus,
 
@@ -379,8 +415,6 @@ pub enum Action {
     // ER Table Picker
     OpenErTablePicker,
     CloseErTablePicker,
-    ErFilterInput(char),
-    ErFilterBackspace,
     ErToggleSelection,
     ErSelectAll,
     ErConfirmSelection,
@@ -393,10 +427,6 @@ pub enum Action {
         Vec<crate::domain::query_history::QueryHistoryEntry>,
     ),
     QueryHistoryLoadFailed(String),
-    QueryHistoryFilterInput(char),
-    QueryHistoryFilterBackspace,
-    QueryHistorySelectNext,
-    QueryHistorySelectPrevious,
     QueryHistoryConfirmSelection,
 
     // CSV Export

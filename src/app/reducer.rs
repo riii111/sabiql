@@ -123,6 +123,19 @@ fn reduce_inner(
             vec![]
         }
 
+        // Invalid target/direction/amount combo — catch call-site bugs in debug builds
+        Action::Scroll { .. }
+        | Action::ScrollToCursor { .. }
+        | Action::TextInput { .. }
+        | Action::TextBackspace { .. }
+        | Action::TextDelete { .. }
+        | Action::TextMoveCursor { .. }
+        | Action::Select(_)
+        | Action::ListSelect { .. } => {
+            debug_assert!(false, "unhandled parametric action: {action:?}");
+            vec![]
+        }
+
         // Handled by sub-reducers
         _ => vec![],
     }
@@ -163,6 +176,9 @@ mod tests {
 
     use super::*;
     use crate::app::action::ConnectionTarget;
+    use crate::app::action::{
+        InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
+    };
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -222,10 +238,10 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Action::SelectFirst)]
-        #[case(Action::SelectLast)]
-        #[case(Action::SelectNext)]
-        #[case(Action::SelectPrevious)]
+        #[case(Action::Select(SelectMotion::First))]
+        #[case(Action::Select(SelectMotion::Last))]
+        #[case(Action::Select(SelectMotion::Next))]
+        #[case(Action::Select(SelectMotion::Previous))]
         fn selection_on_empty_tables_keeps_none(#[case] action: Action) {
             let mut state = create_test_state();
             state.ui.focused_pane = FocusedPane::Explorer;
@@ -249,7 +265,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ResultScrollUp,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -266,7 +286,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ResultScrollUp,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -283,7 +307,11 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ResultScrollTop,
+                Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::ToStart,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -361,7 +389,10 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::SqlModalInput('a'),
+                Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'a',
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -381,7 +412,9 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::SqlModalBackspace,
+                Action::TextBackspace {
+                    target: InputTarget::SqlModal,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -399,7 +432,10 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::SqlModalInput('x'),
+                Action::TextInput {
+                    target: InputTarget::SqlModal,
+                    ch: 'x',
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2314,7 +2350,12 @@ mod tests {
             state.result_interaction.yank_op_pending = true;
             let now = Instant::now();
 
-            reduce(&mut state, Action::SelectNext, now, &AppServices::stub());
+            reduce(
+                &mut state,
+                Action::Select(SelectMotion::Next),
+                now,
+                &AppServices::stub(),
+            );
 
             assert!(!state.result_interaction.yank_op_pending);
         }

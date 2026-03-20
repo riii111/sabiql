@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::action::{Action, InputTarget};
 use crate::app::keybindings::{self, Key, KeyCombo};
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
@@ -6,7 +6,10 @@ pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
         return action;
     }
     match combo.key {
-        Key::Char(c) => Action::FilterInput(c),
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::Filter,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -22,7 +25,10 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
         return action;
     }
     match combo.key {
-        Key::Char(c) => Action::QueryHistoryFilterInput(c),
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::QueryHistoryFilter,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -32,7 +38,10 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
         return action;
     }
     match combo.key {
-        Key::Char(c) => Action::ErFilterInput(c),
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::ErFilter,
+            ch: c,
+        },
         _ => Action::None,
     }
 }
@@ -40,6 +49,7 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::action::{ListMotion, ListTarget, SelectMotion};
     use crate::app::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -75,11 +85,22 @@ mod tests {
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseTablePicker)),
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
-                Expected::SelectPrev => assert!(matches!(result, Action::SelectPrevious)),
-                Expected::SelectNext => assert!(matches!(result, Action::SelectNext)),
-                Expected::FilterBackspace => assert!(matches!(result, Action::FilterBackspace)),
+                Expected::SelectPrev => {
+                    assert!(matches!(result, Action::Select(SelectMotion::Previous)))
+                }
+                Expected::SelectNext => {
+                    assert!(matches!(result, Action::Select(SelectMotion::Next)))
+                }
+                Expected::FilterBackspace => assert!(matches!(
+                    result,
+                    Action::TextBackspace {
+                        target: InputTarget::Filter
+                    }
+                )),
                 Expected::FilterInput(ch) => {
-                    assert!(matches!(result, Action::FilterInput(c) if c == ch))
+                    assert!(
+                        matches!(result, Action::TextInput { target: InputTarget::Filter, ch: c } if c == ch)
+                    )
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
@@ -109,8 +130,12 @@ mod tests {
             match expected {
                 Expected::Close => assert!(matches!(result, Action::CloseCommandPalette)),
                 Expected::Confirm => assert!(matches!(result, Action::ConfirmSelection)),
-                Expected::SelectPrev => assert!(matches!(result, Action::SelectPrevious)),
-                Expected::SelectNext => assert!(matches!(result, Action::SelectNext)),
+                Expected::SelectPrev => {
+                    assert!(matches!(result, Action::Select(SelectMotion::Previous)))
+                }
+                Expected::SelectNext => {
+                    assert!(matches!(result, Action::Select(SelectMotion::Next)))
+                }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
         }
@@ -121,24 +146,27 @@ mod tests {
 
         #[rstest]
         #[case(Key::Enter, Action::QueryHistoryConfirmSelection)]
-        #[case(Key::Up, Action::QueryHistorySelectPrevious)]
-        #[case(Key::Down, Action::QueryHistorySelectNext)]
-        #[case(Key::Backspace, Action::QueryHistoryFilterBackspace)]
+        #[case(Key::Up, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Previous })]
+        #[case(Key::Down, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Next })]
+        #[case(Key::Backspace, Action::TextBackspace { target: InputTarget::QueryHistoryFilter })]
         #[case(Key::Esc, Action::CloseQueryHistoryPicker)]
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert_eq!(
-                std::mem::discriminant(&result),
-                std::mem::discriminant(&expected)
-            );
+            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[test]
         fn char_falls_through_to_filter_input() {
             let result = handle_query_history_picker_keys(combo(Key::Char('a')));
 
-            assert!(matches!(result, Action::QueryHistoryFilterInput('a')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::QueryHistoryFilter,
+                    ch: 'a'
+                }
+            ));
         }
     }
 
@@ -163,28 +191,39 @@ mod tests {
         fn up_returns_select_previous() {
             let result = handle_er_table_picker_keys(combo(Key::Up));
 
-            assert!(matches!(result, Action::SelectPrevious));
+            assert!(matches!(result, Action::Select(SelectMotion::Previous)));
         }
 
         #[test]
         fn down_returns_select_next() {
             let result = handle_er_table_picker_keys(combo(Key::Down));
 
-            assert!(matches!(result, Action::SelectNext));
+            assert!(matches!(result, Action::Select(SelectMotion::Next)));
         }
 
         #[test]
         fn backspace_returns_er_filter_backspace() {
             let result = handle_er_table_picker_keys(combo(Key::Backspace));
 
-            assert!(matches!(result, Action::ErFilterBackspace));
+            assert!(matches!(
+                result,
+                Action::TextBackspace {
+                    target: InputTarget::ErFilter
+                }
+            ));
         }
 
         #[test]
         fn char_input_returns_er_filter_input() {
             let result = handle_er_table_picker_keys(combo(Key::Char('a')));
 
-            assert!(matches!(result, Action::ErFilterInput('a')));
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::ErFilter,
+                    ch: 'a'
+                }
+            ));
         }
     }
 }
