@@ -218,7 +218,7 @@ mod tests {
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{DsnBuilder, RenderOutput, Renderer};
+    use crate::app::ports::{ConnectionStoreError, DsnBuilder, RenderOutput, Renderer};
     use crate::app::services::AppServices;
     use crate::app::state::AppState;
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
@@ -279,11 +279,10 @@ mod tests {
         #[tokio::test]
         async fn error_returns_connection_delete_failed() {
             let mut mock_store = MockConnectionStore::new();
-            mock_store.expect_delete().once().returning(|_| {
-                Err(crate::app::ports::ConnectionStoreError::NotFound(
-                    "id".to_string(),
-                ))
-            });
+            mock_store
+                .expect_delete()
+                .once()
+                .returning(|_| Err(ConnectionStoreError::NotFound("id".to_string())));
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
@@ -330,7 +329,7 @@ mod tests {
         async fn error_returns_empty_connections_list() {
             let mut mock_store = MockConnectionStore::new();
             mock_store.expect_load_all().once().returning(|| {
-                Err(crate::app::ports::ConnectionStoreError::ReadError(
+                Err(ConnectionStoreError::ReadError(
                     "file not found".to_string(),
                 ))
             });
@@ -374,6 +373,7 @@ mod tests {
 
     mod switch_connection {
         use super::*;
+        use crate::app::effect_runner::EffectRunner;
 
         struct FakeDsnBuilder;
         impl DsnBuilder for FakeDsnBuilder {
@@ -385,10 +385,8 @@ mod tests {
             }
         }
 
-        fn make_runner_with_dsn_builder(
-            action_tx: mpsc::Sender<Action>,
-        ) -> crate::app::effect_runner::EffectRunner {
-            crate::app::effect_runner::EffectRunner::builder()
+        fn make_runner_with_dsn_builder(action_tx: mpsc::Sender<Action>) -> EffectRunner {
+            EffectRunner::builder()
                 .metadata_provider(Arc::new(MockMetadataProvider::new()))
                 .query_executor(Arc::new(MockQueryExecutor::new()))
                 .dsn_builder(Arc::new(FakeDsnBuilder))
