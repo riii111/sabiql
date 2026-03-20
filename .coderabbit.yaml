@@ -1,5 +1,5 @@
 # .coderabbit.yaml
-language: "en-US"
+language: ja-JP
 tone_instructions: "Be concise and direct."
 enable_free_tier: true
 

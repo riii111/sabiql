@@ -2,7 +2,6 @@ use super::types::{Key, KeyCombo};
 use super::{ExecBinding, KeyBinding, ModeRow};
 use crate::app::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
-    SelectMotion,
 };
 
 // =============================================================================
@@ -131,11 +130,17 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::Select(SelectMotion::Next),
+                action: Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::Select(SelectMotion::Previous),
+                action: Action::ListSelect {
+                    target: ListTarget::TablePicker,
+                    motion: ListMotion::Previous,
+                },
                 combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
@@ -206,11 +211,17 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::Select(SelectMotion::Next),
+                action: Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::Select(SelectMotion::Previous),
+                action: Action::ListSelect {
+                    target: ListTarget::ErTablePicker,
+                    motion: ListMotion::Previous,
+                },
                 combos: &[KeyCombo::plain(Key::Up)],
             },
         ],
@@ -322,11 +333,17 @@ pub const COMMAND_PALETTE_ROWS: &[ModeRow] = &[
         description: "Navigate",
         bindings: &[
             ExecBinding {
-                action: Action::Select(SelectMotion::Next),
+                action: Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Next,
+                },
                 combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
             },
             ExecBinding {
-                action: Action::Select(SelectMotion::Previous),
+                action: Action::ListSelect {
+                    target: ListTarget::CommandPalette,
+                    motion: ListMotion::Previous,
+                },
                 combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
             },
         ],
