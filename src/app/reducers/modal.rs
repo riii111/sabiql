@@ -183,6 +183,9 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
         Action::QueryHistoryLoadFailed(e) => {
+            if state.modal.active_mode() != InputMode::QueryHistoryPicker {
+                return Some(vec![]);
+            }
             state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
@@ -702,6 +705,7 @@ mod tests {
         #[test]
         fn load_failed_sets_error_with_expiry() {
             let mut state = connected_state();
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
             let now = Instant::now();
 
             reduce_modal(
@@ -718,6 +722,23 @@ mod tests {
                 Some("IO error: disk error")
             );
             assert!(state.messages.expires_at.is_some());
+        }
+
+        #[test]
+        fn load_failed_ignored_when_picker_not_active() {
+            let mut state = connected_state();
+            let now = Instant::now();
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
+                    "stale error".to_string(),
+                )),
+                now,
+            )
+            .unwrap();
+
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

@@ -279,10 +279,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
         Action::ConnectionSaveFailed(e) => {
-            state
-                .session
-                .set_connection_state(ConnectionState::NotConnected);
-            state.session.set_metadata_state(MetadataState::NotLoaded);
+            if !state.session.connection_state().is_connected() {
+                state
+                    .session
+                    .set_connection_state(ConnectionState::NotConnected);
+                state.session.set_metadata_state(MetadataState::NotLoaded);
+            }
             state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
