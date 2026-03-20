@@ -40,7 +40,7 @@ crossterm::KeyEvent
 - `app/keybindings/`: SSOT モジュール — `KeyBinding`（simple modes）と `ModeRow`（mixed modes）。サブモジュール: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`。Mixed modes は `ModeBindings { rows: &[ModeRow] }` を使い `.resolve()` で解決
 - `app/nav_intent.rs`: `map_nav_intent()` (関数: `KeyCombo → Option<NavIntent>`) は文脈を見ずキーの意味だけ変換。`resolve()` (関数: `NavIntent + NavigationContext → Action`) は文脈適用を1箇所に集約
 - `app/keymap.rs`: `KeyBinding` スライス用の `resolve(combo, bindings)` と `ModeRow` スライス用の `resolve_mode(combo, rows)`
-- `ui/event/key_translator.rs`: UI adapter — `crossterm::KeyEvent` → app 層の `KeyCombo` に変換
+- `ui/event/key_translator.rs`: UI adapter — `crossterm::KeyEvent` → app 層の canonical `KeyCombo` に変換。terminal/backend 依存の表現揺れ（例: Kitty が大文字 `Char('G')` に `SHIFT` フラグを付与する二重符号化）はここで吸収し、下流は正規化済みの `KeyCombo` のみを扱う。新たな正規化ルールを追加した場合は translator 内にユニットテストを追加すること
 - `ui/event/handlers/`: モードディスパッチ — `handlers/mod.rs` でディスパッチし、各モード固有ロジックは `normal.rs`, `connections.rs`, `sql_modal.rs`, `editors.rs`, `pickers.rs`, `overlays.rs` に分割
 
 **Char フォールバックルール**: フリーテキスト入力のあるモード（TablePicker, ErTablePicker, CommandLine, CellEdit, QueryHistoryPicker）は `keymap::resolve()` を先に試し、その後 `Char(c)` にフォールスルーする。これらのモードにコマンドキーとして `KeyCombo::plain(Key::Char(x))` を追加してはならない。非 Char キー（Up/Down/Esc/Enter）を使うこと。
