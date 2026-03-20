@@ -118,6 +118,7 @@ impl Inspector {
                         table,
                         state.ui.inspector_scroll_offset,
                         &*services.ddl_generator,
+                        state.ui.ddl_yank_flash_until,
                     );
                     ViewportPlan::default()
                 }
@@ -593,6 +594,7 @@ impl Inspector {
         table: &Table,
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
+        ddl_yank_flash_until: Option<std::time::Instant>,
     ) {
         let ddl = ddl_gen.generate_ddl(table);
 
@@ -604,9 +606,20 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
+        let now = std::time::Instant::now();
+        let yank_flash_active = ddl_yank_flash_until.is_some_and(|until| now < until);
+
+        let style = if yank_flash_active {
+            Style::default()
+                .fg(Theme::YANK_FLASH_FG)
+                .bg(Theme::YANK_FLASH_BG)
+        } else {
+            Style::default().fg(Theme::TEXT_PRIMARY)
+        };
+
         let paragraph = Paragraph::new(ddl)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Theme::TEXT_PRIMARY))
+            .style(style)
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 

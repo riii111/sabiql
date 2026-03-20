@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use super::focused_pane::FocusedPane;
+
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::keybindings::help_content_line_count;
@@ -136,6 +137,8 @@ pub struct UiState {
     pub terminal_height: u16,
 
     pub key_sequence: KeySequenceState,
+
+    pub ddl_yank_flash_until: Option<Instant>,
 }
 
 impl UiState {

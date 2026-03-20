@@ -54,6 +54,7 @@ pub fn reduce(
                 && let Some(table) = state.session.table_detail().as_ref()
             {
                 let ddl = services.ddl_generator.generate_ddl(table);
+                state.ui.ddl_yank_flash_until = Some(now + Duration::from_millis(200));
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
@@ -421,6 +422,17 @@ mod tests {
             assert!(
                 matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("CREATE TABLE"))
             );
+        }
+
+        #[test]
+        fn ddl_yank_sets_flash() {
+            let mut state = state_with_ddl_tab();
+            let now = Instant::now();
+
+            reduce(&mut state, &Action::DdlYank, &fake_services(), now);
+
+            let flash_until = state.ui.ddl_yank_flash_until.expect("flash should be set");
+            assert!(flash_until > now);
         }
 
         #[test]

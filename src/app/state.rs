@@ -101,6 +101,13 @@ impl AppState {
         self.messages.clear_expired();
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
+        if self
+            .ui
+            .ddl_yank_flash_until
+            .is_some_and(|until| now >= until)
+        {
+            self.ui.ddl_yank_flash_until = None;
+        }
     }
 
     pub fn result_visible_rows(&self) -> usize {
