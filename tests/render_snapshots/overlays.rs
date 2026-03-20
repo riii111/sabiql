@@ -466,6 +466,53 @@ fn query_history_picker_filter_mode() {
 }
 
 #[test]
+fn sql_modal_plan_tab_placeholder() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.active_tab = SqlModalTab::Plan;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_plan_tab_with_plan_text() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.active_tab = SqlModalTab::Plan;
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
+        false,
+        42,
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_plan_tab_with_error() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.active_tab = SqlModalTab::Plan;
+    state
+        .explain
+        .set_error("ERROR: relation \"nonexistent\" does not exist".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_normal_initial() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

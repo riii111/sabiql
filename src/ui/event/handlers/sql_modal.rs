@@ -10,6 +10,11 @@ pub fn handle_sql_modal_keys(
 ) -> Action {
     use crate::app::action::CursorMove;
 
+    // Running state: suppress all key input while EXPLAIN is executing
+    if matches!(status, SqlModalStatus::Running) {
+        return Action::None;
+    }
+
     // Normal / Success / Error share the same command set (no text editing)
     if matches!(
         status,
@@ -584,6 +589,24 @@ mod tests {
         );
 
         assert_action(result, Expected::ExplainRequest);
+    }
+
+    #[rstest]
+    #[case(Key::Char('a'))]
+    #[case(Key::Enter)]
+    #[case(Key::Esc)]
+    #[case(Key::Tab)]
+    #[case(Key::Up)]
+    #[case(Key::Down)]
+    fn running_state_suppresses_all_keys(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Running,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[test]

@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
+│       │ EXPLAIN (0.04s)                                              │       │
+│       │                                                              │       │
+│       │ Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)     │       │
+│       │   Filter: (id > 10)                                          │       │
+│       │                                                              │       │
+│       │                                                              │───────┘
+│       │                                                              │───────┐
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]                                             Ready  │       │
+│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+^E:Explain  ⌥E:Analyze  ↑↓:Scroll  Tab:SQL  Esc:Close

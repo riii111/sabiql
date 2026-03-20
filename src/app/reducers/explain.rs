@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::app::action::Action;
+use crate::app::adhoc_risk::split_statements;
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
@@ -8,8 +9,8 @@ use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::app::statement_classifier::{self, StatementKind};
 
-fn contains_multiple_statements(content: &str) -> bool {
-    content.contains(';')
+fn is_multi_statement(content: &str) -> bool {
+    split_statements(content).len() > 1
 }
 
 pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -25,7 +26,11 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
-            if contains_multiple_statements(&content) {
+            if is_multi_statement(&content) {
+                state
+                    .explain
+                    .set_error("EXPLAIN does not support multiple statements".to_string());
+                state.sql_modal.active_tab = SqlModalTab::Plan;
                 return Some(vec![]);
             }
 
@@ -54,7 +59,11 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
-            if contains_multiple_statements(&content) {
+            if is_multi_statement(&content) {
+                state
+                    .explain
+                    .set_error("EXPLAIN ANALYZE does not support multiple statements".to_string());
+                state.sql_modal.active_tab = SqlModalTab::Plan;
                 return Some(vec![]);
             }
             let kind = statement_classifier::classify(&content);
@@ -192,7 +201,7 @@ mod tests {
         }
 
         #[test]
-        fn multi_statement_is_noop() {
+        fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
             state.session.dsn = Some("dsn://test".to_string());
@@ -201,6 +210,11 @@ mod tests {
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN does not support multiple statements")
+            );
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
         }
 
         #[test]
@@ -254,7 +268,7 @@ mod tests {
         }
 
         #[test]
-        fn multi_statement_is_noop() {
+        fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
             state.session.dsn = Some("dsn://test".to_string());
@@ -263,6 +277,11 @@ mod tests {
                 reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("EXPLAIN ANALYZE does not support multiple statements")
+            );
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
             assert!(state.confirm_dialog.intent().is_none());
         }
 

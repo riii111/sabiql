@@ -15,7 +15,7 @@ use sabiql::app::er_state::ErStatus;
 use sabiql::app::focused_pane::FocusedPane;
 use sabiql::app::input_mode::InputMode;
 use sabiql::app::sql_modal_context::{
-    AdhocSuccessSnapshot, CompletionCandidate, CompletionKind, SqlModalStatus,
+    AdhocSuccessSnapshot, CompletionCandidate, CompletionKind, SqlModalStatus, SqlModalTab,
 };
 use sabiql::app::text_input::TextInputState;
 use sabiql::app::write_guardrails::{
