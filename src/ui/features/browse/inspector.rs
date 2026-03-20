@@ -606,20 +606,15 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
-        let now = std::time::Instant::now();
-        let yank_flash_active = ddl_yank_flash_until.is_some_and(|until| now < until);
+        let mut lines: Vec<Line> = ddl
+            .lines()
+            .map(|l| Line::from(l.to_string()).style(Style::default().fg(Theme::TEXT_PRIMARY)))
+            .collect();
 
-        let style = if yank_flash_active {
-            Style::default()
-                .fg(Theme::YANK_FLASH_FG)
-                .bg(Theme::YANK_FLASH_BG)
-        } else {
-            Style::default().fg(Theme::TEXT_PRIMARY)
-        };
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, ddl_yank_flash_until);
 
-        let paragraph = Paragraph::new(ddl)
+        let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .style(style)
             .scroll((clamped_scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 
