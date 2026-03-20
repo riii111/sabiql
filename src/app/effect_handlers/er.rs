@@ -43,7 +43,9 @@ pub(crate) async fn run(
             if all_tables.is_empty() {
                 action_tx
                     .send(Action::ErDiagramFailed(
-                        "No table data loaded yet".to_string(),
+                        crate::app::action::ErDiagramError::NoData(
+                            "No table data loaded yet".to_string(),
+                        ),
                     ))
                     .await
                     .ok();
@@ -61,7 +63,9 @@ pub(crate) async fn run(
             if tables.is_empty() {
                 action_tx
                     .send(Action::ErDiagramFailed(
-                        "Selected tables not found in cached data".to_string(),
+                        crate::app::action::ErDiagramError::NoData(
+                            "Selected tables not found in cached data".to_string(),
+                        ),
                     ))
                     .await
                     .ok();
@@ -116,14 +120,18 @@ pub(crate) async fn run(
                     let tx = action_tx.clone();
                     tokio::task::spawn_blocking(move || {
                         if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
-                            tx.blocking_send(Action::ErLogWriteFailed(e.to_string()))
-                                .ok();
+                            tx.blocking_send(Action::ErLogWriteFailed(
+                                crate::app::action::ErLogError::Io(e.to_string()),
+                            ))
+                            .ok();
                         }
                     });
                 }
                 Err(e) => {
                     action_tx
-                        .send(Action::ErLogWriteFailed(e.to_string()))
+                        .send(Action::ErLogWriteFailed(
+                            crate::app::action::ErLogError::Config(e.to_string()),
+                        ))
                         .await
                         .ok();
                 }
@@ -150,7 +158,7 @@ pub(crate) async fn run(
                     Err(e) => {
                         tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                             run_id,
-                            error: e.to_string(),
+                            error: e,
                             new_metadata: None,
                         }))
                         .await
@@ -165,7 +173,7 @@ pub(crate) async fn run(
                         let new_metadata = Arc::new(new_metadata);
                         tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
                             run_id,
-                            error: e.to_string(),
+                            error: e,
                             new_metadata: Some(Arc::clone(&new_metadata)),
                         }))
                         .await

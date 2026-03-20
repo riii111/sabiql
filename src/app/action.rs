@@ -3,12 +3,43 @@ use std::sync::Arc;
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::key_sequence::Prefix;
+use crate::app::ports::clipboard::ClipboardError;
+use crate::app::ports::connection_store::ConnectionStoreError;
+use crate::app::ports::folder_opener::FolderOpenError;
+use crate::app::ports::metadata::MetadataError;
+use crate::app::ports::query_history::QueryHistoryError;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use std::collections::HashMap;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ConnectionSaveError {
+    #[error("{0}")]
+    Validation(#[from] crate::domain::connection::ConnectionNameError),
+    #[error("{0}")]
+    Store(#[from] ConnectionStoreError),
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ErDiagramError {
+    #[error("{0}")]
+    NoData(String),
+    #[error("{0}")]
+    ExportFailed(String),
+    #[error("Task panicked: {0}")]
+    TaskPanicked(String),
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ErLogError {
+    #[error("{0}")]
+    Io(String),
+    #[error("{0}")]
+    Config(String),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorMove {
@@ -123,7 +154,7 @@ pub struct SmartErRefreshResult {
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
     pub run_id: u64,
-    pub error: String,
+    pub error: MetadataError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
 }
 
@@ -221,9 +252,9 @@ pub enum Action {
     ConnectionSetupSave,
     ConnectionSetupCancel,
     ConnectionSaveCompleted(ConnectionTarget),
-    ConnectionSaveFailed(String),
+    ConnectionSaveFailed(ConnectionSaveError),
     ConnectionEditLoaded(Box<ConnectionProfile>),
-    ConnectionEditLoadFailed(String),
+    ConnectionEditLoadFailed(ConnectionStoreError),
 
     // Connection Selector
     OpenConnectionSelector,
@@ -245,7 +276,7 @@ pub enum Action {
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
-    ConnectionDeleteFailed(String),
+    ConnectionDeleteFailed(ConnectionStoreError),
 
     // Connection edit (from list)
     RequestEditSelectedConnection,
@@ -269,12 +300,12 @@ pub enum Action {
     LoadMetadata,
     ReloadMetadata,
     MetadataLoaded(Arc<DatabaseMetadata>),
-    MetadataFailed(String),
+    MetadataFailed(MetadataError),
 
     // Table detail loading
     LoadTableDetail(TableTarget),
     TableDetailLoaded(Box<Table>, u64),
-    TableDetailFailed(String, u64),
+    TableDetailFailed(MetadataError, u64),
 
     // Completion prefetch (does NOT update state.table_detail)
     PrefetchTableDetail {
@@ -289,7 +320,7 @@ pub enum Action {
     TableDetailCacheFailed {
         schema: String,
         table: String,
-        error: String,
+        error: MetadataError,
     },
     TableDetailAlreadyCached {
         schema: String,
@@ -341,7 +372,7 @@ pub enum Action {
         is_analyze: bool,
         execution_time_ms: u64,
     },
-    ExplainFailed(String),
+    ExplainFailed(MetadataError),
 
     // SQL Modal completion
     CompletionTrigger,
@@ -364,11 +395,11 @@ pub enum Action {
         generation: u64,
         target_page: Option<usize>,
     },
-    QueryFailed(String, u64),
+    QueryFailed(MetadataError, u64),
     ExecuteWriteSucceeded {
         affected_rows: usize,
     },
-    ExecuteWriteFailed(String),
+    ExecuteWriteFailed(MetadataError),
 
     // Result pane
     ResultNextPage,
@@ -396,8 +427,8 @@ pub enum Action {
     SubmitCellEditWrite,
     OpenWritePreviewConfirm(Box<WritePreview>),
     CellCopied,
-    CopyFailed(String),
-    OpenFolderFailed(String),
+    CopyFailed(ClipboardError),
+    OpenFolderFailed(FolderOpenError),
 
     // Result history navigation
     OpenResultHistory,
@@ -429,7 +460,7 @@ pub enum Action {
         crate::domain::ConnectionId,
         Vec<crate::domain::query_history::QueryHistoryEntry>,
     ),
-    QueryHistoryLoadFailed(String),
+    QueryHistoryLoadFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
     // CSV Export
@@ -448,7 +479,7 @@ pub enum Action {
         path: String,
         row_count: Option<usize>,
     },
-    CsvExportFailed(String),
+    CsvExportFailed(MetadataError),
 
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,
@@ -456,8 +487,8 @@ pub enum Action {
     SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
-    ErDiagramFailed(String),
-    ErLogWriteFailed(String),
+    ErDiagramFailed(ErDiagramError),
+    ErLogWriteFailed(ErLogError),
 }
 
 impl Action {

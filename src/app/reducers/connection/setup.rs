@@ -31,8 +31,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
-        Action::ConnectionEditLoadFailed(msg) => {
-            state.messages.set_error_at(msg.clone(), now);
+        Action::ConnectionEditLoadFailed(e) => {
+            state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
         Action::CloseConnectionSetup => {
@@ -278,12 +278,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             state.session.begin_connecting(dsn);
             Some(vec![Effect::FetchMetadata { dsn: dsn.clone() }])
         }
-        Action::ConnectionSaveFailed(msg) => {
+        Action::ConnectionSaveFailed(e) => {
             state
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
             state.session.set_metadata_state(MetadataState::NotLoaded);
-            state.messages.set_error_at(msg.clone(), now);
+            state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
 

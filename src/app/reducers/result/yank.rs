@@ -35,7 +35,11 @@ pub fn reduce(
                         Some(vec![Effect::CopyToClipboard {
                             content: value,
                             on_success: Some(Action::CellCopied),
-                            on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                            on_failure: Some(Action::CopyFailed(
+                                crate::app::ports::ClipboardError {
+                                    message: "Clipboard unavailable".into(),
+                                },
+                            )),
                         }])
                     }
                     None => {
@@ -60,7 +64,9 @@ pub fn reduce(
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
-                    on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                    on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                        message: "Clipboard unavailable".into(),
+                    })),
                 }]);
             }
             Some(vec![])
@@ -95,7 +101,11 @@ pub fn reduce(
                         Some(vec![Effect::CopyToClipboard {
                             content: tsv,
                             on_success: Some(Action::CellCopied),
-                            on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                            on_failure: Some(Action::CopyFailed(
+                                crate::app::ports::ClipboardError {
+                                    message: "Clipboard unavailable".into(),
+                                },
+                            )),
                         }])
                     }
                     None => {
@@ -110,8 +120,8 @@ pub fn reduce(
             }
         }
         Action::CellCopied => Some(vec![]),
-        Action::CopyFailed(msg) => {
-            state.messages.set_error_at(msg.clone(), now);
+        Action::CopyFailed(e) => {
+            state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
         _ => None,

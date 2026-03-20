@@ -68,14 +68,14 @@ impl ServiceFileReader for NoopServiceFileReader {
 
 pub(crate) struct NoopClipboardWriter;
 impl crate::app::ports::ClipboardWriter for NoopClipboardWriter {
-    fn copy_text(&self, _content: &str) -> Result<(), String> {
+    fn copy_text(&self, _content: &str) -> Result<(), crate::app::ports::ClipboardError> {
         Ok(())
     }
 }
 
 pub(crate) struct NoopFolderOpener;
 impl crate::app::ports::FolderOpener for NoopFolderOpener {
-    fn open(&self, _path: &Path) -> Result<(), String> {
+    fn open(&self, _path: &Path) -> Result<(), crate::app::ports::FolderOpenError> {
         Ok(())
     }
 }

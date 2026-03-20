@@ -37,7 +37,7 @@ pub(crate) async fn run(
                             tx.send(Action::MetadataLoaded(metadata)).await.ok();
                         }
                         Err(e) => {
-                            tx.send(Action::MetadataFailed(e.to_string())).await.ok();
+                            tx.send(Action::MetadataFailed(e)).await.ok();
                         }
                     }
                 });
@@ -62,9 +62,7 @@ pub(crate) async fn run(
                             .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::TableDetailFailed(e.to_string(), generation))
-                            .await
-                            .ok();
+                        tx.send(Action::TableDetailFailed(e, generation)).await.ok();
                     }
                 }
             });
@@ -106,7 +104,7 @@ pub(crate) async fn run(
                         tx.send(Action::TableDetailCacheFailed {
                             schema,
                             table,
-                            error: e.to_string(),
+                            error: e,
                         })
                         .await
                         .ok();
@@ -115,7 +113,7 @@ pub(crate) async fn run(
                         tx.send(Action::TableDetailCacheFailed {
                             schema,
                             table,
-                            error: "prefetch timeout".to_string(),
+                            error: crate::app::ports::MetadataError::Timeout,
                         })
                         .await
                         .ok();

@@ -344,7 +344,7 @@ pub fn reduce(
                 .unwrap_or(WriteOperation::Update);
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
-            state.messages.set_error_at(error.clone(), now);
+            state.messages.set_error_at(error.to_string(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
                 WriteOperation::Delete => InputMode::Normal,
@@ -611,6 +611,7 @@ mod tests {
 
     mod delete_write_flow {
         use super::*;
+        use crate::app::ports::MetadataError;
 
         fn delete_preview() -> WritePreview {
             WritePreview {
@@ -723,7 +724,7 @@ mod tests {
 
             let effects = reduce_query(
                 &mut state,
-                &Action::ExecuteWriteFailed("boom".to_string()),
+                &Action::ExecuteWriteFailed(MetadataError::QueryFailed("boom".to_string())),
                 Instant::now(),
                 &AppServices::stub(),
             )
@@ -731,7 +732,10 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.messages.last_error.as_deref(), Some("boom"));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Query failed: boom")
+            );
         }
 
         #[test]

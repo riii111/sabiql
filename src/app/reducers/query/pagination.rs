@@ -130,7 +130,7 @@ pub fn reduce(
         }
 
         Action::CsvExportFailed(error) => {
-            state.messages.set_error_at(error.clone(), now);
+            state.messages.set_error_at(error.to_string(), now);
             Some(vec![])
         }
 
@@ -138,6 +138,7 @@ pub fn reduce(
             state
                 .messages
                 .set_error_at(format!("Failed to open folder: {}", error), now);
+
             Some(vec![])
         }
 
@@ -433,6 +434,7 @@ mod tests {
 
     mod csv_export {
         use super::*;
+        use crate::app::ports::MetadataError;
         use crate::domain::QueryResult;
 
         fn export_test_state() -> AppState {
@@ -617,14 +619,17 @@ mod tests {
 
             let effects = reduce_query(
                 &mut state,
-                &Action::CsvExportFailed("psql error".to_string()),
+                &Action::CsvExportFailed(MetadataError::QueryFailed("psql error".to_string())),
                 Instant::now(),
                 &AppServices::stub(),
             )
             .unwrap();
 
             assert!(effects.is_empty());
-            assert_eq!(state.messages.last_error.as_deref(), Some("psql error"));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Query failed: psql error")
+            );
         }
 
         #[test]

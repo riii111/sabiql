@@ -52,19 +52,22 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
 
+    use crate::app::ports::clipboard::ClipboardError;
+    use crate::app::ports::folder_opener::FolderOpenError;
+
     struct MockClipboard {
-        result: Result<(), String>,
+        result: Result<(), ClipboardError>,
     }
 
     impl ClipboardWriter for MockClipboard {
-        fn copy_text(&self, _content: &str) -> Result<(), String> {
+        fn copy_text(&self, _content: &str) -> Result<(), ClipboardError> {
             self.result.clone()
         }
     }
 
     struct MockFolderOpener {
         opened: Mutex<Vec<PathBuf>>,
-        result: Result<(), String>,
+        result: Result<(), FolderOpenError>,
     }
 
     impl MockFolderOpener {
@@ -78,13 +81,15 @@ mod tests {
         fn failing(error: &str) -> Self {
             Self {
                 opened: Mutex::new(vec![]),
-                result: Err(error.to_string()),
+                result: Err(FolderOpenError {
+                    message: error.to_string(),
+                }),
             }
         }
     }
 
     impl FolderOpener for MockFolderOpener {
-        fn open(&self, path: &Path) -> Result<(), String> {
+        fn open(&self, path: &Path) -> Result<(), FolderOpenError> {
             self.opened.lock().unwrap().push(path.to_path_buf());
             self.result.clone()
         }
@@ -123,7 +128,9 @@ mod tests {
         async fn on_failure_dispatched_when_copy_fails() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err("clipboard error".to_string()),
+                result: Err(ClipboardError {
+                    message: "clipboard error".to_string(),
+                }),
             });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
 
@@ -151,7 +158,9 @@ mod tests {
         async fn copy_failed_dispatched_when_no_on_failure() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
-                result: Err("clipboard error".to_string()),
+                result: Err(ClipboardError {
+                    message: "clipboard error".to_string(),
+                }),
             });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
 
@@ -173,7 +182,7 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             match action {
-                Action::CopyFailed(msg) => assert_eq!(msg, "clipboard error"),
+                Action::CopyFailed(e) => assert_eq!(e.message, "clipboard error"),
                 other => panic!("expected CopyFailed, got {:?}", other),
             }
         }
@@ -228,8 +237,8 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             match action {
-                Action::OpenFolderFailed(msg) => {
-                    assert_eq!(msg, "No such file or directory")
+                Action::OpenFolderFailed(e) => {
+                    assert_eq!(e.message, "No such file or directory")
                 }
                 other => panic!("expected OpenFolderFailed, got {:?}", other),
             }

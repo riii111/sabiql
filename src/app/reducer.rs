@@ -175,10 +175,12 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::app::action::ConnectionTarget;
+    use crate::app::action::{ConnectionSaveError, ConnectionTarget};
     use crate::app::action::{
         InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
     };
+    use crate::app::ports::MetadataError;
+    use crate::app::ports::connection_store::ConnectionStoreError;
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -557,7 +559,9 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::MetadataFailed("psql: error: connection refused".to_string()),
+                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                    "psql: error: connection refused".to_string(),
+                )),
                 now,
                 &AppServices::stub(),
             );
@@ -1032,7 +1036,9 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed("connection refused".to_string()),
+                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                    "connection refused".to_string(),
+                )),
                 now,
                 &AppServices::stub(),
             );
@@ -1280,7 +1286,9 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveFailed("Write error".to_string()),
+                Action::ConnectionSaveFailed(ConnectionSaveError::Store(
+                    ConnectionStoreError::IoError("Write error".to_string()),
+                )),
                 now,
                 &AppServices::stub(),
             );
@@ -1495,7 +1503,9 @@ mod tests {
             // Simulate failure — must detect Delete and return to Normal (not CellEdit)
             reduce(
                 &mut state,
-                Action::ExecuteWriteFailed("connection lost".to_string()),
+                Action::ExecuteWriteFailed(MetadataError::QueryFailed(
+                    "connection lost".to_string(),
+                )),
                 now,
                 &AppServices::stub(),
             );
@@ -1633,7 +1643,9 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed("connection refused".to_string()),
+                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                    "connection refused".to_string(),
+                )),
                 now,
                 &AppServices::stub(),
             );
@@ -1658,7 +1670,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed("permission denied".to_string()),
+                Action::MetadataFailed(MetadataError::QueryFailed("permission denied".to_string())),
                 now,
                 &AppServices::stub(),
             );
