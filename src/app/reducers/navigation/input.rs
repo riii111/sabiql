@@ -134,7 +134,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: ListTarget::CommandPalette,
             motion: ListMotion::Next,
         } => {
-            let max = palette_command_count() - 1;
+            let max = palette_command_count().saturating_sub(1);
             if state.ui.table_picker.selected() < max {
                 state
                     .ui
