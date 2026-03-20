@@ -30,9 +30,3 @@ paths:
 4. `keybindings/normal.rs` に display-only エントリ追加
 5. matrix テスト（`handlers/normal.rs`）に全 context のテストケース追加
 6. `resolve()` のユニットテスト（`nav_intent.rs`）に新 intent の全 context パターン追加
-
-## アンチパターン
-
-- handler で `result_navigation` / `inspector_navigation` を使って NavIntent 対象キーを分岐する
-- `map_nav_intent` 内で AppState を参照する
-- `resolve` に副作用を持たせる

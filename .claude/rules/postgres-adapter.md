@@ -5,32 +5,9 @@ paths:
 
 # Postgres Adapter 内部構造
 
-## ディレクトリ構成
+## 構造とデータフロー
 
-```
-src/infra/adapters/postgres/
-├── mod.rs              # PostgresAdapter構造体 + MetadataProvider / QueryExecutor impl
-│                       # （オーケストレーション: sql/ でSQL生成 → psql/ で実行・パース）
-├── psql/               # psql プロセス操作
-│   ├── mod.rs          #   re-exports
-│   ├── executor.rs     #   プロセス起動（I/O、副作用あり）
-│   └── parser/         #   stdout → ドメイン型への変換（純粋関数）
-│       ├── mod.rs      #     submodule 宣言
-│       ├── metadata.rs #     JSON → ドメイン型パース
-│       ├── command_tag.rs #  command tag 解析・集約 + ResolvedTags
-│       └── lexer.rs    #     SQL lexer helpers + split_sql_statements
-├── sql/                # SQL文字列生成（すべて純粋関数）
-│   ├── mod.rs          #   re-exports
-│   ├── query.rs        #   メタデータクエリ + プレビュー
-│   ├── ddl.rs          #   DDL生成（CREATE TABLE）
-│   └── dialect.rs      #   DML生成（UPDATE/DELETE）
-├── select_guard.rs     # SELECT安全チェック（純粋関数）
-└── dsn.rs              # DSN構築
-```
-
-## データフロー
-
-`mod.rs` がオーケストレーション → `sql/` でSQL生成 → `psql/executor.rs` で psql 実行 → `psql/parser/` で出力パース
+`mod.rs`（オーケストレーション）→ `sql/`（SQL 生成、純粋関数）→ `psql/executor.rs`（psql プロセス実行）→ `psql/parser/`（stdout → ドメイン型変換、純粋関数）
 
 ## 可視性ルール
 

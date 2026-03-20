@@ -24,27 +24,18 @@ tests/
     └── snapshots/   # 生成された .snap ファイル（insta が自動作成）
 ```
 
-## コマンド
-
-```bash
-mise run test                      # 全テスト実行
-mise exec -- cargo insta review    # 保留中のスナップショットを対話的にレビュー
-mise exec -- cargo insta accept    # 保留中のスナップショットをすべて承認
-mise exec -- cargo insta reject    # 保留中のスナップショットをすべて拒否
-```
-
 ## 新しいシナリオの追加方法
 
-1. 対象の画面カテゴリに対応する `tests/render_snapshots/<category>.rs` にテスト関数を追加
+1. `tests/render_snapshots/<category>.rs` にテスト関数を追加
 2. `mise run test` を実行（新しいスナップショットで失敗する）
-3. 生成された `.snap.new` ファイルをレビュー
+3. 生成された `.snap.new` をレビュー
 4. `mise exec -- cargo insta accept` を実行
 
 ## カバレッジ基準
 
 ### モードカバレッジ義務
 
-- すべての `InputMode` バリアントに最低1つのスナップショットテストが必要（`testing-obligations.md` 参照）
+- すべての `InputMode` バリアントに最低1つのスナップショットテストが必要
 
 ### スナップショットテストを追加すべきとき
 

@@ -6,31 +6,9 @@ paths:
 
 # Reducer 構造ルール
 
-## ディレクトリ構造
+## 構造
 
-```
-src/app/
-├── reducer.rs           # Dispatch chain
-└── reducers/
-    ├── mod.rs           # re-exports
-    ├── helpers.rs       # crate 全体の共有ロジック
-    ├── navigation.rs    # Focus/Pane, Inspector, Explorer, Filter, CommandLine, Paste
-    ├── connection/
-    │   ├── mod.rs       # Dispatcher のみ
-    │   ├── lifecycle.rs # TryConnect, SwitchConnection
-    │   ├── setup.rs     # フォーム入力 + Paste(ConnectionSetup) + Save/Cancel
-    │   ├── error.rs     # エラー表示・スクロール・コピー・リトライ
-    │   ├── selector.rs  # OpenConnectionSelector, 削除・編集
-    │   └── helpers.rs   # cache save/restore ヘルパー (pub(super))。状態リセットは BrowseSession::reset() を使う
-    ├── result/
-    │   ├── mod.rs       # Dispatcher のみ
-    │   ├── scroll.rs    # ResultScroll* + 共有ヘルパー
-    │   ├── selection.rs # ResultEnter/Exit*, ResultCell*, Delete staging, NextPage/PrevPage passthrough
-    │   ├── edit.rs      # ResultCellEdit*
-    │   ├── yank.rs      # ResultCellYank, ResultRowYank, DdlYank, CellCopied, CopyFailed
-    │   └── history.rs   # ResultHistory 操作
-    └── ...              # query.rs, modal.rs, metadata.rs, er.rs, sql_modal.rs
-```
+`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/` と `connection/` は sub-dispatcher（`mod.rs` は dispatch のみ）。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
 
 ## Dispatcher パターン
 
@@ -52,15 +30,7 @@ Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順
 
 ## navigation.rs の境界
 
-以下は navigation.rs に残す（小規模・自己完結のため）:
-- Focus / Pane 移動
-- Inspector スクロール・タブ切り替え
-- Explorer ナビゲーション
-- Filter / CommandLine
-- Paste
-- ConnectionList 操作
-
-Result 系ロジックを navigation.rs に追加してはならない。
+Focus/Pane, Inspector, Explorer, Filter, CommandLine, Paste, ConnectionList は navigation.rs に残す。Result 系・Connection 系ロジックはそれぞれ `result/`, `connection/` に配置すること。
 
 ## Result pane 表示切り替え時の不変条件
 
@@ -70,20 +40,17 @@ Result 系ロジックを navigation.rs に追加してはならない。
 
 ## Aggregate-first パターン
 
-Reducer は aggregate に遷移を委譲し、field の直接更新を最小限にする。
+Reducer は aggregate に遷移を委譲し、field の直接更新を最小限にする。理由: co-dependent field の個別更新は transient invalid state を生み、描画パニックの原因になる。
 
 ### 原則
 
-- **co-dependent invariant のある field は aggregate メソッドで更新すること**。直接代入は不変条件の破綻を招く。
+- **co-dependent invariant のある field は aggregate メソッドで更新すること**。
 - **cross-cutting な reset/restore は aggregate 側で所有する**。例: `BrowseSession::reset()`, `SqlModalContext::reset_prefetch()`.
 - UI display state / テキスト入力 / 意図的に public な field の直接操作は許容。
 
 ### 直接操作が許容される field
 
-- `ResultInteraction` public fields（scroll_offset, horizontal_offset 等）
-- `BrowseSession` public fields（dsn, active_connection_id 等）
-- `SqlModalContext`: `content`, `cursor`, `completion.*`, `completion_debounce`, `prefetch_queue`, `prefetching_tables`, `failed_prefetch_tables`（読み取り・queue の push/pop は許容。lifecycle 操作は aggregate API を使う）
-- `PaginationState` fields（current_page, reached_end）
+各 aggregate の public fields（`ResultInteraction` の scroll_offset 等）と UI display state は直接操作可。lifecycle 操作や co-dependent fields は aggregate API を使うこと。
 
 ## 新 Action 追加時
 

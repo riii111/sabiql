@@ -50,7 +50,7 @@ crossterm::KeyEvent
 1. `app/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
 2. Normal mode の場合、3つのパターンがある:
    - **predicate dispatch**: 1つのキーが1つの Action に対応する場合（例: `Ctrl+Q` → Quit）。`keybindings/mod.rs` に `is_*()` predicate fn を追加し、`handlers/normal.rs` で使う。キーは `combos` 配列で宣言する
-   - **context-dependent navigation (NavIntent)**: 1つのキーが NavigationContext で異なる Action に分岐する vim-like ナビゲーションキー（例: `j`/`k`/`g`/`G`/`H`/`M`/`L`/`h`/`l`）。`combos: &[]`（display-only）で `keybindings/normal.rs` に宣言し、`nav_intent.rs` に NavIntent variant + map + resolve arm を追加
+   - **context-dependent navigation (NavIntent)**: vim-like ナビゲーションキー。詳細は nav-intent-design.md
    - **non-navigation context keys**: Esc, Enter, y, d, s, e 等の mode 遷移や単発アクション。`handlers/normal.rs` で `Key::Char` を直接 match する
 3. ModeBindings mode の場合: `ModeRow` エントリを追加（ディスパッチは自動）
 4. バインドをフッターに表示する場合: `display_hint` を更新
@@ -58,8 +58,3 @@ crossterm::KeyEvent
 6. パレットに表示すべきアクションなら `app/palette.rs` に追加
 7. スナップショットテストを実行してフッター/ヘルプの描画を確認
 
-## アンチパターン
-
-- `keybindings/` エントリなしに `handlers/` にハードコードしたキーチェック
-- キーバインドの表示ラベルと一致しないフッターヒントテキスト
-- 対応するキーバインドエントリがないキーをヘルプオーバーレイに記載
