@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::domain::connection::ConnectionId;
 use crate::domain::query_history::QueryHistoryEntry;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum QueryHistoryError {
     #[error("IO error: {0}")]
     IoError(String),

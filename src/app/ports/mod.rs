@@ -25,7 +25,7 @@ pub use folder_opener::FolderOpener;
 pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
 pub use metadata::{MetadataError, MetadataProvider};
 pub use query_executor::QueryExecutor;
-pub use query_history::QueryHistoryStore;
+pub use query_history::{QueryHistoryError, QueryHistoryStore};
 pub use renderer::{RenderOutput, Renderer};
 pub use service_file::{ServiceFileError, ServiceFileReader};
 pub use sql_dialect::SqlDialect;

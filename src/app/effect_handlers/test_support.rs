@@ -88,7 +88,7 @@ impl crate::app::ports::QueryHistoryStore for NoopQueryHistoryStore {
         _project_name: &str,
         _connection_id: &crate::domain::ConnectionId,
         _entry: &crate::domain::query_history::QueryHistoryEntry,
-    ) -> Result<(), crate::app::ports::query_history::QueryHistoryError> {
+    ) -> Result<(), crate::app::ports::QueryHistoryError> {
         Ok(())
     }
 
@@ -98,7 +98,7 @@ impl crate::app::ports::QueryHistoryStore for NoopQueryHistoryStore {
         _connection_id: &crate::domain::ConnectionId,
     ) -> Result<
         Vec<crate::domain::query_history::QueryHistoryEntry>,
-        crate::app::ports::query_history::QueryHistoryError,
+        crate::app::ports::QueryHistoryError,
     > {
         Ok(Vec::new())
     }

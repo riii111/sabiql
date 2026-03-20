@@ -2,8 +2,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
-use crate::app::ports::QueryHistoryStore;
-use crate::app::ports::query_history::QueryHistoryError;
+use crate::app::ports::{QueryHistoryError, QueryHistoryStore};
 use crate::domain::connection::ConnectionId;
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::infra::config::cache::get_cache_dir;
