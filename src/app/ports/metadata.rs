@@ -25,25 +25,16 @@ pub trait MetadataProvider: Send + Sync {
     -> Result<Vec<TableSignature>, MetadataError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum MetadataError {
+    #[error("Connection failed: {0}")]
     ConnectionFailed(String),
+    #[error("Query failed: {0}")]
     QueryFailed(String),
+    #[error("Invalid JSON: {0}")]
     InvalidJson(String),
+    #[error("Command not found: {0}")]
     CommandNotFound(String),
+    #[error("Operation timed out")]
     Timeout,
 }
-
-impl std::fmt::Display for MetadataError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
-            Self::QueryFailed(msg) => write!(f, "Query failed: {}", msg),
-            Self::InvalidJson(msg) => write!(f, "Invalid JSON: {}", msg),
-            Self::CommandNotFound(cmd) => write!(f, "Command not found: {}", cmd),
-            Self::Timeout => write!(f, "Operation timed out"),
-        }
-    }
-}
-
-impl std::error::Error for MetadataError {}
