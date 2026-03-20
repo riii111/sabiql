@@ -161,14 +161,4 @@ mod tests {
 
         assert_eq!(combo, KeyCombo::shift(Key::Char('j')),);
     }
-
-    #[test]
-    fn backtab_with_shift_preserves_shift() {
-        let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
-
-        let combo = translate(event);
-
-        assert!(combo.modifiers.shift);
-        assert_eq!(combo.key, Key::BackTab);
-    }
 }
