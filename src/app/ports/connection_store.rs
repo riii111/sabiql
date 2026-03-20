@@ -2,38 +2,23 @@ use std::path::PathBuf;
 
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionStoreError {
+    #[error("Config version mismatch: found {found}, expected {expected}")]
     VersionMismatch { found: u32, expected: u32 },
+    #[error("Read error: {0}")]
     ReadError(String),
+    #[error("Write error: {0}")]
     WriteError(String),
+    #[error("Invalid format: {0}")]
     InvalidFormat(String),
+    #[error("IO error: {0}")]
     IoError(String),
+    #[error("Connection name already exists: {0}")]
     DuplicateName(String),
+    #[error("Connection not found: {0}")]
     NotFound(String),
 }
-
-impl std::fmt::Display for ConnectionStoreError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::VersionMismatch { found, expected } => {
-                write!(
-                    f,
-                    "Config version mismatch: found {}, expected {}",
-                    found, expected
-                )
-            }
-            Self::ReadError(msg) => write!(f, "Read error: {}", msg),
-            Self::WriteError(msg) => write!(f, "Write error: {}", msg),
-            Self::InvalidFormat(msg) => write!(f, "Invalid format: {}", msg),
-            Self::IoError(msg) => write!(f, "IO error: {}", msg),
-            Self::DuplicateName(name) => write!(f, "Connection name already exists: {}", name),
-            Self::NotFound(id) => write!(f, "Connection not found: {}", id),
-        }
-    }
-}
-
-impl std::error::Error for ConnectionStoreError {}
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ConnectionStore: Send + Sync {
