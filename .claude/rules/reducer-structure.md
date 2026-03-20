@@ -18,7 +18,7 @@ Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順
 
 ## サブモジュール間共有ヘルパー
 
-- サブモジュール間（result, connection, query）: `pub(super)` で公開
+- サブモジュール間: `pub(super)` で公開
 - crate 全体: `reducers/helpers.rs` に配置
 
 ## Passthrough パターン
