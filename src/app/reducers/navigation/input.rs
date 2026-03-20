@@ -1,6 +1,7 @@
-use crate::app::action::{Action, InputTarget};
+use crate::app::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
+use crate::app::palette::palette_command_count;
 use crate::app::state::AppState;
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -77,6 +78,79 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::CommandLine,
         } => {
             state.command_line_input.pop();
+            Some(vec![])
+        }
+
+        // -----------------------------------------------------------------
+        // Picker navigation (TablePicker, ErTablePicker, CommandPalette)
+        // -----------------------------------------------------------------
+        Action::ListSelect {
+            target: ListTarget::TablePicker,
+            motion: ListMotion::Next,
+        } => {
+            let max = state.filtered_tables().len().saturating_sub(1);
+            if state.ui.table_picker.selected() < max {
+                state
+                    .ui
+                    .table_picker
+                    .set_selection(state.ui.table_picker.selected() + 1);
+            }
+            Some(vec![])
+        }
+        Action::ListSelect {
+            target: ListTarget::TablePicker,
+            motion: ListMotion::Previous,
+        } => {
+            state
+                .ui
+                .table_picker
+                .set_selection(state.ui.table_picker.selected().saturating_sub(1));
+            Some(vec![])
+        }
+        Action::ListSelect {
+            target: ListTarget::ErTablePicker,
+            motion: ListMotion::Next,
+        } => {
+            let max = state.er_filtered_tables().len().saturating_sub(1);
+            if state.ui.er_picker.selected() < max {
+                state
+                    .ui
+                    .er_picker
+                    .set_selection(state.ui.er_picker.selected() + 1);
+            }
+            Some(vec![])
+        }
+        Action::ListSelect {
+            target: ListTarget::ErTablePicker,
+            motion: ListMotion::Previous,
+        } => {
+            state
+                .ui
+                .er_picker
+                .set_selection(state.ui.er_picker.selected().saturating_sub(1));
+            Some(vec![])
+        }
+        Action::ListSelect {
+            target: ListTarget::CommandPalette,
+            motion: ListMotion::Next,
+        } => {
+            let max = palette_command_count() - 1;
+            if state.ui.table_picker.selected() < max {
+                state
+                    .ui
+                    .table_picker
+                    .set_selection(state.ui.table_picker.selected() + 1);
+            }
+            Some(vec![])
+        }
+        Action::ListSelect {
+            target: ListTarget::CommandPalette,
+            motion: ListMotion::Previous,
+        } => {
+            state
+                .ui
+                .table_picker
+                .set_selection(state.ui.table_picker.selected().saturating_sub(1));
             Some(vec![])
         }
 
