@@ -153,10 +153,7 @@ mod tests {
         fn picker_keys(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
-            assert_eq!(
-                std::mem::discriminant(&result),
-                std::mem::discriminant(&expected)
-            );
+            assert_eq!(format!("{result:?}"), format!("{expected:?}"));
         }
 
         #[test]

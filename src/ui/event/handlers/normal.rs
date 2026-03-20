@@ -1675,9 +1675,9 @@ mod tests {
 
         fn assert_action(actual: Action, expected: Action, ctx: &str, key: &str) {
             assert_eq!(
-                std::mem::discriminant(&actual),
-                std::mem::discriminant(&expected),
-                "[{ctx} + {key}] expected {expected:?}, got {actual:?}"
+                format!("{actual:?}"),
+                format!("{expected:?}"),
+                "[{ctx} + {key}]"
             );
         }
 
