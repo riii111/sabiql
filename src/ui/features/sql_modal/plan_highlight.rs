@@ -159,7 +159,9 @@ mod tests {
         let line = highlight_plan_line(
             "    ->  Index Scan using idx on users  (cost=0.28..8.30 rows=1 width=64)",
         );
+
         let text = spans_text(&line);
+
         assert!(text.starts_with("    "));
         assert!(text.contains("Index Scan"));
     }
@@ -181,7 +183,9 @@ mod tests {
     fn deeply_nested_line_returns_space_indentation_without_guides() {
         let line =
             highlight_plan_line("            ->  Hash  (cost=100.00..100.00 rows=1000 width=32)");
+
         let text = spans_text(&line);
+
         assert!(text.starts_with("            "));
     }
 }
