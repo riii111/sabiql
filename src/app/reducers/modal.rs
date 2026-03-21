@@ -189,6 +189,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
+        Action::QueryHistoryAppendFailed(_) => Some(vec![]),
         Action::TextInput {
             target: InputTarget::QueryHistoryFilter,
             ch: c,
@@ -739,6 +740,24 @@ mod tests {
             .unwrap();
 
             assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
+        fn append_failed_does_not_set_error() {
+            let mut state = connected_state();
+            let now = Instant::now();
+
+            let effects = reduce_modal(
+                &mut state,
+                &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(
+                    "write error".to_string(),
+                )),
+                now,
+            )
+            .unwrap();
+
+            assert!(state.messages.last_error.is_none());
+            assert!(effects.is_empty());
         }
 
         #[test]

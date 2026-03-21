@@ -461,6 +461,7 @@ pub enum Action {
         Vec<crate::domain::query_history::QueryHistoryEntry>,
     ),
     QueryHistoryLoadFailed(QueryHistoryError),
+    QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
     // CSV Export

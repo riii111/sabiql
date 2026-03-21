@@ -66,7 +66,7 @@ fn save_query_history(
     let conn_id = connection_id.clone();
     tokio::spawn(async move {
         if let Err(e) = store.append(&project, &conn_id, &entry).await {
-            let _ = tx.send(Action::QueryHistoryLoadFailed(e)).await;
+            let _ = tx.send(Action::QueryHistoryAppendFailed(e)).await;
         }
     });
 }
