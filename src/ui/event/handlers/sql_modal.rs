@@ -39,6 +39,7 @@ pub fn handle_sql_modal_keys(
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
             return match combo.key {
+                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('b') if plain => Action::SaveExplainBaseline,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
@@ -58,6 +59,10 @@ pub fn handle_sql_modal_keys(
         // Compare tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Compare {
             return match combo.key {
+                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
+                Key::Char('l') if plain => Action::CompareSelectLeftSlot,
+                Key::Char('r') if plain => Action::CompareSelectRightSlot,
+                Key::Char('e') if plain => Action::CompareEditQuery,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainCompare,
                     direction: ScrollDirection::Down,
@@ -284,6 +289,9 @@ mod tests {
         ExplainCompareScrollUp,
         ExplainCompareScrollDown,
         SaveExplainBaseline,
+        CompareSelectLeftSlot,
+        CompareSelectRightSlot,
+        CompareEditQuery,
         None,
     }
 
@@ -385,6 +393,15 @@ mod tests {
             }
             Expected::SaveExplainBaseline => {
                 assert!(matches!(result, Action::SaveExplainBaseline))
+            }
+            Expected::CompareSelectLeftSlot => {
+                assert!(matches!(result, Action::CompareSelectLeftSlot))
+            }
+            Expected::CompareSelectRightSlot => {
+                assert!(matches!(result, Action::CompareSelectRightSlot))
+            }
+            Expected::CompareEditQuery => {
+                assert!(matches!(result, Action::CompareEditQuery))
             }
             Expected::None => assert!(matches!(result, Action::None)),
         }
@@ -884,7 +901,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_alt_e_is_noop() {
+    fn compare_tab_alt_e_requests_analyze() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Char('e')),
             false,
@@ -892,7 +909,43 @@ mod tests {
             SqlModalTab::Compare,
         );
 
-        assert_action(result, Expected::None);
+        assert_action(result, Expected::ExplainAnalyzeRequest);
+    }
+
+    #[test]
+    fn compare_tab_l_selects_left() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('l')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::CompareSelectLeftSlot);
+    }
+
+    #[test]
+    fn compare_tab_r_selects_right() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('r')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::CompareSelectRightSlot);
+    }
+
+    #[test]
+    fn compare_tab_e_edits_query() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('e')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::CompareEditQuery);
     }
 
     #[test]
@@ -938,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_tab_alt_e_is_noop() {
+    fn plan_tab_alt_e_requests_analyze() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Char('e')),
             false,
@@ -946,7 +999,7 @@ mod tests {
             SqlModalTab::Plan,
         );
 
-        assert_action(result, Expected::None);
+        assert_action(result, Expected::ExplainAnalyzeRequest);
     }
 
     #[rstest]

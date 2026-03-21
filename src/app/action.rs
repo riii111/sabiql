@@ -375,6 +375,9 @@ pub enum Action {
     },
     ExplainFailed(DbOperationError),
     SaveExplainBaseline,
+    CompareSelectLeftSlot,
+    CompareSelectRightSlot,
+    CompareEditQuery,
 
     // SQL Modal completion
     CompletionTrigger,

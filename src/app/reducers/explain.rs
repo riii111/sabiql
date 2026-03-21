@@ -181,6 +181,44 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
+        Action::CompareSelectLeftSlot => {
+            let history_len = state.explain.history.len();
+            if history_len == 0 {
+                return Some(vec![]);
+            }
+            state.explain.left_history_cursor =
+                (state.explain.left_history_cursor + 1) % history_len;
+            state.explain.select_left(state.explain.left_history_cursor);
+            state.explain.compare_scroll_offset = 0;
+            Some(vec![])
+        }
+
+        Action::CompareSelectRightSlot => {
+            let history_len = state.explain.history.len();
+            if history_len == 0 {
+                return Some(vec![]);
+            }
+            state.explain.right_history_cursor =
+                (state.explain.right_history_cursor + 1) % history_len;
+            state
+                .explain
+                .select_right(state.explain.right_history_cursor);
+            state.explain.compare_scroll_offset = 0;
+            Some(vec![])
+        }
+
+        Action::CompareEditQuery => {
+            if let Some(ref right) = state.explain.right {
+                let query = right.full_query.clone();
+                state.sql_modal.content = query;
+                state.sql_modal.cursor = state.sql_modal.content.len();
+                state.sql_modal.set_status(SqlModalStatus::Editing);
+                state.sql_modal.completion = Default::default();
+                state.sql_modal.active_tab = SqlModalTab::Sql;
+            }
+            Some(vec![])
+        }
+
         Action::SqlModalNextTab => {
             state.sql_modal.active_tab = match state.sql_modal.active_tab {
                 SqlModalTab::Sql => SqlModalTab::Plan,
