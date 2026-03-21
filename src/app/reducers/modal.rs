@@ -745,7 +745,6 @@ mod tests {
         #[test]
         fn append_failed_does_not_set_error() {
             let mut state = connected_state();
-            state.modal.set_mode(InputMode::QueryHistoryPicker);
             let now = Instant::now();
 
             reduce_modal(
