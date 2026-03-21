@@ -18,7 +18,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │ ⚠ HIGH RISK  DROP                            Enter blocked   │       │
-│       │ Confirm "users": > use▏                                      │       │
+│       │ Confirm "users": > use                                       │       │
 │       │                                                              │       │
 │       ╰ Esc: Back ───────────────────────────────────────────────────╯       │
 │                  ││                                                          │
