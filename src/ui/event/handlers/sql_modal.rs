@@ -24,12 +24,8 @@ pub fn handle_sql_modal_keys(
         let alt = combo.modifiers.alt;
         let plain = !ctrl && !alt;
 
-        // EXPLAIN keys (available in both tabs)
         if ctrl && combo.key == Key::Char('e') {
             return Action::ExplainRequest;
-        }
-        if alt && combo.key == Key::Char('e') {
-            return Action::ExplainAnalyzeRequest;
         }
 
         // Tab switching
@@ -77,6 +73,9 @@ pub fn handle_sql_modal_keys(
             };
         }
 
+        if alt && combo.key == Key::Char('e') {
+            return Action::ExplainAnalyzeRequest;
+        }
         if ctrl && combo.key == Key::Char('o') {
             return Action::OpenQueryHistoryPicker;
         }
@@ -784,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_alt_e_requests_explain_analyze() {
+    fn compare_tab_alt_e_is_noop() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Char('e')),
             false,
@@ -792,7 +791,7 @@ mod tests {
             SqlModalTab::Compare,
         );
 
-        assert_action(result, Expected::ExplainAnalyzeRequest);
+        assert_action(result, Expected::None);
     }
 
     #[test]
@@ -838,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_tab_alt_e_requests_explain_analyze() {
+    fn plan_tab_alt_e_is_noop() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Char('e')),
             false,
@@ -846,6 +845,6 @@ mod tests {
             SqlModalTab::Plan,
         );
 
-        assert_action(result, Expected::ExplainAnalyzeRequest);
+        assert_action(result, Expected::None);
     }
 }

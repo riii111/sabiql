@@ -80,10 +80,10 @@ impl SqlModal {
                 SqlModalStatus::Running => " Running\u{2026} ",
                 _ => match state.sql_modal.active_tab {
                     SqlModalTab::Plan => {
-                        " ^E: Explain \u{2502} \u{2325}E: Analyze \u{2502} b: Baseline \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
+                        " ^E: Explain \u{2502} b: Baseline \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
                     }
                     SqlModalTab::Compare => {
-                        " ^E: Explain \u{2502} \u{2325}E: Analyze \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
+                        " ^E: Explain \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
                     }
                     SqlModalTab::Sql => {
                         " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Switch \u{2502} Esc: Close "

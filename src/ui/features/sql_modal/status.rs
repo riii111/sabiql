@@ -21,12 +21,23 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let (badge_text, badge_style, status_text, status_style) = match state.sql_modal.status() {
-        SqlModalStatus::Normal => (
-            "[NORMAL]",
-            Style::default().fg(Theme::TEXT_DIM),
-            "Ready".to_string(),
-            Style::default().fg(Theme::TEXT_DIM),
-        ),
+        SqlModalStatus::Normal => {
+            if let Some(ref msg) = state.messages.last_success {
+                (
+                    "[NORMAL]",
+                    Style::default().fg(Theme::TEXT_DIM),
+                    format!("\u{2713} {}", msg),
+                    Style::default().fg(Theme::STATUS_SUCCESS),
+                )
+            } else {
+                (
+                    "[NORMAL]",
+                    Style::default().fg(Theme::TEXT_DIM),
+                    "Ready".to_string(),
+                    Style::default().fg(Theme::TEXT_DIM),
+                )
+            }
+        }
         SqlModalStatus::Editing => (
             "[INSERT]",
             Style::default()
