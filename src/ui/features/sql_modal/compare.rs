@@ -248,14 +248,11 @@ fn render_stacked_slot(
                 format!(" {}", source_badge(&s.source)),
                 active_style,
             )));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::raw(s.query_snippet.clone()),
-                Span::styled(
-                    format!("  ({})", mode_label(s.plan.is_analyze)),
-                    badge_style,
-                ),
-            ]));
+            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            lines.push(Line::from(Span::styled(
+                format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
+                badge_style,
+            )));
             for line in s.plan.raw_text.lines() {
                 lines.push(super::plan_highlight::highlight_plan_line(line));
             }
@@ -279,7 +276,10 @@ fn render_stacked_slot(
 
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
-        Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.plan.is_analyze)),
+        Some(s) => {
+            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs)
+        }
         None => " Run EXPLAIN again".to_string(),
     }
 }
