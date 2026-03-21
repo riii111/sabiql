@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_style_is_consistent_across_positions() {
+    fn all_positions_return_consistent_cursor_style() {
         let at_start = text_cursor_spans("abc", 0, 0, usize::MAX);
         let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX);
         let at_end = text_cursor_spans("abc", 3, 0, usize::MAX);

@@ -847,4 +847,38 @@ mod tests {
 
         assert_action(result, Expected::None);
     }
+
+    #[rstest]
+    #[case(SqlModalStatus::Success)]
+    #[case(SqlModalStatus::Error)]
+    fn plan_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
+        let baseline =
+            handle_sql_modal_keys(combo(Key::Char('b')), false, &status, SqlModalTab::Plan);
+        let scroll =
+            handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Plan);
+        let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
+
+        assert_action(baseline, Expected::SaveExplainBaseline);
+        assert_action(scroll, Expected::ExplainPlanScrollDown);
+        assert_action(close, Expected::CloseSqlModal);
+    }
+
+    #[rstest]
+    #[case(SqlModalStatus::Success)]
+    #[case(SqlModalStatus::Error)]
+    fn compare_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
+        let scroll =
+            handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Compare);
+        let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Compare);
+        let explain = handle_sql_modal_keys(
+            combo_ctrl(Key::Char('e')),
+            false,
+            &status,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(scroll, Expected::ExplainCompareScrollDown);
+        assert_action(close, Expected::CloseSqlModal);
+        assert_action(explain, Expected::ExplainRequest);
+    }
 }

@@ -59,14 +59,15 @@ impl ExplainContext {
         }
     }
 
+    // verdict + blank + reasons(3) + blank + separator + blank + column headers
+    const COMPARE_HEADER_OVERHEAD: usize = 8;
+
     pub fn compare_line_count(&self) -> usize {
         match (&self.baseline, &self.current_parsed) {
             (Some(b), Some(c)) => {
-                // header(verdict+separator) + max(baseline, current) raw lines
                 let b_lines = b.raw_text.lines().count();
                 let c_lines = c.raw_text.lines().count();
-                // Rough upper bound: verdict + blank + reasons + blank + separator + blank + headers + plan lines
-                8 + b_lines.max(c_lines)
+                Self::COMPARE_HEADER_OVERHEAD + b_lines.max(c_lines)
             }
             _ => 0,
         }
