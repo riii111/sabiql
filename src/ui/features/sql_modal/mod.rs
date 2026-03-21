@@ -1,4 +1,6 @@
+mod compare;
 mod explain;
+mod plan_highlight;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -74,12 +76,20 @@ impl SqlModal {
         } else {
             let hint = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
-                    " \u{2325}Enter: Run \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
+                    " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
-                _ => {
-                    " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close "
-                }
+                _ => match state.sql_modal.active_tab {
+                    SqlModalTab::Plan => {
+                        " ^E: Explain \u{2502} b: Pin \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
+                    }
+                    SqlModalTab::Compare => {
+                        " ^E: Explain \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
+                    }
+                    SqlModalTab::Sql => {
+                        " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Switch \u{2502} Esc: Close "
+                    }
+                },
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
@@ -127,8 +137,11 @@ impl SqlModal {
             {
                 completion::render_completion_popup(frame, area, main_area, state);
             }
-        } else {
+        } else if state.sql_modal.active_tab == SqlModalTab::Plan {
             explain::render(frame, main_area, state);
+            status::render_status(frame, status_area, state);
+        } else {
+            compare::render(frame, main_area, state);
             status::render_status(frame, status_area, state);
         }
     }
@@ -174,10 +187,12 @@ impl SqlModal {
             .add_modifier(Modifier::BOLD);
         let inactive_style = Style::default().fg(Theme::TAB_INACTIVE);
 
-        let (sql_style, plan_style) = if active_tab == SqlModalTab::Sql {
-            (active_style, inactive_style)
-        } else {
-            (inactive_style, active_style)
+        let style_for = |tab: SqlModalTab| {
+            if tab == active_tab {
+                active_style
+            } else {
+                inactive_style
+            }
         };
 
         Line::from(vec![
@@ -186,9 +201,11 @@ impl SqlModal {
                 "\u{2500}\u{2500} ",
                 Style::default().fg(Theme::MODAL_BORDER),
             ),
-            Span::styled("[SQL]", sql_style),
+            Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
-            Span::styled("[Plan]", plan_style),
+            Span::styled("[Plan]", style_for(SqlModalTab::Plan)),
+            Span::raw(" "),
+            Span::styled("[Compare]", style_for(SqlModalTab::Compare)),
             Span::raw(" "),
         ])
     }

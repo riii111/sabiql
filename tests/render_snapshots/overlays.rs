@@ -1,5 +1,7 @@
 use super::*;
 use harness::connected_state;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 #[test]
 fn sql_modal_with_completion() {
@@ -489,6 +491,7 @@ fn sql_modal_plan_tab_with_plan_text() {
         "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
         false,
         42,
+        "SELECT * FROM users WHERE id > 10",
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -506,6 +509,126 @@ fn sql_modal_plan_tab_with_error() {
     state
         .explain
         .set_error("ERROR: relation \"nonexistent\" does not exist".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_empty() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_right_only() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
+            .to_string(),
+        false,
+        40,
+        "SELECT * FROM users WHERE email_verified",
+    );
+    // Only right slot populated (first EXPLAIN), no left yet
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_with_verdict() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // First EXPLAIN with high cost
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
+            .to_string(),
+        false,
+        100,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    // Second EXPLAIN with low cost (Improved) — auto-advances first to left
+    state.explain.set_plan(
+        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
+            .to_string(),
+        false,
+        5,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_unavailable() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // First EXPLAIN with unparseable text
+    state.explain.set_plan(
+        "CREATE TABLE foo (id int)".to_string(),
+        false,
+        0,
+        "CREATE TABLE foo",
+    );
+    // Second EXPLAIN with also unparseable text — auto-advances first to left
+    state.explain.set_plan(
+        "ALTER TABLE foo ADD COLUMN bar text".to_string(),
+        false,
+        0,
+        "ALTER TABLE foo",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_narrow_stacked() {
+    let mut state = create_test_state();
+    let backend = TestBackend::new(50, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // First EXPLAIN
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
+            .to_string(),
+        false,
+        100,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    // Second EXPLAIN — auto-advances first to left
+    state.explain.set_plan(
+        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
+            .to_string(),
+        false,
+        5,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
 
     let output = render_to_string(&mut terminal, &mut state);
 

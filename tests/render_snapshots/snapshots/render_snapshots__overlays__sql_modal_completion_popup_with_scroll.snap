@@ -7,8 +7,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││(select a table)                                          │
 │  public.comments ││                                                          │
-│       ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────╮       │
-│       │ SELECT ▏                                                     │       │
+│       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
+│       │ SELECT                                                       │       │
 │       │        ┌───────────────────────────────────────────┐         │       │
 │       │        │ posts       table                         │         │       │
 │       │        │ comments    table                         │         │       │
@@ -20,7 +20,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │        │ COUNT       keyword                       │         │       │
 │       │ ───────└───────────────────────────────────────────┘──────── │       │
 │       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ ^L: Clear │ ^O: Hist │ Esc: Normal ────────────╯       │
+│       ╰ ⌥Enter: Run │ ^E: Explain │ ^L: Clear │ ^O: Hist │ Esc: Norma╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

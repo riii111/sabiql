@@ -154,6 +154,7 @@ pub mod idx {
         pub const ANALYZE: usize = 1;
         pub const SCROLL: usize = 2;
         pub const TAB: usize = 3;
+        pub const BASELINE: usize = 4;
     }
 
     pub mod sql_modal_confirming {
@@ -419,6 +420,7 @@ mod tests {
         assert!(idx::sql_modal_explain::ANALYZE < SQL_MODAL_EXPLAIN_KEYS.len());
         assert!(idx::sql_modal_explain::SCROLL < SQL_MODAL_EXPLAIN_KEYS.len());
         assert!(idx::sql_modal_explain::TAB < SQL_MODAL_EXPLAIN_KEYS.len());
+        assert!(idx::sql_modal_explain::BASELINE < SQL_MODAL_EXPLAIN_KEYS.len());
 
         // SQL_MODAL_CONFIRMING_KEYS
         assert!(idx::sql_modal_confirming::CONFIRM_EXECUTE < SQL_MODAL_CONFIRMING_KEYS.len());

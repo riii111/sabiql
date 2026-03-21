@@ -62,6 +62,7 @@ pub enum ScrollTarget {
     Help,
     ConnectionError,
     ExplainPlan,
+    ExplainCompare,
     Explorer,
 }
 
@@ -373,6 +374,7 @@ pub enum Action {
         execution_time_ms: u64,
     },
     ExplainFailed(DbOperationError),
+    SaveExplainBaseline,
 
     // SQL Modal completion
     CompletionTrigger,
