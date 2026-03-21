@@ -13,15 +13,29 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
 
+    let use_side_by_side = area.width >= 60;
+
     match (left, right) {
         (None, None) => {
-            render_placeholder(frame, area, "Run EXPLAIN (Ctrl+E) to start comparing.");
+            if use_side_by_side {
+                render_empty_side_by_side(frame, area);
+            } else {
+                render_placeholder(frame, area, "Run EXPLAIN (Ctrl+E) to start comparing.");
+            }
         }
         (None, Some(right_slot)) => {
-            render_single_slot(frame, area, "Right", right_slot, true);
+            if use_side_by_side {
+                render_partial_side_by_side(frame, area, None, Some(right_slot));
+            } else {
+                render_partial_stacked(frame, area, None, Some(right_slot));
+            }
         }
         (Some(left_slot), None) => {
-            render_single_slot(frame, area, "Left", left_slot, false);
+            if use_side_by_side {
+                render_partial_side_by_side(frame, area, Some(left_slot), None);
+            } else {
+                render_partial_stacked(frame, area, Some(left_slot), None);
+            }
         }
         (Some(left_slot), Some(right_slot)) => {
             render_full_comparison(
@@ -56,8 +70,159 @@ fn mode_label(is_analyze: bool) -> &'static str {
     if is_analyze { "ANALYZE" } else { "EXPLAIN" }
 }
 
-fn slot_header_line(label: &str, slot: &CompareSlot) -> Line<'static> {
-    Line::from(vec![
+fn render_empty_side_by_side(frame: &mut Frame, area: Rect) {
+    let half = (area.width.saturating_sub(3) / 2) as usize;
+    let separator = Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER));
+    let header_style = Style::default()
+        .fg(Theme::TEXT_DIM)
+        .add_modifier(Modifier::BOLD);
+    let placeholder_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
+
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(pad_or_truncate(" Left", half), header_style),
+            separator.clone(),
+            Span::styled(pad_or_truncate("Right", half), header_style),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                pad_or_truncate(" Run EXPLAIN (Ctrl+E)", half),
+                placeholder_style,
+            ),
+            separator.clone(),
+            Span::styled(pad_or_truncate("", half), placeholder_style),
+        ]),
+    ];
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        " Run EXPLAIN (Ctrl+E) to start comparing.",
+        placeholder_style,
+    )));
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+}
+
+fn render_partial_side_by_side(
+    frame: &mut Frame,
+    area: Rect,
+    left: Option<&CompareSlot>,
+    right: Option<&CompareSlot>,
+) {
+    let half = (area.width.saturating_sub(3) / 2) as usize;
+    let separator = Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER));
+    let active_header = Style::default()
+        .fg(Theme::TEXT_ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let empty_header = Style::default()
+        .fg(Theme::TEXT_DIM)
+        .add_modifier(Modifier::BOLD);
+    let detail_style = Style::default().fg(Theme::TEXT_MUTED);
+    let placeholder_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
+
+    let (left_header, right_header) = match (left, right) {
+        (Some(l), _) => (
+            Span::styled(
+                pad_or_truncate(&format!(" Left [{}]", source_badge(&l.source)), half),
+                active_header,
+            ),
+            Span::styled(pad_or_truncate("Right", half), empty_header),
+        ),
+        (_, Some(r)) => (
+            Span::styled(pad_or_truncate(" Left", half), empty_header),
+            Span::styled(
+                pad_or_truncate(&format!("Right [{}]", source_badge(&r.source)), half),
+                active_header,
+            ),
+        ),
+        _ => unreachable!(),
+    };
+
+    let mut lines = vec![Line::from(vec![
+        left_header,
+        separator.clone(),
+        right_header,
+    ])];
+
+    let left_detail = left
+        .map(|l| format!(" {}  ({})", l.query_snippet, mode_label(l.is_analyze)))
+        .unwrap_or_default();
+    let right_detail = right
+        .map(|r| format!("{}  ({})", r.query_snippet, mode_label(r.is_analyze)))
+        .unwrap_or_default();
+
+    let left_detail_style = if left.is_some() {
+        detail_style
+    } else {
+        placeholder_style
+    };
+    let right_detail_style = if right.is_some() {
+        detail_style
+    } else {
+        placeholder_style
+    };
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            pad_or_truncate(
+                if left.is_some() {
+                    &left_detail
+                } else {
+                    " Waiting..."
+                },
+                half,
+            ),
+            left_detail_style,
+        ),
+        separator.clone(),
+        Span::styled(
+            pad_or_truncate(
+                if right.is_some() {
+                    &right_detail
+                } else {
+                    "Waiting..."
+                },
+                half,
+            ),
+            right_detail_style,
+        ),
+    ]));
+
+    lines.push(Line::raw(""));
+
+    let slot = left.or(right).unwrap();
+    let plan_lines: Vec<&str> = slot.plan.raw_text.lines().collect();
+    let is_left = left.is_some();
+
+    for pl in &plan_lines {
+        if is_left {
+            lines.push(Line::from(vec![
+                Span::raw(pad_or_truncate(&format!(" {}", pl), half)),
+                separator.clone(),
+                Span::raw(pad_or_truncate("", half)),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::raw(pad_or_truncate("", half)),
+                separator.clone(),
+                Span::raw(pad_or_truncate(pl, half)),
+            ]));
+        }
+    }
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+}
+
+fn render_partial_stacked(
+    frame: &mut Frame,
+    area: Rect,
+    left: Option<&CompareSlot>,
+    right: Option<&CompareSlot>,
+) {
+    let mut lines: Vec<Line> = Vec::new();
+    let slot = left.or(right).unwrap();
+    let label = if left.is_some() { "Left" } else { "Right" };
+
+    lines.push(Line::from(vec![
         Span::styled(
             format!(" {} ", label),
             Style::default()
@@ -68,40 +233,22 @@ fn slot_header_line(label: &str, slot: &CompareSlot) -> Line<'static> {
             format!("[{}]", source_badge(&slot.source)),
             Style::default().fg(Theme::TEXT_MUTED),
         ),
-    ])
-}
-
-fn slot_detail_line(slot: &CompareSlot) -> Line<'static> {
-    Line::from(vec![
-        Span::styled("  ", Style::default()),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
         Span::raw(slot.query_snippet.clone()),
         Span::styled(
             format!("  ({})", mode_label(slot.is_analyze)),
             Style::default().fg(Theme::TEXT_MUTED),
         ),
-    ])
-}
-
-fn render_single_slot(
-    frame: &mut Frame,
-    area: Rect,
-    label: &str,
-    slot: &CompareSlot,
-    prompt_left: bool,
-) {
-    let mut lines: Vec<Line> = Vec::new();
-
-    lines.push(slot_header_line(label, slot));
-    lines.push(slot_detail_line(slot));
+    ]));
     lines.push(Line::raw(""));
-
-    let prompt = if prompt_left {
-        "Run EXPLAIN on another query to compare."
-    } else {
-        "Run EXPLAIN (Ctrl+E) to populate the right slot."
-    };
+    for line in slot.plan.raw_text.lines() {
+        lines.push(super::plan_highlight::highlight_plan_line(line));
+    }
+    lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
-        format!(" {}", prompt),
+        " Run EXPLAIN on another query to compare.",
         Style::default().fg(Theme::PLACEHOLDER_TEXT),
     )));
 
@@ -190,8 +337,8 @@ fn render_side_by_side(
     total_width: u16,
 ) {
     let half = (total_width.saturating_sub(3) / 2) as usize;
+    let separator = Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER));
 
-    // Slot headers
     lines.push(Line::from(vec![
         Span::styled(
             pad_or_truncate(&format!(" Left [{}]", source_badge(&left.source)), half),
@@ -199,7 +346,7 @@ fn render_side_by_side(
                 .fg(Theme::TEXT_ACCENT)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER)),
+        separator.clone(),
         Span::styled(
             pad_or_truncate(&format!("Right [{}]", source_badge(&right.source)), half),
             Style::default()
@@ -208,15 +355,18 @@ fn render_side_by_side(
         ),
     ]));
 
-    // Query snippet + mode
-    let left_detail = format!(" {} ({})", left.query_snippet, mode_label(left.is_analyze));
-    let right_detail = format!("{} ({})", right.query_snippet, mode_label(right.is_analyze));
+    let left_detail = format!(" {}  ({})", left.query_snippet, mode_label(left.is_analyze));
+    let right_detail = format!(
+        "{}  ({})",
+        right.query_snippet,
+        mode_label(right.is_analyze)
+    );
     lines.push(Line::from(vec![
         Span::styled(
             pad_or_truncate(&left_detail, half),
             Style::default().fg(Theme::TEXT_MUTED),
         ),
-        Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER)),
+        separator.clone(),
         Span::styled(
             pad_or_truncate(&right_detail, half),
             Style::default().fg(Theme::TEXT_MUTED),
@@ -225,7 +375,6 @@ fn render_side_by_side(
 
     lines.push(Line::raw(""));
 
-    // Plan text side-by-side
     let l_lines: Vec<&str> = left.plan.raw_text.lines().collect();
     let r_lines: Vec<&str> = right.plan.raw_text.lines().collect();
     let max_lines = l_lines.len().max(r_lines.len());
@@ -235,21 +384,40 @@ fn render_side_by_side(
         let r = r_lines.get(i).unwrap_or(&"");
         lines.push(Line::from(vec![
             Span::raw(pad_or_truncate(&format!(" {}", l), half)),
-            Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER)),
+            separator.clone(),
             Span::raw(pad_or_truncate(r, half)),
         ]));
     }
 }
 
 fn render_stacked(lines: &mut Vec<Line>, left: &CompareSlot, right: &CompareSlot) {
-    lines.push(slot_header_line("Left", left));
-    lines.push(slot_detail_line(left));
+    let header_style = Style::default()
+        .fg(Theme::TEXT_ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let badge_style = Style::default().fg(Theme::TEXT_MUTED);
+
+    lines.push(Line::from(vec![
+        Span::styled(" Left ", header_style),
+        Span::styled(format!("[{}]", source_badge(&left.source)), badge_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::raw(left.query_snippet.clone()),
+        Span::styled(format!("  ({})", mode_label(left.is_analyze)), badge_style),
+    ]));
     for line in left.plan.raw_text.lines() {
         lines.push(super::plan_highlight::highlight_plan_line(line));
     }
     lines.push(Line::raw(""));
-    lines.push(slot_header_line("Right", right));
-    lines.push(slot_detail_line(right));
+    lines.push(Line::from(vec![
+        Span::styled(" Right ", header_style),
+        Span::styled(format!("[{}]", source_badge(&right.source)), badge_style),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::raw(right.query_snippet.clone()),
+        Span::styled(format!("  ({})", mode_label(right.is_analyze)), badge_style),
+    ]));
     for line in right.plan.raw_text.lines() {
         lines.push(super::plan_highlight::highlight_plan_line(line));
     }

@@ -8,11 +8,11 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  Right [Latest]                                              │       │
-│       │   SELECT * FROM users WHERE email_verified  (EXPLAIN)        │       │
+│       │  Left                        │ Right [Latest]                │       │
+│       │  Waiting...                  │ SELECT * FROM users WHERE e…  │       │
 │       │                                                              │       │
-│       │  Run EXPLAIN on another query to compare.                    │       │
-│       │                                                              │       │
+│       │                              │ Seq Scan on users  (cost=0.…  │       │
+│       │                              │   Filter: email_verified      │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐
 │       │                                                              │       │
