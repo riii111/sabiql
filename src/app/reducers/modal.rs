@@ -747,7 +747,7 @@ mod tests {
             let mut state = connected_state();
             let now = Instant::now();
 
-            reduce_modal(
+            let effects = reduce_modal(
                 &mut state,
                 &Action::QueryHistoryAppendFailed(QueryHistoryError::IoError(
                     "write error".to_string(),
@@ -757,6 +757,7 @@ mod tests {
             .unwrap();
 
             assert!(state.messages.last_error.is_none());
+            assert!(effects.is_empty());
         }
 
         #[test]
