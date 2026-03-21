@@ -146,7 +146,15 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            state.explain.confirm_scroll_offset += 1;
+            // Header (~7 lines) + query lines
+            let content_lines = 7 + state.sql_modal.content.lines().count();
+            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
+            let max = content_lines.saturating_sub(modal_inner);
+            if state.explain.confirm_scroll_offset < max {
+                state.explain.confirm_scroll_offset += 1;
+            }
             Some(vec![])
         }
 
