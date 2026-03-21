@@ -282,9 +282,9 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if history_len == 0 {
                 return Some(vec![]);
             }
-            state.explain.left_history_cursor =
-                (state.explain.left_history_cursor + 1) % history_len;
-            state.explain.select_left(state.explain.left_history_cursor);
+            let new_cursor = (state.explain.left_history_cursor + 1) % history_len;
+            state.explain.left_history_cursor = new_cursor;
+            state.explain.select_left(new_cursor);
             state.explain.compare_scroll_offset = 0;
             Some(vec![])
         }
@@ -294,11 +294,9 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if history_len == 0 {
                 return Some(vec![]);
             }
-            state.explain.right_history_cursor =
-                (state.explain.right_history_cursor + 1) % history_len;
-            state
-                .explain
-                .select_right(state.explain.right_history_cursor);
+            let new_cursor = (state.explain.right_history_cursor + 1) % history_len;
+            state.explain.right_history_cursor = new_cursor;
+            state.explain.select_right(new_cursor);
             state.explain.compare_scroll_offset = 0;
             Some(vec![])
         }
@@ -307,7 +305,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if let Some(ref right) = state.explain.right {
                 let query = right.full_query.clone();
                 state.sql_modal.content = query;
-                state.sql_modal.cursor = state.sql_modal.content.len();
+                state.sql_modal.cursor = state.sql_modal.content.chars().count();
                 state.sql_modal.set_status(SqlModalStatus::Editing);
                 state.sql_modal.completion = Default::default();
                 state.sql_modal.active_tab = SqlModalTab::Sql;
@@ -650,6 +648,113 @@ mod tests {
                     .unwrap()
                     .contains("Read-only")
             );
+        }
+    }
+
+    mod analyze_confirm_cancel {
+        use super::*;
+
+        #[test]
+        fn confirm_from_confirming_analyze_emits_effect() {
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyze {
+                    query: "INSERT INTO users VALUES (1)".to_string(),
+                    is_dml: true,
+                });
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    is_analyze: true,
+                    ..
+                }
+            ));
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn confirm_from_high_with_matching_table_emits_effect() {
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let mut input = crate::app::text_input::TextInputState::default();
+            for c in "users".chars() {
+                input.insert_char(c);
+            }
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
+                    query: "DELETE FROM users".to_string(),
+                    input,
+                    target_name: Some("users".to_string()),
+                });
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn confirm_from_high_with_mismatch_is_noop() {
+            let mut state = sql_modal_state();
+            state.session.dsn = Some("dsn://test".to_string());
+            let mut input = crate::app::text_input::TextInputState::default();
+            input.insert_char('x');
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
+                    query: "DELETE FROM users".to_string(),
+                    input,
+                    target_name: Some("users".to_string()),
+                });
+
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+            ));
+        }
+
+        #[test]
+        fn cancel_resets_to_normal() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyze {
+                    query: "UPDATE users SET x=1".to_string(),
+                    is_dml: true,
+                });
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
+        }
+
+        #[test]
+        fn cancel_from_high_resets_to_normal() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
+                    query: "DROP TABLE users".to_string(),
+                    input: Default::default(),
+                    target_name: Some("users".to_string()),
+                });
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
+
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
         }
     }
 

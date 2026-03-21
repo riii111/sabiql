@@ -7,7 +7,7 @@ use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
 use crate::app::sql_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::state::AppState;
-use crate::app::statement_classifier;
+use crate::app::statement_classifier::{self, StatementKind};
 use crate::app::text_input::TextInputState;
 use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 
@@ -214,16 +214,21 @@ pub fn reduce_sql_modal(
                     state.sql_modal.mark_adhoc_error(reason);
                     Some(vec![])
                 }
-                MultiStatementDecision::Allow { risk, .. } => {
+                MultiStatementDecision::Allow {
+                    risk,
+                    ref statements,
+                } => {
                     let label = multi_statement_label(&query);
                     let decision = AdhocRiskDecision {
                         risk_level: risk.risk_level,
                         label,
                     };
-                    // In read-only mode, block non-Immediate (write) queries
-                    if state.session.read_only
-                        && !matches!(risk.confirmation, ConfirmationType::Immediate)
-                    {
+                    // In read-only mode, block if any statement is a write operation
+                    let has_write = statements.iter().any(|s| {
+                        let kind = statement_classifier::classify(s);
+                        !matches!(kind, StatementKind::Select | StatementKind::Transaction)
+                    });
+                    if state.session.read_only && has_write {
                         state.sql_modal.mark_adhoc_error(
                             "Read-only mode: write operations are disabled".to_string(),
                         );

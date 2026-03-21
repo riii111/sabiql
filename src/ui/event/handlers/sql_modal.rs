@@ -357,6 +357,8 @@ mod tests {
         CompareSelectLeftSlot,
         CompareSelectRightSlot,
         CompareEditQuery,
+        ExplainAnalyzeConfirm,
+        ExplainAnalyzeCancel,
         None,
     }
 
@@ -467,6 +469,12 @@ mod tests {
             }
             Expected::CompareEditQuery => {
                 assert!(matches!(result, Action::CompareEditQuery))
+            }
+            Expected::ExplainAnalyzeConfirm => {
+                assert!(matches!(result, Action::ExplainAnalyzeConfirm))
+            }
+            Expected::ExplainAnalyzeCancel => {
+                assert!(matches!(result, Action::ExplainAnalyzeCancel))
             }
             Expected::None => assert!(matches!(result, Action::None)),
         }
@@ -1011,6 +1019,52 @@ mod tests {
         );
 
         assert_action(result, Expected::CompareEditQuery);
+    }
+
+    #[test]
+    fn confirming_analyze_enter_confirms() {
+        let status = SqlModalStatus::ConfirmingAnalyze {
+            query: "INSERT INTO users VALUES (1)".to_string(),
+            is_dml: true,
+        };
+        let result = handle_sql_modal_keys(combo(Key::Enter), false, &status, SqlModalTab::Plan);
+
+        assert_action(result, Expected::ExplainAnalyzeConfirm);
+    }
+
+    #[test]
+    fn confirming_analyze_esc_cancels() {
+        let status = SqlModalStatus::ConfirmingAnalyze {
+            query: "INSERT INTO users VALUES (1)".to_string(),
+            is_dml: true,
+        };
+        let result = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
+
+        assert_action(result, Expected::ExplainAnalyzeCancel);
+    }
+
+    #[test]
+    fn confirming_analyze_other_keys_ignored() {
+        let status = SqlModalStatus::ConfirmingAnalyze {
+            query: "INSERT INTO users VALUES (1)".to_string(),
+            is_dml: true,
+        };
+        let result =
+            handle_sql_modal_keys(combo(Key::Char('x')), false, &status, SqlModalTab::Plan);
+
+        assert_action(result, Expected::None);
+    }
+
+    #[test]
+    fn editing_alt_e_requests_analyze() {
+        let result = handle_sql_modal_keys(
+            combo_alt(Key::Char('e')),
+            false,
+            &SqlModalStatus::Editing,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::ExplainAnalyzeRequest);
     }
 
     #[test]
