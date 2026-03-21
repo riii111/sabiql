@@ -80,6 +80,9 @@ impl SqlModal {
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
                 SqlModalStatus::ConfirmingAnalyze { .. } => " Enter: Confirm \u{2502} Esc: Cancel ",
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. } => {
+                    " Enter: Confirm \u{2502} Esc: Cancel "
+                }
                 _ => match state.sql_modal.active_tab {
                     SqlModalTab::Plan => {
                         " b: Set baseline \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "

@@ -153,6 +153,38 @@ pub fn handle_sql_modal_keys(
         };
     }
 
+    if matches!(status, SqlModalStatus::ConfirmingAnalyzeHigh { .. }) {
+        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
+        return match combo.key {
+            Key::Char(c) if plain => Action::TextInput {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ch: c,
+            },
+            Key::Backspace if plain => Action::TextBackspace {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            },
+            Key::Left => Action::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                direction: CursorMove::Left,
+            },
+            Key::Right => Action::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                direction: CursorMove::Right,
+            },
+            Key::Home => Action::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                direction: CursorMove::Home,
+            },
+            Key::End => Action::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                direction: CursorMove::End,
+            },
+            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
+            Key::Esc => Action::ExplainAnalyzeCancel,
+            _ => Action::None,
+        };
+    }
+
     if matches!(status, SqlModalStatus::ConfirmingAnalyze { .. }) {
         let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {

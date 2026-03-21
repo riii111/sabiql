@@ -103,6 +103,7 @@ pub enum CursorPosition {
 pub enum InputTarget {
     SqlModal,
     SqlModalHighRisk,
+    SqlModalAnalyzeHighRisk,
     ResultCellEdit,
     ConnectionSetup,
     CommandLine,

@@ -74,7 +74,7 @@ pub struct AdhocRiskDecision {
     pub label: &'static str,
 }
 
-pub fn evaluate_adhoc_risk(kind: &StatementKind) -> AdhocRiskDecision {
+pub fn evaluate_sql_risk(kind: &StatementKind) -> AdhocRiskDecision {
     let (risk_level, label) = match kind {
         StatementKind::Insert => (RiskLevel::Low, "INSERT"),
         StatementKind::Create => (RiskLevel::Low, "CREATE"),
@@ -190,7 +190,7 @@ mod tests {
             #[case] expected_risk: RiskLevel,
             #[case] expected_label: &str,
         ) {
-            let decision = evaluate_adhoc_risk(&kind);
+            let decision = evaluate_sql_risk(&kind);
             assert_eq!(decision.risk_level, expected_risk);
             assert_eq!(decision.label, expected_label);
         }

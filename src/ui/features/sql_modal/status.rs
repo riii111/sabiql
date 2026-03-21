@@ -106,6 +106,16 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
                 Style::default().fg(color).add_modifier(Modifier::BOLD),
             )
         }
+        SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
+            "[CONFIRM]",
+            Style::default()
+                .fg(Theme::STATUS_ERROR)
+                .add_modifier(Modifier::BOLD),
+            "Confirm ANALYZE".to_string(),
+            Style::default()
+                .fg(Theme::STATUS_ERROR)
+                .add_modifier(Modifier::BOLD),
+        ),
         SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
     };
 

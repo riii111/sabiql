@@ -47,6 +47,11 @@ pub enum SqlModalStatus {
         query: String,
         is_dml: bool,
     },
+    ConfirmingAnalyzeHigh {
+        query: String,
+        input: TextInputState,
+        target_name: Option<String>,
+    },
     Running,
     Success,
     Error,
@@ -158,6 +163,14 @@ impl SqlModalContext {
 
     pub fn confirming_high_input_mut(&mut self) -> Option<&mut TextInputState> {
         if let SqlModalStatus::ConfirmingHigh { ref mut input, .. } = self.status {
+            Some(input)
+        } else {
+            None
+        }
+    }
+
+    pub fn confirming_analyze_high_input_mut(&mut self) -> Option<&mut TextInputState> {
+        if let SqlModalStatus::ConfirmingAnalyzeHigh { ref mut input, .. } = self.status {
             Some(input)
         } else {
             None
