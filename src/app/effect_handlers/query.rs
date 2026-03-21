@@ -7,8 +7,9 @@ use tokio::sync::mpsc;
 
 use crate::app::action::Action;
 use crate::app::effect::Effect;
-use crate::app::ports::{QueryExecutor, QueryHistoryStore};
+use crate::app::ports::{MetadataError, QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
+use crate::domain::ConnectionId;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -47,7 +48,7 @@ fn save_query_history(
     query_history_store: &Arc<dyn QueryHistoryStore>,
     action_tx: &mpsc::Sender<Action>,
     project_name: &str,
-    connection_id: &crate::domain::ConnectionId,
+    connection_id: &ConnectionId,
     query: &str,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
@@ -163,9 +164,9 @@ pub(crate) async fn run(
                             } else {
                                 error_text
                             };
-                            tx.send(Action::ExplainFailed(
-                                crate::app::ports::MetadataError::QueryFailed(error_text),
-                            ))
+                            tx.send(Action::ExplainFailed(MetadataError::QueryFailed(
+                                error_text,
+                            )))
                             .await
                             .ok();
                         } else {
@@ -425,7 +426,7 @@ mod tests {
         use crate::app::ports::connection_store::MockConnectionStore;
         use crate::app::ports::metadata::MockMetadataProvider;
         use crate::app::ports::query_executor::MockQueryExecutor;
-        use crate::app::ports::{RenderOutput, Renderer};
+        use crate::app::ports::{MetadataError, RenderOutput, Renderer};
         use crate::app::services::AppServices;
         use crate::app::state::AppState;
         use color_eyre::eyre::Result;
@@ -501,9 +502,7 @@ mod tests {
                 .expect_execute_preview()
                 .once()
                 .returning(|_, _, _, _, _, _| {
-                    Err(crate::app::ports::MetadataError::QueryFailed(
-                        "syntax error".to_string(),
-                    ))
+                    Err(MetadataError::QueryFailed("syntax error".to_string()))
                 });
 
             let cache = TtlCache::new(300);

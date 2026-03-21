@@ -5,7 +5,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::{Action, SmartErRefreshError, SmartErRefreshResult};
+use crate::app::action::{
+    Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
+};
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
 use crate::app::er_task::spawn_er_diagram_task;
@@ -42,11 +44,9 @@ pub(crate) async fn run(
 
             if all_tables.is_empty() {
                 action_tx
-                    .send(Action::ErDiagramFailed(
-                        crate::app::action::ErDiagramError::NoData(
-                            "No table data loaded yet".to_string(),
-                        ),
-                    ))
+                    .send(Action::ErDiagramFailed(ErDiagramError::NoData(
+                        "No table data loaded yet".to_string(),
+                    )))
                     .await
                     .ok();
                 return Ok(());
@@ -62,11 +62,9 @@ pub(crate) async fn run(
 
             if tables.is_empty() {
                 action_tx
-                    .send(Action::ErDiagramFailed(
-                        crate::app::action::ErDiagramError::NoData(
-                            "Selected tables not found in cached data".to_string(),
-                        ),
-                    ))
+                    .send(Action::ErDiagramFailed(ErDiagramError::NoData(
+                        "Selected tables not found in cached data".to_string(),
+                    )))
                     .await
                     .ok();
                 return Ok(());
@@ -120,18 +118,16 @@ pub(crate) async fn run(
                     let tx = action_tx.clone();
                     tokio::task::spawn_blocking(move || {
                         if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
-                            tx.blocking_send(Action::ErLogWriteFailed(
-                                crate::app::action::ErLogError::Io(e.to_string()),
-                            ))
+                            tx.blocking_send(Action::ErLogWriteFailed(ErLogError::Io(
+                                e.to_string(),
+                            )))
                             .ok();
                         }
                     });
                 }
                 Err(e) => {
                     action_tx
-                        .send(Action::ErLogWriteFailed(
-                            crate::app::action::ErLogError::Config(e.to_string()),
-                        ))
+                        .send(Action::ErLogWriteFailed(ErLogError::Config(e.to_string())))
                         .await
                         .ok();
                 }
