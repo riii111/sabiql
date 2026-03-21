@@ -20,8 +20,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 "No baseline saved. Press b on [Plan] tab to save.",
             );
         }
-        (Some(_), None) => {
-            render_placeholder(frame, area, "Run EXPLAIN first (Ctrl+E), then compare.");
+        (Some(baseline), None) => {
+            render_pending_comparison(frame, area, baseline);
         }
         (Some(baseline), Some(current)) => {
             render_comparison(
@@ -169,7 +169,7 @@ fn render_stacked(
             .add_modifier(Modifier::BOLD),
     )));
     for line in baseline.raw_text.lines() {
-        lines.push(Line::raw(format!("  {}", line)));
+        lines.push(super::plan_highlight::highlight_plan_line(line));
     }
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
@@ -179,8 +179,71 @@ fn render_stacked(
             .add_modifier(Modifier::BOLD),
     )));
     for line in current.raw_text.lines() {
-        lines.push(Line::raw(format!("  {}", line)));
+        lines.push(super::plan_highlight::highlight_plan_line(line));
     }
+}
+
+fn render_pending_comparison(
+    frame: &mut Frame,
+    area: Rect,
+    baseline: &crate::domain::explain_plan::ExplainPlan,
+) {
+    let mut lines: Vec<Line> = Vec::new();
+    let use_side_by_side = area.width >= 60;
+
+    if use_side_by_side {
+        let half = (area.width.saturating_sub(3) / 2) as usize;
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                pad_or_truncate(" Baseline \u{2713}", half),
+                Style::default()
+                    .fg(Theme::STATUS_SUCCESS)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER)),
+            Span::styled(
+                pad_or_truncate("Current", half),
+                Style::default()
+                    .fg(Theme::TEXT_ACCENT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        let b_lines: Vec<&str> = baseline.raw_text.lines().collect();
+        let placeholder = "Run EXPLAIN (Ctrl+E)";
+
+        for (i, b) in b_lines.iter().enumerate() {
+            let right = if i == 0 { placeholder } else { "" };
+            let right_style = if i == 0 {
+                Style::default().fg(Theme::PLACEHOLDER_TEXT)
+            } else {
+                Style::default()
+            };
+            lines.push(Line::from(vec![
+                Span::raw(pad_or_truncate(&format!(" {}", b), half)),
+                Span::styled(" \u{2502} ", Style::default().fg(Theme::MODAL_BORDER)),
+                Span::styled(pad_or_truncate(right, half), right_style),
+            ]));
+        }
+    } else {
+        lines.push(Line::from(Span::styled(
+            " Baseline \u{2713}",
+            Style::default()
+                .fg(Theme::STATUS_SUCCESS)
+                .add_modifier(Modifier::BOLD),
+        )));
+        for line in baseline.raw_text.lines() {
+            lines.push(super::plan_highlight::highlight_plan_line(line));
+        }
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            " Current: Run EXPLAIN (Ctrl+E)",
+            Style::default().fg(Theme::PLACEHOLDER_TEXT),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
 fn pad_or_truncate(s: &str, width: usize) -> String {

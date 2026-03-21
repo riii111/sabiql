@@ -45,7 +45,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             plan_text
                 .lines()
                 .skip(scroll)
-                .map(|l| Line::raw(l.to_string())),
+                .map(super::plan_highlight::highlight_plan_line),
         );
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);

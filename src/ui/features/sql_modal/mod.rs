@@ -1,5 +1,6 @@
 mod compare;
 mod explain;
+mod plan_highlight;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};

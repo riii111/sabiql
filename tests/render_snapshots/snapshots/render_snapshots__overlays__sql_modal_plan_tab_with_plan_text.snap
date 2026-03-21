@@ -10,8 +10,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
 │       │ EXPLAIN (0.04s)                                              │       │
 │       │                                                              │       │
-│       │ Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)     │       │
-│       │   Filter: (id > 10)                                          │       │
+│       │  Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)    │       │
+│       │  │ Filter: (id > 10)                                         │       │
 │       │                                                              │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐

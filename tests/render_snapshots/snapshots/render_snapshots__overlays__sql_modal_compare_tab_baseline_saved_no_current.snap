@@ -8,9 +8,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  Run EXPLAIN first (Ctrl+E), then compare.                   │       │
-│       │                                                              │       │
-│       │                                                              │       │
+│       │  Baseline ✓                  │ Current                       │       │
+│       │  Seq Scan on users  (cost=0… │ Run EXPLAIN (Ctrl+E)          │       │
+│       │    Filter: email_verified    │                               │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │───────┘
