@@ -624,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_unbound_keys_return_none() {
+    fn normal_mode_unbound_keys_returns_none() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('a')),
             false,
@@ -787,7 +787,7 @@ mod tests {
     #[rstest]
     #[case(Key::Enter)]
     #[case(Key::Char('a'))]
-    fn plan_tab_unbound_keys_return_none(#[case] code: Key) {
+    fn plan_tab_unbound_keys_returns_none(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -860,7 +860,7 @@ mod tests {
     #[case(Key::Char('a'))]
     #[case(Key::Enter)]
     #[case(Key::Char('y'))]
-    fn compare_tab_unbound_keys_return_none(#[case] code: Key) {
+    fn compare_tab_unbound_keys_returns_none(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
