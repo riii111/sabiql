@@ -11,7 +11,6 @@ use crate::ui::theme::Theme;
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // Inline EXPLAIN ANALYZE confirmation banner
     if let SqlModalStatus::ConfirmingAnalyze { is_dml, .. } = state.sql_modal.status() {
-        let query_snippet = state.sql_modal.content.lines().next().unwrap_or("");
         let mut lines = Vec::new();
 
         let warn_style = Style::default()
@@ -53,13 +52,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
 
         lines.push(Line::raw(""));
-        lines.push(Line::from(vec![
-            Span::styled("  Query: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(
-                query_snippet.to_string(),
+
+        let full_query = &state.sql_modal.content;
+        for line in full_query.lines() {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", line),
                 Style::default().fg(Theme::TEXT_PRIMARY),
-            ),
-        ]));
+            )));
+        }
+
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             format!(" {}", sep),
