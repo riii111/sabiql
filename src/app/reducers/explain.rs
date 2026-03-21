@@ -667,6 +667,29 @@ mod tests {
         }
 
         #[test]
+        fn right_only_scroll_down_increments() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 1);
+        }
+
+        #[test]
         fn compare_scroll_down_clamps_without_content() {
             let mut state = sql_modal_state();
 
