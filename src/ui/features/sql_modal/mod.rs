@@ -1,3 +1,4 @@
+mod compare;
 mod explain;
 
 use ratatui::Frame;
@@ -127,8 +128,11 @@ impl SqlModal {
             {
                 completion::render_completion_popup(frame, area, main_area, state);
             }
-        } else {
+        } else if state.sql_modal.active_tab == SqlModalTab::Plan {
             explain::render(frame, main_area, state);
+            status::render_status(frame, status_area, state);
+        } else {
+            compare::render(frame, main_area, state);
             status::render_status(frame, status_area, state);
         }
     }
@@ -174,10 +178,12 @@ impl SqlModal {
             .add_modifier(Modifier::BOLD);
         let inactive_style = Style::default().fg(Theme::TAB_INACTIVE);
 
-        let (sql_style, plan_style) = if active_tab == SqlModalTab::Sql {
-            (active_style, inactive_style)
-        } else {
-            (inactive_style, active_style)
+        let style_for = |tab: SqlModalTab| {
+            if tab == active_tab {
+                active_style
+            } else {
+                inactive_style
+            }
         };
 
         Line::from(vec![
@@ -186,9 +192,11 @@ impl SqlModal {
                 "\u{2500}\u{2500} ",
                 Style::default().fg(Theme::MODAL_BORDER),
             ),
-            Span::styled("[SQL]", sql_style),
+            Span::styled("[SQL]", style_for(SqlModalTab::Sql)),
             Span::raw(" "),
-            Span::styled("[Plan]", plan_style),
+            Span::styled("[Plan]", style_for(SqlModalTab::Plan)),
+            Span::raw(" "),
+            Span::styled("[Compare]", style_for(SqlModalTab::Compare)),
             Span::raw(" "),
         ])
     }
