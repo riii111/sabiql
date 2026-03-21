@@ -76,6 +76,7 @@ fn render_verdict_section(
         ),
     };
 
+    lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
         format!(" {}", verdict_label),
         verdict_style,
@@ -85,7 +86,7 @@ fn render_verdict_section(
     for reason in &result.reasons {
         lines.push(Line::from(vec![
             Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::raw(reason.clone()),
+            Span::styled(reason.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
         ]));
     }
     if !result.reasons.is_empty() {
@@ -119,12 +120,12 @@ fn render_slot_columns(
         .add_modifier(Modifier::BOLD);
 
     let left_label = match left {
-        Some(s) => format!(" Left [{}]", source_badge(&s.source)),
-        None => " Left".to_string(),
+        Some(s) => format!(" {}", source_badge(&s.source)),
+        None => " \u{2014}".to_string(),
     };
     let right_label = match right {
-        Some(s) => format!("Right [{}]", source_badge(&s.source)),
-        None => "Right".to_string(),
+        Some(s) => source_badge(&s.source).to_string(),
+        None => "\u{2014}".to_string(),
     };
 
     lines.push(Line::from(vec![
@@ -173,7 +174,21 @@ fn render_slot_columns(
         ),
     ]));
 
-    lines.push(Line::raw(""));
+    // Separator between query detail and plan body
+    let thin_sep = "\u{2500}".repeat(half.saturating_sub(1));
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!(" {}", thin_sep),
+            Style::default().fg(Theme::TEXT_DIM),
+        ),
+        sep.clone(),
+        Span::styled(
+            format!(" {}", thin_sep),
+            Style::default().fg(Theme::TEXT_DIM),
+        ),
+    ]));
+
+    let dim_style = Style::default().fg(Theme::TEXT_DIM);
 
     let l_plan: Vec<&str> = left
         .map(|s| s.plan.raw_text.lines().collect())
@@ -187,13 +202,13 @@ fn render_slot_columns(
         let l = l_plan.get(i).unwrap_or(&"");
         let r = r_plan.get(i).unwrap_or(&"");
 
-        let mut row_spans = vec![Span::raw(" ".to_string())];
+        let mut row_spans = vec![Span::styled(" ".to_string(), dim_style)];
         row_spans.extend(super::plan_highlight::highlight_truncated(
             l,
             half.saturating_sub(1),
         ));
         row_spans.push(sep.clone());
-        row_spans.push(Span::raw(" ".to_string()));
+        row_spans.push(Span::styled(" ".to_string(), dim_style));
         row_spans.extend(super::plan_highlight::highlight_truncated(
             r,
             half.saturating_sub(1),
@@ -217,21 +232,13 @@ fn render_slot_stacked(
         .add_modifier(Modifier::BOLD);
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
-    render_stacked_slot(lines, "Left", left, header_style, empty_style, badge_style);
+    render_stacked_slot(lines, left, header_style, empty_style, badge_style);
     lines.push(Line::raw(""));
-    render_stacked_slot(
-        lines,
-        "Right",
-        right,
-        header_style,
-        empty_style,
-        badge_style,
-    );
+    render_stacked_slot(lines, right, header_style, empty_style, badge_style);
 }
 
 fn render_stacked_slot(
     lines: &mut Vec<Line>,
-    label: &str,
     slot: Option<&CompareSlot>,
     active_style: Style,
     empty_style: Style,
@@ -239,10 +246,10 @@ fn render_stacked_slot(
 ) {
     match slot {
         Some(s) => {
-            lines.push(Line::from(vec![
-                Span::styled(format!(" {} ", label), active_style),
-                Span::styled(format!("[{}]", source_badge(&s.source)), badge_style),
-            ]));
+            lines.push(Line::from(Span::styled(
+                format!(" {}", source_badge(&s.source)),
+                active_style,
+            )));
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::raw(s.query_snippet.clone()),
@@ -256,7 +263,7 @@ fn render_stacked_slot(
             }
         }
         None => {
-            lines.push(Line::from(Span::styled(format!(" {}", label), empty_style)));
+            lines.push(Line::from(Span::styled(" \u{2014}", empty_style)));
             lines.push(Line::from(Span::styled(
                 "  Waiting...",
                 Style::default().fg(Theme::PLACEHOLDER_TEXT),

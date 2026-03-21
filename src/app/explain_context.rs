@@ -144,10 +144,10 @@ impl ExplainContext {
         }
     }
 
-    // verdict + blank + reasons(3) + blank + separator + blank + slot headers + plan lines
-    const COMPARE_HEADER_OVERHEAD_FULL: usize = 10;
-    // slot header + query detail + blank + plan lines (no verdict section)
-    const COMPARE_HEADER_OVERHEAD_PARTIAL: usize = 4;
+    // blank + verdict + blank + reasons(3) + blank + separator + blank + slot header + detail + thin_sep
+    const COMPARE_HEADER_OVERHEAD_FULL: usize = 12;
+    // slot header + query detail + thin_sep + plan lines (no verdict section)
+    const COMPARE_HEADER_OVERHEAD_PARTIAL: usize = 3;
 
     pub fn compare_line_count(&self) -> usize {
         match (&self.left, &self.right) {
