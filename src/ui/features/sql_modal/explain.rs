@@ -14,39 +14,57 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let query_snippet = state.sql_modal.content.lines().next().unwrap_or("");
         let mut lines = Vec::new();
 
-        let (banner_text, banner_style) = if *is_dml {
-            (
-                "\u{26a0} DML detected \u{2014} side effects will occur.",
-                Style::default()
-                    .fg(Theme::STATUS_ERROR)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            (
-                "EXPLAIN ANALYZE executes the query to collect actual statistics.",
-                Style::default()
-                    .fg(Theme::TEXT_ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            )
-        };
+        let warn_style = Style::default()
+            .fg(Theme::STATUS_ERROR)
+            .add_modifier(Modifier::BOLD);
 
+        lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            format!(" {}", banner_text),
-            banner_style,
+            " \u{26a0} EXPLAIN ANALYZE",
+            warn_style,
         )));
         lines.push(Line::raw(""));
+
+        let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
+        lines.push(Line::styled(
+            format!(" {}", sep),
+            Style::default().fg(Theme::MODAL_BORDER),
+        ));
+        lines.push(Line::raw(""));
+
+        if *is_dml {
+            lines.push(Line::from(Span::styled(
+                " This is a DML statement. EXPLAIN ANALYZE will execute it",
+                warn_style,
+            )));
+            lines.push(Line::from(Span::styled(
+                " and side effects (INSERT/UPDATE/DELETE) will occur.",
+                warn_style,
+            )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                " EXPLAIN ANALYZE will execute the query to collect actual",
+                Style::default().fg(Theme::TEXT_PRIMARY),
+            )));
+            lines.push(Line::from(Span::styled(
+                " runtime statistics.",
+                Style::default().fg(Theme::TEXT_PRIMARY),
+            )));
+        }
+
+        lines.push(Line::raw(""));
         lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
+            Span::styled("  Query: ", Style::default().fg(Theme::TEXT_MUTED)),
             Span::styled(
                 query_snippet.to_string(),
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(Theme::TEXT_PRIMARY),
             ),
         ]));
         lines.push(Line::raw(""));
-        lines.push(Line::from(Span::styled(
-            " Enter: confirm \u{2502} Esc: cancel",
-            Style::default().fg(Theme::TEXT_DIM),
-        )));
+        lines.push(Line::styled(
+            format!(" {}", sep),
+            Style::default().fg(Theme::MODAL_BORDER),
+        ));
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
         return;

@@ -123,11 +123,11 @@ fn render_slot_columns(
 
     let left_label = match left {
         Some(s) => format!(" {}", source_badge(&s.source)),
-        None => " \u{2014}".to_string(),
+        None => String::new(),
     };
     let right_label = match right {
         Some(s) => source_badge(&s.source).to_string(),
-        None => "\u{2014}".to_string(),
+        None => String::new(),
     };
 
     lines.push(Line::from(vec![
@@ -229,21 +229,17 @@ fn render_slot_stacked(
     let header_style = Style::default()
         .fg(Theme::TEXT_ACCENT)
         .add_modifier(Modifier::BOLD);
-    let empty_style = Style::default()
-        .fg(Theme::TEXT_DIM)
-        .add_modifier(Modifier::BOLD);
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
-    render_stacked_slot(lines, left, header_style, empty_style, badge_style);
+    render_stacked_slot(lines, left, header_style, badge_style);
     lines.push(Line::raw(""));
-    render_stacked_slot(lines, right, header_style, empty_style, badge_style);
+    render_stacked_slot(lines, right, header_style, badge_style);
 }
 
 fn render_stacked_slot(
     lines: &mut Vec<Line>,
     slot: Option<&CompareSlot>,
     active_style: Style,
-    empty_style: Style,
     badge_style: Style,
 ) {
     match slot {
@@ -265,9 +261,8 @@ fn render_stacked_slot(
             }
         }
         None => {
-            lines.push(Line::from(Span::styled(" \u{2014}", empty_style)));
             lines.push(Line::from(Span::styled(
-                "  Waiting...",
+                "  Run EXPLAIN again to compare",
                 Style::default().fg(Theme::PLACEHOLDER_TEXT),
             )));
         }
@@ -279,7 +274,7 @@ fn render_stacked_slot(
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
         Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.plan.is_analyze)),
-        None => " Waiting...".to_string(),
+        None => String::new(),
     }
 }
 
