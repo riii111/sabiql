@@ -32,7 +32,7 @@ pub fn handle_sql_modal_keys(
         if plain && combo.key == Key::Tab {
             return Action::SqlModalNextTab;
         }
-        if combo.key == Key::BackTab {
+        if !combo.modifiers.ctrl && !combo.modifiers.alt && combo.key == Key::BackTab {
             return Action::SqlModalPrevTab;
         }
 

@@ -11,8 +11,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │  Left                        │ Right [Latest]                │       │
 │       │  Waiting...                  │  SELECT * FROM users WHERE …  │       │
 │       │                                                              │       │
-│       │                              │ Seq Scan on users  (cost=0.…  │       │
-│       │                              │   Filter: email_verified      │       │
+│       │                              │  Seq Scan on users  (cost=0…  │       │
+│       │                              │    Filter: email_verified     │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐
 │       │                                                              │       │

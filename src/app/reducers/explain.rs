@@ -141,7 +141,8 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max = state.explain.line_count().saturating_sub(1);
+            let modal_inner = (state.ui.terminal_height as usize * 60 / 100).saturating_sub(5);
+            let max = state.explain.line_count().saturating_sub(modal_inner);
             if state.explain.scroll_offset < max {
                 state.explain.scroll_offset += 1;
             }
@@ -544,9 +545,12 @@ mod tests {
         #[test]
         fn scroll_down_increments() {
             let mut state = sql_modal_state();
-            state
-                .explain
-                .set_plan("line1\nline2\nline3".to_string(), false, 0, "Q1");
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("line{}", i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
 
             reduce_explain(
                 &mut state,
@@ -564,10 +568,15 @@ mod tests {
         #[test]
         fn scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state
-                .explain
-                .set_plan("line1\nline2".to_string(), false, 0, "Q1");
-            state.explain.scroll_offset = 1;
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("line{}", i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
+            let modal_inner = (state.ui.terminal_height as usize * 60 / 100).saturating_sub(5);
+            let max = state.explain.line_count().saturating_sub(modal_inner);
+            state.explain.scroll_offset = max;
 
             reduce_explain(
                 &mut state,
@@ -579,7 +588,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 1);
+            assert_eq!(state.explain.scroll_offset, max);
         }
 
         #[test]

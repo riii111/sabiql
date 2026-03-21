@@ -187,9 +187,17 @@ fn render_slot_columns(
         let l = l_plan.get(i).unwrap_or(&"");
         let r = r_plan.get(i).unwrap_or(&"");
 
-        let mut row_spans = super::plan_highlight::highlight_truncated(&format!(" {}", l), half);
+        let mut row_spans = vec![Span::raw(" ".to_string())];
+        row_spans.extend(super::plan_highlight::highlight_truncated(
+            l,
+            half.saturating_sub(1),
+        ));
         row_spans.push(sep.clone());
-        row_spans.extend(super::plan_highlight::highlight_truncated(r, half));
+        row_spans.push(Span::raw(" ".to_string()));
+        row_spans.extend(super::plan_highlight::highlight_truncated(
+            r,
+            half.saturating_sub(1),
+        ));
         lines.push(Line::from(row_spans));
     }
 }
@@ -238,7 +246,10 @@ fn render_stacked_slot(
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::raw(s.query_snippet.clone()),
-                Span::styled(format!("  ({})", mode_label(s.is_analyze)), badge_style),
+                Span::styled(
+                    format!("  ({})", mode_label(s.plan.is_analyze)),
+                    badge_style,
+                ),
             ]));
             for line in s.plan.raw_text.lines() {
                 lines.push(super::plan_highlight::highlight_plan_line(line));
@@ -258,7 +269,7 @@ fn render_stacked_slot(
 
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
-        Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.is_analyze)),
+        Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.plan.is_analyze)),
         None => " Waiting...".to_string(),
     }
 }

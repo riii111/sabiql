@@ -28,19 +28,19 @@ const MAX_REASONS: usize = 3;
 
 fn parse_cost_fragment(line: &str) -> Option<(f64, u64)> {
     let cost_start = line.find("(cost=")?;
-    let after_cost = &line[cost_start + 6..];
+    let after_cost = line.get(cost_start + 6..)?;
     let dots = after_cost.find("..")?;
-    let after_dots = &after_cost[dots + 2..];
+    let after_dots = after_cost.get(dots + 2..)?;
 
     let cost_end = after_dots.find(' ')?;
-    let total_cost: f64 = after_dots[..cost_end].parse().ok()?;
+    let total_cost: f64 = after_dots.get(..cost_end)?.parse().ok()?;
 
     let rows_marker = after_dots.find("rows=")?;
-    let after_rows = &after_dots[rows_marker + 5..];
+    let after_rows = after_dots.get(rows_marker + 5..)?;
     let rows_end = after_rows
         .find(|c: char| !c.is_ascii_digit())
         .unwrap_or(after_rows.len());
-    let rows: u64 = after_rows[..rows_end].parse().ok()?;
+    let rows: u64 = after_rows.get(..rows_end)?.parse().ok()?;
 
     Some((total_cost, rows))
 }
@@ -117,16 +117,18 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         }
     };
 
-    if baseline.top_node_type != current.top_node_type {
-        let b_node = baseline.top_node_type.as_deref().unwrap_or("(unknown)");
-        let c_node = current.top_node_type.as_deref().unwrap_or("(unknown)");
-        reasons.push(format!("{} \u{2192} {}", b_node, c_node));
-    }
+    if verdict != ComparisonVerdict::Unavailable {
+        if baseline.top_node_type != current.top_node_type {
+            let b_node = baseline.top_node_type.as_deref().unwrap_or("(unknown)");
+            let c_node = current.top_node_type.as_deref().unwrap_or("(unknown)");
+            reasons.push(format!("{} \u{2192} {}", b_node, c_node));
+        }
 
-    if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
-        && b_rows != c_rows
-    {
-        reasons.push(format!("Rows: {} \u{2192} {}", b_rows, c_rows));
+        if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
+            && b_rows != c_rows
+        {
+            reasons.push(format!("Rows: {} \u{2192} {}", b_rows, c_rows));
+        }
     }
 
     reasons.truncate(MAX_REASONS);

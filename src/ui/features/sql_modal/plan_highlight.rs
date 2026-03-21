@@ -42,6 +42,7 @@ const NODE_TYPES: &[&str] = &[
 
 pub fn highlight_plan_line(raw: &str) -> Line<'static> {
     let trimmed = raw.trim_start();
+    // ASCII-only: PostgreSQL EXPLAIN output uses space indentation, never multibyte
     let leading_spaces = raw.len() - trimmed.len();
     let indent_level = leading_spaces / 2;
     let content = trimmed.trim_start_matches("->").trim_start();
@@ -90,7 +91,7 @@ pub fn highlight_plan_line(raw: &str) -> Line<'static> {
     Line::from(spans)
 }
 
-pub fn highlight_truncated(raw: &str, width: usize) -> Vec<Span<'static>> {
+pub(super) fn highlight_truncated(raw: &str, width: usize) -> Vec<Span<'static>> {
     let truncated = super::compare::pad_or_truncate(raw, width);
     let trimmed = truncated.trim_start();
     let content = trimmed.trim_start_matches("->").trim_start();

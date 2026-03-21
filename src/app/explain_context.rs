@@ -14,8 +14,6 @@ pub enum SlotSource {
 pub struct CompareSlot {
     pub plan: ExplainPlan,
     pub query_snippet: String,
-    pub is_analyze: bool,
-    pub execution_time_ms: u64,
     pub source: SlotSource,
 }
 
@@ -51,8 +49,6 @@ impl ExplainContext {
         let new_slot = CompareSlot {
             plan: parsed,
             query_snippet: snippet,
-            is_analyze,
-            execution_time_ms,
             source: SlotSource::AutoLatest,
         };
 
@@ -63,10 +59,9 @@ impl ExplainContext {
                 s
             });
         }
-        self.right = Some(new_slot.clone());
-
         self.history.push_front(new_slot);
         self.history.truncate(MAX_EXPLAIN_HISTORY);
+        self.right = self.history.front().cloned();
 
         self.plan_text = Some(text);
         self.error = None;
