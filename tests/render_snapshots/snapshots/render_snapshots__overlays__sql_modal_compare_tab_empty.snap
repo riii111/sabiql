@@ -9,9 +9,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
 │       │  Left                        │ Right                         │       │
-│       │  Run EXPLAIN (Ctrl+E)        │                               │       │
+│       │  Waiting...                  │  Waiting...                   │       │
 │       │                                                              │       │
-│       │  Run EXPLAIN (Ctrl+E) to start comparing.                    │       │
+│       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐
