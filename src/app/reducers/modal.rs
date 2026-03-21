@@ -182,8 +182,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.query_history_picker.scroll_offset = 0;
             Some(vec![])
         }
-        Action::QueryHistoryLoadFailed(msg) => {
-            state.messages.set_error_at(msg.clone(), now);
+        Action::QueryHistoryLoadFailed(e) => {
+            if state.modal.active_mode() != InputMode::QueryHistoryPicker {
+                return Some(vec![]);
+            }
+            state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
         Action::TextInput {
@@ -577,6 +580,7 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
+        use crate::app::ports::query_history::QueryHistoryError;
         use crate::domain::ConnectionId;
         use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
@@ -701,17 +705,40 @@ mod tests {
         #[test]
         fn load_failed_sets_error_with_expiry() {
             let mut state = connected_state();
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
             let now = Instant::now();
 
             reduce_modal(
                 &mut state,
-                &Action::QueryHistoryLoadFailed("disk error".to_string()),
+                &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
+                    "disk error".to_string(),
+                )),
                 now,
             )
             .unwrap();
 
-            assert_eq!(state.messages.last_error.as_deref(), Some("disk error"));
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("IO error: disk error")
+            );
             assert!(state.messages.expires_at.is_some());
+        }
+
+        #[test]
+        fn load_failed_ignored_when_picker_not_active() {
+            let mut state = connected_state();
+            let now = Instant::now();
+
+            reduce_modal(
+                &mut state,
+                &Action::QueryHistoryLoadFailed(QueryHistoryError::IoError(
+                    "stale error".to_string(),
+                )),
+                now,
+            )
+            .unwrap();
+
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

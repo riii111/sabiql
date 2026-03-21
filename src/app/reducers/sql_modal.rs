@@ -385,7 +385,9 @@ pub fn reduce_sql_modal(
             Some(vec![Effect::CopyToClipboard {
                 content: state.sql_modal.content.clone(),
                 on_success: Some(Action::SqlModalYankSuccess),
-                on_failure: Some(Action::CopyFailed("Clipboard unavailable".into())),
+                on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                    message: "Clipboard unavailable".into(),
+                })),
             }])
         }
         Action::SqlModalYankSuccess => {
