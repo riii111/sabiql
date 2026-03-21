@@ -556,7 +556,7 @@ mod tests {
 
     mod smart_er_refresh_failed {
         use super::*;
-        use crate::app::ports::MetadataError;
+        use crate::app::ports::DbOperationError;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
@@ -586,7 +586,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: MetadataError::Timeout,
+                    error: DbOperationError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -619,7 +619,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: MetadataError::Timeout,
+                    error: DbOperationError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -650,7 +650,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 3,
-                    error: MetadataError::Timeout,
+                    error: DbOperationError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -670,7 +670,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: MetadataError::Timeout,
+                    error: DbOperationError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -693,7 +693,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: MetadataError::QueryFailed("sig fetch failed".to_string()),
+                    error: DbOperationError::QueryFailed("sig fetch failed".to_string()),
                     new_metadata: Some(make_metadata(20)),
                 }),
                 Instant::now(),

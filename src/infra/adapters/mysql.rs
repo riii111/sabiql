@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::app::ports::{
-    DdlGenerator, DsnBuilder, MetadataError, MetadataProvider, QueryExecutor, SqlDialect,
+    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::ConnectionProfile;
 use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
@@ -22,8 +22,8 @@ impl Default for MySqlAdapter {
 
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {
-    async fn fetch_metadata(&self, _dsn: &str) -> Result<DatabaseMetadata, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    async fn fetch_metadata(&self, _dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -33,8 +33,8 @@ impl MetadataProvider for MySqlAdapter {
         _dsn: &str,
         _schema: &str,
         _table: &str,
-    ) -> Result<Table, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<Table, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -44,8 +44,8 @@ impl MetadataProvider for MySqlAdapter {
         _dsn: &str,
         _schema: &str,
         _table: &str,
-    ) -> Result<Table, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<Table, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -53,8 +53,8 @@ impl MetadataProvider for MySqlAdapter {
     async fn fetch_table_signatures(
         &self,
         _dsn: &str,
-    ) -> Result<Vec<TableSignature>, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<Vec<TableSignature>, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -70,8 +70,8 @@ impl QueryExecutor for MySqlAdapter {
         _limit: usize,
         _offset: usize,
         _read_only: bool,
-    ) -> Result<QueryResult, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<QueryResult, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -81,8 +81,8 @@ impl QueryExecutor for MySqlAdapter {
         _dsn: &str,
         _query: &str,
         _read_only: bool,
-    ) -> Result<QueryResult, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<QueryResult, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -92,8 +92,8 @@ impl QueryExecutor for MySqlAdapter {
         _dsn: &str,
         _query: &str,
         _read_only: bool,
-    ) -> Result<WriteExecutionResult, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<WriteExecutionResult, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -103,8 +103,8 @@ impl QueryExecutor for MySqlAdapter {
         _dsn: &str,
         _query: &str,
         _read_only: bool,
-    ) -> Result<usize, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<usize, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
@@ -115,8 +115,8 @@ impl QueryExecutor for MySqlAdapter {
         _query: &str,
         _path: &std::path::Path,
         _read_only: bool,
-    ) -> Result<usize, MetadataError> {
-        Err(MetadataError::ConnectionFailed(
+    ) -> Result<usize, DbOperationError> {
+        Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }

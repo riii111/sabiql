@@ -1,4 +1,4 @@
-use crate::app::ports::MetadataError;
+use crate::app::ports::DbOperationError;
 use crate::domain::{
     Column, FkAction, ForeignKey, Index, IndexType, RlsCommand, RlsInfo, RlsPolicy, Schema,
     TableSignature, TableSummary, Trigger, TriggerEvent, TriggerTiming,
@@ -33,7 +33,7 @@ pub(in crate::infra::adapters::postgres) struct TableInfo {
 impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn parse_table_info(
         json: &str,
-    ) -> Result<TableInfo, MetadataError> {
+    ) -> Result<TableInfo, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(TableInfo {
                 owner: None,
@@ -49,8 +49,8 @@ impl PostgresAdapter {
             row_count_estimate: Option<i64>,
         }
 
-        let raw: RawTableInfo =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: RawTableInfo = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         // PostgreSQL returns reltuples = -1 when VACUUM/ANALYZE has never run
         let row_count = raw.row_count_estimate.filter(|&n| n >= 0);
@@ -64,7 +64,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_tables(
         json: &str,
-    ) -> Result<Vec<TableSummary>, MetadataError> {
+    ) -> Result<Vec<TableSummary>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -77,8 +77,8 @@ impl PostgresAdapter {
             has_rls: bool,
         }
 
-        let raw: Vec<RawTable> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTable> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -88,7 +88,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_table_signatures(
         json: &str,
-    ) -> Result<Vec<TableSignature>, MetadataError> {
+    ) -> Result<Vec<TableSignature>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -100,8 +100,8 @@ impl PostgresAdapter {
             signature: String,
         }
 
-        let raw: Vec<RawTableSignature> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTableSignature> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -115,7 +115,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_schemas(
         json: &str,
-    ) -> Result<Vec<Schema>, MetadataError> {
+    ) -> Result<Vec<Schema>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -125,15 +125,15 @@ impl PostgresAdapter {
             name: String,
         }
 
-        let raw: Vec<RawSchema> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawSchema> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw.into_iter().map(|s| Schema::new(s.name)).collect())
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_columns(
         json: &str,
-    ) -> Result<Vec<Column>, MetadataError> {
+    ) -> Result<Vec<Column>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -150,8 +150,8 @@ impl PostgresAdapter {
             ordinal_position: i32,
         }
 
-        let raw: Vec<RawColumn> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawColumn> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -170,7 +170,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_indexes(
         json: &str,
-    ) -> Result<Vec<Index>, MetadataError> {
+    ) -> Result<Vec<Index>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -185,8 +185,8 @@ impl PostgresAdapter {
             definition: Option<String>,
         }
 
-        let raw: Vec<RawIndex> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawIndex> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -210,7 +210,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_foreign_keys(
         json: &str,
-    ) -> Result<Vec<ForeignKey>, MetadataError> {
+    ) -> Result<Vec<ForeignKey>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -239,8 +239,8 @@ impl PostgresAdapter {
             }
         }
 
-        let raw: Vec<RawForeignKey> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawForeignKey> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -260,7 +260,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_rls(
         json: &str,
-    ) -> Result<Option<RlsInfo>, MetadataError> {
+    ) -> Result<Option<RlsInfo>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(None);
         };
@@ -282,8 +282,8 @@ impl PostgresAdapter {
             with_check: Option<String>,
         }
 
-        let raw: RawRls =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: RawRls = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         let policies = raw
             .policies
@@ -314,7 +314,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_triggers(
         json: &str,
-    ) -> Result<Vec<Trigger>, MetadataError> {
+    ) -> Result<Vec<Trigger>, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
             return Ok(Vec::new());
         };
@@ -328,8 +328,8 @@ impl PostgresAdapter {
             security_definer: bool,
         }
 
-        let raw: Vec<RawTrigger> =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         Ok(raw
             .into_iter()
@@ -359,9 +359,9 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_table_detail_combined(
         json: &str,
-    ) -> Result<TableDetailCombined, MetadataError> {
+    ) -> Result<TableDetailCombined, DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
-            return Err(MetadataError::InvalidJson(
+            return Err(DbOperationError::InvalidJson(
                 "table_detail_combined: empty response".to_string(),
             ));
         };
@@ -377,8 +377,8 @@ impl PostgresAdapter {
             table_info: serde_json::Value,
         }
 
-        let combined: CombinedDetail =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let combined: CombinedDetail = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         let columns = Self::parse_columns(&combined.columns.to_string())?;
         let indexes = Self::parse_indexes(&combined.indexes.to_string())?;
@@ -392,9 +392,9 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn parse_table_columns_and_fks(
         json: &str,
-    ) -> Result<(Vec<Column>, Vec<ForeignKey>), MetadataError> {
+    ) -> Result<(Vec<Column>, Vec<ForeignKey>), DbOperationError> {
         let Some(trimmed) = non_empty_json(json) else {
-            return Err(MetadataError::InvalidJson(
+            return Err(DbOperationError::InvalidJson(
                 "table_columns_and_fks: empty response".to_string(),
             ));
         };
@@ -406,8 +406,8 @@ impl PostgresAdapter {
             foreign_keys: serde_json::Value,
         }
 
-        let light: LightDetail =
-            serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))?;
+        let light: LightDetail = serde_json::from_str(trimmed)
+            .map_err(|e| DbOperationError::InvalidJson(e.to_string()))?;
 
         let columns = Self::parse_columns(&light.columns.to_string())?;
         let foreign_keys = Self::parse_foreign_keys(&light.foreign_keys.to_string())?;
@@ -418,7 +418,7 @@ impl PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::MetadataError;
+    use crate::app::ports::DbOperationError;
     use crate::infra::adapters::postgres::PostgresAdapter;
 
     mod table_signature_parsing {
@@ -468,14 +468,14 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_table_signatures("{not valid}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn missing_field_returns_error() {
             let json = r#"[{"schema": "public", "name": "users"}]"#;
             let result = PostgresAdapter::parse_table_signatures(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
     }
 
@@ -496,7 +496,7 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_rls("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -590,7 +590,7 @@ mod tests {
 
             let result = PostgresAdapter::parse_rls(json);
 
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
     }
 
@@ -600,20 +600,20 @@ mod tests {
         #[test]
         fn parse_tables_with_malformed_json_returns_error() {
             let result = PostgresAdapter::parse_tables("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn parse_tables_with_wrong_structure_returns_error() {
             let result = PostgresAdapter::parse_tables(r#"["table1", "table2"]"#);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn parse_columns_with_missing_field_returns_error() {
             let json = r#"[{"name": "id", "nullable": true}]"#;
             let result = PostgresAdapter::parse_columns(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -621,7 +621,7 @@ mod tests {
             let json =
                 r#"[{"name": "idx_test", "columns": "id", "unique": false, "primary": false}]"#;
             let result = PostgresAdapter::parse_indexes(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -697,7 +697,7 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_table_info("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
     }
 
@@ -782,7 +782,7 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_triggers("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -843,21 +843,21 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_schemas("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn missing_name_field_returns_error() {
             let json = r#"[{}]"#;
             let result = PostgresAdapter::parse_schemas(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn wrong_structure_returns_error() {
             let json = r#"["public", "auth"]"#;
             let result = PostgresAdapter::parse_schemas(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -1004,7 +1004,7 @@ mod tests {
         #[test]
         fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_foreign_keys("{not valid json}");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -1021,7 +1021,7 @@ mod tests {
             }]"#;
 
             let result = PostgresAdapter::parse_foreign_keys(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -1039,7 +1039,7 @@ mod tests {
             }]"#;
 
             let result = PostgresAdapter::parse_foreign_keys(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -1117,7 +1117,7 @@ mod tests {
         fn missing_key_returns_invalid_json_error() {
             let json = r#"{"columns": null, "indexes": null}"#;
             let result = PostgresAdapter::parse_table_detail_combined(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
@@ -1125,19 +1125,19 @@ mod tests {
             let json = build_combined_json("null", "null", "null", "null", "null", "null")
                 .replace("}", r#","extra_key": null}"#);
             let result = PostgresAdapter::parse_table_detail_combined(&json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn empty_input_returns_error() {
             let result = PostgresAdapter::parse_table_detail_combined("");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn null_input_returns_error() {
             let result = PostgresAdapter::parse_table_detail_combined("null");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
     }
 
@@ -1177,26 +1177,26 @@ mod tests {
         fn missing_key_returns_error() {
             let json = r#"{"columns": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn unknown_key_returns_error() {
             let json = r#"{"columns": null, "foreign_keys": null, "extra": null}"#;
             let result = PostgresAdapter::parse_table_columns_and_fks(json);
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn empty_input_returns_error() {
             let result = PostgresAdapter::parse_table_columns_and_fks("");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
         fn null_input_returns_error() {
             let result = PostgresAdapter::parse_table_columns_and_fks("null");
-            assert!(matches!(result, Err(MetadataError::InvalidJson(_))));
+            assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
     }
 }

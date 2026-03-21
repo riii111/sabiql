@@ -611,7 +611,7 @@ mod tests {
 
     mod delete_write_flow {
         use super::*;
-        use crate::app::ports::MetadataError;
+        use crate::app::ports::DbOperationError;
 
         fn delete_preview() -> WritePreview {
             WritePreview {
@@ -724,7 +724,7 @@ mod tests {
 
             let effects = reduce_query(
                 &mut state,
-                &Action::ExecuteWriteFailed(MetadataError::QueryFailed("boom".to_string())),
+                &Action::ExecuteWriteFailed(DbOperationError::QueryFailed("boom".to_string())),
                 Instant::now(),
                 &AppServices::stub(),
             )
