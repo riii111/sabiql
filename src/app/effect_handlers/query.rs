@@ -65,12 +65,7 @@ fn save_query_history(
     let conn_id = connection_id.clone();
     tokio::spawn(async move {
         if let Err(e) = store.append(&project, &conn_id, &entry).await {
-            let _ = tx
-                .send(Action::QueryHistoryLoadFailed(format!(
-                    "Failed to save query history: {}",
-                    e
-                )))
-                .await;
+            let _ = tx.send(Action::QueryHistoryLoadFailed(e)).await;
         }
     });
 }
@@ -134,9 +129,7 @@ pub(crate) async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryFailed(e.to_string(), generation))
-                            .await
-                            .ok();
+                        tx.send(Action::QueryFailed(e, generation)).await.ok();
                     }
                 }
             });
@@ -170,7 +163,11 @@ pub(crate) async fn run(
                             } else {
                                 error_text
                             };
-                            tx.send(Action::ExplainFailed(error_text)).await.ok();
+                            tx.send(Action::ExplainFailed(
+                                crate::app::ports::MetadataError::QueryFailed(error_text),
+                            ))
+                            .await
+                            .ok();
                         } else {
                             let plan_text = result
                                 .rows
@@ -189,7 +186,7 @@ pub(crate) async fn run(
                         }
                     }
                     Err(e) => {
-                        tx.send(Action::ExplainFailed(e.to_string())).await.ok();
+                        tx.send(Action::ExplainFailed(e)).await.ok();
                     }
                 }
             });
@@ -250,7 +247,7 @@ pub(crate) async fn run(
                                 None,
                             );
                         }
-                        tx.send(Action::QueryFailed(e.to_string(), 0)).await.ok();
+                        tx.send(Action::QueryFailed(e, 0)).await.ok();
                     }
                 }
             });
@@ -302,9 +299,7 @@ pub(crate) async fn run(
                                 None,
                             );
                         }
-                        tx.send(Action::ExecuteWriteFailed(e.to_string()))
-                            .await
-                            .ok();
+                        tx.send(Action::ExecuteWriteFailed(e)).await.ok();
                     }
                 }
             });
@@ -359,7 +354,7 @@ pub(crate) async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::CsvExportFailed(e.to_string())).await.ok();
+                        tx.send(Action::CsvExportFailed(e)).await.ok();
                     }
                 }
             });

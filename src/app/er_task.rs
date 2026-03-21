@@ -33,11 +33,17 @@ pub fn spawn_er_diagram_task(
                     .await;
             }
             Ok(Err(e)) => {
-                let _ = tx.send(Action::ErDiagramFailed(e.to_string())).await;
+                let _ = tx
+                    .send(Action::ErDiagramFailed(
+                        crate::app::action::ErDiagramError::ExportFailed(e.to_string()),
+                    ))
+                    .await;
             }
             Err(e) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(format!("Task panicked: {}", e)))
+                    .send(Action::ErDiagramFailed(
+                        crate::app::action::ErDiagramError::TaskPanicked(e.to_string()),
+                    ))
                     .await;
             }
         }
@@ -150,8 +156,8 @@ mod tests {
 
             let action = receive_action(&mut rx).await;
             match action {
-                Action::ErDiagramFailed(msg) => {
-                    assert!(msg.contains("export failed"));
+                Action::ErDiagramFailed(e) => {
+                    assert!(e.to_string().contains("export failed"));
                 }
                 _ => panic!("expected ErDiagramFailed, got {:?}", action),
             }
@@ -174,8 +180,8 @@ mod tests {
 
             let action = receive_action(&mut rx).await;
             match action {
-                Action::ErDiagramFailed(msg) => {
-                    assert!(msg.contains("Task panicked"));
+                Action::ErDiagramFailed(e) => {
+                    assert!(e.to_string().contains("Task panicked"));
                 }
                 _ => panic!("expected ErDiagramFailed, got {:?}", action),
             }

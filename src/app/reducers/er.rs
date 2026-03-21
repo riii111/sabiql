@@ -24,11 +24,11 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
         }
         Action::ErDiagramFailed(error) => {
             state.er_preparation.status = ErStatus::Idle;
-            state.set_error(error.clone());
+            state.set_error(error.to_string());
             Some(vec![])
         }
         Action::ErLogWriteFailed(error) => {
-            state.set_error(error.clone());
+            state.set_error(error.to_string());
             Some(vec![])
         }
         Action::ErOpenDiagram => {
@@ -556,6 +556,7 @@ mod tests {
 
     mod smart_er_refresh_failed {
         use super::*;
+        use crate::app::ports::MetadataError;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
@@ -585,7 +586,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: "timeout".to_string(),
+                    error: MetadataError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -618,7 +619,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: "timeout".to_string(),
+                    error: MetadataError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -649,7 +650,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 3,
-                    error: "timeout".to_string(),
+                    error: MetadataError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -669,7 +670,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: "timeout".to_string(),
+                    error: MetadataError::Timeout,
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -692,7 +693,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: "sig fetch failed".to_string(),
+                    error: MetadataError::QueryFailed("sig fetch failed".to_string()),
                     new_metadata: Some(make_metadata(20)),
                 }),
                 Instant::now(),

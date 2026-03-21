@@ -29,12 +29,7 @@ pub(crate) async fn run(
                             .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(format!(
-                            "Failed to load query history: {}",
-                            e
-                        )))
-                        .await
-                        .ok();
+                        tx.send(Action::QueryHistoryLoadFailed(e)).await.ok();
                     }
                 }
             });

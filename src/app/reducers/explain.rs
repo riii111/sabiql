@@ -110,7 +110,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::ExplainFailed(error) => {
-            state.explain.set_error(error.clone());
+            state.explain.set_error(error.to_string());
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.query.mark_idle();
@@ -349,6 +349,7 @@ mod tests {
 
     mod explain_failed {
         use super::*;
+        use crate::app::ports::MetadataError;
 
         #[test]
         fn sets_error_and_switches_to_plan_tab() {
@@ -357,11 +358,14 @@ mod tests {
 
             reduce_explain(
                 &mut state,
-                &Action::ExplainFailed("syntax error".to_string()),
+                &Action::ExplainFailed(MetadataError::QueryFailed("syntax error".to_string())),
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.error.as_deref(), Some("syntax error"));
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("Query failed: syntax error")
+            );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
             assert!(!state.query.is_running());

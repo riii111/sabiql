@@ -71,8 +71,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 .set_success_at("Connection deleted".to_string(), now);
             Some(vec![])
         }
-        Action::ConnectionDeleteFailed(msg) => {
-            state.messages.set_error_at(msg.clone(), now);
+        Action::ConnectionDeleteFailed(e) => {
+            state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
         }
 

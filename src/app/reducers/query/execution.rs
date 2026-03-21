@@ -143,9 +143,9 @@ pub fn reduce(
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
                 }
-                state.set_error(error.clone());
+                state.set_error(error.to_string());
                 if is_adhoc {
-                    state.sql_modal.mark_adhoc_error(error.clone());
+                    state.sql_modal.mark_adhoc_error(error.to_string());
                 }
             }
             Some(vec![])
@@ -507,6 +507,7 @@ mod tests {
 
     mod query_failed {
         use super::*;
+        use crate::app::ports::MetadataError;
         use crate::app::ui_state::ResultNavMode;
 
         #[test]
@@ -520,7 +521,7 @@ mod tests {
 
             reduce_query(
                 &mut state,
-                &Action::QueryFailed("error".to_string(), 1),
+                &Action::QueryFailed(MetadataError::QueryFailed("error".to_string()), 1),
                 Instant::now(),
                 &AppServices::stub(),
             );

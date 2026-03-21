@@ -7,7 +7,8 @@ use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 use crate::app::cache::TtlCache;
 use crate::app::effect::Effect;
 use crate::app::ports::{
-    ConnectionStore, DsnBuilder, MetadataProvider, ServiceFileError, ServiceFileReader,
+    ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, ServiceFileError,
+    ServiceFileReader,
 };
 use crate::app::state::AppState;
 use crate::domain::DatabaseMetadata;
@@ -50,7 +51,7 @@ pub(crate) async fn run(
                         Ok(p) => p,
                         Err(e) => {
                             action_tx
-                                .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
+                                .blocking_send(Action::ConnectionSaveFailed(e.into()))
                                 .ok();
                             return Ok(());
                         }
@@ -63,7 +64,7 @@ pub(crate) async fn run(
                         Ok(p) => p,
                         Err(e) => {
                             action_tx
-                                .blocking_send(Action::ConnectionSaveFailed(e.to_string()))
+                                .blocking_send(Action::ConnectionSaveFailed(e.into()))
                                 .ok();
                             return Ok(());
                         }
@@ -94,14 +95,12 @@ pub(crate) async fn run(
                             }
                             Err(e) => {
                                 cache.invalidate(&dsn).await;
-                                tx.send(Action::ConnectionSaveFailed(e.to_string()))
-                                    .await
-                                    .ok();
+                                tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
                             }
                         }
                     }
                     Err(e) => {
-                        tx.send(Action::MetadataFailed(e.to_string())).await.ok();
+                        tx.send(Action::MetadataFailed(e)).await.ok();
                     }
                 }
             });
@@ -119,13 +118,12 @@ pub(crate) async fn run(
                 }
                 Ok(None) => {
                     tx.blocking_send(Action::ConnectionEditLoadFailed(
-                        "Connection not found".to_string(),
+                        ConnectionStoreError::NotFound(id.to_string()),
                     ))
                     .ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionEditLoadFailed(e.to_string()))
-                        .ok();
+                    tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
                 }
             });
             Ok(())
@@ -169,8 +167,7 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleted(id)).ok();
                 }
                 Err(e) => {
-                    tx.blocking_send(Action::ConnectionDeleteFailed(e.to_string()))
-                        .ok();
+                    tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
                 }
             });
             Ok(())
