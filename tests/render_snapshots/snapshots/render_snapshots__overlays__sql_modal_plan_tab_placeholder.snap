@@ -20,8 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ y: Yank │ ^O: Hist │ Enter: Insert │ Esc: Close╯       │
+│       ╰ ^E: Explain │ ⌥E: Analyze │ b: Baseline │ ↑↓: Scroll │ Tab: C╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-^E:Explain  ⌥E:Analyze  b:Baseline  ↑↓:Scroll  Tab:Compare  Esc:Close

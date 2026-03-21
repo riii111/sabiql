@@ -75,12 +75,20 @@ impl SqlModal {
         } else {
             let hint = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
-                    " \u{2325}Enter: Run \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
+                    " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
-                _ => {
-                    " \u{2325}Enter: Run \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Esc: Close "
-                }
+                _ => match state.sql_modal.active_tab {
+                    SqlModalTab::Plan => {
+                        " ^E: Explain \u{2502} \u{2325}E: Analyze \u{2502} b: Baseline \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Compare \u{2502} Esc: Close "
+                    }
+                    SqlModalTab::Compare => {
+                        " ^E: Explain \u{2502} \u{2325}E: Analyze \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: SQL \u{2502} Esc: Close "
+                    }
+                    SqlModalTab::Sql => {
+                        " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Plan \u{2502} Esc: Close "
+                    }
+                },
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
