@@ -489,6 +489,7 @@ fn sql_modal_plan_tab_with_plan_text() {
         "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
         false,
         42,
+        "SELECT * FROM users WHERE id > 10",
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -513,7 +514,7 @@ fn sql_modal_plan_tab_with_error() {
 }
 
 #[test]
-fn sql_modal_compare_tab_no_baseline() {
+fn sql_modal_compare_tab_empty() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -526,7 +527,7 @@ fn sql_modal_compare_tab_no_baseline() {
 }
 
 #[test]
-fn sql_modal_compare_tab_baseline_saved_no_current() {
+fn sql_modal_compare_tab_right_only() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
 
@@ -536,9 +537,9 @@ fn sql_modal_compare_tab_baseline_saved_no_current() {
             .to_string(),
         false,
         40,
+        "SELECT * FROM users WHERE email_verified",
     );
-    state.explain.save_baseline();
-    // current_parsed is now None after save_baseline
+    // Only right slot populated (first EXPLAIN), no left yet
     state.sql_modal.active_tab = SqlModalTab::Compare;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -552,20 +553,21 @@ fn sql_modal_compare_tab_with_verdict() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    // Save baseline with high cost
+    // First EXPLAIN with high cost
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
             .to_string(),
         false,
         100,
+        "SELECT * FROM users WHERE id > 10",
     );
-    state.explain.save_baseline();
-    // Set current with low cost (Improved)
+    // Second EXPLAIN with low cost (Improved) — auto-advances first to left
     state.explain.set_plan(
         "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
             .to_string(),
         false,
         5,
+        "SELECT * FROM users WHERE id > 10",
     );
     state.sql_modal.active_tab = SqlModalTab::Compare;
 
@@ -580,15 +582,20 @@ fn sql_modal_compare_tab_unavailable() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    // Save baseline with unparseable text
-    state
-        .explain
-        .set_plan("CREATE TABLE foo (id int)".to_string(), false, 0);
-    state.explain.save_baseline();
-    // Set current with also unparseable text
-    state
-        .explain
-        .set_plan("ALTER TABLE foo ADD COLUMN bar text".to_string(), false, 0);
+    // First EXPLAIN with unparseable text
+    state.explain.set_plan(
+        "CREATE TABLE foo (id int)".to_string(),
+        false,
+        0,
+        "CREATE TABLE foo",
+    );
+    // Second EXPLAIN with also unparseable text — auto-advances first to left
+    state.explain.set_plan(
+        "ALTER TABLE foo ADD COLUMN bar text".to_string(),
+        false,
+        0,
+        "ALTER TABLE foo",
+    );
     state.sql_modal.active_tab = SqlModalTab::Compare;
 
     let output = render_to_string(&mut terminal, &mut state);

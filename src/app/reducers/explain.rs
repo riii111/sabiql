@@ -100,9 +100,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             is_analyze,
             execution_time_ms,
         } => {
+            let query = state.sql_modal.content.clone();
             state
                 .explain
-                .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms);
+                .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms, &query);
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.query.mark_idle();
@@ -118,10 +119,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::SaveExplainBaseline => {
-            if state.explain.save_baseline() {
+            if state.explain.pin_left() {
                 state
                     .messages
-                    .set_success_at("Baseline saved".to_string(), now);
+                    .set_success_at("Left pinned".to_string(), now);
             }
             Some(vec![])
         }
@@ -405,41 +406,43 @@ mod tests {
         }
     }
 
-    mod save_baseline {
+    mod pin_left {
         use super::*;
 
         #[test]
-        fn saves_baseline_when_plan_exists() {
+        fn pins_left_when_right_exists() {
             let mut state = sql_modal_state();
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                 false,
                 0,
+                "Q1",
             );
 
             reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
 
-            assert!(state.explain.baseline.is_some());
+            assert!(state.explain.left.is_some());
             assert!(state.messages.last_success.is_some());
         }
 
         #[test]
-        fn noop_when_no_plan() {
+        fn noop_when_no_right() {
             let mut state = sql_modal_state();
 
             reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
 
-            assert!(state.explain.baseline.is_none());
+            assert!(state.explain.left.is_none());
             assert!(state.messages.last_success.is_none());
         }
 
         #[test]
-        fn overwrites_previous_baseline() {
+        fn overwrites_previous_left() {
             let mut state = sql_modal_state();
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                 false,
                 0,
+                "Q1",
             );
             reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
 
@@ -447,11 +450,71 @@ mod tests {
                 "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                 false,
                 0,
+                "Q2",
             );
             reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
 
             assert_eq!(
-                state.explain.baseline.as_ref().unwrap().total_cost,
+                state.explain.left.as_ref().unwrap().plan.total_cost,
+                Some(5.0)
+            );
+        }
+    }
+
+    mod compare_workflow {
+        use super::*;
+
+        #[test]
+        fn pin_then_second_explain_enables_comparison() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+            let now = Instant::now();
+
+            // Step 1: Run EXPLAIN
+            reduce_explain(&mut state, &Action::ExplainRequest, now);
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 42,
+                },
+                now,
+            );
+            assert!(state.explain.right.is_some());
+
+            // Step 2: Pin left
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, now);
+            assert!(state.explain.left.is_some());
+
+            // Step 3: Run EXPLAIN again (simulating second query)
+            state.sql_modal.content = "SELECT 2".to_string();
+            reduce_explain(&mut state, &Action::ExplainRequest, now);
+
+            // reset() should preserve left
+            assert!(state.explain.left.is_some());
+
+            // Step 4: Second EXPLAIN completes
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 5,
+                },
+                now,
+            );
+
+            // Both should be present for comparison
+            assert!(state.explain.left.is_some());
+            assert!(state.explain.right.is_some());
+            assert_eq!(
+                state.explain.left.as_ref().unwrap().plan.total_cost,
+                Some(100.0)
+            );
+            assert_eq!(
+                state.explain.right.as_ref().unwrap().plan.total_cost,
                 Some(5.0)
             );
         }
@@ -483,7 +546,7 @@ mod tests {
             let mut state = sql_modal_state();
             state
                 .explain
-                .set_plan("line1\nline2\nline3".to_string(), false, 0);
+                .set_plan("line1\nline2\nline3".to_string(), false, 0, "Q1");
 
             reduce_explain(
                 &mut state,
@@ -501,7 +564,9 @@ mod tests {
         #[test]
         fn scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state.explain.set_plan("line1\nline2".to_string(), false, 0);
+            state
+                .explain
+                .set_plan("line1\nline2".to_string(), false, 0, "Q1");
             state.explain.scroll_offset = 1;
 
             reduce_explain(
@@ -542,12 +607,14 @@ mod tests {
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
                 false,
                 0,
+                "Q1",
             );
-            state.explain.save_baseline();
+            state.explain.pin_left();
             state.explain.set_plan(
                 "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
                 false,
                 0,
+                "Q2",
             );
 
             reduce_explain(

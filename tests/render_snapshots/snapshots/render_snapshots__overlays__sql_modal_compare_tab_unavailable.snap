@@ -14,10 +14,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │  ──────────────────────────────────────────────────────────  │       │
 │       │                                                              │───────┘
-│       │  Baseline                    │ Current                       │───────┐
+│       │  Left [Previous]             │ Right [Latest]                │───────┐
+│       │  CREATE TABLE foo (EXPLAIN)  │ ALTER TABLE foo (EXPLAIN)     │       │
+│       │                                                              │       │
 │       │  CREATE TABLE foo (id int)   │ ALTER TABLE foo ADD COLUMN …  │       │
-│       │                                                              │       │
-│       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
 │       ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────────╯       │

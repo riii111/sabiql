@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  No baseline saved. Press b on [Plan] tab to save.           │       │
+│       │  Run EXPLAIN (Ctrl+E) to start comparing.                    │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
