@@ -9,7 +9,9 @@ use crate::app::state::AppState;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    state.explain.compare_viewport_height = Some(area.height);
+
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
     let scroll_offset = state.explain.compare_scroll_offset;

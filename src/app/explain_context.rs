@@ -37,6 +37,7 @@ pub struct ExplainContext {
 
     pub left_history_cursor: usize,
     pub right_history_cursor: usize,
+    pub compare_viewport_height: Option<u16>,
 }
 
 impl ExplainContext {
@@ -171,8 +172,11 @@ impl ExplainContext {
     }
 
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
-        self.compare_line_count()
-            .saturating_sub(Self::modal_inner_height(terminal_height))
+        let viewport = self
+            .compare_viewport_height
+            .map(|h| h as usize)
+            .unwrap_or_else(|| Self::modal_inner_height(terminal_height));
+        self.compare_line_count().saturating_sub(viewport)
     }
 }
 

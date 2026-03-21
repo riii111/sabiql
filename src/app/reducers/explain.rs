@@ -95,19 +95,19 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 
         Action::ExplainAnalyzeConfirm => {
             let status = state.sql_modal.status().clone();
-            if let SqlModalStatus::ConfirmingAnalyze { query, .. } = status {
-                if let Some(dsn) = &state.session.dsn {
-                    let explain_query = format!("EXPLAIN ANALYZE {}", query);
-                    state.sql_modal.set_status(SqlModalStatus::Running);
-                    state.explain.reset();
-                    state.query.begin_running(now);
-                    return Some(vec![Effect::ExecuteExplain {
-                        dsn: dsn.clone(),
-                        query: explain_query,
-                        is_analyze: true,
-                        read_only: state.session.read_only,
-                    }]);
-                }
+            if let SqlModalStatus::ConfirmingAnalyze { query, .. } = status
+                && let Some(dsn) = &state.session.dsn
+            {
+                let explain_query = format!("EXPLAIN ANALYZE {}", query);
+                state.sql_modal.set_status(SqlModalStatus::Running);
+                state.explain.reset();
+                state.query.begin_running(now);
+                return Some(vec![Effect::ExecuteExplain {
+                    dsn: dsn.clone(),
+                    query: explain_query,
+                    is_analyze: true,
+                    read_only: state.session.read_only,
+                }]);
             }
             Some(vec![])
         }
