@@ -43,6 +43,10 @@ pub enum SqlModalStatus {
         input: TextInputState,
         target_name: Option<String>,
     },
+    ConfirmingAnalyze {
+        query: String,
+        is_dml: bool,
+    },
     Running,
     Success,
     Error,

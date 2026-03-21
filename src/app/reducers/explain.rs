@@ -2,9 +2,7 @@ use std::time::Instant;
 
 use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::app::adhoc_risk::split_statements;
-use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
 use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::app::statement_classifier::{self, StatementKind};
@@ -84,22 +82,43 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 return Some(vec![]);
             }
 
-            let message = if is_dml {
-                "ANALYZE executes the query. DML side effects will occur."
-            } else {
-                "ANALYZE executes the query to collect actual statistics."
-            };
-
-            state.confirm_dialog.open(
-                "EXPLAIN ANALYZE",
-                message,
-                ConfirmIntent::ExplainAnalyze {
+            state
+                .sql_modal
+                .set_status(SqlModalStatus::ConfirmingAnalyze {
                     query: content,
                     is_dml,
-                },
-            );
-            state.modal.push_mode(InputMode::ConfirmDialog);
+                });
+            state.sql_modal.active_tab = SqlModalTab::Plan;
 
+            Some(vec![])
+        }
+
+        Action::ExplainAnalyzeConfirm => {
+            let status = state.sql_modal.status().clone();
+            if let SqlModalStatus::ConfirmingAnalyze { query, .. } = status {
+                if let Some(dsn) = &state.session.dsn {
+                    let explain_query = format!("EXPLAIN ANALYZE {}", query);
+                    state.sql_modal.set_status(SqlModalStatus::Running);
+                    state.explain.reset();
+                    state.query.begin_running(now);
+                    return Some(vec![Effect::ExecuteExplain {
+                        dsn: dsn.clone(),
+                        query: explain_query,
+                        is_analyze: true,
+                        read_only: state.session.read_only,
+                    }]);
+                }
+            }
+            Some(vec![])
+        }
+
+        Action::ExplainAnalyzeCancel => {
+            if matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyze { .. }
+            ) {
+                state.sql_modal.set_status(SqlModalStatus::Normal);
+            }
             Some(vec![])
         }
 
@@ -244,6 +263,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::input_mode::InputMode;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -377,7 +397,7 @@ mod tests {
         }
 
         #[test]
-        fn opens_confirm_dialog_for_select() {
+        fn sets_confirming_analyze_for_select() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "SELECT 1".to_string();
             state.session.dsn = Some("dsn://test".to_string());
@@ -385,13 +405,14 @@ mod tests {
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(matches!(
-                state.confirm_dialog.intent(),
-                Some(ConfirmIntent::ExplainAnalyze { is_dml: false, .. })
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyze { is_dml: false, .. }
             ));
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
         }
 
         #[test]
-        fn opens_confirm_dialog_for_dml() {
+        fn sets_confirming_analyze_for_dml() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "DELETE FROM users WHERE id=1".to_string();
             state.session.dsn = Some("dsn://test".to_string());
@@ -399,8 +420,8 @@ mod tests {
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
 
             assert!(matches!(
-                state.confirm_dialog.intent(),
-                Some(ConfirmIntent::ExplainAnalyze { is_dml: true, .. })
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyze { is_dml: true, .. }
             ));
         }
     }
@@ -441,8 +462,8 @@ mod tests {
 
             assert!(state.explain.error.is_none());
             assert!(matches!(
-                state.confirm_dialog.intent(),
-                Some(ConfirmIntent::ExplainAnalyze { is_dml: false, .. })
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyze { is_dml: false, .. }
             ));
         }
     }

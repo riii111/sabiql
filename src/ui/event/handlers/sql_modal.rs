@@ -153,6 +153,15 @@ pub fn handle_sql_modal_keys(
         };
     }
 
+    if matches!(status, SqlModalStatus::ConfirmingAnalyze { .. }) {
+        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
+        return match combo.key {
+            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
+            Key::Esc => Action::ExplainAnalyzeCancel,
+            _ => Action::None,
+        };
+    }
+
     // In Confirming state only plain Enter/Esc are meaningful; all other keys are ignored
     // to prevent accidental edits while the risk warning is displayed.
     // Alt+Enter (submit shortcut) is intentionally excluded — only explicit plain Enter confirms.

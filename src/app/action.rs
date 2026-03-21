@@ -368,6 +368,8 @@ pub enum Action {
     // EXPLAIN
     ExplainRequest,
     ExplainAnalyzeRequest,
+    ExplainAnalyzeConfirm,
+    ExplainAnalyzeCancel,
     ExplainCompleted {
         plan_text: String,
         is_analyze: bool,
