@@ -163,7 +163,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max = state.explain.compare_line_count().saturating_sub(1);
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
             if state.explain.compare_scroll_offset < max {
                 state.explain.compare_scroll_offset += 1;
             }
@@ -603,19 +603,13 @@ mod tests {
         #[test]
         fn compare_scroll_down_increments() {
             let mut state = sql_modal_state();
-            state.explain.set_plan(
-                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
-                false,
-                0,
-                "Q1",
-            );
+            let long_plan = (0..20)
+                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
             state.explain.pin_left();
-            state.explain.set_plan(
-                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
-                false,
-                0,
-                "Q2",
-            );
+            state.explain.set_plan(long_plan, false, 0, "Q2");
 
             reduce_explain(
                 &mut state,

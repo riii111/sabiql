@@ -157,6 +157,12 @@ impl ExplainContext {
             _ => 0,
         }
     }
+
+    pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
+        // SQL modal is 60% of terminal height, minus border(2) + separator(1) + status(1) + padding(1)
+        let modal_inner = (terminal_height as usize * 60 / 100).saturating_sub(5);
+        self.compare_line_count().saturating_sub(modal_inner)
+    }
 }
 
 #[cfg(test)]
