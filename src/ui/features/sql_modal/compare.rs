@@ -33,7 +33,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         )));
     }
 
-    let max_scroll = lines.len().saturating_sub(1);
+    let max_scroll = lines.len().saturating_sub(area.height as usize);
     let clamped = scroll_offset.min(max_scroll);
     let visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
