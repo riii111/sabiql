@@ -51,9 +51,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if content.is_empty() {
                 return Some(vec![]);
             }
-            if state.session.dsn.is_none() {
+            let Some(dsn) = &state.session.dsn else {
                 return Some(vec![]);
-            }
+            };
+            let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return Some(vec![]);
             }
@@ -85,16 +86,13 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             match risk.map(|r| r.confirmation) {
                 Some(ConfirmationType::Immediate) => {
                     // SELECT/Transaction: no confirmation, execute immediately
-                    let Some(dsn) = &state.session.dsn else {
-                        return Some(vec![]);
-                    };
                     let explain_query = format!("EXPLAIN ANALYZE {}", content);
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                     state.explain.reset();
                     state.query.begin_running(now);
                     return Some(vec![Effect::ExecuteExplain {
-                        dsn: dsn.clone(),
+                        dsn,
                         query: explain_query,
                         is_analyze: true,
                         read_only: state.session.read_only,
@@ -146,8 +144,9 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            // Header (~7 lines) + query lines
-            let content_lines = 7 + state.sql_modal.content.lines().count();
+            // blank + title + blank + separator + blank + warning(2) + blank = 8
+            const CONFIRM_HEADER_LINES: usize = 8;
+            let content_lines = CONFIRM_HEADER_LINES + state.sql_modal.content.lines().count();
             let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
                 state.ui.terminal_height,
             );
@@ -159,24 +158,16 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::ExplainAnalyzeConfirm => {
-            let status = state.sql_modal.status().clone();
-            let query = match &status {
+            let query = match state.sql_modal.status() {
                 SqlModalStatus::ConfirmingAnalyze { query, .. } => Some(query.clone()),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     query,
                     input,
                     target_name,
-                } => {
-                    // Only allow confirm if table name matches
-                    if target_name
-                        .as_ref()
-                        .is_some_and(|name| input.content() == name)
-                    {
-                        Some(query.clone())
-                    } else {
-                        None
-                    }
-                }
+                } => target_name
+                    .as_ref()
+                    .is_some_and(|name| input.content() == name)
+                    .then(|| query.clone()),
                 _ => None,
             };
             if let Some(query) = query
@@ -286,26 +277,12 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::CompareSelectLeftSlot => {
-            let history_len = state.explain.history.len();
-            if history_len == 0 {
-                return Some(vec![]);
-            }
-            let new_cursor = (state.explain.left_history_cursor + 1) % history_len;
-            state.explain.left_history_cursor = new_cursor;
-            state.explain.select_left(new_cursor);
-            state.explain.compare_scroll_offset = 0;
+            state.explain.cycle_left_slot();
             Some(vec![])
         }
 
         Action::CompareSelectRightSlot => {
-            let history_len = state.explain.history.len();
-            if history_len == 0 {
-                return Some(vec![]);
-            }
-            let new_cursor = (state.explain.right_history_cursor + 1) % history_len;
-            state.explain.right_history_cursor = new_cursor;
-            state.explain.select_right(new_cursor);
-            state.explain.compare_scroll_offset = 0;
+            state.explain.cycle_right_slot();
             Some(vec![])
         }
 

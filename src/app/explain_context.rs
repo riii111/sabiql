@@ -79,6 +79,8 @@ impl ExplainContext {
         self.execution_time_ms = execution_time_ms;
         self.scroll_offset = 0;
         self.compare_scroll_offset = 0;
+        self.left_history_cursor = 0;
+        self.right_history_cursor = 0;
     }
 
     pub fn set_error(&mut self, error: String) {
@@ -137,6 +139,30 @@ impl ExplainContext {
         } else {
             false
         }
+    }
+
+    pub fn cycle_left_slot(&mut self) -> bool {
+        let len = self.history.len();
+        if len == 0 {
+            return false;
+        }
+        let cursor = (self.left_history_cursor + 1) % len;
+        self.left_history_cursor = cursor;
+        self.select_left(cursor);
+        self.compare_scroll_offset = 0;
+        true
+    }
+
+    pub fn cycle_right_slot(&mut self) -> bool {
+        let len = self.history.len();
+        if len == 0 {
+            return false;
+        }
+        let cursor = (self.right_history_cursor + 1) % len;
+        self.right_history_cursor = cursor;
+        self.select_right(cursor);
+        self.compare_scroll_offset = 0;
+        true
     }
 
     pub fn line_count(&self) -> usize {

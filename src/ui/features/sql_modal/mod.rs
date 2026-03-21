@@ -80,8 +80,17 @@ impl SqlModal {
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
                 SqlModalStatus::ConfirmingAnalyze { .. } => " Enter: Confirm \u{2502} Esc: Cancel ",
-                SqlModalStatus::ConfirmingAnalyzeHigh { .. } => {
-                    " Enter: Confirm \u{2502} Esc: Cancel "
+                SqlModalStatus::ConfirmingAnalyzeHigh {
+                    input, target_name, ..
+                } => {
+                    let is_match = target_name
+                        .as_ref()
+                        .is_some_and(|name| input.content() == name);
+                    if is_match {
+                        " Enter: Confirm \u{2502} Esc: Cancel "
+                    } else {
+                        " Esc: Cancel "
+                    }
                 }
                 _ => match state.sql_modal.active_tab {
                     SqlModalTab::Plan => {

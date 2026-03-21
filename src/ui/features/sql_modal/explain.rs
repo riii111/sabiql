@@ -20,7 +20,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         SqlModalStatus::ConfirmingAnalyzeHigh {
             input, target_name, ..
         } => {
-            let lines = build_analyze_confirm_lines(area, state, true, Some((input, target_name)));
+            let lines = build_analyze_confirm_lines(
+                area,
+                state,
+                true,
+                Some((input, target_name.as_deref())),
+            );
             render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
             return;
         }
@@ -102,10 +107,7 @@ fn build_analyze_confirm_lines<'a>(
     area: Rect,
     state: &'a AppState,
     is_dml: bool,
-    high_risk: Option<(
-        &'a crate::app::text_input::TextInputState,
-        &'a Option<String>,
-    )>,
+    high_risk: Option<(&'a crate::app::text_input::TextInputState, Option<&'a str>)>,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 
