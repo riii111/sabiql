@@ -24,27 +24,15 @@ pub fn text_cursor_spans(
     let visible: Vec<char> = chars[vp..view_end].to_vec();
     let cursor_in_view = cursor.saturating_sub(vp);
 
-    let cursor_style = Style::default()
-        .bg(Theme::CURSOR_FG)
-        .fg(Theme::SELECTION_BG);
+    let bar = Span::styled("\u{258F}", Style::default().fg(Theme::CURSOR_FG));
 
     if cursor >= total {
-        // Cursor at end: show text + thin bar cursor
         let text: String = visible.iter().collect();
-        vec![
-            Span::raw(text),
-            Span::styled("\u{258F}", Style::default().fg(Theme::CURSOR_FG)),
-        ]
+        vec![Span::raw(text), bar]
     } else if cursor_in_view < visible.len() {
-        // Cursor on a visible character: before + reversed char + after
         let before: String = visible[..cursor_in_view].iter().collect();
-        let cursor_char: String = visible[cursor_in_view].to_string();
-        let after: String = visible[cursor_in_view + 1..].iter().collect();
-        vec![
-            Span::raw(before),
-            Span::styled(cursor_char, cursor_style),
-            Span::raw(after),
-        ]
+        let after: String = visible[cursor_in_view..].iter().collect();
+        vec![Span::raw(before), bar, Span::raw(after)]
     } else {
         // Cursor outside visible window (fallback): just show text
         let text: String = visible.iter().collect();
@@ -65,7 +53,7 @@ mod tests {
         let spans = text_cursor_spans("abc", 0, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "a", "bc"]);
+        assert_eq!(texts, vec!["", "\u{258F}", "abc"]);
     }
 
     #[test]
@@ -73,7 +61,7 @@ mod tests {
         let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["a", "b", "c"]);
+        assert_eq!(texts, vec!["a", "\u{258F}", "bc"]);
     }
 
     #[test]
@@ -97,7 +85,7 @@ mod tests {
         let spans = text_cursor_spans("あいう", 1, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["あ", "い", "う"]);
+        assert_eq!(texts, vec!["あ", "\u{258F}", "いう"]);
     }
 
     #[test]
@@ -106,7 +94,7 @@ mod tests {
 
         // visible: "cde" (offset=2, width=3), cursor_in_view = 3-2 = 1
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["c", "d", "e"]);
+        assert_eq!(texts, vec!["c", "\u{258F}", "de"]);
     }
 
     #[test]
@@ -124,7 +112,7 @@ mod tests {
 
         // visible: "b", cursor_in_view = 0
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "b", ""]);
+        assert_eq!(texts, vec!["", "\u{258F}", "b"]);
     }
 
     #[test]
@@ -139,20 +127,24 @@ mod tests {
         let spans = text_cursor_spans("hello", 2, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["he", "l", "lo"]);
+        assert_eq!(texts, vec!["he", "\u{258F}", "llo"]);
     }
 
     #[test]
-    fn mid_text_cursor_style_has_no_bold() {
-        use ratatui::style::Modifier;
+    fn bar_cursor_style_is_consistent() {
+        let at_start = text_cursor_spans("abc", 0, 0, usize::MAX);
+        let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX);
+        let at_end = text_cursor_spans("abc", 3, 0, usize::MAX);
 
-        let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
+        // Bar span is always index 1 (at_start/at_middle) or last (at_end)
+        let bar_start = &at_start[1];
+        let bar_middle = &at_middle[1];
+        let bar_end = at_end.last().unwrap();
 
-        // spans[1] is the cursor span
-        let cursor_span = &spans[1];
-        assert!(
-            !cursor_span.style.add_modifier.contains(Modifier::BOLD),
-            "mid-text cursor span must not have BOLD modifier"
-        );
+        assert_eq!(bar_start.content, "\u{258F}");
+        assert_eq!(bar_middle.content, "\u{258F}");
+        assert_eq!(bar_end.content, "\u{258F}");
+        assert_eq!(bar_start.style, bar_middle.style);
+        assert_eq!(bar_middle.style, bar_end.style);
     }
 }
