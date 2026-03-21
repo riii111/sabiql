@@ -73,10 +73,3 @@ fn scroll_keys(#[case] code: Key, #[case] expected: Action) { ... }
 ```rust
 #[ignore] // tracked: #42 — MySQL adapter 待ち
 ```
-
-## PR セルフチェック
-
-- [ ] 新しい public 関数にユニットテストがある
-- [ ] adapter の SQL 生成が全方言でテストされている
-- [ ] トラッキング Issue なしの `#[ignore]` がない
-- [ ] 新しい `InputMode` バリアントにスナップショットテストがある
