@@ -100,9 +100,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             is_analyze,
             execution_time_ms,
         } => {
+            let query = state.sql_modal.content.clone();
             state
                 .explain
-                .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms);
+                .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms, &query);
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.query.mark_idle();
@@ -114,6 +115,15 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             state.sql_modal.set_status(SqlModalStatus::Normal);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.query.mark_idle();
+            Some(vec![])
+        }
+
+        Action::SaveExplainBaseline => {
+            if state.explain.pin_left() {
+                state
+                    .messages
+                    .set_success_at("Left pinned".to_string(), now);
+            }
             Some(vec![])
         }
 
@@ -131,9 +141,34 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let max = state.explain.line_count().saturating_sub(1);
+            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
+            let max = state.explain.line_count().saturating_sub(modal_inner);
             if state.explain.scroll_offset < max {
                 state.explain.scroll_offset += 1;
+            }
+            Some(vec![])
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::ExplainCompare,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.explain.compare_scroll_offset =
+                state.explain.compare_scroll_offset.saturating_sub(1);
+            Some(vec![])
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::ExplainCompare,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+            if state.explain.compare_scroll_offset < max {
+                state.explain.compare_scroll_offset += 1;
             }
             Some(vec![])
         }
@@ -141,14 +176,16 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         Action::SqlModalNextTab => {
             state.sql_modal.active_tab = match state.sql_modal.active_tab {
                 SqlModalTab::Sql => SqlModalTab::Plan,
-                SqlModalTab::Plan => SqlModalTab::Sql,
+                SqlModalTab::Plan => SqlModalTab::Compare,
+                SqlModalTab::Compare => SqlModalTab::Sql,
             };
             Some(vec![])
         }
 
         Action::SqlModalPrevTab => {
             state.sql_modal.active_tab = match state.sql_modal.active_tab {
-                SqlModalTab::Sql => SqlModalTab::Plan,
+                SqlModalTab::Sql => SqlModalTab::Compare,
+                SqlModalTab::Compare => SqlModalTab::Plan,
                 SqlModalTab::Plan => SqlModalTab::Sql,
             };
             Some(vec![])
@@ -372,6 +409,120 @@ mod tests {
         }
     }
 
+    mod pin_left {
+        use super::*;
+
+        #[test]
+        fn pins_left_when_right_exists() {
+            let mut state = sql_modal_state();
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+                "Q1",
+            );
+
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert!(state.explain.left.is_some());
+            assert!(state.messages.last_success.is_some());
+        }
+
+        #[test]
+        fn noop_when_no_right() {
+            let mut state = sql_modal_state();
+
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert!(state.explain.left.is_none());
+            assert!(state.messages.last_success.is_none());
+        }
+
+        #[test]
+        fn overwrites_previous_left() {
+            let mut state = sql_modal_state();
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+                "Q1",
+            );
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            state.explain.set_plan(
+                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                false,
+                0,
+                "Q2",
+            );
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert_eq!(
+                state.explain.left.as_ref().unwrap().plan.total_cost,
+                Some(5.0)
+            );
+        }
+    }
+
+    mod compare_workflow {
+        use super::*;
+
+        #[test]
+        fn pin_then_second_explain_enables_comparison() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+            let now = Instant::now();
+
+            // Step 1: Run EXPLAIN
+            reduce_explain(&mut state, &Action::ExplainRequest, now);
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 42,
+                },
+                now,
+            );
+            assert!(state.explain.right.is_some());
+
+            // Step 2: Pin left
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, now);
+            assert!(state.explain.left.is_some());
+
+            // Step 3: Run EXPLAIN again (simulating second query)
+            state.sql_modal.content = "SELECT 2".to_string();
+            reduce_explain(&mut state, &Action::ExplainRequest, now);
+
+            // reset() should preserve left
+            assert!(state.explain.left.is_some());
+
+            // Step 4: Second EXPLAIN completes
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 5,
+                },
+                now,
+            );
+
+            // Both should be present for comparison
+            assert!(state.explain.left.is_some());
+            assert!(state.explain.right.is_some());
+            assert_eq!(
+                state.explain.left.as_ref().unwrap().plan.total_cost,
+                Some(100.0)
+            );
+            assert_eq!(
+                state.explain.right.as_ref().unwrap().plan.total_cost,
+                Some(5.0)
+            );
+        }
+    }
+
     mod scroll {
         use super::*;
 
@@ -396,9 +547,12 @@ mod tests {
         #[test]
         fn scroll_down_increments() {
             let mut state = sql_modal_state();
-            state
-                .explain
-                .set_plan("line1\nline2\nline3".to_string(), false, 0);
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("line{}", i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
 
             reduce_explain(
                 &mut state,
@@ -416,8 +570,17 @@ mod tests {
         #[test]
         fn scroll_down_clamps_at_max() {
             let mut state = sql_modal_state();
-            state.explain.set_plan("line1\nline2".to_string(), false, 0);
-            state.explain.scroll_offset = 1;
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("line{}", i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
+            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
+            let max = state.explain.line_count().saturating_sub(modal_inner);
+            state.explain.scroll_offset = max;
 
             reduce_explain(
                 &mut state,
@@ -429,7 +592,131 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.explain.scroll_offset, 1);
+            assert_eq!(state.explain.scroll_offset, max);
+        }
+
+        #[test]
+        fn compare_scroll_up_saturates_at_zero() {
+            let mut state = sql_modal_state();
+            state.explain.compare_scroll_offset = 0;
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 0);
+        }
+
+        #[test]
+        fn compare_scroll_down_increments() {
+            let mut state = sql_modal_state();
+            let long_plan = (0..20)
+                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
+            state.explain.pin_left();
+            state.explain.set_plan(long_plan, false, 0, "Q2");
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 1);
+        }
+
+        #[test]
+        fn compare_scroll_down_stops_at_max() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
+            state.explain.pin_left();
+            state.explain.set_plan(long_plan, false, 0, "Q2");
+
+            let max = state.explain.compare_max_scroll(state.ui.terminal_height);
+
+            // Scroll to max
+            for _ in 0..max + 5 {
+                reduce_explain(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::ExplainCompare,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line,
+                    },
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.explain.compare_scroll_offset, max);
+
+            // k should immediately scroll back
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+            assert_eq!(state.explain.compare_scroll_offset, max.saturating_sub(1));
+        }
+
+        #[test]
+        fn right_only_scroll_down_increments() {
+            let mut state = sql_modal_state();
+            state.ui.terminal_height = 24;
+            let long_plan = (0..20)
+                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.explain.set_plan(long_plan, false, 0, "Q1");
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 1);
+        }
+
+        #[test]
+        fn compare_scroll_down_clamps_without_content() {
+            let mut state = sql_modal_state();
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 0);
         }
     }
 
@@ -447,13 +734,43 @@ mod tests {
         }
 
         #[test]
-        fn next_tab_switches_plan_to_sql() {
+        fn next_tab_switches_plan_to_compare() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Plan;
 
             reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Compare);
+        }
+
+        #[test]
+        fn next_tab_switches_compare_to_sql() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+
+            reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
+
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn prev_tab_switches_sql_to_compare() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Compare);
+        }
+
+        #[test]
+        fn prev_tab_switches_compare_to_plan() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+
+            reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
         }
 
         #[test]

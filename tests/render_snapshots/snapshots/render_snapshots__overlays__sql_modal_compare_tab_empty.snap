@@ -8,8 +8,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │ SELECT 1                                                     │       │
-│       │                                                              │       │
+│       │  Left                        │ Right                         │       │
+│       │  Waiting...                  │  Waiting...                   │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │                                                              │       │
@@ -19,9 +19,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
-│       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ ^E: Explain │ ^L: Clear │ ^O: Hist │ Esc: Norma╯       │
+│       │  [NORMAL]                                             Ready  │       │
+│       ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

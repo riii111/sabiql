@@ -8,20 +8,19 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │ SELECT 1                                                     │       │
+│       │  ↓ Improved                                                  │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │                                                              │       │
-│       │                                                              │       │
-│       │                                                              │───────┘
+│       │   • Total cost: 1000.00 → 8.30 (-99.2%)                      │       │
+│       │   • Seq Scan on users → Index Scan using idx_users_id on     │       │
+│       │ users                                                        │       │
+│       │   • Rows: 2550 → 1                                           │───────┘
 │       │                                                              │───────┐
+│       │  ──────────────────────────────────────────────────────────  │       │
 │       │                                                              │       │
-│       │                                                              │       │
-│       │                                                              │       │
+│       │  Left [Previous]             │ Right [Latest]                │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
-│       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ ^E: Explain │ ^L: Clear │ ^O: Hist │ Esc: Norma╯       │
+│       │  [NORMAL]                                             Ready  │       │
+│       ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-⌥Enter:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal

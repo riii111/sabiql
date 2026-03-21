@@ -22,24 +22,20 @@ pub fn text_cursor_spans(
     // Determine how many chars are visible within the viewport
     let view_end = vp.saturating_add(visible_width).min(total);
     let visible: Vec<char> = chars[vp..view_end].to_vec();
-    let cursor_in_view = cursor.saturating_sub(vp);
+    let cursor_in_view = cursor.checked_sub(vp);
 
+    // Block cursor: thin bar (▏) occupies a full cell and shifts text right, so we use bg/fg inversion instead.
     let cursor_style = Style::default()
         .bg(Theme::CURSOR_FG)
         .fg(Theme::SELECTION_BG);
 
     if cursor >= total {
-        // Cursor at end: show text + thin bar cursor
         let text: String = visible.iter().collect();
-        vec![
-            Span::raw(text),
-            Span::styled("\u{258F}", Style::default().fg(Theme::CURSOR_FG)),
-        ]
-    } else if cursor_in_view < visible.len() {
-        // Cursor on a visible character: before + reversed char + after
-        let before: String = visible[..cursor_in_view].iter().collect();
-        let cursor_char: String = visible[cursor_in_view].to_string();
-        let after: String = visible[cursor_in_view + 1..].iter().collect();
+        vec![Span::raw(text), Span::styled(" ", cursor_style)]
+    } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
+        let before: String = visible[..ci].iter().collect();
+        let cursor_char: String = visible[ci].to_string();
+        let after: String = visible[ci + 1..].iter().collect();
         vec![
             Span::raw(before),
             Span::styled(cursor_char, cursor_style),
@@ -81,7 +77,7 @@ mod tests {
         let spans = text_cursor_spans("abc", 3, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["abc", "\u{258F}"]);
+        assert_eq!(texts, vec!["abc", " "]);
     }
 
     #[test]
@@ -89,7 +85,7 @@ mod tests {
         let spans = text_cursor_spans("", 0, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "\u{258F}"]);
+        assert_eq!(texts, vec!["", " "]);
     }
 
     #[test]
@@ -115,7 +111,7 @@ mod tests {
 
         // vp clamped to 3 (total), visible is empty, cursor at end
         let texts = spans_to_strings(&spans);
-        assert_eq!(texts, vec!["", "\u{258F}"]);
+        assert_eq!(texts, vec!["", " "]);
     }
 
     #[test]
@@ -143,16 +139,25 @@ mod tests {
     }
 
     #[test]
-    fn mid_text_cursor_style_has_no_bold() {
-        use ratatui::style::Modifier;
+    fn cursor_left_of_viewport_returns_text_only() {
+        // cursor=0, viewport starts at 2 -> cursor is off-screen to the left
+        let spans = text_cursor_spans("abcdef", 0, 2, 3);
 
-        let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
+        let texts = spans_to_strings(&spans);
+        assert_eq!(texts, vec!["cde"]);
+    }
 
-        // spans[1] is the cursor span
-        let cursor_span = &spans[1];
-        assert!(
-            !cursor_span.style.add_modifier.contains(Modifier::BOLD),
-            "mid-text cursor span must not have BOLD modifier"
-        );
+    #[test]
+    fn all_positions_return_consistent_cursor_style() {
+        let at_start = text_cursor_spans("abc", 0, 0, usize::MAX);
+        let at_middle = text_cursor_spans("abc", 1, 0, usize::MAX);
+        let at_end = text_cursor_spans("abc", 3, 0, usize::MAX);
+
+        let cursor_start = &at_start[1];
+        let cursor_middle = &at_middle[1];
+        let cursor_end = at_end.last().unwrap();
+
+        assert_eq!(cursor_start.style, cursor_middle.style);
+        assert_eq!(cursor_middle.style, cursor_end.style);
     }
 }

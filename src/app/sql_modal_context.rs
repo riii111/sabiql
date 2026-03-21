@@ -13,6 +13,7 @@ pub enum SqlModalTab {
     #[default]
     Sql,
     Plan,
+    Compare,
 }
 
 #[derive(Debug, Clone)]
