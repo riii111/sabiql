@@ -13,14 +13,20 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if let SqlModalStatus::ConfirmingAnalyze { is_dml, .. } = state.sql_modal.status() {
         let mut lines = Vec::new();
 
-        let warn_style = Style::default()
-            .fg(Theme::STATUS_ERROR)
-            .add_modifier(Modifier::BOLD);
+        let header_style = if *is_dml {
+            Style::default()
+                .fg(Theme::STATUS_ERROR)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(Theme::STATUS_WARNING)
+                .add_modifier(Modifier::BOLD)
+        };
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             " \u{26a0} EXPLAIN ANALYZE",
-            warn_style,
+            header_style,
         )));
         lines.push(Line::raw(""));
 
@@ -34,11 +40,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if *is_dml {
             lines.push(Line::from(Span::styled(
                 " This is a DML statement. EXPLAIN ANALYZE will execute it",
-                warn_style,
+                header_style,
             )));
             lines.push(Line::from(Span::styled(
                 " and side effects (INSERT/UPDATE/DELETE) will occur.",
-                warn_style,
+                header_style,
             )));
         } else {
             lines.push(Line::from(Span::styled(
