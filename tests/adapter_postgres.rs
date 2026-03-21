@@ -6,7 +6,7 @@
 //! DSN is read from `SABIQL_TEST_DSN` env var.
 //! Default: `postgres://postgres:postgres@localhost:5432/sabiql_test`
 
-use sabiql::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
+use sabiql::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
 use sabiql::infra::adapters::postgres::PostgresAdapter;
 
 fn test_dsn() -> String {
@@ -133,7 +133,7 @@ mod error_paths {
             .await;
 
         assert!(
-            matches!(result, Err(MetadataError::Timeout)),
+            matches!(result, Err(DbOperationError::Timeout)),
             "Expected Timeout error, got: {result:?}"
         );
     }

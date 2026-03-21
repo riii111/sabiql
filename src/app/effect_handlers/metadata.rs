@@ -8,7 +8,7 @@ use crate::app::action::Action;
 use crate::app::cache::TtlCache;
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
-use crate::app::ports::{MetadataError, MetadataProvider};
+use crate::app::ports::{DbOperationError, MetadataProvider};
 use crate::app::state::AppState;
 use crate::domain::DatabaseMetadata;
 
@@ -113,7 +113,7 @@ pub(crate) async fn run(
                         tx.send(Action::TableDetailCacheFailed {
                             schema,
                             table,
-                            error: MetadataError::Timeout,
+                            error: DbOperationError::Timeout,
                         })
                         .await
                         .ok();
@@ -161,7 +161,7 @@ mod tests {
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
-    use crate::app::ports::{MetadataError, RenderOutput, Renderer};
+    use crate::app::ports::{DbOperationError, RenderOutput, Renderer};
     use crate::app::services::AppServices;
     use crate::app::state::AppState;
     use crate::domain::DatabaseMetadata;
@@ -276,7 +276,7 @@ mod tests {
             mock_provider
                 .expect_fetch_metadata()
                 .once()
-                .returning(|_| Err(MetadataError::ConnectionFailed("timeout".to_string())));
+                .returning(|_| Err(DbOperationError::ConnectionFailed("timeout".to_string())));
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);

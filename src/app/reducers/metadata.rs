@@ -656,7 +656,7 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::app::ports::MetadataError;
+        use crate::app::ports::DbOperationError;
 
         #[test]
         fn increments_retry_count() {
@@ -678,7 +678,7 @@ mod tests {
                 &Action::TableDetailCacheFailed {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: MetadataError::QueryFailed("new error".to_string()),
+                    error: DbOperationError::QueryFailed("new error".to_string()),
                 },
                 now,
             );
@@ -704,7 +704,7 @@ mod tests {
                 &Action::TableDetailCacheFailed {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: MetadataError::Timeout,
+                    error: DbOperationError::Timeout,
                 },
                 now,
             );

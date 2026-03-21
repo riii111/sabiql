@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::app::action::Action;
 use crate::app::effect::Effect;
-use crate::app::ports::{MetadataError, QueryExecutor, QueryHistoryStore};
+use crate::app::ports::{DbOperationError, QueryExecutor, QueryHistoryStore};
 use crate::app::state::AppState;
 use crate::domain::ConnectionId;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
@@ -164,7 +164,7 @@ pub(crate) async fn run(
                             } else {
                                 error_text
                             };
-                            tx.send(Action::ExplainFailed(MetadataError::QueryFailed(
+                            tx.send(Action::ExplainFailed(DbOperationError::QueryFailed(
                                 error_text,
                             )))
                             .await
@@ -426,7 +426,7 @@ mod tests {
         use crate::app::ports::connection_store::MockConnectionStore;
         use crate::app::ports::metadata::MockMetadataProvider;
         use crate::app::ports::query_executor::MockQueryExecutor;
-        use crate::app::ports::{MetadataError, RenderOutput, Renderer};
+        use crate::app::ports::{DbOperationError, RenderOutput, Renderer};
         use crate::app::services::AppServices;
         use crate::app::state::AppState;
         use color_eyre::eyre::Result;
@@ -502,7 +502,7 @@ mod tests {
                 .expect_execute_preview()
                 .once()
                 .returning(|_, _, _, _, _, _| {
-                    Err(MetadataError::QueryFailed("syntax error".to_string()))
+                    Err(DbOperationError::QueryFailed("syntax error".to_string()))
                 });
 
             let cache = TtlCache::new(300);

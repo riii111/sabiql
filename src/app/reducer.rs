@@ -179,7 +179,7 @@ mod tests {
     use crate::app::action::{
         InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
     };
-    use crate::app::ports::MetadataError;
+    use crate::app::ports::DbOperationError;
     use crate::app::ports::connection_store::ConnectionStoreError;
 
     fn create_test_state() -> AppState {
@@ -559,7 +559,7 @@ mod tests {
 
             let effects = reduce(
                 &mut state,
-                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                Action::MetadataFailed(DbOperationError::ConnectionFailed(
                     "psql: error: connection refused".to_string(),
                 )),
                 now,
@@ -1036,7 +1036,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                Action::MetadataFailed(DbOperationError::ConnectionFailed(
                     "connection refused".to_string(),
                 )),
                 now,
@@ -1503,7 +1503,7 @@ mod tests {
             // Simulate failure — must detect Delete and return to Normal (not CellEdit)
             reduce(
                 &mut state,
-                Action::ExecuteWriteFailed(MetadataError::QueryFailed(
+                Action::ExecuteWriteFailed(DbOperationError::QueryFailed(
                     "connection lost".to_string(),
                 )),
                 now,
@@ -1643,7 +1643,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed(MetadataError::ConnectionFailed(
+                Action::MetadataFailed(DbOperationError::ConnectionFailed(
                     "connection refused".to_string(),
                 )),
                 now,
@@ -1670,7 +1670,9 @@ mod tests {
 
             reduce(
                 &mut state,
-                Action::MetadataFailed(MetadataError::QueryFailed("permission denied".to_string())),
+                Action::MetadataFailed(DbOperationError::QueryFailed(
+                    "permission denied".to_string(),
+                )),
                 now,
                 &AppServices::stub(),
             );

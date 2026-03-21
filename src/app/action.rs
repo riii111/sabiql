@@ -3,10 +3,10 @@ use std::sync::Arc;
 use crate::app::connection_error::ConnectionErrorInfo;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::key_sequence::Prefix;
+use crate::app::ports::DbOperationError;
 use crate::app::ports::clipboard::ClipboardError;
 use crate::app::ports::connection_store::ConnectionStoreError;
 use crate::app::ports::folder_opener::FolderOpenError;
-use crate::app::ports::metadata::MetadataError;
 use crate::app::ports::query_history::QueryHistoryError;
 use crate::app::sql_modal_context::CompletionCandidate;
 use crate::app::write_guardrails::WritePreview;
@@ -154,7 +154,7 @@ pub struct SmartErRefreshResult {
 #[derive(Debug, Clone)]
 pub struct SmartErRefreshError {
     pub run_id: u64,
-    pub error: MetadataError,
+    pub error: DbOperationError,
     pub new_metadata: Option<Arc<DatabaseMetadata>>,
 }
 
@@ -300,12 +300,12 @@ pub enum Action {
     LoadMetadata,
     ReloadMetadata,
     MetadataLoaded(Arc<DatabaseMetadata>),
-    MetadataFailed(MetadataError),
+    MetadataFailed(DbOperationError),
 
     // Table detail loading
     LoadTableDetail(TableTarget),
     TableDetailLoaded(Box<Table>, u64),
-    TableDetailFailed(MetadataError, u64),
+    TableDetailFailed(DbOperationError, u64),
 
     // Completion prefetch (does NOT update state.table_detail)
     PrefetchTableDetail {
@@ -320,7 +320,7 @@ pub enum Action {
     TableDetailCacheFailed {
         schema: String,
         table: String,
-        error: MetadataError,
+        error: DbOperationError,
     },
     TableDetailAlreadyCached {
         schema: String,
@@ -372,7 +372,7 @@ pub enum Action {
         is_analyze: bool,
         execution_time_ms: u64,
     },
-    ExplainFailed(MetadataError),
+    ExplainFailed(DbOperationError),
 
     // SQL Modal completion
     CompletionTrigger,
@@ -395,11 +395,11 @@ pub enum Action {
         generation: u64,
         target_page: Option<usize>,
     },
-    QueryFailed(MetadataError, u64),
+    QueryFailed(DbOperationError, u64),
     ExecuteWriteSucceeded {
         affected_rows: usize,
     },
-    ExecuteWriteFailed(MetadataError),
+    ExecuteWriteFailed(DbOperationError),
 
     // Result pane
     ResultNextPage,
@@ -479,7 +479,7 @@ pub enum Action {
         path: String,
         row_count: Option<usize>,
     },
-    CsvExportFailed(MetadataError),
+    CsvExportFailed(DbOperationError),
 
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,

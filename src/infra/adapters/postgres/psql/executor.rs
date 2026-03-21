@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::MetadataError;
+use crate::app::ports::DbOperationError;
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
@@ -135,7 +135,7 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query: &str,
         read_only: bool,
-    ) -> Result<PsqlOutput, MetadataError> {
+    ) -> Result<PsqlOutput, DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
@@ -162,13 +162,13 @@ impl PostgresAdapter {
     async fn collect_output(
         cmd: &mut Command,
         timeout_secs: u64,
-    ) -> Result<PsqlOutput, MetadataError> {
+    ) -> Result<PsqlOutput, DbOperationError> {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+            .map_err(|e| DbOperationError::CommandNotFound(e.to_string()))?;
 
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -198,8 +198,8 @@ impl PostgresAdapter {
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
         .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+        .map_err(|_| DbOperationError::Timeout)?
+        .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
         Ok(PsqlOutput {
@@ -213,11 +213,11 @@ impl PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
-    ) -> Result<String, MetadataError> {
+    ) -> Result<String, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
         if !output.status.success() {
-            return Err(MetadataError::QueryFailed(output.stderr));
+            return Err(DbOperationError::QueryFailed(output.stderr));
         }
 
         Ok(output.stdout)
@@ -229,7 +229,7 @@ impl PostgresAdapter {
         query: &str,
         source: QuerySource,
         read_only: bool,
-    ) -> Result<QueryResult, MetadataError> {
+    ) -> Result<QueryResult, DbOperationError> {
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
@@ -271,7 +271,7 @@ impl PostgresAdapter {
 
         let columns: Vec<String> = reader
             .headers()
-            .map_err(|e| MetadataError::QueryFailed(format!("CSV parse error: {}", e)))?
+            .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {}", e)))?
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -279,7 +279,7 @@ impl PostgresAdapter {
         let mut rows = Vec::new();
         for result in reader.records() {
             let record = result
-                .map_err(|e| MetadataError::QueryFailed(format!("CSV parse error: {}", e)))?;
+                .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {}", e)))?;
             let row: Vec<String> = record.iter().map(|s| s.to_string()).collect();
             rows.push(row);
         }
@@ -298,7 +298,7 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         read_only: bool,
-    ) -> Result<WriteExecutionResult, MetadataError> {
+    ) -> Result<WriteExecutionResult, DbOperationError> {
         let start = Instant::now();
 
         let output = self.run_psql(dsn, &[], query, read_only).await?;
@@ -306,11 +306,13 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            return Err(MetadataError::QueryFailed(output.stderr.trim().to_string()));
+            return Err(DbOperationError::QueryFailed(
+                output.stderr.trim().to_string(),
+            ));
         }
 
         let affected_rows = Self::parse_affected_rows(&output.stdout).ok_or_else(|| {
-            MetadataError::QueryFailed("Failed to parse affected row count".to_string())
+            DbOperationError::QueryFailed("Failed to parse affected row count".to_string())
         })?;
 
         Ok(WriteExecutionResult {
@@ -324,16 +326,14 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
         read_only: bool,
-    ) -> Result<usize, MetadataError> {
+    ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
         if !output.status.success() {
-            return Err(MetadataError::QueryFailed(output.stderr));
+            return Err(DbOperationError::QueryFailed(output.stderr));
         }
-        output
-            .stdout
-            .trim()
-            .parse::<usize>()
-            .map_err(|e| MetadataError::QueryFailed(format!("Failed to parse COUNT result: {}", e)))
+        output.stdout.trim().parse::<usize>().map_err(|e| {
+            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {}", e))
+        })
     }
 
     pub(in crate::infra::adapters::postgres) async fn export_csv_to_file(
@@ -342,7 +342,7 @@ impl PostgresAdapter {
         query: &str,
         path: &std::path::Path,
         read_only: bool,
-    ) -> Result<usize, MetadataError> {
+    ) -> Result<usize, DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
@@ -360,14 +360,14 @@ impl PostgresAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| MetadataError::CommandNotFound(e.to_string()))?;
+            .map_err(|e| DbOperationError::CommandNotFound(e.to_string()))?;
 
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
         let file = tokio::fs::File::create(path)
             .await
-            .map_err(|e| MetadataError::QueryFailed(format!("Failed to create file: {}", e)))?;
+            .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {}", e)))?;
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
@@ -397,13 +397,13 @@ impl PostgresAdapter {
             Ok::<_, std::io::Error>((status, stderr, newline_count))
         })
         .await
-        .map_err(|_| MetadataError::Timeout)?
-        .map_err(|e| MetadataError::QueryFailed(e.to_string()))?;
+        .map_err(|_| DbOperationError::Timeout)?
+        .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stderr, newline_count) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
-            return Err(MetadataError::QueryFailed(stderr.trim().to_string()));
+            return Err(DbOperationError::QueryFailed(stderr.trim().to_string()));
         }
 
         // Subtract 1 for the CSV header line
@@ -416,7 +416,7 @@ impl PostgresAdapter {
         dsn: &str,
         schema: &str,
         table: &str,
-    ) -> Result<Vec<String>, MetadataError> {
+    ) -> Result<Vec<String>, DbOperationError> {
         let query = Self::preview_pk_columns_query(schema, table);
         let raw = self.execute_query(dsn, &query).await?;
         let trimmed = raw.trim();
@@ -424,7 +424,7 @@ impl PostgresAdapter {
             return Ok(vec![]);
         }
 
-        serde_json::from_str(trimmed).map_err(|e| MetadataError::InvalidJson(e.to_string()))
+        serde_json::from_str(trimmed).map_err(|e| DbOperationError::InvalidJson(e.to_string()))
     }
 
     pub(in crate::infra::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {

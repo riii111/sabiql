@@ -434,7 +434,7 @@ mod tests {
 
     mod csv_export {
         use super::*;
-        use crate::app::ports::MetadataError;
+        use crate::app::ports::DbOperationError;
         use crate::domain::QueryResult;
 
         fn export_test_state() -> AppState {
@@ -619,7 +619,7 @@ mod tests {
 
             let effects = reduce_query(
                 &mut state,
-                &Action::CsvExportFailed(MetadataError::QueryFailed("psql error".to_string())),
+                &Action::CsvExportFailed(DbOperationError::QueryFailed("psql error".to_string())),
                 Instant::now(),
                 &AppServices::stub(),
             )

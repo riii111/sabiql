@@ -507,7 +507,7 @@ mod tests {
 
     mod query_failed {
         use super::*;
-        use crate::app::ports::MetadataError;
+        use crate::app::ports::DbOperationError;
         use crate::app::ui_state::ResultNavMode;
 
         #[test]
@@ -521,7 +521,7 @@ mod tests {
 
             reduce_query(
                 &mut state,
-                &Action::QueryFailed(MetadataError::QueryFailed("error".to_string()), 1),
+                &Action::QueryFailed(DbOperationError::QueryFailed("error".to_string()), 1),
                 Instant::now(),
                 &AppServices::stub(),
             );

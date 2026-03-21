@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::{MetadataError, MetadataProvider, QueryExecutor};
+use crate::app::ports::{DbOperationError, MetadataProvider, QueryExecutor};
 use crate::domain::{
     Column, DatabaseMetadata, QueryResult, QuerySource, Table, TableSignature, WriteExecutionResult,
 };
@@ -46,7 +46,7 @@ impl PostgresAdapter {
 
 #[async_trait]
 impl MetadataProvider for PostgresAdapter {
-    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, MetadataError> {
+    async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let schemas_json = self.execute_query(dsn, Self::schemas_query()).await?;
         let tables_json = self.execute_query(dsn, Self::tables_query()).await?;
 
@@ -64,7 +64,7 @@ impl MetadataProvider for PostgresAdapter {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, MetadataError> {
+    ) -> Result<Vec<TableSignature>, DbOperationError> {
         let json = self
             .execute_query(dsn, Self::table_signatures_query())
             .await?;
@@ -76,7 +76,7 @@ impl MetadataProvider for PostgresAdapter {
         dsn: &str,
         schema: &str,
         table: &str,
-    ) -> Result<Table, MetadataError> {
+    ) -> Result<Table, DbOperationError> {
         let query = Self::table_detail_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
         let (columns, indexes, foreign_keys, rls, triggers, table_info) =
@@ -103,7 +103,7 @@ impl MetadataProvider for PostgresAdapter {
         dsn: &str,
         schema: &str,
         table: &str,
-    ) -> Result<Table, MetadataError> {
+    ) -> Result<Table, DbOperationError> {
         let query = Self::table_columns_and_fks_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
         let (columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
@@ -135,7 +135,7 @@ impl QueryExecutor for PostgresAdapter {
         limit: usize,
         offset: usize,
         read_only: bool,
-    ) -> Result<QueryResult, MetadataError> {
+    ) -> Result<QueryResult, DbOperationError> {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
         // On failure, falls back to unordered preview (rows may shift after edits).
@@ -159,7 +159,7 @@ impl QueryExecutor for PostgresAdapter {
         dsn: &str,
         query: &str,
         read_only: bool,
-    ) -> Result<QueryResult, MetadataError> {
+    ) -> Result<QueryResult, DbOperationError> {
         self.execute_query_raw(dsn, query, QuerySource::Adhoc, read_only)
             .await
     }
@@ -169,7 +169,7 @@ impl QueryExecutor for PostgresAdapter {
         dsn: &str,
         query: &str,
         read_only: bool,
-    ) -> Result<WriteExecutionResult, MetadataError> {
+    ) -> Result<WriteExecutionResult, DbOperationError> {
         self.execute_write_raw(dsn, query, read_only).await
     }
 
@@ -178,7 +178,7 @@ impl QueryExecutor for PostgresAdapter {
         dsn: &str,
         query: &str,
         read_only: bool,
-    ) -> Result<usize, MetadataError> {
+    ) -> Result<usize, DbOperationError> {
         self.count_rows(dsn, query, read_only).await
     }
 
@@ -188,7 +188,7 @@ impl QueryExecutor for PostgresAdapter {
         query: &str,
         path: &std::path::Path,
         read_only: bool,
-    ) -> Result<usize, MetadataError> {
+    ) -> Result<usize, DbOperationError> {
         self.export_csv_to_file(dsn, query, path, read_only).await
     }
 }
