@@ -701,15 +701,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Key::Char('b'), Expected::SaveExplainBaseline)]
     #[case(Key::Char('j'), Expected::ExplainPlanScrollDown)]
     #[case(Key::Down, Expected::ExplainPlanScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainPlanScrollUp)]
     #[case(Key::Up, Expected::ExplainPlanScrollUp)]
-    #[case(Key::Enter, Expected::None)]
-    #[case(Key::Esc, Expected::CloseSqlModal)]
-    #[case(Key::Char('a'), Expected::None)]
-    fn plan_tab_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+    fn plan_tab_scroll_keys_scroll_plan(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -718,6 +714,44 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[test]
+    fn plan_tab_b_saves_baseline() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('b')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, Expected::SaveExplainBaseline);
+    }
+
+    #[test]
+    fn plan_tab_esc_closes_modal() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Esc),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, Expected::CloseSqlModal);
+    }
+
+    #[rstest]
+    #[case(Key::Enter)]
+    #[case(Key::Char('a'))]
+    fn plan_tab_unbound_keys_return_none(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[test]
