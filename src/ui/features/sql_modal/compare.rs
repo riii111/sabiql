@@ -40,7 +40,7 @@ fn render_placeholder(frame: &mut Frame, area: Rect, message: &str) {
         format!(" {}", message),
         Style::default().fg(Theme::PLACEHOLDER_TEXT),
     ));
-    frame.render_widget(Paragraph::new(vec![line]), area);
+    frame.render_widget(Paragraph::new(vec![line]).wrap(Wrap { trim: false }), area);
 }
 
 fn render_comparison(
@@ -52,25 +52,6 @@ fn render_comparison(
 ) {
     let result = explain_plan::compare_plans(baseline, current);
 
-    if result.verdict == ComparisonVerdict::Unavailable {
-        let mut lines: Vec<Line> = Vec::new();
-        lines.push(Line::from(Span::styled(
-            " Comparison unavailable",
-            Style::default()
-                .fg(Theme::TEXT_MUTED)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::raw(""));
-        for reason in &result.reasons {
-            lines.push(Line::from(vec![
-                Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
-                Span::raw(reason.clone()),
-            ]));
-        }
-        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
-        return;
-    }
-
     let verdict_style = match result.verdict {
         ComparisonVerdict::Improved => Style::default()
             .fg(Theme::STATUS_SUCCESS)
@@ -78,15 +59,19 @@ fn render_comparison(
         ComparisonVerdict::Worsened => Style::default()
             .fg(Theme::STATUS_ERROR)
             .add_modifier(Modifier::BOLD),
-        ComparisonVerdict::Similar | ComparisonVerdict::Unavailable => Style::default()
+        ComparisonVerdict::Similar => Style::default()
             .fg(Theme::TEXT_ACCENT)
+            .add_modifier(Modifier::BOLD),
+        ComparisonVerdict::Unavailable => Style::default()
+            .fg(Theme::TEXT_MUTED)
             .add_modifier(Modifier::BOLD),
     };
 
     let verdict_label = match result.verdict {
         ComparisonVerdict::Improved => "\u{2193} Improved",
         ComparisonVerdict::Worsened => "\u{2191} Worsened",
-        ComparisonVerdict::Similar | ComparisonVerdict::Unavailable => "\u{2248} Similar",
+        ComparisonVerdict::Similar => "\u{2248} Similar",
+        ComparisonVerdict::Unavailable => "Comparison unavailable",
     };
 
     let mut lines: Vec<Line> = Vec::new();

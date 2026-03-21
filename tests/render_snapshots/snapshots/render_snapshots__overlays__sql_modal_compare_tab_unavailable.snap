@@ -12,10 +12,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │   • Could not parse cost from either plan                    │       │
 │       │                                                              │       │
-│       │                                                              │       │
+│       │  ──────────────────────────────────────────────────────────  │       │
 │       │                                                              │───────┘
-│       │                                                              │───────┐
-│       │                                                              │       │
+│       │  Baseline                    │ Current                       │───────┐
+│       │  CREATE TABLE foo (id int)   │ ALTER TABLE foo ADD COLUMN …  │       │
 │       │                                                              │       │
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │

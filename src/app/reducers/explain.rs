@@ -162,7 +162,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            state.explain.compare_scroll_offset += 1;
+            let max = state.explain.compare_line_count().saturating_sub(1);
+            if state.explain.compare_scroll_offset < max {
+                state.explain.compare_scroll_offset += 1;
+            }
             Some(vec![])
         }
 
@@ -535,6 +538,17 @@ mod tests {
         #[test]
         fn compare_scroll_down_increments() {
             let mut state = sql_modal_state();
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+            );
+            state.explain.save_baseline();
+            state.explain.set_plan(
+                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                false,
+                0,
+            );
 
             reduce_explain(
                 &mut state,
@@ -547,6 +561,23 @@ mod tests {
             );
 
             assert_eq!(state.explain.compare_scroll_offset, 1);
+        }
+
+        #[test]
+        fn compare_scroll_down_clamps_without_content() {
+            let mut state = sql_modal_state();
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 0);
         }
     }
 

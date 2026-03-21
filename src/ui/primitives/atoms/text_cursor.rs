@@ -22,7 +22,7 @@ pub fn text_cursor_spans(
     // Determine how many chars are visible within the viewport
     let view_end = vp.saturating_add(visible_width).min(total);
     let visible: Vec<char> = chars[vp..view_end].to_vec();
-    let cursor_in_view = cursor.saturating_sub(vp);
+    let cursor_in_view = cursor.checked_sub(vp);
 
     // Block cursor: thin bar (▏) occupies a full cell and shifts text right, so we use bg/fg inversion instead.
     let cursor_style = Style::default()
@@ -32,10 +32,10 @@ pub fn text_cursor_spans(
     if cursor >= total {
         let text: String = visible.iter().collect();
         vec![Span::raw(text), Span::styled(" ", cursor_style)]
-    } else if cursor_in_view < visible.len() {
-        let before: String = visible[..cursor_in_view].iter().collect();
-        let cursor_char: String = visible[cursor_in_view].to_string();
-        let after: String = visible[cursor_in_view + 1..].iter().collect();
+    } else if let Some(ci) = cursor_in_view.filter(|&i| i < visible.len()) {
+        let before: String = visible[..ci].iter().collect();
+        let cursor_char: String = visible[ci].to_string();
+        let after: String = visible[ci + 1..].iter().collect();
         vec![
             Span::raw(before),
             Span::styled(cursor_char, cursor_style),
@@ -136,6 +136,15 @@ mod tests {
 
         let texts = spans_to_strings(&spans);
         assert_eq!(texts, vec!["he", "l", "lo"]);
+    }
+
+    #[test]
+    fn cursor_left_of_viewport_returns_text_only() {
+        // cursor=0, viewport starts at 2 -> cursor is off-screen to the left
+        let spans = text_cursor_spans("abcdef", 0, 2, 3);
+
+        let texts = spans_to_strings(&spans);
+        assert_eq!(texts, vec!["cde"]);
     }
 
     #[test]
