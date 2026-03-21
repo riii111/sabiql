@@ -1,5 +1,7 @@
 use super::*;
 use harness::connected_state;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 #[test]
 fn sql_modal_with_completion() {
@@ -595,6 +597,36 @@ fn sql_modal_compare_tab_unavailable() {
         false,
         0,
         "ALTER TABLE foo",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_narrow_stacked() {
+    let mut state = create_test_state();
+    let backend = TestBackend::new(50, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // First EXPLAIN
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
+            .to_string(),
+        false,
+        100,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    // Second EXPLAIN — auto-advances first to left
+    state.explain.set_plan(
+        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
+            .to_string(),
+        false,
+        5,
+        "SELECT * FROM users WHERE id > 10",
     );
     state.sql_modal.active_tab = SqlModalTab::Compare;
 

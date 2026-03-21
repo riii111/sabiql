@@ -19,15 +19,21 @@ const NODE_TYPES: &[&str] = &[
     "Hash Join",
     "Hash Semi Join",
     "Hash",
+    "Incremental Sort",
     "Index Only Scan",
     "Index Scan",
     "Insert",
     "Limit",
     "LockRows",
     "Materialize",
+    "Memoize",
     "Merge Append",
     "Merge Join",
     "Nested Loop",
+    "Parallel Bitmap Heap Scan",
+    "Parallel Index Only Scan",
+    "Parallel Index Scan",
+    "Parallel Seq Scan",
     "ProjectSet",
     "Result",
     "Seq Scan",
@@ -148,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_seq_scan() {
+    fn seq_scan_line_returns_highlighted_node_and_cost() {
         let line = highlight_plan_line("Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)");
         let text = spans_text(&line);
         assert!(text.contains("Seq Scan"));
@@ -156,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_node_has_guide() {
+    fn nested_node_returns_line_with_indentation_guide() {
         let line = highlight_plan_line(
             "    ->  Index Scan using idx on users  (cost=0.28..8.30 rows=1 width=64)",
         );
@@ -166,20 +172,20 @@ mod tests {
     }
 
     #[test]
-    fn filter_line_no_node() {
+    fn filter_line_returns_raw_text() {
         let line = highlight_plan_line("        Filter: (id > 10)");
         let text = spans_text(&line);
         assert!(text.contains("Filter:"));
     }
 
     #[test]
-    fn empty_line() {
+    fn empty_input_returns_non_empty_spans() {
         let line = highlight_plan_line("");
         assert!(!line.spans.is_empty());
     }
 
     #[test]
-    fn deeply_nested() {
+    fn deeply_nested_line_returns_multiple_guides() {
         let line =
             highlight_plan_line("            ->  Hash  (cost=100.00..100.00 rows=1000 width=32)");
         let text = spans_text(&line);

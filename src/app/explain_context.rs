@@ -158,10 +158,16 @@ impl ExplainContext {
         }
     }
 
+    pub fn modal_inner_height(terminal_height: u16) -> usize {
+        const MODAL_HEIGHT_PERCENT: usize = 60;
+        // border(2) + separator(1) + status(1) + padding(1)
+        const MODAL_CHROME_LINES: usize = 5;
+        (terminal_height as usize * MODAL_HEIGHT_PERCENT / 100).saturating_sub(MODAL_CHROME_LINES)
+    }
+
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
-        // SQL modal is 60% of terminal height, minus border(2) + separator(1) + status(1) + padding(1)
-        let modal_inner = (terminal_height as usize * 60 / 100).saturating_sub(5);
-        self.compare_line_count().saturating_sub(modal_inner)
+        self.compare_line_count()
+            .saturating_sub(Self::modal_inner_height(terminal_height))
     }
 }
 

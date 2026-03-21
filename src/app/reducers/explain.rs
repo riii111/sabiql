@@ -141,7 +141,9 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let modal_inner = (state.ui.terminal_height as usize * 60 / 100).saturating_sub(5);
+            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             if state.explain.scroll_offset < max {
                 state.explain.scroll_offset += 1;
@@ -574,7 +576,9 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
-            let modal_inner = (state.ui.terminal_height as usize * 60 / 100).saturating_sub(5);
+            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
+                state.ui.terminal_height,
+            );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
 
