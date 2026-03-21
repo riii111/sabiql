@@ -52,6 +52,25 @@ fn render_comparison(
 ) {
     let result = explain_plan::compare_plans(baseline, current);
 
+    if result.verdict == ComparisonVerdict::Unavailable {
+        let mut lines: Vec<Line> = Vec::new();
+        lines.push(Line::from(Span::styled(
+            " Comparison unavailable",
+            Style::default()
+                .fg(Theme::TEXT_MUTED)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::raw(""));
+        for reason in &result.reasons {
+            lines.push(Line::from(vec![
+                Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
+                Span::raw(reason.clone()),
+            ]));
+        }
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+        return;
+    }
+
     let verdict_style = match result.verdict {
         ComparisonVerdict::Improved => Style::default()
             .fg(Theme::STATUS_SUCCESS)
@@ -59,7 +78,7 @@ fn render_comparison(
         ComparisonVerdict::Worsened => Style::default()
             .fg(Theme::STATUS_ERROR)
             .add_modifier(Modifier::BOLD),
-        ComparisonVerdict::Similar => Style::default()
+        ComparisonVerdict::Similar | ComparisonVerdict::Unavailable => Style::default()
             .fg(Theme::TEXT_ACCENT)
             .add_modifier(Modifier::BOLD),
     };
@@ -67,7 +86,7 @@ fn render_comparison(
     let verdict_label = match result.verdict {
         ComparisonVerdict::Improved => "\u{2193} Improved",
         ComparisonVerdict::Worsened => "\u{2191} Worsened",
-        ComparisonVerdict::Similar => "\u{2248} Similar",
+        ComparisonVerdict::Similar | ComparisonVerdict::Unavailable => "\u{2248} Similar",
     };
 
     let mut lines: Vec<Line> = Vec::new();
@@ -108,8 +127,11 @@ fn render_comparison(
         render_stacked(&mut lines, baseline, current);
     }
 
-    // Apply scroll offset
-    let visible_lines: Vec<Line> = lines.into_iter().skip(scroll_offset).collect();
+    // Clamp scroll offset to content bounds
+    let max_scroll = lines.len().saturating_sub(1);
+    let clamped_offset = scroll_offset.min(max_scroll);
+
+    let visible_lines: Vec<Line> = lines.into_iter().skip(clamped_offset).collect();
     frame.render_widget(
         Paragraph::new(visible_lines).wrap(Wrap { trim: false }),
         area,

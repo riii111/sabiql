@@ -513,6 +513,69 @@ fn sql_modal_plan_tab_with_error() {
 }
 
 #[test]
+fn sql_modal_compare_tab_no_baseline() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_with_verdict() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // Save baseline with high cost
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
+            .to_string(),
+        false,
+        100,
+    );
+    state.explain.save_baseline();
+    // Set current with low cost (Improved)
+    state.explain.set_plan(
+        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
+            .to_string(),
+        false,
+        5,
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_unavailable() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    // Save baseline with unparseable text
+    state
+        .explain
+        .set_plan("CREATE TABLE foo (id int)".to_string(), false, 0);
+    state.explain.save_baseline();
+    // Set current with also unparseable text
+    state
+        .explain
+        .set_plan("ALTER TABLE foo ADD COLUMN bar text".to_string(), false, 0);
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_normal_initial() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

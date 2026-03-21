@@ -15,6 +15,7 @@ pub enum ComparisonVerdict {
     Improved,
     Worsened,
     Similar,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,11 +118,11 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         }
         (None, None) => {
             reasons.push("Could not parse cost from either plan".to_string());
-            ComparisonVerdict::Similar
+            ComparisonVerdict::Unavailable
         }
         _ => {
             reasons.push("Could not parse cost from one of the plans".to_string());
-            ComparisonVerdict::Similar
+            ComparisonVerdict::Unavailable
         }
     };
 
@@ -302,7 +303,7 @@ Execution Time: 0.600 ms";
 
             let result = compare_plans(&baseline, &current);
 
-            assert_eq!(result.verdict, ComparisonVerdict::Similar);
+            assert_eq!(result.verdict, ComparisonVerdict::Unavailable);
             assert!(
                 result
                     .reasons
@@ -318,7 +319,7 @@ Execution Time: 0.600 ms";
 
             let result = compare_plans(&baseline, &current);
 
-            assert_eq!(result.verdict, ComparisonVerdict::Similar);
+            assert_eq!(result.verdict, ComparisonVerdict::Unavailable);
             assert!(
                 result
                     .reasons
