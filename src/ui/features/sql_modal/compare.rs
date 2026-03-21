@@ -91,14 +91,12 @@ fn render_comparison(
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Verdict header
     lines.push(Line::from(Span::styled(
         format!(" {}", verdict_label),
         verdict_style,
     )));
     lines.push(Line::raw(""));
 
-    // Reasons
     for reason in &result.reasons {
         lines.push(Line::from(vec![
             Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
@@ -110,7 +108,6 @@ fn render_comparison(
         lines.push(Line::raw(""));
     }
 
-    // Separator
     let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
     lines.push(Line::styled(
         format!(" {}", sep),
@@ -118,7 +115,6 @@ fn render_comparison(
     ));
     lines.push(Line::raw(""));
 
-    // Plan text comparison
     let use_side_by_side = area.width >= 60;
 
     if use_side_by_side {
@@ -127,7 +123,6 @@ fn render_comparison(
         render_stacked(&mut lines, baseline, current);
     }
 
-    // Clamp scroll offset to content bounds
     let max_scroll = lines.len().saturating_sub(1);
     let clamped_offset = scroll_offset.min(max_scroll);
 
@@ -144,9 +139,8 @@ fn render_side_by_side(
     current: &crate::domain::explain_plan::ExplainPlan,
     total_width: u16,
 ) {
-    let half = (total_width.saturating_sub(3) / 2) as usize; // 3 = " | " separator
+    let half = (total_width.saturating_sub(3) / 2) as usize;
 
-    // Headers
     lines.push(Line::from(vec![
         Span::styled(
             pad_or_truncate(" Baseline", half),

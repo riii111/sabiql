@@ -190,7 +190,6 @@ mod tests {
         assert_eq!(ctx.scroll_offset, 0);
         assert_eq!(ctx.compare_scroll_offset, 0);
         assert!(ctx.current_parsed.is_none());
-        // baseline is preserved
         assert!(ctx.baseline.is_some());
     }
 

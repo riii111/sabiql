@@ -1,5 +1,3 @@
-// ── Types ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExplainPlan {
     pub raw_text: String,
@@ -24,26 +22,19 @@ pub struct ComparisonResult {
     pub reasons: Vec<String>,
 }
 
-// ── Thresholds ───────────────────────────────────────────────────────────────
-
 const IMPROVED_THRESHOLD: f64 = 0.9;
 const WORSENED_THRESHOLD: f64 = 1.1;
 const MAX_REASONS: usize = 3;
 
-// ── Parsing ──────────────────────────────────────────────────────────────────
-
-/// Parse `(cost=X..Y rows=Z width=W)` from a line, returning (total_cost, rows).
 fn parse_cost_fragment(line: &str) -> Option<(f64, u64)> {
     let cost_start = line.find("(cost=")?;
     let after_cost = &line[cost_start + 6..];
     let dots = after_cost.find("..")?;
     let after_dots = &after_cost[dots + 2..];
 
-    // total_cost ends at the next space
     let cost_end = after_dots.find(' ')?;
     let total_cost: f64 = after_dots[..cost_end].parse().ok()?;
 
-    // rows=N
     let rows_marker = after_dots.find("rows=")?;
     let after_rows = &after_dots[rows_marker + 5..];
     let rows_end = after_rows
