@@ -572,15 +572,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Key::Char('y'), Expected::SqlModalYank)]
-    #[case(Key::Enter, Expected::SqlModalEnterInsert)]
-    #[case(Key::Esc, Expected::CloseSqlModal)]
     #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
     #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
     #[case(Key::Left, Expected::SqlModalMoveCursor(CursorMove::Left))]
     #[case(Key::Right, Expected::SqlModalMoveCursor(CursorMove::Right))]
-    #[case(Key::Char('a'), Expected::None)]
-    fn normal_mode_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+    fn normal_mode_arrow_keys_move_cursor(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -589,6 +585,54 @@ mod tests {
         );
 
         assert_action(result, expected);
+    }
+
+    #[test]
+    fn normal_mode_y_yanks_query() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('y')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::SqlModalYank);
+    }
+
+    #[test]
+    fn normal_mode_enter_enters_insert() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Enter),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::SqlModalEnterInsert);
+    }
+
+    #[test]
+    fn normal_mode_esc_closes_modal() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Esc),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::CloseSqlModal);
+    }
+
+    #[test]
+    fn normal_mode_unbound_keys_return_none() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('a')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::None);
     }
 
     #[test]
