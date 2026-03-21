@@ -45,7 +45,7 @@ crossterm::KeyEvent
 
 **Char フォールバックルール**: フリーテキスト入力のあるモード（TablePicker, ErTablePicker, CommandLine, CellEdit, QueryHistoryPicker）は `keymap::resolve()` を先に試し、その後 `Char(c)` にフォールスルーする。これらのモードにコマンドキーとして `KeyCombo::plain(Key::Char(x))` を追加してはならない。非 Char キー（Up/Down/Esc/Enter）を使うこと。
 
-## 新規キーバインド追加チェックリスト
+## 新規キーバインド追加手順
 
 1. `app/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
 2. Normal mode の場合、3つのパターンがある:

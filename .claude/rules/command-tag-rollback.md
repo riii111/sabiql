@@ -12,13 +12,6 @@ CommandTag は display と refresh を単一 enum で自然に両立する。con
 - Display: `display_message()` — UI 層のみ
 - Refresh: `needs_refresh()` / `is_schema_modifying()` — reducer + adapter aggregation
 
-## Variant 追加チェックリスト
-
-1. `display_message()` に表示文字列を定義
-2. `needs_refresh()` — 永続化された状態を変更するなら true
-3. `is_schema_modifying()` — スキーマ変更なら true
-4. `is_data_modifying()` / `affected_rows()` を必要に応じて更新
-
 ## 再評価トリガー
 
 この設計を見直す条件:

@@ -22,7 +22,7 @@ paths:
 
 5 variant: `Explorer`, `Inspector`, `ResultScroll`, `ResultRowActive`, `ResultCellActive`
 
-## 新規 vim-like ナビゲーションキー追加チェックリスト
+## 新規 vim-like ナビゲーションキー追加手順
 
 1. `NavIntent` に variant 追加
 2. `map_nav_intent()` に KeyCombo → NavIntent マッピング追加

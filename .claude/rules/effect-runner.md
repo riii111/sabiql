@@ -52,10 +52,6 @@ let engine = completion_engine.borrow();
 some_async_op(engine.data()).await; // panic at runtime
 ```
 
-## 新 Effect 追加チェックリスト
+## 新 Effect 追加の前提
 
-0. **I/O を伴う場合は `app/ports/` に port trait を定義し、`infra/adapters/` で実装すること（app 層の I/O 禁止ルール）**
-1. `effect.rs` に variant 追加
-2. 対応する `effect_handlers/<feature>.rs` の match arm に追加
-3. `effect_runner.rs` の dispatcher match arm に追加（既存の `e @` パターンに追記）
-4. handler のテストを追加
+I/O を伴う Effect は `app/ports/` に port trait を定義し、`infra/adapters/` で実装すること（app 層の I/O 禁止ルール）。
