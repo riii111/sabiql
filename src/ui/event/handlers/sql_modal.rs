@@ -43,6 +43,7 @@ pub fn handle_sql_modal_keys(
         // Plan tab specific keys (read-only viewer)
         if active_tab == SqlModalTab::Plan {
             return match combo.key {
+                Key::Char('b') if plain => Action::SaveExplainBaseline,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
                     direction: ScrollDirection::Down,
@@ -50,6 +51,24 @@ pub fn handle_sql_modal_keys(
                 },
                 Key::Char('k') | Key::Up if plain => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Esc if plain => Action::CloseSqlModal,
+                _ => Action::None,
+            };
+        }
+
+        // Compare tab specific keys (read-only viewer)
+        if active_tab == SqlModalTab::Compare {
+            return match combo.key {
+                Key::Char('j') | Key::Down if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Key::Char('k') | Key::Up if plain => Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
@@ -263,6 +282,9 @@ mod tests {
         SqlModalPrevTab,
         ExplainPlanScrollUp,
         ExplainPlanScrollDown,
+        ExplainCompareScrollUp,
+        ExplainCompareScrollDown,
+        SaveExplainBaseline,
         None,
     }
 
@@ -341,6 +363,29 @@ mod tests {
                         amount: ScrollAmount::Line
                     }
                 ))
+            }
+            Expected::ExplainCompareScrollUp => {
+                assert!(matches!(
+                    result,
+                    Action::Scroll {
+                        target: ScrollTarget::ExplainCompare,
+                        direction: ScrollDirection::Up,
+                        amount: ScrollAmount::Line
+                    }
+                ))
+            }
+            Expected::ExplainCompareScrollDown => {
+                assert!(matches!(
+                    result,
+                    Action::Scroll {
+                        target: ScrollTarget::ExplainCompare,
+                        direction: ScrollDirection::Down,
+                        amount: ScrollAmount::Line
+                    }
+                ))
+            }
+            Expected::SaveExplainBaseline => {
+                assert!(matches!(result, Action::SaveExplainBaseline))
             }
             Expected::None => assert!(matches!(result, Action::None)),
         }
@@ -657,6 +702,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case(Key::Char('b'), Expected::SaveExplainBaseline)]
     #[case(Key::Char('j'), Expected::ExplainPlanScrollDown)]
     #[case(Key::Down, Expected::ExplainPlanScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainPlanScrollUp)]
@@ -700,6 +746,92 @@ mod tests {
             false,
             &SqlModalStatus::Running,
             SqlModalTab::Sql,
+        );
+
+        assert_action(result, Expected::None);
+    }
+
+    #[rstest]
+    #[case(Key::Char('j'), Expected::ExplainCompareScrollDown)]
+    #[case(Key::Down, Expected::ExplainCompareScrollDown)]
+    #[case(Key::Char('k'), Expected::ExplainCompareScrollUp)]
+    #[case(Key::Up, Expected::ExplainCompareScrollUp)]
+    #[case(Key::Esc, Expected::CloseSqlModal)]
+    #[case(Key::Char('a'), Expected::None)]
+    #[case(Key::Enter, Expected::None)]
+    #[case(Key::Char('y'), Expected::None)]
+    fn compare_tab_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, expected);
+    }
+
+    #[test]
+    fn compare_tab_ctrl_e_requests_explain() {
+        let result = handle_sql_modal_keys(
+            combo_ctrl(Key::Char('e')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::ExplainRequest);
+    }
+
+    #[test]
+    fn compare_tab_alt_e_requests_explain_analyze() {
+        let result = handle_sql_modal_keys(
+            combo_alt(Key::Char('e')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::ExplainAnalyzeRequest);
+    }
+
+    #[test]
+    fn compare_tab_tab_switches() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Tab),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::SqlModalNextTab);
+    }
+
+    #[test]
+    fn compare_tab_backtab_switches() {
+        let result = handle_sql_modal_keys(
+            KeyCombo::plain(Key::BackTab),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::SqlModalPrevTab);
+    }
+
+    #[rstest]
+    #[case(Key::Char('a'))]
+    #[case(Key::Enter)]
+    #[case(Key::Esc)]
+    #[case(Key::Tab)]
+    #[case(Key::Up)]
+    #[case(Key::Down)]
+    fn running_state_compare_tab_suppresses_all_keys(#[case] code: Key) {
+        let result = handle_sql_modal_keys(
+            combo(code),
+            false,
+            &SqlModalStatus::Running,
+            SqlModalTab::Compare,
         );
 
         assert_action(result, Expected::None);

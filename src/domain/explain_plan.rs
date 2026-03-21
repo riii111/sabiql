@@ -131,10 +131,10 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         reasons.push(format!("{} \u{2192} {}", b_node, c_node));
     }
 
-    if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows) {
-        if b_rows != c_rows {
-            reasons.push(format!("Rows: {} \u{2192} {}", b_rows, c_rows));
-        }
+    if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
+        && b_rows != c_rows
+    {
+        reasons.push(format!("Rows: {} \u{2192} {}", b_rows, c_rows));
     }
 
     reasons.truncate(MAX_REASONS);

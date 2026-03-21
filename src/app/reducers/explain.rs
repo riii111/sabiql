@@ -117,6 +117,15 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
+        Action::SaveExplainBaseline => {
+            if state.explain.save_baseline() {
+                state
+                    .messages
+                    .set_success_at("Baseline saved".to_string(), now);
+            }
+            Some(vec![])
+        }
+
         Action::Scroll {
             target: ScrollTarget::ExplainPlan,
             direction: ScrollDirection::Up,
@@ -138,17 +147,38 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
+        Action::Scroll {
+            target: ScrollTarget::ExplainCompare,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.explain.compare_scroll_offset =
+                state.explain.compare_scroll_offset.saturating_sub(1);
+            Some(vec![])
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::ExplainCompare,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            state.explain.compare_scroll_offset += 1;
+            Some(vec![])
+        }
+
         Action::SqlModalNextTab => {
             state.sql_modal.active_tab = match state.sql_modal.active_tab {
                 SqlModalTab::Sql => SqlModalTab::Plan,
-                SqlModalTab::Plan => SqlModalTab::Sql,
+                SqlModalTab::Plan => SqlModalTab::Compare,
+                SqlModalTab::Compare => SqlModalTab::Sql,
             };
             Some(vec![])
         }
 
         Action::SqlModalPrevTab => {
             state.sql_modal.active_tab = match state.sql_modal.active_tab {
-                SqlModalTab::Sql => SqlModalTab::Plan,
+                SqlModalTab::Sql => SqlModalTab::Compare,
+                SqlModalTab::Compare => SqlModalTab::Plan,
                 SqlModalTab::Plan => SqlModalTab::Sql,
             };
             Some(vec![])
@@ -372,6 +402,58 @@ mod tests {
         }
     }
 
+    mod save_baseline {
+        use super::*;
+
+        #[test]
+        fn saves_baseline_when_plan_exists() {
+            let mut state = sql_modal_state();
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+            );
+
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert!(state.explain.baseline.is_some());
+            assert!(state.messages.last_success.is_some());
+        }
+
+        #[test]
+        fn noop_when_no_plan() {
+            let mut state = sql_modal_state();
+
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert!(state.explain.baseline.is_none());
+            assert!(state.messages.last_success.is_none());
+        }
+
+        #[test]
+        fn overwrites_previous_baseline() {
+            let mut state = sql_modal_state();
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+            );
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            state.explain.set_plan(
+                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                false,
+                0,
+            );
+            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
+
+            assert_eq!(
+                state.explain.baseline.as_ref().unwrap().total_cost,
+                Some(5.0)
+            );
+        }
+    }
+
     mod scroll {
         use super::*;
 
@@ -431,6 +513,41 @@ mod tests {
 
             assert_eq!(state.explain.scroll_offset, 1);
         }
+
+        #[test]
+        fn compare_scroll_up_saturates_at_zero() {
+            let mut state = sql_modal_state();
+            state.explain.compare_scroll_offset = 0;
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 0);
+        }
+
+        #[test]
+        fn compare_scroll_down_increments() {
+            let mut state = sql_modal_state();
+
+            reduce_explain(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.compare_scroll_offset, 1);
+        }
     }
 
     mod tab_switch {
@@ -447,13 +564,43 @@ mod tests {
         }
 
         #[test]
-        fn next_tab_switches_plan_to_sql() {
+        fn next_tab_switches_plan_to_compare() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Plan;
 
             reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
 
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Compare);
+        }
+
+        #[test]
+        fn next_tab_switches_compare_to_sql() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+
+            reduce_explain(&mut state, &Action::SqlModalNextTab, Instant::now());
+
             assert_eq!(state.sql_modal.active_tab, SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn prev_tab_switches_sql_to_compare() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Compare);
+        }
+
+        #[test]
+        fn prev_tab_switches_compare_to_plan() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+
+            reduce_explain(&mut state, &Action::SqlModalPrevTab, Instant::now());
+
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
         }
 
         #[test]
