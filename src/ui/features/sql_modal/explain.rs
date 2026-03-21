@@ -53,11 +53,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
         lines.push(Line::raw(""));
 
+        let thin_sep = "\u{2500}".repeat(area.width.saturating_sub(4) as usize);
+        lines.push(Line::styled(
+            format!("  {}", thin_sep),
+            Style::default().fg(Theme::TEXT_DIM),
+        ));
+        lines.push(Line::raw(""));
+
         let full_query = &state.sql_modal.content;
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
                 format!("  {}", line),
-                Style::default().fg(Theme::TEXT_PRIMARY),
+                Style::default().fg(Theme::TEXT_DIM),
             )));
         }
 

@@ -88,7 +88,7 @@ impl SqlModal {
                         " l/r: Slot \u{2502} e: Edit \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
                     }
                     SqlModalTab::Sql => {
-                        " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} Alt+E: EXPLAIN ANALYZE \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Switch \u{2502} Esc: Close "
+                        " \u{2325}Enter: Run \u{2502} ^E: Explain \u{2502} \u{2325}E: EXPLAIN ANALYZE \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Switch \u{2502} Esc: Close "
                     }
                 },
             };
