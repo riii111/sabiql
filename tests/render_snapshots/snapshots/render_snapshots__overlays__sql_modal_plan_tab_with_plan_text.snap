@@ -24,4 +24,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
-^E:Explain  ⌥E:Analyze  ↑↓:Scroll  Tab:SQL  Esc:Close
+^E:Explain  ⌥E:Analyze  b:Baseline  ↑↓:Scroll  Tab:Compare  Esc:Close

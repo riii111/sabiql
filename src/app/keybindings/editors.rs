@@ -110,6 +110,14 @@ pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
         action: Action::SqlModalNextTab,
         combos: &[KeyCombo::plain(Key::Tab)],
     },
+    KeyBinding {
+        key_short: "b",
+        key: "b",
+        desc_short: "Baseline",
+        description: "Save current plan as baseline",
+        action: Action::SaveExplainBaseline,
+        combos: &[KeyCombo::plain(Key::Char('b'))],
+    },
 ];
 
 // =============================================================================

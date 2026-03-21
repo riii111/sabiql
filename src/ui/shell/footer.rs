@@ -231,6 +231,15 @@ impl Footer {
                         vec![
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::EXPLAIN].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::ANALYZE].as_hint(),
+                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::BASELINE].as_hint(),
+                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::SCROLL].as_hint(),
+                            ("Tab", "Compare"),
+                            SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+                        ]
+                    } else if state.sql_modal.active_tab == SqlModalTab::Compare {
+                        vec![
+                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::EXPLAIN].as_hint(),
+                            SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::ANALYZE].as_hint(),
                             SQL_MODAL_EXPLAIN_KEYS[idx::sql_modal_explain::SCROLL].as_hint(),
                             ("Tab", "SQL"),
                             SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
