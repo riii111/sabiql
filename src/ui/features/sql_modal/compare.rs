@@ -186,11 +186,11 @@ fn render_slot_columns(
     for i in 0..max {
         let l = l_plan.get(i).unwrap_or(&"");
         let r = r_plan.get(i).unwrap_or(&"");
-        lines.push(Line::from(vec![
-            Span::raw(pad_or_truncate(&format!(" {}", l), half)),
-            sep.clone(),
-            Span::raw(pad_or_truncate(r, half)),
-        ]));
+
+        let mut row_spans = super::plan_highlight::highlight_truncated(&format!(" {}", l), half);
+        row_spans.push(sep.clone());
+        row_spans.extend(super::plan_highlight::highlight_truncated(r, half));
+        lines.push(Line::from(row_spans));
     }
 }
 
@@ -276,7 +276,7 @@ fn mode_label(is_analyze: bool) -> &'static str {
     if is_analyze { "ANALYZE" } else { "EXPLAIN" }
 }
 
-fn pad_or_truncate(s: &str, width: usize) -> String {
+pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
     let char_count = s.chars().count();
     if char_count > width {
         s.chars().take(width.saturating_sub(1)).collect::<String>() + "\u{2026}"

@@ -90,6 +90,50 @@ pub fn highlight_plan_line(raw: &str) -> Line<'static> {
     Line::from(spans)
 }
 
+pub fn highlight_truncated(raw: &str, width: usize) -> Vec<Span<'static>> {
+    let truncated = super::compare::pad_or_truncate(raw, width);
+    let trimmed = truncated.trim_start();
+    let content = trimmed.trim_start_matches("->").trim_start();
+
+    let node_style = Style::default()
+        .fg(Theme::SECTION_HEADER)
+        .add_modifier(Modifier::BOLD);
+    let cost_style = Style::default().fg(Theme::TEXT_DIM);
+
+    let prefix_len = truncated.len() - content.len();
+    let prefix = &truncated[..prefix_len];
+
+    if let Some(cost_idx) = content.find("(cost=") {
+        let before_cost = &content[..cost_idx];
+        let cost_part = &content[cost_idx..];
+
+        if let Some(node_name) = find_node_type(before_cost) {
+            let after_node = &before_cost[node_name.len()..];
+            vec![
+                Span::raw(prefix.to_string()),
+                Span::styled(node_name.to_string(), node_style),
+                Span::raw(after_node.to_string()),
+                Span::styled(cost_part.to_string(), cost_style),
+            ]
+        } else {
+            vec![
+                Span::raw(prefix.to_string()),
+                Span::raw(before_cost.to_string()),
+                Span::styled(cost_part.to_string(), cost_style),
+            ]
+        }
+    } else if let Some(node_name) = find_node_type(content) {
+        let after_node = &content[node_name.len()..];
+        vec![
+            Span::raw(prefix.to_string()),
+            Span::styled(node_name.to_string(), node_style),
+            Span::raw(after_node.to_string()),
+        ]
+    } else {
+        vec![Span::raw(truncated)]
+    }
+}
+
 fn find_node_type(text: &str) -> Option<&'static str> {
     NODE_TYPES.iter().find(|&&nt| text.starts_with(nt)).copied()
 }
