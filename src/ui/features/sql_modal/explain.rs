@@ -14,14 +14,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     match state.sql_modal.status() {
         SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
             let lines = build_analyze_confirm_lines(area, state, *is_dml, None);
-            frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
             return;
         }
         SqlModalStatus::ConfirmingAnalyzeHigh {
             input, target_name, ..
         } => {
             let lines = build_analyze_confirm_lines(area, state, true, Some((input, target_name)));
-            frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
             return;
         }
         _ => {}
@@ -63,7 +63,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             ),
         ]);
 
-        let query_snippet = state.sql_modal.content.lines().next().unwrap_or("");
+        let query_snippet = state.explain.plan_query_snippet.as_deref().unwrap_or("");
         let query_line = Line::from(vec![
             Span::styled("  ", Style::default()),
             Span::styled(
@@ -89,6 +89,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         ));
         frame.render_widget(Paragraph::new(vec![placeholder]), area);
     }
+}
+
+fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offset: usize) {
+    let max_scroll = lines.len().saturating_sub(area.height as usize);
+    let clamped = scroll_offset.min(max_scroll);
+    let visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
+    frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
 }
 
 fn build_analyze_confirm_lines<'a>(

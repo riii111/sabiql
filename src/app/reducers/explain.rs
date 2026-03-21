@@ -80,6 +80,8 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 return Some(vec![]);
             }
 
+            state.explain.confirm_scroll_offset = 0;
+
             match risk.map(|r| r.confirmation) {
                 Some(ConfirmationType::Immediate) => {
                     // SELECT/Transaction: no confirmation, execute immediately
@@ -126,6 +128,25 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 }
             }
 
+            Some(vec![])
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::ExplainConfirm,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.explain.confirm_scroll_offset =
+                state.explain.confirm_scroll_offset.saturating_sub(1);
+            Some(vec![])
+        }
+
+        Action::Scroll {
+            target: ScrollTarget::ExplainConfirm,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            state.explain.confirm_scroll_offset += 1;
             Some(vec![])
         }
 

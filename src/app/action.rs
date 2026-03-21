@@ -63,6 +63,7 @@ pub enum ScrollTarget {
     ConnectionError,
     ExplainPlan,
     ExplainCompare,
+    ExplainConfirm,
     Explorer,
 }
 

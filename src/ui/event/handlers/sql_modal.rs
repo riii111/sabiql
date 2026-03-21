@@ -156,6 +156,16 @@ pub fn handle_sql_modal_keys(
     if matches!(status, SqlModalStatus::ConfirmingAnalyzeHigh { .. }) {
         let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {
+            Key::Up if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line,
+            },
+            Key::Down if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            },
             Key::Char(c) if plain => Action::TextInput {
                 target: InputTarget::SqlModalAnalyzeHighRisk,
                 ch: c,
@@ -188,6 +198,16 @@ pub fn handle_sql_modal_keys(
     if matches!(status, SqlModalStatus::ConfirmingAnalyze { .. }) {
         let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
         return match combo.key {
+            Key::Char('j') | Key::Down if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            },
+            Key::Char('k') | Key::Up if plain => Action::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                direction: ScrollDirection::Up,
+                amount: ScrollAmount::Line,
+            },
             Key::Enter if plain => Action::ExplainAnalyzeConfirm,
             Key::Esc => Action::ExplainAnalyzeCancel,
             _ => Action::None,
@@ -227,6 +247,10 @@ pub fn handle_sql_modal_keys(
 
     if ctrl && combo.key == Key::Char('l') {
         return Action::SqlModalClear;
+    }
+
+    if alt && combo.key == Key::Char('e') {
+        return Action::ExplainAnalyzeRequest;
     }
 
     match (combo.key, completion_visible) {

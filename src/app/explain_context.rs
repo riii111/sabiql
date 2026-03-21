@@ -23,6 +23,7 @@ const MAX_EXPLAIN_HISTORY: usize = 10;
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
     pub plan_text: Option<String>,
+    pub plan_query_snippet: Option<String>,
     pub error: Option<String>,
     pub is_analyze: bool,
     pub execution_time_ms: u64,
@@ -38,6 +39,7 @@ pub struct ExplainContext {
     pub left_history_cursor: usize,
     pub right_history_cursor: usize,
     pub compare_viewport_height: Option<u16>,
+    pub confirm_scroll_offset: usize,
 }
 
 impl ExplainContext {
@@ -50,6 +52,7 @@ impl ExplainContext {
     ) {
         let parsed = explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms);
         let snippet = query.lines().next().unwrap_or("").to_string();
+        let plan_snippet = snippet.clone();
 
         let new_slot = CompareSlot {
             plan: parsed,
@@ -70,6 +73,7 @@ impl ExplainContext {
         self.right = self.history.front().cloned();
 
         self.plan_text = Some(text);
+        self.plan_query_snippet = Some(plan_snippet);
         self.error = None;
         self.is_analyze = is_analyze;
         self.execution_time_ms = execution_time_ms;
