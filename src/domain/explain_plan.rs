@@ -127,7 +127,7 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
             && b_rows != c_rows
         {
-            reasons.push(format!("Rows: {} \u{2192} {}", b_rows, c_rows));
+            reasons.push(format!("Estimated rows: {} \u{2192} {}", b_rows, c_rows));
         }
     }
 
@@ -362,7 +362,7 @@ Execution Time: 0.600 ms";
                 result
                     .reasons
                     .iter()
-                    .any(|r| r.contains("Rows: 1000 \u{2192} 10"))
+                    .any(|r| r.contains("Estimated rows: 1000 \u{2192} 10"))
             );
         }
 
@@ -373,7 +373,12 @@ Execution Time: 0.600 ms";
 
             let result = compare_plans(&baseline, &current);
 
-            assert!(!result.reasons.iter().any(|r| r.starts_with("Rows:")));
+            assert!(
+                !result
+                    .reasons
+                    .iter()
+                    .any(|r| r.starts_with("Estimated rows:"))
+            );
         }
 
         #[test]

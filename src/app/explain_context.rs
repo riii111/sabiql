@@ -14,6 +14,7 @@ pub enum SlotSource {
 pub struct CompareSlot {
     pub plan: ExplainPlan,
     pub query_snippet: String,
+    pub full_query: String,
     pub source: SlotSource,
 }
 
@@ -33,6 +34,9 @@ pub struct ExplainContext {
     pub compare_scroll_offset: usize,
 
     pub history: VecDeque<CompareSlot>,
+
+    pub left_history_cursor: usize,
+    pub right_history_cursor: usize,
 }
 
 impl ExplainContext {
@@ -49,6 +53,7 @@ impl ExplainContext {
         let new_slot = CompareSlot {
             plan: parsed,
             query_snippet: snippet,
+            full_query: query.to_string(),
             source: SlotSource::AutoLatest,
         };
 

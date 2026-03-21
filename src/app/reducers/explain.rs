@@ -76,6 +76,14 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                     | StatementKind::Truncate
             );
 
+            if state.session.read_only && is_dml {
+                state.explain.set_error(
+                    "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.".into(),
+                );
+                state.sql_modal.active_tab = SqlModalTab::Plan;
+                return Some(vec![]);
+            }
+
             let message = if is_dml {
                 "ANALYZE executes the query. DML side effects will occur."
             } else {
@@ -355,6 +363,48 @@ mod tests {
             assert!(matches!(
                 state.confirm_dialog.intent(),
                 Some(ConfirmIntent::ExplainAnalyze { is_dml: true, .. })
+            ));
+        }
+    }
+
+    mod read_only_analyze {
+        use super::*;
+
+        #[test]
+        fn read_only_blocks_dml_analyze() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "DELETE FROM users WHERE id=1".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+            state.session.read_only = true;
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+
+            assert!(state.explain.error.is_some());
+            assert!(
+                state
+                    .explain
+                    .error
+                    .as_deref()
+                    .unwrap()
+                    .contains("Read-only")
+            );
+            assert_eq!(state.sql_modal.active_tab, SqlModalTab::Plan);
+            assert!(state.confirm_dialog.intent().is_none());
+        }
+
+        #[test]
+        fn read_only_allows_select_analyze() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT * FROM users".to_string();
+            state.session.dsn = Some("dsn://test".to_string());
+            state.session.read_only = true;
+
+            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+
+            assert!(state.explain.error.is_none());
+            assert!(matches!(
+                state.confirm_dialog.intent(),
+                Some(ConfirmIntent::ExplainAnalyze { is_dml: false, .. })
             ));
         }
     }

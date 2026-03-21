@@ -13,7 +13,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │   • Total cost: 1000.00 → 8.30 (-99.2%)                      │       │
 │       │   • Seq Scan on users → Index Scan using idx_users_id on     │       │
 │       │ users                                                        │       │
-│       │   • Rows: 2550 → 1                                           │───────┘
+│       │   • Estimated rows: 2550 → 1                                 │───────┘
 │       │                                                              │───────┐
 │       │  ──────────────────────────────────────────────────────────  │       │
 │       │                                                              │       │
