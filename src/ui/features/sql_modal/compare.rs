@@ -123,11 +123,11 @@ fn render_slot_columns(
 
     let left_label = match left {
         Some(s) => format!(" {}", source_badge(&s.source)),
-        None => String::new(),
+        None => " Previous".to_string(),
     };
     let right_label = match right {
         Some(s) => source_badge(&s.source).to_string(),
-        None => String::new(),
+        None => "Latest".to_string(),
     };
 
     lines.push(Line::from(vec![
@@ -262,6 +262,12 @@ fn render_stacked_slot(
         }
         None => {
             lines.push(Line::from(Span::styled(
+                " Previous",
+                Style::default()
+                    .fg(Theme::TEXT_DIM)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(Span::styled(
                 "  Run EXPLAIN again to compare",
                 Style::default().fg(Theme::PLACEHOLDER_TEXT),
             )));
@@ -274,7 +280,7 @@ fn render_stacked_slot(
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
         Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.plan.is_analyze)),
-        None => String::new(),
+        None => " Run EXPLAIN again".to_string(),
     }
 }
 

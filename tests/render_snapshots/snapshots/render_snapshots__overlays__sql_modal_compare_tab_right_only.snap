@@ -8,8 +8,8 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │                              │ Latest                        │       │
-│       │                              │  SELECT * FROM users WHERE …  │       │
+│       │  Previous                    │ Latest                        │       │
+│       │  Run EXPLAIN again           │  SELECT * FROM users WHERE …  │       │
 │       │  ─────────────────────────── │  ───────────────────────────  │       │
 │       │                              │  Seq Scan on users  (cost=0…  │       │
 │       │                              │    Filter: email_verified     │       │
