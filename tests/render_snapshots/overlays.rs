@@ -526,6 +526,27 @@ fn sql_modal_compare_tab_no_baseline() {
 }
 
 #[test]
+fn sql_modal_compare_tab_baseline_saved_no_current() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
+            .to_string(),
+        false,
+        40,
+    );
+    state.explain.save_baseline();
+    // current_parsed is now None after save_baseline
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_compare_tab_with_verdict() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
