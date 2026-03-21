@@ -41,8 +41,8 @@ impl ExplainContext {
     }
 
     pub fn save_baseline(&mut self) -> bool {
-        if let Some(ref parsed) = self.current_parsed {
-            self.baseline = Some(parsed.clone());
+        if let Some(parsed) = self.current_parsed.take() {
+            self.baseline = Some(parsed);
             true
         } else {
             false
@@ -218,6 +218,7 @@ mod tests {
         assert!(ctx.save_baseline());
         assert!(ctx.baseline.is_some());
         assert_eq!(ctx.baseline.as_ref().unwrap().total_cost, Some(100.0));
+        assert!(ctx.current_parsed.is_none());
     }
 
     #[test]
