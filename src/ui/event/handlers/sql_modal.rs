@@ -1154,4 +1154,52 @@ mod tests {
         assert_action(close, Expected::CloseSqlModal);
         assert_action(explain, Expected::ExplainRequest);
     }
+
+    // ================================================================
+    // Contract tests: keybinding definitions ↔ handler consistency
+    // ================================================================
+
+    use crate::app::keybindings::{SQL_MODAL_COMPARE_KEYS, SQL_MODAL_PLAN_KEYS};
+
+    #[test]
+    fn plan_keybindings_match_handler() {
+        for kb in SQL_MODAL_PLAN_KEYS {
+            if matches!(kb.action, Action::None) || kb.combos.is_empty() {
+                continue;
+            }
+            for c in kb.combos {
+                let result =
+                    handle_sql_modal_keys(*c, false, &SqlModalStatus::Normal, SqlModalTab::Plan);
+                assert_eq!(
+                    std::mem::discriminant(&result),
+                    std::mem::discriminant(&kb.action),
+                    "SQL_MODAL_PLAN_KEYS: combo {:?} returned {:?}, expected {:?}",
+                    c,
+                    result,
+                    kb.action,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compare_keybindings_match_handler() {
+        for kb in SQL_MODAL_COMPARE_KEYS {
+            if matches!(kb.action, Action::None) || kb.combos.is_empty() {
+                continue;
+            }
+            for c in kb.combos {
+                let result =
+                    handle_sql_modal_keys(*c, false, &SqlModalStatus::Normal, SqlModalTab::Compare);
+                assert_eq!(
+                    std::mem::discriminant(&result),
+                    std::mem::discriminant(&kb.action),
+                    "SQL_MODAL_COMPARE_KEYS: combo {:?} returned {:?}, expected {:?}",
+                    c,
+                    result,
+                    kb.action,
+                );
+            }
+        }
+    }
 }
