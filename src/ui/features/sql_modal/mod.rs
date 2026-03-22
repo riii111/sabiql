@@ -21,7 +21,6 @@ use crate::ui::primitives::molecules::render_modal_with_border_color;
 use crate::ui::theme::Theme;
 
 mod completion;
-mod cursor;
 mod editor;
 mod status;
 
