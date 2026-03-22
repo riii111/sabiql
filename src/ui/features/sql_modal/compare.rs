@@ -61,15 +61,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
 }
 
-// ── Helpers for pushing lines with flash mask ────────────────────────────────
-
-/// Empty line — no flash.
 fn push_empty(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>) {
     lines.push(Line::raw(""));
     flash_mask.push(false);
 }
 
-/// Line with visible text — flash.
 fn push_line(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
     lines.push(line);
     flash_mask.push(true);

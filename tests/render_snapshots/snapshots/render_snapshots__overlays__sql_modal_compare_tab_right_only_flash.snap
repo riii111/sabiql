@@ -1,0 +1,26 @@
+---
+source: tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
+│                  ││(select a table)                                          │
+│                  ││                                                          │
+│       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
+│       │  Previous                    │ Latest                        │       │
+│       │  Run EXPLAIN again           │  EXPLAIN  (0.04s)             │       │
+│       │  ─────────────────────────── │  ───────────────────────────  │       │
+│       │                              │  Seq Scan on users  (cost=0…  │       │
+│       │                              │    Filter: email_verified     │       │
+│       │                                                              │───────┘
+│       │                                                              │───────┐
+│       │                                                              │       │
+│       │                                                              │       │
+│       │                                                              │       │
+│       │ ──────────────────────────────────────────────────────────── │       │
+│       │  [NORMAL]                                             Ready  │       │
+│       ╰ l: Left │ r: Right │ e: Edit │ y: Yank │ ↑↓: Scroll │ Tab/⇧Ta╯       │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘

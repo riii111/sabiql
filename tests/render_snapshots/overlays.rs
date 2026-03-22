@@ -636,6 +636,57 @@ fn sql_modal_compare_tab_narrow_stacked() {
 }
 
 #[test]
+fn sql_modal_compare_tab_right_only_flash() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    let now = test_instant();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
+            .to_string(),
+        false,
+        40,
+        "SELECT * FROM users WHERE email_verified",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.flash_timers.set(FlashId::SqlModal, now);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_compare_tab_with_verdict_flash() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    let now = test_instant();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.explain.set_plan(
+        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
+            .to_string(),
+        false,
+        100,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    state.explain.set_plan(
+        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
+            .to_string(),
+        false,
+        5,
+        "SELECT * FROM users WHERE id > 10",
+    );
+    state.sql_modal.active_tab = SqlModalTab::Compare;
+    state.flash_timers.set(FlashId::SqlModal, now);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_normal_initial() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
