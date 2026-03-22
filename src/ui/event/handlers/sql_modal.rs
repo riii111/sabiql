@@ -1181,12 +1181,12 @@ mod tests {
     }
 
     #[test]
-    fn plan_keybindings_match_handler() {
+    fn plan_keybinding_combo_returns_declared_action() {
         assert_keybindings_match_handler(SQL_MODAL_PLAN_KEYS, SqlModalTab::Plan, "PLAN");
     }
 
     #[test]
-    fn compare_keybindings_match_handler() {
+    fn compare_keybinding_combo_returns_declared_action() {
         assert_keybindings_match_handler(SQL_MODAL_COMPARE_KEYS, SqlModalTab::Compare, "COMPARE");
     }
 }

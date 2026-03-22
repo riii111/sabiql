@@ -224,7 +224,10 @@ impl SqlModal {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
             ])
         });
@@ -234,7 +237,12 @@ impl SqlModal {
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
+                        .as_hint()
+                        .1,
+                ),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
             ])
         });
@@ -246,7 +254,10 @@ impl SqlModal {
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::QUERY_HISTORY].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint().1,
+                ),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
             ])
         });
