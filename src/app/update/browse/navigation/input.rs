@@ -9,19 +9,19 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         Action::Paste(text) => match state.modal.active_mode() {
             InputMode::TablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.ui.table_picker.filter_input.push_str(&clean);
+                state.ui.table_picker.filter_input.insert_str(&clean);
                 state.ui.table_picker.reset();
                 Some(vec![])
             }
             InputMode::ErTablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.ui.er_picker.filter_input.push_str(&clean);
+                state.ui.er_picker.filter_input.insert_str(&clean);
                 state.ui.er_picker.reset();
                 Some(vec![])
             }
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-                state.command_line_input.push_str(&clean);
+                state.command_line_input.insert_str(&clean);
                 Some(vec![])
             }
             InputMode::CellEdit => {
@@ -46,15 +46,22 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::Filter,
             ch: c,
         } => {
-            state.ui.table_picker.filter_input.push(*c);
+            state.ui.table_picker.filter_input.insert_char(*c);
             state.ui.table_picker.reset();
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::Filter,
         } => {
-            state.ui.table_picker.filter_input.pop();
+            state.ui.table_picker.filter_input.backspace();
             state.ui.table_picker.reset();
+            Some(vec![])
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::Filter,
+            direction: movement,
+        } => {
+            state.ui.table_picker.filter_input.move_cursor(*movement);
             Some(vec![])
         }
 
@@ -71,13 +78,20 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::CommandLine,
             ch: c,
         } => {
-            state.command_line_input.push(*c);
+            state.command_line_input.insert_char(*c);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::CommandLine,
         } => {
-            state.command_line_input.pop();
+            state.command_line_input.backspace();
+            Some(vec![])
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::CommandLine,
+            direction: movement,
+        } => {
+            state.command_line_input.move_cursor(*movement);
             Some(vec![])
         }
 
@@ -181,7 +195,7 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.table_picker.filter_input, "hello");
+            assert_eq!(state.ui.table_picker.filter_input.content(), "hello");
         }
 
         #[test]
@@ -196,7 +210,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.table_picker.filter_input, "hello");
+            assert_eq!(state.ui.table_picker.filter_input.content(), "hello");
         }
 
         #[test]
@@ -227,7 +241,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.command_line_input, "quit");
+            assert_eq!(state.command_line_input.content(), "quit");
         }
 
         #[test]
@@ -242,7 +256,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.command_line_input, "quit");
+            assert_eq!(state.command_line_input.content(), "quit");
         }
 
         #[test]
@@ -273,7 +287,7 @@ mod tests {
             );
 
             assert!(effects.is_some());
-            assert_eq!(state.ui.er_picker.filter_input, "public.users");
+            assert_eq!(state.ui.er_picker.filter_input.content(), "public.users");
             assert_eq!(state.ui.er_picker.selected(), 0);
         }
 
@@ -289,7 +303,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.ui.er_picker.filter_input, "public.users");
+            assert_eq!(state.ui.er_picker.filter_input.content(), "public.users");
         }
 
         #[test]

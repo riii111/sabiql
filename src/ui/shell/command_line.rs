@@ -16,7 +16,7 @@ impl CommandLine {
         let content = if state.input_mode() == InputMode::CommandLine {
             Line::from(vec![
                 Span::styled(":", Style::default().fg(Theme::TEXT_ACCENT)),
-                Span::raw(&state.command_line_input),
+                Span::raw(state.command_line_input.content()),
                 Span::styled(
                     "█",
                     Style::default()

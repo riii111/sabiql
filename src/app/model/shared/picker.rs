@@ -1,9 +1,11 @@
+use super::text_input::TextInputState;
+
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
     selected: usize,
     scroll_offset: usize,
     pub pane_height: u16,
-    pub filter_input: String,
+    pub filter_input: TextInputState,
 }
 
 impl PickerState {
@@ -77,7 +79,7 @@ mod tests {
                 selected: 5,
                 scroll_offset: 3,
                 pane_height: 10,
-                filter_input: "hello".to_string(),
+                filter_input: TextInputState::new("hello", 5),
             };
 
             state.reset();
@@ -85,7 +87,7 @@ mod tests {
             assert_eq!(state.selected, 0);
             assert_eq!(state.scroll_offset, 0);
             // filter_input is intentionally preserved — caller clears it on open
-            assert_eq!(state.filter_input, "hello");
+            assert_eq!(state.filter_input.content(), "hello");
         }
     }
 

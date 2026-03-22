@@ -389,7 +389,11 @@ fn table_picker_overlay() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker.filter_input = "user".to_string();
+    state
+        .ui
+        .table_picker
+        .filter_input
+        .set_content("user".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -402,7 +406,7 @@ fn command_line_input() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandLine);
-    state.command_line_input = "sql".to_string();
+    state.command_line_input.set_content("sql".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 

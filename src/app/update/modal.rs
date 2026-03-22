@@ -94,15 +94,22 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             target: InputTarget::ErFilter,
             ch: c,
         } => {
-            state.ui.er_picker.filter_input.push(*c);
+            state.ui.er_picker.filter_input.insert_char(*c);
             state.ui.er_picker.reset();
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::ErFilter,
         } => {
-            state.ui.er_picker.filter_input.pop();
+            state.ui.er_picker.filter_input.backspace();
             state.ui.er_picker.reset();
+            Some(vec![])
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::ErFilter,
+            direction: movement,
+        } => {
+            state.ui.er_picker.filter_input.move_cursor(*movement);
             Some(vec![])
         }
         Action::ErToggleSelection => {

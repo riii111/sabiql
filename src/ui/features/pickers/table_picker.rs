@@ -29,7 +29,7 @@ impl TablePicker {
 
         let filter_line = Line::from(vec![
             Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(&state.ui.table_picker.filter_input),
+            Span::raw(state.ui.table_picker.filter_input.content()),
             Span::styled(
                 "█",
                 Style::default()

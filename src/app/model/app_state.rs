@@ -20,7 +20,7 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 
 pub struct AppState {
     pub should_quit: bool,
-    pub command_line_input: String,
+    pub command_line_input: crate::app::model::shared::text_input::TextInputState,
 
     pub render_dirty: bool,
 
@@ -49,7 +49,7 @@ impl AppState {
     pub fn new(project_name: String) -> Self {
         Self {
             should_quit: false,
-            command_line_input: String::new(),
+            command_line_input: Default::default(),
             render_dirty: true,
             session: BrowseSession::default(),
             runtime: RuntimeState::new(project_name),
@@ -123,7 +123,7 @@ impl AppState {
     }
 
     pub fn filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.table_picker.filter_input.to_lowercase();
+        let filter_lower = self.ui.table_picker.filter_input.content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -136,7 +136,7 @@ impl AppState {
     }
 
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
-        let filter_lower = self.ui.er_picker.filter_input.to_lowercase();
+        let filter_lower = self.ui.er_picker.filter_input.content().to_lowercase();
         self.session
             .metadata()
             .map(|m| {
@@ -279,7 +279,11 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input = "".to_string();
+        state
+            .ui
+            .table_picker
+            .filter_input
+            .set_content("".to_string());
 
         let filtered = state.filtered_tables();
 
@@ -298,7 +302,11 @@ mod tests {
             ],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input = "user".to_string();
+        state
+            .ui
+            .table_picker
+            .filter_input
+            .set_content("user".to_string());
 
         let filtered = state.filtered_tables();
 
@@ -320,7 +328,11 @@ mod tests {
             )],
             fetched_at: std::time::Instant::now(),
         })));
-        state.ui.table_picker.filter_input = "user".to_string();
+        state
+            .ui
+            .table_picker
+            .filter_input
+            .set_content("user".to_string());
 
         let filtered = state.filtered_tables();
 
