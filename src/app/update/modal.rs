@@ -4,7 +4,6 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::picker::FILTER_VISIBLE_WIDTH;
 use crate::app::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
@@ -100,7 +99,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 .ui
                 .er_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.er_picker.filter_visible_width);
             state.ui.er_picker.reset();
             Some(vec![])
         }
@@ -112,7 +111,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 .ui
                 .er_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.er_picker.filter_visible_width);
             state.ui.er_picker.reset();
             Some(vec![])
         }
@@ -125,7 +124,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                 .ui
                 .er_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.er_picker.filter_visible_width);
             Some(vec![])
         }
         Action::ErToggleSelection => {

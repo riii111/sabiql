@@ -21,6 +21,7 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 pub struct AppState {
     pub should_quit: bool,
     pub command_line_input: crate::app::model::shared::text_input::TextInputState,
+    pub command_line_visible_width: usize,
 
     pub render_dirty: bool,
 
@@ -50,6 +51,7 @@ impl AppState {
         Self {
             should_quit: false,
             command_line_input: Default::default(),
+            command_line_visible_width: 70,
             render_dirty: true,
             session: BrowseSession::default(),
             runtime: RuntimeState::new(project_name),

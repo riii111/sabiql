@@ -1,12 +1,11 @@
 use super::text_input::TextInputState;
 
-pub const FILTER_VISIBLE_WIDTH: usize = 40;
-
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
     selected: usize,
     scroll_offset: usize,
     pub pane_height: u16,
+    pub filter_visible_width: usize,
     pub filter_input: TextInputState,
 }
 
@@ -81,6 +80,7 @@ mod tests {
                 selected: 5,
                 scroll_offset: 3,
                 pane_height: 10,
+                filter_visible_width: 40,
                 filter_input: TextInputState::new("hello", 5),
             };
 

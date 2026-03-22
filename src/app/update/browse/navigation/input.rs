@@ -1,11 +1,8 @@
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::picker::FILTER_VISIBLE_WIDTH;
 use crate::app::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::app::update::input::palette::palette_command_count;
-
-const COMMAND_LINE_VISIBLE_WIDTH: usize = 70;
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
@@ -17,7 +14,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .ui
                     .table_picker
                     .filter_input
-                    .update_viewport(FILTER_VISIBLE_WIDTH);
+                    .update_viewport(state.ui.table_picker.filter_visible_width);
                 state.ui.table_picker.reset();
                 Some(vec![])
             }
@@ -28,7 +25,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .ui
                     .er_picker
                     .filter_input
-                    .update_viewport(FILTER_VISIBLE_WIDTH);
+                    .update_viewport(state.ui.er_picker.filter_visible_width);
                 state.ui.er_picker.reset();
                 Some(vec![])
             }
@@ -37,7 +34,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 state.command_line_input.insert_str(&clean);
                 state
                     .command_line_input
-                    .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
+                    .update_viewport(state.command_line_visible_width);
                 Some(vec![])
             }
             InputMode::CellEdit => {
@@ -67,7 +64,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .ui
                 .table_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.table_picker.filter_visible_width);
             state.ui.table_picker.reset();
             Some(vec![])
         }
@@ -79,7 +76,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .ui
                 .table_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.table_picker.filter_visible_width);
             state.ui.table_picker.reset();
             Some(vec![])
         }
@@ -92,7 +89,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .ui
                 .table_picker
                 .filter_input
-                .update_viewport(FILTER_VISIBLE_WIDTH);
+                .update_viewport(state.ui.table_picker.filter_visible_width);
             Some(vec![])
         }
 
@@ -112,7 +109,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.command_line_input.insert_char(*c);
             state
                 .command_line_input
-                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
+                .update_viewport(state.command_line_visible_width);
             Some(vec![])
         }
         Action::TextBackspace {
@@ -121,7 +118,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.command_line_input.backspace();
             state
                 .command_line_input
-                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
+                .update_viewport(state.command_line_visible_width);
             Some(vec![])
         }
         Action::TextMoveCursor {
@@ -131,7 +128,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             state.command_line_input.move_cursor(*movement);
             state
                 .command_line_input
-                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
+                .update_viewport(state.command_line_visible_width);
             Some(vec![])
         }
 
