@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::keybindings::{
-    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
+    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
 use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
@@ -80,7 +80,8 @@ impl SqlModal {
             let hint_owned: String;
             let hint: &str = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
-                    " \u{2325}Enter: Run \u{2502} ^E: EXPLAIN \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
+                    hint_owned = Self::build_editing_hint();
+                    &hint_owned
                 }
                 SqlModalStatus::Running => " Running\u{2026} ",
                 SqlModalStatus::ConfirmingAnalyze { .. } => " Enter: Confirm \u{2502} Esc: Cancel ",
@@ -221,6 +222,9 @@ impl SqlModal {
     }
 
     fn build_border_hint(tab: SqlModalTab) -> String {
+        // Explain/Analyze are shared across all tabs; Sql Normal borrows from
+        // Plan keys because SQL_MODAL_NORMAL_KEYS doesn't include them
+        // (they are not Normal-mode-specific — they work in Editing too).
         let pairs: &[(&str, &str)] = match tab {
             SqlModalTab::Plan => &[
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
@@ -247,6 +251,21 @@ impl SqlModal {
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
             ],
         };
+        Self::join_hint_pairs(pairs)
+    }
+
+    fn build_editing_hint() -> String {
+        let pairs: &[(&str, &str)] = &[
+            SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
+            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+            SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
+            SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
+            SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
+        ];
+        Self::join_hint_pairs(pairs)
+    }
+
+    fn join_hint_pairs(pairs: &[(&str, &str)]) -> String {
         let parts: Vec<String> = pairs
             .iter()
             .map(|(key, desc)| format!("{key}: {desc}"))
