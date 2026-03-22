@@ -520,19 +520,24 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
+    fn sql_modal_state() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::SqlModal);
+        state
+    }
+
     mod paste {
         use super::*;
 
-        fn sql_modal_state() -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
+        fn editing_state() -> AppState {
+            let mut state = sql_modal_state();
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state
         }
 
         #[test]
         fn paste_inserts_at_cursor() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
             state.sql_modal.content = "SELCT".to_string();
             state.sql_modal.cursor = 3;
 
@@ -543,7 +548,7 @@ mod tests {
 
         #[test]
         fn paste_preserves_newlines() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
 
             reduce_sql_modal(
                 &mut state,
@@ -556,7 +561,7 @@ mod tests {
 
         #[test]
         fn paste_normalizes_crlf() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
 
             reduce_sql_modal(
                 &mut state,
@@ -569,7 +574,7 @@ mod tests {
 
         #[test]
         fn paste_advances_cursor() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
             state.sql_modal.content = "AB".to_string();
             state.sql_modal.cursor = 1;
 
@@ -584,7 +589,7 @@ mod tests {
 
         #[test]
         fn paste_dismisses_completion() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
             state.sql_modal.completion.visible = true;
 
             reduce_sql_modal(&mut state, &Action::Paste("x".to_string()), Instant::now());
@@ -594,7 +599,7 @@ mod tests {
 
         #[test]
         fn paste_with_multibyte() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
             state.sql_modal.content = "ab".to_string();
             state.sql_modal.cursor = 1;
 
@@ -610,7 +615,7 @@ mod tests {
 
         #[test]
         fn paste_in_confirming_high_is_ignored() {
-            let mut state = sql_modal_state();
+            let mut state = editing_state();
             state.sql_modal.content = "DROP TABLE users".to_string();
             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                 decision: crate::app::policy::write::write_guardrails::AdhocRiskDecision {
@@ -638,12 +643,6 @@ mod tests {
     mod confirming_high {
         use super::*;
         use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
-
-        fn sql_modal_state() -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
-            state
-        }
 
         fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
             let mut state = sql_modal_state();
@@ -1130,12 +1129,6 @@ mod tests {
     mod normal_insert_mode {
         use super::*;
 
-        fn sql_modal_state() -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
-            state
-        }
-
         #[test]
         fn enter_insert_transitions_to_editing() {
             let mut state = sql_modal_state();
@@ -1232,12 +1225,6 @@ mod tests {
         use super::*;
         use crate::app::model::explain_context::{CompareSlot, SlotSource};
         use crate::domain::explain_plan::ExplainPlan;
-
-        fn sql_modal_state() -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.modal.set_mode(InputMode::SqlModal);
-            state
-        }
 
         fn make_slot(raw: &str, is_analyze: bool, ms: u64, source: SlotSource) -> CompareSlot {
             CompareSlot {
