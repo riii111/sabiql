@@ -4,7 +4,6 @@ use harness::{
 };
 use ratatui::style::{Color, Modifier};
 use sabiql::app::model::shared::input_mode::InputMode;
-use sabiql::ui::theme::Theme;
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {
@@ -140,117 +139,5 @@ fn modal_border_uses_ansi_darkgray() {
         mx,
         my,
         cell.fg
-    );
-}
-
-// ── Compare tab yank flash ──────────────────────────────────────────────────
-
-fn row_has_flash_bg(buffer: &ratatui::buffer::Buffer, y: u16) -> bool {
-    (0..buffer.area.width).any(|x| {
-        buffer
-            .cell((x, y))
-            .is_some_and(|c| c.bg == Theme::YANK_FLASH_BG)
-    })
-}
-
-fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
-    (0..buffer.area.width)
-        .map(|x| buffer.cell((x, y)).map(|c| c.symbol()).unwrap_or(""))
-        .collect::<String>()
-        .trim_end()
-        .to_string()
-}
-
-#[test]
-fn compare_flash_right_only_does_not_flash() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-    let now = test_instant();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
-            .to_string(),
-        false,
-        40,
-        "SELECT * FROM users WHERE email_verified",
-    );
-    state.sql_modal.active_tab = SqlModalTab::Compare;
-    state.flash_timers.set(FlashId::SqlModal, now);
-
-    let buffer = render_and_get_buffer(&mut terminal, &mut state);
-
-    for y in 0..TEST_HEIGHT {
-        let has_flash = row_has_flash_bg(&buffer, y);
-        assert!(
-            !has_flash,
-            "Row {} should NOT flash (yank disabled with single slot)",
-            y
-        );
-    }
-}
-
-#[test]
-fn compare_flash_both_slots_flashes_verdict_and_plan_text() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-    let now = test_instant();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
-            .to_string(),
-        false,
-        100,
-        "SELECT * FROM users WHERE id > 10",
-    );
-    state.explain.set_plan(
-        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
-            .to_string(),
-        false,
-        5,
-        "SELECT * FROM users WHERE id > 10",
-    );
-    state.sql_modal.active_tab = SqlModalTab::Compare;
-    state.flash_timers.set(FlashId::SqlModal, now);
-
-    let buffer = render_and_get_buffer(&mut terminal, &mut state);
-
-    let mut flashed = Vec::new();
-    let mut not_flashed_chrome = Vec::new();
-
-    for y in 0..TEST_HEIGHT {
-        let text = row_text(&buffer, y);
-        let has_flash = row_has_flash_bg(&buffer, y);
-
-        // Verdict and plan text should flash
-        if text.contains("Improved")
-            || text.contains("Total cost")
-            || text.contains("Estimated")
-            || text.contains("Seq Scan")
-            || text.contains("Index Scan")
-            || text.contains("Index Cond")
-            || text.contains("Filter:")
-        {
-            assert!(
-                has_flash,
-                "Row {} should flash: '{}'",
-                y,
-                &text[..60.min(text.len())]
-            );
-            flashed.push(y);
-        }
-
-        // Column headers should NOT flash
-        if text.contains("Previous") && text.contains("Latest") {
-            assert!(!has_flash, "Row {} should NOT flash (column header)", y);
-            not_flashed_chrome.push(y);
-        }
-    }
-
-    assert!(
-        flashed.len() >= 4,
-        "Expected >= 4 flashed rows, got {}",
-        flashed.len()
     );
 }

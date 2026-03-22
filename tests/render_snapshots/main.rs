@@ -12,7 +12,6 @@ use std::time::Duration;
 use sabiql::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql::app::model::connection::setup::ConnectionField;
 use sabiql::app::model::er_state::ErStatus;
-use sabiql::app::model::shared::flash_timer::FlashId;
 use sabiql::app::model::shared::focused_pane::FocusedPane;
 use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::model::shared::text_input::TextInputState;
