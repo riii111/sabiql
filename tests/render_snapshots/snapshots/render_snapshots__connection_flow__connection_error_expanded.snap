@@ -7,20 +7,20 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
 │           │✗ Connection timed out                                │           │
 │           │                                                      │           │
 │           │Hint: Check network connectivity                      │           │
-│           │                                                      │           │
-│           │▼ Details                                             │           │
-│           │psql: error: connection to server at "192.168.1.100", │───────────┘
-│           │port 5432 failed: timeout expired                     │───────────┐
-│           │                                                      │           │
-│           │                                                      │           │
-│           │                                                      │           │
+│           │                                                      │───────────┘
+│           │▼ Details                                             │───────────┐
+│           │psql: error: connection to server at "192.168.1.100", │           │
+│           │port 5432 failed: timeout expired                     │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
 │           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

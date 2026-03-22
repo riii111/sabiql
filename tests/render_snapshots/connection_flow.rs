@@ -143,6 +143,30 @@ fn connection_error_expanded_with_tabs() {
 }
 
 #[test]
+fn connection_error_expanded_long_details_capped() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    let long_details = (1..=25)
+        .map(|i| format!("ERROR line {}: something went wrong in module_{}", i, i))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    state.modal.set_mode(InputMode::ConnectionError);
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::Unknown,
+            &long_details,
+        ));
+    state.connection_error.details_expanded = true;
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn footer_shows_success_message() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
