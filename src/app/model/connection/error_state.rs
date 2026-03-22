@@ -70,6 +70,12 @@ impl ConnectionErrorState {
             .as_ref()
             .map(|info| info.masked_details.as_str())
     }
+
+    pub fn detail_line_count(&self) -> usize {
+        self.masked_details()
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -240,6 +246,26 @@ mod tests {
             state.clear_expired_feedback_at(t + Duration::from_secs(1));
 
             assert!(state.is_copied_visible_at(t));
+        }
+    }
+
+    mod detail_line_count {
+        use super::*;
+
+        #[test]
+        fn returns_zero_when_no_error() {
+            let state = ConnectionErrorState::default();
+            assert_eq!(state.detail_line_count(), 0);
+        }
+
+        #[test]
+        fn counts_lines_of_error_details() {
+            let mut state = ConnectionErrorState::default();
+            state.set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Unknown,
+                "line1\nline2\nline3",
+            ));
+            assert_eq!(state.detail_line_count(), 3);
         }
     }
 

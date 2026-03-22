@@ -8,18 +8,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
 │           │✗ Could not resolve host                              │           │
 │           │                                                      │           │
-│           │Hint: Check the hostname                              │           │
-│           │                                                      │           │
-│           │▶ Details (press d to expand)                         │───────────┘
+│           │Hint: Check the hostname                              │───────────┘
 │           │                                                      │───────────┐
-│           │                                                      │           │
-│           │                                                      │           │
+│           │▶ Details (press d to expand)                         │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
 │           ╰ Esc to close ────────────────────────────────────────╯           │
+│                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │
 │                  ││                                                          │

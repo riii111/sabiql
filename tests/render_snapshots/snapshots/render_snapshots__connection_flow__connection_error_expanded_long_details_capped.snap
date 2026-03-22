@@ -7,17 +7,17 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
-│                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
 │           │✗ Connection failed                                   │           │
 │           │                                                      │           │
 │           │Hint: See details for more information                │           │
 │           │                                                      │           │
-│           │▼ Details                                             │───────────┘
-│           │psql: error: connection to server at "localhost"      │───────────┐
-│           │(127.0.0.1), port 5433 failed: Connection refused     │           │
-│           │    Is the server running on that host and accepting  │           │
-│           │TCP/IP connections?                                   │           │
+│           │▼ Details                                             │           │
+│           │ERROR line 1: something went wrong in module_1        │───────────┘
+│           │ERROR line 2: something went wrong in module_2        │───────────┐
+│           │ERROR line 3: something went wrong in module_3        │           │
+│           │ERROR line 4: something went wrong in module_4        │           │
+│           │ERROR line 5: something went wrong in module_5        │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
 │           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │

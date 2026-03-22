@@ -38,7 +38,11 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            state.connection_error.scroll_down(100);
+            // Approximation: uses raw line count, not wrapped line count.
+            // Long lines that wrap in the UI may under-count; visible_height
+            // is not subtracted. Acceptable for typical short psql errors.
+            let max_scroll = state.connection_error.detail_line_count().saturating_sub(1);
+            state.connection_error.scroll_down(max_scroll);
             Some(vec![])
         }
         Action::CopyConnectionError => {
@@ -87,6 +91,40 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod scroll_down {
+        use super::*;
+        use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+
+        fn scroll_down_action() -> Action {
+            Action::Scroll {
+                target: ScrollTarget::ConnectionError,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            }
+        }
+
+        #[test]
+        fn stops_at_detail_line_count() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::Unknown,
+                    "line1\nline2\nline3",
+                ));
+
+            let action = scroll_down_action();
+            let now = Instant::now();
+
+            reduce(&mut state, &action, now);
+            reduce(&mut state, &action, now);
+            assert_eq!(state.connection_error.scroll_offset, 2);
+
+            reduce(&mut state, &action, now);
+            assert_eq!(state.connection_error.scroll_offset, 2);
+        }
+    }
 
     mod reenter_connection_setup {
         use super::*;

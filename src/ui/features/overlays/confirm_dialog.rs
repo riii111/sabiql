@@ -7,24 +7,12 @@ use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
 use crate::app::policy::write::write_update::escape_preview_value;
 use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
+use crate::ui::primitives::utils::text_utils::wrapped_line_count;
 use crate::ui::theme::Theme;
 
 pub struct ConfirmDialog;
 
 impl ConfirmDialog {
-    fn wrapped_line_count(text: &str, width: u16) -> u16 {
-        if width == 0 {
-            return 0;
-        }
-
-        text.lines()
-            .map(|line| {
-                let chars = line.chars().count() as u16;
-                chars.max(1).div_ceil(width)
-            })
-            .sum()
-    }
-
     pub fn render(frame: &mut Frame, state: &AppState) {
         if let Some(preview) = state.result_interaction.pending_write_preview() {
             Self::render_write_preview(frame, state, preview);
@@ -60,7 +48,7 @@ impl ConfirmDialog {
         let modal_width = preferred_width.min(max_modal_width);
 
         let message_width = modal_width.saturating_sub(4).max(1);
-        let message_height = Self::wrapped_line_count(dialog.message(), message_width);
+        let message_height = wrapped_line_count(dialog.message(), message_width);
         let max_modal_height = full_area.height.saturating_sub(2).max(6);
         let modal_height = (message_height + 2).clamp(6, max_modal_height);
 

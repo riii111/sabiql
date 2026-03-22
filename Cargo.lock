@@ -2593,6 +2593,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "unicode-width",
  "urlencoding",
  "uuid",
 ]
