@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                           ✓ table created (0.04s)  │       │
-│       ╰ ⌥Enter: Run │ ^E: Explain │ y: Yank │ ^O: Hist │ Enter: Inser╯       │
+│       ╰ ⌥Enter: Run │ ^E: EXPLAIN │ ⌥E: EXPLAIN ANALYZE │ y: Yank │ ^╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

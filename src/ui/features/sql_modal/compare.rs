@@ -9,7 +9,9 @@ use crate::app::state::AppState;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    state.explain.compare_viewport_height = Some(area.height);
+
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
     let scroll_offset = state.explain.compare_scroll_offset;
@@ -76,6 +78,7 @@ fn render_verdict_section(
         ),
     };
 
+    lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
         format!(" {}", verdict_label),
         verdict_style,
@@ -85,7 +88,7 @@ fn render_verdict_section(
     for reason in &result.reasons {
         lines.push(Line::from(vec![
             Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::raw(reason.clone()),
+            Span::styled(reason.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
         ]));
     }
     if !result.reasons.is_empty() {
@@ -119,12 +122,12 @@ fn render_slot_columns(
         .add_modifier(Modifier::BOLD);
 
     let left_label = match left {
-        Some(s) => format!(" Left [{}]", source_badge(&s.source)),
-        None => " Left".to_string(),
+        Some(s) => format!(" {}", source_badge(&s.source)),
+        None => " Previous".to_string(),
     };
     let right_label = match right {
-        Some(s) => format!("Right [{}]", source_badge(&s.source)),
-        None => "Right".to_string(),
+        Some(s) => source_badge(&s.source).to_string(),
+        None => "Latest".to_string(),
     };
 
     lines.push(Line::from(vec![
@@ -173,7 +176,21 @@ fn render_slot_columns(
         ),
     ]));
 
-    lines.push(Line::raw(""));
+    // Separator between query detail and plan body
+    let thin_sep = "\u{2500}".repeat(half.saturating_sub(1));
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!(" {}", thin_sep),
+            Style::default().fg(Theme::TEXT_DIM),
+        ),
+        sep.clone(),
+        Span::styled(
+            format!(" {}", thin_sep),
+            Style::default().fg(Theme::TEXT_DIM),
+        ),
+    ]));
+
+    let dim_style = Style::default().fg(Theme::TEXT_DIM);
 
     let l_plan: Vec<&str> = left
         .map(|s| s.plan.raw_text.lines().collect())
@@ -187,13 +204,13 @@ fn render_slot_columns(
         let l = l_plan.get(i).unwrap_or(&"");
         let r = r_plan.get(i).unwrap_or(&"");
 
-        let mut row_spans = vec![Span::raw(" ".to_string())];
+        let mut row_spans = vec![Span::styled(" ".to_string(), dim_style)];
         row_spans.extend(super::plan_highlight::highlight_truncated(
             l,
             half.saturating_sub(1),
         ));
         row_spans.push(sep.clone());
-        row_spans.push(Span::raw(" ".to_string()));
+        row_spans.push(Span::styled(" ".to_string(), dim_style));
         row_spans.extend(super::plan_highlight::highlight_truncated(
             r,
             half.saturating_sub(1),
@@ -212,53 +229,43 @@ fn render_slot_stacked(
     let header_style = Style::default()
         .fg(Theme::TEXT_ACCENT)
         .add_modifier(Modifier::BOLD);
-    let empty_style = Style::default()
-        .fg(Theme::TEXT_DIM)
-        .add_modifier(Modifier::BOLD);
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
-    render_stacked_slot(lines, "Left", left, header_style, empty_style, badge_style);
+    render_stacked_slot(lines, left, header_style, badge_style);
     lines.push(Line::raw(""));
-    render_stacked_slot(
-        lines,
-        "Right",
-        right,
-        header_style,
-        empty_style,
-        badge_style,
-    );
+    render_stacked_slot(lines, right, header_style, badge_style);
 }
 
 fn render_stacked_slot(
     lines: &mut Vec<Line>,
-    label: &str,
     slot: Option<&CompareSlot>,
     active_style: Style,
-    empty_style: Style,
     badge_style: Style,
 ) {
     match slot {
         Some(s) => {
-            lines.push(Line::from(vec![
-                Span::styled(format!(" {} ", label), active_style),
-                Span::styled(format!("[{}]", source_badge(&s.source)), badge_style),
-            ]));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::raw(s.query_snippet.clone()),
-                Span::styled(
-                    format!("  ({})", mode_label(s.plan.is_analyze)),
-                    badge_style,
-                ),
-            ]));
+            lines.push(Line::from(Span::styled(
+                format!(" {}", source_badge(&s.source)),
+                active_style,
+            )));
+            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            lines.push(Line::from(Span::styled(
+                format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
+                badge_style,
+            )));
             for line in s.plan.raw_text.lines() {
                 lines.push(super::plan_highlight::highlight_plan_line(line));
             }
         }
         None => {
-            lines.push(Line::from(Span::styled(format!(" {}", label), empty_style)));
             lines.push(Line::from(Span::styled(
-                "  Waiting...",
+                " Previous",
+                Style::default()
+                    .fg(Theme::TEXT_DIM)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(Span::styled(
+                "  Run EXPLAIN again to compare",
                 Style::default().fg(Theme::PLACEHOLDER_TEXT),
             )));
         }
@@ -269,8 +276,11 @@ fn render_stacked_slot(
 
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
-        Some(s) => format!(" {}  ({})", s.query_snippet, mode_label(s.plan.is_analyze)),
-        None => " Waiting...".to_string(),
+        Some(s) => {
+            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs)
+        }
+        None => " Run EXPLAIN again".to_string(),
     }
 }
 

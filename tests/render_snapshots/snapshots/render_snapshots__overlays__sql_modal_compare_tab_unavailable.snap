@@ -8,19 +8,19 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
+│       │                                                              │       │
 │       │  Comparison unavailable                                      │       │
 │       │                                                              │       │
 │       │   • Could not parse cost from either plan                    │       │
 │       │                                                              │       │
-│       │  ──────────────────────────────────────────────────────────  │       │
-│       │                                                              │───────┘
-│       │  Left [Previous]             │ Right [Latest]                │───────┐
-│       │  CREATE TABLE foo  (EXPLAIN) │  ALTER TABLE foo  (EXPLAIN)   │       │
-│       │                                                              │       │
-│       │  CREATE TABLE foo (id int)   │  ALTER TABLE foo ADD COLUMN…  │       │
+│       │  ──────────────────────────────────────────────────────────  │───────┘
+│       │                                                              │───────┐
+│       │  Previous                    │ Latest                        │       │
+│       │  EXPLAIN  (0.00s)            │  EXPLAIN  (0.00s)             │       │
+│       │  ─────────────────────────── │  ───────────────────────────  │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────────╯       │
+│       ╰ l/r: Slot │ e: Edit │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

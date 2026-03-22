@@ -93,6 +93,29 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
                     .add_modifier(Modifier::BOLD),
             )
         }
+        SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
+            let color = if *is_dml {
+                Theme::STATUS_ERROR
+            } else {
+                Theme::STATUS_WARNING
+            };
+            (
+                "[CONFIRM]",
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+                "Confirm ANALYZE".to_string(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            )
+        }
+        SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
+            "[CONFIRM]",
+            Style::default()
+                .fg(Theme::STATUS_ERROR)
+                .add_modifier(Modifier::BOLD),
+            "Confirm ANALYZE".to_string(),
+            Style::default()
+                .fg(Theme::STATUS_ERROR)
+                .add_modifier(Modifier::BOLD),
+        ),
         SqlModalStatus::ConfirmingHigh { .. } => unreachable!(),
     };
 

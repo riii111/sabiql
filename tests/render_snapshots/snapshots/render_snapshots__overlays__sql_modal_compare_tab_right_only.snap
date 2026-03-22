@@ -8,9 +8,9 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  Left                        │ Right [Latest]                │       │
-│       │  Waiting...                  │  SELECT * FROM users WHERE …  │       │
-│       │                                                              │       │
+│       │  Previous                    │ Latest                        │       │
+│       │  Run EXPLAIN again           │  EXPLAIN  (0.04s)             │       │
+│       │  ─────────────────────────── │  ───────────────────────────  │       │
 │       │                              │  Seq Scan on users  (cost=0…  │       │
 │       │                              │    Filter: email_verified     │       │
 │       │                                                              │───────┘
@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────────╯       │
+│       ╰ l/r: Slot │ e: Edit │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

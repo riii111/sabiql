@@ -1,15 +1,15 @@
 use std::time::{Duration, Instant};
 
 use crate::app::action::{Action, CursorMove, InputTarget};
-use crate::app::adhoc_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
+use crate::app::sql_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::state::AppState;
-use crate::app::statement_classifier;
+use crate::app::statement_classifier::{self, StatementKind};
 use crate::app::text_input::TextInputState;
-use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_adhoc_risk};
+use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -214,16 +214,21 @@ pub fn reduce_sql_modal(
                     state.sql_modal.mark_adhoc_error(reason);
                     Some(vec![])
                 }
-                MultiStatementDecision::Allow { risk, .. } => {
+                MultiStatementDecision::Allow {
+                    risk,
+                    ref statements,
+                } => {
                     let label = multi_statement_label(&query);
                     let decision = AdhocRiskDecision {
                         risk_level: risk.risk_level,
                         label,
                     };
-                    // In read-only mode, block non-Immediate (write) queries
-                    if state.session.read_only
-                        && !matches!(risk.confirmation, ConfirmationType::Immediate)
-                    {
+                    // In read-only mode, block if any statement is a write operation
+                    let has_write = statements.iter().any(|s| {
+                        let kind = statement_classifier::classify(s);
+                        !matches!(kind, StatementKind::Select | StatementKind::Transaction)
+                    });
+                    if state.session.read_only && has_write {
                         state.sql_modal.mark_adhoc_error(
                             "Read-only mode: write operations are disabled".to_string(),
                         );
@@ -303,6 +308,37 @@ pub fn reduce_sql_modal(
             }
             Some(vec![])
         }
+        // EXPLAIN ANALYZE high-risk confirmation input
+        Action::TextInput {
+            target: InputTarget::SqlModalAnalyzeHighRisk,
+            ch: c,
+        } => {
+            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
+                input.insert_char(*c);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+        Action::TextBackspace {
+            target: InputTarget::SqlModalAnalyzeHighRisk,
+        } => {
+            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
+                input.backspace();
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::SqlModalAnalyzeHighRisk,
+            direction: movement,
+        } => {
+            if let Some(input) = state.sql_modal.confirming_analyze_high_input_mut() {
+                input.move_cursor(*movement);
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            Some(vec![])
+        }
+
         Action::SqlModalHighRiskConfirmExecute => {
             // `matches!` + flag instead of `if let` because the immutable borrow
             // from pattern matching must end before we can mutate `state.sql_modal.status`.
@@ -402,12 +438,12 @@ pub fn reduce_sql_modal(
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {
-    use crate::app::adhoc_risk::split_statements;
+    use crate::app::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
     for stmt in split_statements(sql) {
         let kind = statement_classifier::classify(&stmt);
-        let d = evaluate_adhoc_risk(&kind);
+        let d = evaluate_sql_risk(&kind);
         if d.risk_level > worst_level || (d.risk_level == worst_level && d.label != "SQL") {
             worst_level = d.risk_level;
             worst_label = d.label;

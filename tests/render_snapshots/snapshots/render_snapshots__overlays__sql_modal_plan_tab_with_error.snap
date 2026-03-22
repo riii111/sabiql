@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ ^E: Explain │ b: Pin │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ╯       │
+│       ╰ b: Set baseline │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

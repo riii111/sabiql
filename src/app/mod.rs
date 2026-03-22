@@ -1,5 +1,4 @@
 pub mod action;
-pub mod adhoc_risk;
 pub mod browse_session;
 pub mod cache;
 pub mod cell_edit_state;
@@ -42,6 +41,7 @@ pub mod runtime_state;
 pub mod services;
 pub mod sql_lexer;
 pub mod sql_modal_context;
+pub mod sql_risk;
 pub mod state;
 pub mod statement_classifier;
 pub mod text_input;

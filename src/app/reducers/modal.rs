@@ -7,7 +7,6 @@ use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::reducers::char_count;
-use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -319,23 +318,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.session.read_only,
-                        }])
-                    } else {
-                        Some(vec![])
-                    }
-                }
-                Some(ConfirmIntent::ExplainAnalyze { query, .. }) => {
-                    if let Some(dsn) = &state.session.dsn {
-                        let explain_query = format!("EXPLAIN ANALYZE {}", query);
-                        state.sql_modal.set_status(SqlModalStatus::Running);
-                        state.sql_modal.active_tab = SqlModalTab::Plan;
-                        state.explain.reset();
-                        state.query.begin_running(now);
-                        Some(vec![Effect::ExecuteExplain {
-                            dsn: dsn.clone(),
-                            query: explain_query,
-                            is_analyze: true,
                             read_only: state.session.read_only,
                         }])
                     } else {

@@ -14,6 +14,7 @@ pub enum SlotSource {
 pub struct CompareSlot {
     pub plan: ExplainPlan,
     pub query_snippet: String,
+    pub full_query: String,
     pub source: SlotSource,
 }
 
@@ -22,6 +23,7 @@ const MAX_EXPLAIN_HISTORY: usize = 10;
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
     pub plan_text: Option<String>,
+    pub plan_query_snippet: Option<String>,
     pub error: Option<String>,
     pub is_analyze: bool,
     pub execution_time_ms: u64,
@@ -33,6 +35,11 @@ pub struct ExplainContext {
     pub compare_scroll_offset: usize,
 
     pub history: VecDeque<CompareSlot>,
+
+    pub left_history_cursor: usize,
+    pub right_history_cursor: usize,
+    pub compare_viewport_height: Option<u16>,
+    pub confirm_scroll_offset: usize,
 }
 
 impl ExplainContext {
@@ -45,10 +52,12 @@ impl ExplainContext {
     ) {
         let parsed = explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms);
         let snippet = query.lines().next().unwrap_or("").to_string();
+        let plan_snippet = snippet.clone();
 
         let new_slot = CompareSlot {
             plan: parsed,
             query_snippet: snippet,
+            full_query: query.to_string(),
             source: SlotSource::AutoLatest,
         };
 
@@ -64,11 +73,14 @@ impl ExplainContext {
         self.right = self.history.front().cloned();
 
         self.plan_text = Some(text);
+        self.plan_query_snippet = Some(plan_snippet);
         self.error = None;
         self.is_analyze = is_analyze;
         self.execution_time_ms = execution_time_ms;
         self.scroll_offset = 0;
         self.compare_scroll_offset = 0;
+        self.left_history_cursor = 0;
+        self.right_history_cursor = 0;
     }
 
     pub fn set_error(&mut self, error: String) {
@@ -129,6 +141,30 @@ impl ExplainContext {
         }
     }
 
+    pub fn cycle_left_slot(&mut self) -> bool {
+        let len = self.history.len();
+        if len == 0 {
+            return false;
+        }
+        let cursor = (self.left_history_cursor + 1) % len;
+        self.left_history_cursor = cursor;
+        self.select_left(cursor);
+        self.compare_scroll_offset = 0;
+        true
+    }
+
+    pub fn cycle_right_slot(&mut self) -> bool {
+        let len = self.history.len();
+        if len == 0 {
+            return false;
+        }
+        let cursor = (self.right_history_cursor + 1) % len;
+        self.right_history_cursor = cursor;
+        self.select_right(cursor);
+        self.compare_scroll_offset = 0;
+        true
+    }
+
     pub fn line_count(&self) -> usize {
         if let Some(ref text) = self.plan_text {
             text.lines().count()
@@ -139,10 +175,10 @@ impl ExplainContext {
         }
     }
 
-    // verdict + blank + reasons(3) + blank + separator + blank + slot headers + plan lines
-    const COMPARE_HEADER_OVERHEAD_FULL: usize = 10;
-    // slot header + query detail + blank + plan lines (no verdict section)
-    const COMPARE_HEADER_OVERHEAD_PARTIAL: usize = 4;
+    // blank + verdict + blank + reasons(3) + blank + separator + blank + slot header + detail + thin_sep
+    const COMPARE_HEADER_OVERHEAD_FULL: usize = 12;
+    // slot header + query detail + thin_sep + plan lines (no verdict section)
+    const COMPARE_HEADER_OVERHEAD_PARTIAL: usize = 3;
 
     pub fn compare_line_count(&self) -> usize {
         match (&self.left, &self.right) {
@@ -166,8 +202,11 @@ impl ExplainContext {
     }
 
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
-        self.compare_line_count()
-            .saturating_sub(Self::modal_inner_height(terminal_height))
+        let viewport = self
+            .compare_viewport_height
+            .map(|h| h as usize)
+            .unwrap_or_else(|| Self::modal_inner_height(terminal_height));
+        self.compare_line_count().saturating_sub(viewport)
     }
 }
 

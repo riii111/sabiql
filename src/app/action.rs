@@ -63,6 +63,7 @@ pub enum ScrollTarget {
     ConnectionError,
     ExplainPlan,
     ExplainCompare,
+    ExplainConfirm,
     Explorer,
 }
 
@@ -103,6 +104,7 @@ pub enum CursorPosition {
 pub enum InputTarget {
     SqlModal,
     SqlModalHighRisk,
+    SqlModalAnalyzeHighRisk,
     ResultCellEdit,
     ConnectionSetup,
     CommandLine,
@@ -368,6 +370,8 @@ pub enum Action {
     // EXPLAIN
     ExplainRequest,
     ExplainAnalyzeRequest,
+    ExplainAnalyzeConfirm,
+    ExplainAnalyzeCancel,
     ExplainCompleted {
         plan_text: String,
         is_analyze: bool,
@@ -375,6 +379,9 @@ pub enum Action {
     },
     ExplainFailed(DbOperationError),
     SaveExplainBaseline,
+    CompareSelectLeftSlot,
+    CompareSelectRightSlot,
+    CompareEditQuery,
 
     // SQL Modal completion
     CompletionTrigger,

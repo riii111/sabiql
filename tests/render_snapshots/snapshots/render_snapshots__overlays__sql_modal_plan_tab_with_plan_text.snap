@@ -9,10 +9,10 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
 │       │ EXPLAIN (0.04s)                                              │       │
+│       │   SELECT * FROM users WHERE id > 10                          │       │
 │       │                                                              │       │
-│       │  Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)    │       │
-│       │  │ Filter: (id > 10)                                         │       │
-│       │                                                              │       │
+│       │ Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)     │       │
+│       │   Filter: (id > 10)                                          │       │
 │       │                                                              │───────┘
 │       │                                                              │───────┐
 │       │                                                              │       │
@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ ^E: Explain │ b: Pin │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ╯       │
+│       ╰ b: Set baseline │ ↑↓: Scroll │ Tab: Switch │ Esc: Close ─────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

@@ -8,19 +8,19 @@ test_project | - | - | no dsn | localhost:5432/tes
 │           ││(select a table)                   │
 │           ││                                   │
 │    ╭ SQL Editor ── [SQL] [Plan] [Compare] ╮    │
+│    │                                      │    │
 │    │  ↓ Improved                          │    │
 │    │                                      │    │
 │    │   • Total cost: 1000.00 → 8.30       │    │
 │    │ (-99.2%)                             │    │
-│    │   • Seq Scan on users → Index Scan   │    │
-│    │ using idx_users_id on users          │────┘
-│    │   • Rows: 2550 → 1                   │────┐
+│    │   • Seq Scan on users → Index Scan   │────┘
+│    │ using idx_users_id on users          │────┐
+│    │   • Estimated rows: 2550 → 1         │    │
 │    │                                      │    │
 │    │  ──────────────────────────────────  │    │
-│    │                                      │    │
 │    │ ──────────────────────────────────── │    │
 │    │  [NORMAL]                     Ready  │    │
-│    ╰ ^E: Explain │ ↑↓: Scroll │ Tab: Switc╯    │
+│    ╰ l/r: Slot │ e: Edit │ ↑↓: Scroll │ Ta╯    │
 │           ││                                   │
 │           ││                                   │
 └───────────┘└───────────────────────────────────┘

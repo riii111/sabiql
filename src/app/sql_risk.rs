@@ -12,7 +12,7 @@ pub enum ConfirmationType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdhocRiskDecision {
+pub struct SqlRiskDecision {
     pub risk_level: RiskLevel,
     pub confirmation: ConfirmationType,
 }
@@ -21,7 +21,7 @@ pub struct AdhocRiskDecision {
 pub enum MultiStatementDecision {
     Allow {
         statements: Vec<String>,
-        risk: AdhocRiskDecision,
+        risk: SqlRiskDecision,
     },
     Block {
         reason: String,
@@ -119,23 +119,23 @@ fn is_comment_only(sql: &str) -> bool {
     true
 }
 
-pub fn evaluate_adhoc_risk(kind: &StatementKind, sql: &str) -> Option<AdhocRiskDecision> {
+pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> Option<SqlRiskDecision> {
     match kind {
-        StatementKind::Select | StatementKind::Transaction => Some(AdhocRiskDecision {
+        StatementKind::Select | StatementKind::Transaction => Some(SqlRiskDecision {
             risk_level: RiskLevel::Low,
             confirmation: ConfirmationType::Immediate,
         }),
-        StatementKind::Insert | StatementKind::Create => Some(AdhocRiskDecision {
+        StatementKind::Insert | StatementKind::Create => Some(SqlRiskDecision {
             risk_level: RiskLevel::Low,
             confirmation: ConfirmationType::Enter,
         }),
         StatementKind::Update { has_where: true }
         | StatementKind::Delete { has_where: true }
-        | StatementKind::Alter => Some(AdhocRiskDecision {
+        | StatementKind::Alter => Some(SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Enter,
         }),
-        StatementKind::Unsupported => Some(AdhocRiskDecision {
+        StatementKind::Unsupported => Some(SqlRiskDecision {
             risk_level: RiskLevel::High,
             confirmation: ConfirmationType::Enter,
         }),
@@ -144,7 +144,7 @@ pub fn evaluate_adhoc_risk(kind: &StatementKind, sql: &str) -> Option<AdhocRiskD
         | StatementKind::Drop
         | StatementKind::Truncate => {
             let table = extract_table_name(sql, kind)?;
-            Some(AdhocRiskDecision {
+            Some(SqlRiskDecision {
                 risk_level: RiskLevel::High,
                 confirmation: ConfirmationType::TableNameInput { target: table },
             })
@@ -163,11 +163,11 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         };
     }
 
-    let mut decisions: Vec<(String, AdhocRiskDecision)> = Vec::new();
+    let mut decisions: Vec<(String, SqlRiskDecision)> = Vec::new();
 
     for stmt in &statements {
         let kind = classify(stmt);
-        match evaluate_adhoc_risk(&kind, stmt) {
+        match evaluate_sql_risk(&kind, stmt) {
             Some(decision) => decisions.push((stmt.clone(), decision)),
             None => {
                 return MultiStatementDecision::Block {
@@ -212,7 +212,7 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
 
     MultiStatementDecision::Allow {
         statements,
-        risk: AdhocRiskDecision {
+        risk: SqlRiskDecision {
             risk_level: max_risk,
             confirmation,
         },
@@ -300,7 +300,7 @@ mod tests {
         }
     }
 
-    mod evaluate_adhoc_risk_tests {
+    mod evaluate_sql_risk_tests {
         use super::*;
 
         #[rstest]
@@ -312,7 +312,7 @@ mod tests {
             #[case] expected_risk: RiskLevel,
             #[case] is_immediate: bool,
         ) {
-            let result = evaluate_adhoc_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql).unwrap();
             assert_eq!(result.risk_level, expected_risk);
             assert_eq!(
                 matches!(result.confirmation, ConfirmationType::Immediate),
@@ -324,7 +324,7 @@ mod tests {
         #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)")]
         #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)")]
         fn low_enter(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_adhoc_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql).unwrap();
             assert_eq!(result.risk_level, RiskLevel::Low);
             assert!(matches!(result.confirmation, ConfirmationType::Enter));
         }
@@ -334,14 +334,14 @@ mod tests {
         #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
         #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
         fn medium_enter(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_adhoc_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql).unwrap();
             assert_eq!(result.risk_level, RiskLevel::Medium);
             assert!(matches!(result.confirmation, ConfirmationType::Enter));
         }
 
         #[test]
         fn unsupported_is_high_enter() {
-            let result = evaluate_adhoc_risk(
+            let result = evaluate_sql_risk(
                 &StatementKind::Unsupported,
                 "GRANT SELECT ON users TO role1",
             )
@@ -356,7 +356,7 @@ mod tests {
         #[case::drop(StatementKind::Drop, "DROP TABLE users")]
         #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
         fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_adhoc_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql).unwrap();
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
                 result.confirmation,
@@ -366,7 +366,7 @@ mod tests {
 
         #[test]
         fn other_returns_none() {
-            let result = evaluate_adhoc_risk(&StatementKind::Other, "??? invalid");
+            let result = evaluate_sql_risk(&StatementKind::Other, "??? invalid");
             assert!(result.is_none());
         }
     }
