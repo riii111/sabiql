@@ -7,17 +7,17 @@ test_project | - | - | no dsn | localhost:5432/test
 │ Press 'r' to load│┌ [2] Inspector ───────────────────────────────────────────┐
 │                  ││(select a table)                                          │
 │                  ││                                                          │
+│                  ││                                                          │
 │           ╭ Connection Error ────────────────────────────────────╮           │
 │           │✗ Connection failed                                   │           │
 │           │                                                      │           │
 │           │Hint: See details for more information                │           │
 │           │                                                      │           │
-│           │▼ Details                                             │           │
-│           │psql: error: connection to server at "localhost"      │───────────┘
-│           │(127.0.0.1), port 5433 failed: Connection refused     │───────────┐
+│           │▼ Details                                             │───────────┘
+│           │psql: error: connection to server at "localhost"      │───────────┐
+│           │(127.0.0.1), port 5433 failed: Connection refused     │           │
 │           │    Is the server running on that host and accepting  │           │
 │           │TCP/IP connections?                                   │           │
-│           │                                                      │           │
 │           │                                                      │           │
 │           │Actions:  e  Re-enter   s  Switch   d  Details   y  Co│           │
 │           ╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯           │
