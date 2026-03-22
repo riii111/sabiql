@@ -7,7 +7,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.us╭ Help ────────────────────────────────────────────────╮───────────┐
 │  public.po│▸ Global Keys                                        ▲│           │
 │  public.co│  q                   Quit application               ┃│           │
-│           │  ?                   Toggle help                    ┃│           │
+│           │  ?                   Toggle help                    ││           │
 │           │  Ctrl+P              Open Table Picker              ││           │
 │           │  Ctrl+K              Open Command Palette           ││           │
 │           │  :                   Enter command line             ││           │
