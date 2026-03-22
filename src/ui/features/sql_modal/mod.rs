@@ -2,6 +2,8 @@ mod compare;
 mod explain;
 mod plan_highlight;
 
+use std::sync::LazyLock;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -77,12 +79,8 @@ impl SqlModal {
                 _ => unreachable!(),
             }
         } else {
-            let hint_owned: String;
             let hint: &str = match state.sql_modal.status() {
-                SqlModalStatus::Editing => {
-                    hint_owned = Self::build_editing_hint();
-                    &hint_owned
-                }
+                SqlModalStatus::Editing => Self::editing_hint(),
                 SqlModalStatus::Running => " Running\u{2026} ",
                 SqlModalStatus::ConfirmingAnalyze { .. } => " Enter: Confirm \u{2502} Esc: Cancel ",
                 SqlModalStatus::ConfirmingAnalyzeHigh {
@@ -97,10 +95,7 @@ impl SqlModal {
                         " Esc: Cancel "
                     }
                 }
-                _ => {
-                    hint_owned = Self::build_border_hint(state.sql_modal.active_tab);
-                    &hint_owned
-                }
+                _ => Self::border_hint(state.sql_modal.active_tab),
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
@@ -221,26 +216,30 @@ impl SqlModal {
         ])
     }
 
-    fn build_border_hint(tab: SqlModalTab) -> String {
+    fn border_hint(tab: SqlModalTab) -> &'static str {
         // Explain/Analyze are shared across all tabs; Sql Normal borrows from
         // Plan keys because SQL_MODAL_NORMAL_KEYS doesn't include them
         // (they are not Normal-mode-specific — they work in Editing too).
-        let pairs: &[(&str, &str)] = match tab {
-            SqlModalTab::Plan => &[
+        static PLAN: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
-            ],
-            SqlModalTab::Compare => &[
+            ])
+        });
+        static COMPARE: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
-            ],
-            SqlModalTab::Sql => &[
+            ])
+        });
+        static SQL: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::ANALYZE].as_hint(),
@@ -249,20 +248,26 @@ impl SqlModal {
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
                 SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
-            ],
-        };
-        Self::join_hint_pairs(pairs)
+            ])
+        });
+        match tab {
+            SqlModalTab::Plan => &PLAN,
+            SqlModalTab::Compare => &COMPARE,
+            SqlModalTab::Sql => &SQL,
+        }
     }
 
-    fn build_editing_hint() -> String {
-        let pairs: &[(&str, &str)] = &[
-            SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
-            SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
-            SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
-            SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
-            SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
-        ];
-        Self::join_hint_pairs(pairs)
+    fn editing_hint() -> &'static str {
+        static HINT: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
+                SQL_MODAL_KEYS[idx::sql_modal::RUN].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                SQL_MODAL_KEYS[idx::sql_modal::CLEAR].as_hint(),
+                SQL_MODAL_KEYS[idx::sql_modal::QUERY_HISTORY].as_hint(),
+                SQL_MODAL_KEYS[idx::sql_modal::ESC_NORMAL].as_hint(),
+            ])
+        });
+        &HINT
     }
 
     fn join_hint_pairs(pairs: &[(&str, &str)]) -> String {

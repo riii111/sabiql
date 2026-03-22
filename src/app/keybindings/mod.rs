@@ -298,7 +298,15 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    24 + 19 + GLOBAL_KEYS.len() + NAVIGATION_KEYS.len() + HISTORY_KEYS.len() - DEDUP_PAIRS
+    const SECTION_COUNT: usize = 22;
+    const SECTION_HEADERS: usize = SECTION_COUNT;
+    const BLANK_SEPARATORS: usize = SECTION_COUNT - 1;
+    SECTION_HEADERS
+        + BLANK_SEPARATORS
+        + GLOBAL_KEYS.len()
+        + NAVIGATION_KEYS.len()
+        + HISTORY_KEYS.len()
+        - DEDUP_PAIRS
         + RESULT_ACTIVE_KEYS.len()
         + INSPECTOR_DDL_KEYS.len()
         + CELL_EDIT_KEYS.len()
