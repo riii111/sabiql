@@ -50,41 +50,19 @@ mod tests {
 
     mod wrapped_line_count_tests {
         use super::super::wrapped_line_count;
+        use rstest::rstest;
 
-        #[test]
-        fn empty_string_returns_zero() {
-            assert_eq!(wrapped_line_count("", 80), 0);
-        }
-
-        #[test]
-        fn short_line_returns_one() {
-            assert_eq!(wrapped_line_count("hello", 80), 1);
-        }
-
-        #[test]
-        fn long_line_returns_wrapped_count() {
-            assert_eq!(wrapped_line_count("hello world", 5), 3);
-        }
-
-        #[test]
-        fn multiline_returns_line_count() {
-            assert_eq!(wrapped_line_count("line1\nline2\nline3", 80), 3);
-        }
-
-        #[test]
-        fn zero_width_returns_zero() {
-            assert_eq!(wrapped_line_count("hello", 0), 0);
-        }
-
-        #[test]
-        fn exact_width_returns_one() {
-            assert_eq!(wrapped_line_count("12345", 5), 1);
-        }
-
-        #[test]
-        fn cjk_double_width_returns_correct_count() {
-            assert_eq!(wrapped_line_count("あいう", 6), 1);
-            assert_eq!(wrapped_line_count("あいう", 4), 2);
+        #[rstest]
+        #[case("", 80, 0)]
+        #[case("hello", 80, 1)]
+        #[case("hello world", 5, 3)]
+        #[case("line1\nline2\nline3", 80, 3)]
+        #[case("hello", 0, 0)]
+        #[case("12345", 5, 1)]
+        #[case("あいう", 6, 1)]
+        #[case("あいう", 4, 2)]
+        fn returns_expected_count(#[case] text: &str, #[case] width: u16, #[case] expected: u16) {
+            assert_eq!(wrapped_line_count(text, width), expected);
         }
     }
 }
