@@ -43,7 +43,12 @@ impl ConnectionError {
             1
         };
 
-        let max_height = full_area.height.saturating_sub(2).max(9);
+        let terminal_cap = full_area.height.saturating_sub(2);
+        let max_height = if details_expanded {
+            (full_area.height * 60 / 100).min(terminal_cap).max(9)
+        } else {
+            terminal_cap.max(9)
+        };
         let height = Constraint::Length((FIXED_OVERHEAD + details_height).clamp(9, max_height));
 
         let hint_text = if details_expanded {
