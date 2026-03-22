@@ -52,38 +52,37 @@ mod tests {
         use super::super::wrapped_line_count;
 
         #[test]
-        fn empty_string() {
+        fn empty_string_returns_zero() {
             assert_eq!(wrapped_line_count("", 80), 0);
         }
 
         #[test]
-        fn single_line_shorter_than_width() {
+        fn short_line_returns_one() {
             assert_eq!(wrapped_line_count("hello", 80), 1);
         }
 
         #[test]
-        fn single_line_longer_than_width() {
+        fn long_line_returns_wrapped_count() {
             assert_eq!(wrapped_line_count("hello world", 5), 3);
         }
 
         #[test]
-        fn multiline() {
+        fn multiline_returns_line_count() {
             assert_eq!(wrapped_line_count("line1\nline2\nline3", 80), 3);
         }
 
         #[test]
-        fn zero_width() {
+        fn zero_width_returns_zero() {
             assert_eq!(wrapped_line_count("hello", 0), 0);
         }
 
         #[test]
-        fn exact_width() {
+        fn exact_width_returns_one() {
             assert_eq!(wrapped_line_count("12345", 5), 1);
         }
 
         #[test]
-        fn cjk_double_width() {
-            // "あいう" = 3 chars but display width 6
+        fn cjk_double_width_returns_correct_count() {
             assert_eq!(wrapped_line_count("あいう", 6), 1);
             assert_eq!(wrapped_line_count("あいう", 4), 2);
         }

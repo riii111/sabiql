@@ -27,7 +27,7 @@ impl ConnectionError {
 
         let details_expanded = error_state.details_expanded;
         let full_area = frame.area();
-        let modal_outer_width = (full_area.width as u32 * 70 / 100) as u16;
+        let modal_outer_width = full_area.width * 70 / 100;
         let content_width = modal_outer_width.saturating_sub(4);
 
         // Fixed overhead: summary(1) + spacer(1) + hint(1) + spacer(1)
