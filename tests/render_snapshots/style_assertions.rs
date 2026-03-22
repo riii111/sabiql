@@ -162,7 +162,7 @@ fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
 }
 
 #[test]
-fn compare_flash_right_only_highlights_non_empty_lines() {
+fn compare_flash_right_only_flashes_plan_text_only() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
     let now = test_instant();
@@ -184,27 +184,30 @@ fn compare_flash_right_only_highlights_non_empty_lines() {
         let text = row_text(&buffer, y);
         let has_flash = row_has_flash_bg(&buffer, y);
 
-        // Inside the modal content area: non-empty content lines should flash,
-        // empty lines should not.
-        if text.contains("Seq Scan")
-            || text.contains("Filter:")
-            || text.contains("Previous")
-            || text.contains("Latest")
-            || text.contains("EXPLAIN")
-            || text.contains("Run EXPLAIN")
-        {
+        // Plan text lines should flash
+        if text.contains("Seq Scan") || text.contains("Filter:") {
             assert!(
                 has_flash,
-                "Row {} should flash (has content: '{}')",
+                "Row {} should flash: '{}'",
                 y,
-                text.chars().take(60).collect::<String>()
+                &text[..60.min(text.len())]
+            );
+        }
+
+        // Column headers and chrome should NOT flash
+        if text.contains("Previous") || text.contains("Run EXPLAIN") {
+            assert!(
+                !has_flash,
+                "Row {} should NOT flash (chrome): '{}'",
+                y,
+                &text[..60.min(text.len())]
             );
         }
     }
 }
 
 #[test]
-fn compare_flash_verdict_highlights_non_empty_lines() {
+fn compare_flash_both_slots_flashes_verdict_and_plan_text() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
     let now = test_instant();
@@ -229,45 +232,41 @@ fn compare_flash_verdict_highlights_non_empty_lines() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let mut flashed_rows = Vec::new();
+    let mut flashed = Vec::new();
+    let mut not_flashed_chrome = Vec::new();
 
     for y in 0..TEST_HEIGHT {
         let text = row_text(&buffer, y);
         let has_flash = row_has_flash_bg(&buffer, y);
 
+        // Verdict and plan text should flash
         if text.contains("Improved")
             || text.contains("Total cost")
             || text.contains("Estimated")
             || text.contains("Seq Scan")
             || text.contains("Index Scan")
+            || text.contains("Index Cond")
+            || text.contains("Filter:")
         {
             assert!(
                 has_flash,
-                "Row {} should flash (content: '{}')",
+                "Row {} should flash: '{}'",
                 y,
-                text.chars().take(60).collect::<String>()
+                &text[..60.min(text.len())]
             );
-            flashed_rows.push(y);
+            flashed.push(y);
         }
 
-        // Rows that are visually empty inside the modal should NOT flash
-        if has_flash {
-            let modal_content: String =
-                (8..72) // approximate modal inner area
-                    .map(|x| buffer.cell((x, y)).map(|c| c.symbol()).unwrap_or(""))
-                    .collect();
-            assert!(
-                !modal_content.trim().is_empty(),
-                "Row {} has flash bg but no visible content: '{}'",
-                y,
-                modal_content.trim()
-            );
+        // Column headers should NOT flash
+        if text.contains("Previous") && text.contains("Latest") {
+            assert!(!has_flash, "Row {} should NOT flash (column header)", y);
+            not_flashed_chrome.push(y);
         }
     }
 
     assert!(
-        flashed_rows.len() >= 4,
-        "Expected at least 4 flashed rows (verdict + plan text), got {}",
-        flashed_rows.len()
+        flashed.len() >= 4,
+        "Expected >= 4 flashed rows, got {}",
+        flashed.len()
     );
 }
