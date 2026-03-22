@@ -116,7 +116,6 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             validate_field(setup, setup.focused_field);
             if let Some(next) = setup.focused_field.next() {
                 setup.focused_field = next;
-                // Each field retains its own cursor position (per-field TextInputState)
             }
             Some(vec![])
         }

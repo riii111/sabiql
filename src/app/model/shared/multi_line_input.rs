@@ -140,7 +140,6 @@ impl MultiLineInputState {
 
     // ── Internal helpers ────────────────────────────────────────────
 
-    /// Returns (start_char_pos, char_count) for each logical line.
     fn line_spans(&self) -> Vec<(usize, usize)> {
         let content = self.content();
         let mut result = Vec::new();
@@ -166,10 +165,7 @@ impl MultiLineInputState {
 
     fn set_cursor_raw(&mut self, pos: usize) {
         let clamped = pos.min(self.char_count());
-        // Use TextInputState::move_cursor to reach the target.
-        // Since TextInputState doesn't expose direct cursor setting without
-        // resetting viewport, we use set_cursor (viewport reset is acceptable
-        // here because MultiLineInputState doesn't use inner's viewport).
+        // viewport reset by set_cursor is acceptable: MultiLineInputState doesn't use inner's viewport
         self.inner.set_cursor(clamped);
     }
 }
