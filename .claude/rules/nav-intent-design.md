@@ -1,6 +1,6 @@
 ---
 paths:
-  - "**/src/app/nav_intent.rs"
+  - "**/src/app/update/input/nav_intent.rs"
   - "**/src/ui/event/handlers/normal.rs"
 ---
 
@@ -8,8 +8,8 @@ paths:
 
 ## SSOT 責務分離
 
-- `app/keybindings/` = 入力構文と表示（SSOT）
-- `app/nav_intent.rs` = vim-like navigation の意味論（NavIntent）と文脈適用（resolve）
+- `app/update/input/keybindings/` = 入力構文と表示（SSOT）
+- `app/update/input/nav_intent.rs` = vim-like navigation の意味論（NavIntent）と文脈適用（resolve）
 - `ui/event/handlers/normal.rs` = モードディスパッチ（NavIntent 対象キーは `resolve_nav` 経由）
 
 ## NavIntent 対象範囲

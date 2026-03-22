@@ -1,10 +1,10 @@
-use crate::app::action::{Action, InputTarget};
-use crate::app::keybindings::{self, Key, KeyCombo};
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::input::keybindings::{self, Key, KeyCombo};
 
 pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action {
-    use crate::app::action::CursorMove;
-    use crate::app::connection_setup_state::ConnectionField;
+    use crate::app::model::connection::setup::ConnectionField;
+    use crate::app::update::action::CursorMove;
 
     let dropdown_open = state.connection_setup.ssl_dropdown.is_open;
     let ctrl = combo.modifiers.ctrl;
@@ -81,9 +81,11 @@ pub fn handle_connection_selector_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::{ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget};
-    use crate::app::input_mode::InputMode;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::model::shared::input_mode::InputMode;
+    use crate::app::update::action::{
+        ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    };
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -100,7 +102,7 @@ mod tests {
 
     mod connection_setup_keys {
         use super::*;
-        use crate::app::connection_setup_state::ConnectionField;
+        use crate::app::model::connection::setup::ConnectionField;
 
         fn setup_state() -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -199,7 +201,7 @@ mod tests {
 
         #[test]
         fn altgr_char_is_allowed() {
-            use crate::app::keybindings::Modifiers;
+            use crate::app::update::input::keybindings::Modifiers;
             let state = setup_state();
             let altgr = KeyCombo {
                 key: Key::Char('@'),

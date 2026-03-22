@@ -1,11 +1,13 @@
-use crate::app::action::Action;
-use crate::app::focused_pane::FocusedPane;
-use crate::app::inspector_tab::InspectorTab;
-use crate::app::key_sequence::Prefix;
-use crate::app::keybindings::{self as kb, Key, KeyCombo};
-use crate::app::nav_intent::{NavIntent, NavigationContext, map_nav_intent, resolve};
-use crate::app::state::AppState;
-use crate::app::ui_state::ResultNavMode;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::key_sequence::Prefix;
+use crate::app::model::shared::ui_state::ResultNavMode;
+use crate::app::update::action::Action;
+use crate::app::update::input::keybindings::{self as kb, Key, KeyCombo};
+use crate::app::update::input::nav_intent::{
+    NavIntent, NavigationContext, map_nav_intent, resolve,
+};
 
 fn resolve_nav(combo: &KeyCombo, nav_ctx: NavigationContext) -> Option<Action> {
     map_nav_intent(combo).map(|intent| resolve(intent, nav_ctx))
@@ -221,12 +223,12 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::{
+    use crate::app::model::shared::key_sequence::KeySequenceState;
+    use crate::app::update::action::{
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::app::key_sequence::KeySequenceState;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

@@ -3,8 +3,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 
-use crate::app::focused_pane::FocusedPane;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
 

@@ -3,7 +3,7 @@ use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, table_detail_loaded_state, with_current_result,
 };
 use ratatui::style::{Color, Modifier};
-use sabiql::app::input_mode::InputMode;
+use sabiql::app::model::shared::input_mode::InputMode;
 
 /// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
 fn help_modal_origin() -> (u16, u16) {

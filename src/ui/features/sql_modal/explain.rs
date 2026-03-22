@@ -4,8 +4,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
@@ -107,7 +107,10 @@ fn build_analyze_confirm_lines<'a>(
     area: Rect,
     state: &'a AppState,
     is_dml: bool,
-    high_risk: Option<(&'a crate::app::text_input::TextInputState, Option<&'a str>)>,
+    high_risk: Option<(
+        &'a crate::app::model::shared::text_input::TextInputState,
+        Option<&'a str>,
+    )>,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 

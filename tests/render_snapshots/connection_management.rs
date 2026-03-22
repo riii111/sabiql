@@ -187,7 +187,7 @@ fn confirm_dialog_delete_active_connection() {
     state.confirm_dialog.open(
         "Delete Connection",
         "Delete \"Production\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(connection_id),
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(connection_id),
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -205,7 +205,7 @@ fn confirm_dialog_delete_inactive_connection() {
     state.confirm_dialog.open(
         "Delete Connection",
         "Delete \"Staging\"?\n\nThis action cannot be undone.",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(target_id),
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(target_id),
     );
 
     let output = render_to_string(&mut terminal, &mut state);

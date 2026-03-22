@@ -1,7 +1,7 @@
 pub mod handlers;
 pub mod key_translator;
 
-use crate::app::keybindings::KeyCombo;
+use crate::app::update::input::keybindings::KeyCombo;
 
 #[derive(Clone, Debug)]
 pub enum Event {

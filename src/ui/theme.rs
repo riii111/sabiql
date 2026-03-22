@@ -1,6 +1,6 @@
 use ratatui::style::Color;
 
-use crate::app::write_guardrails::RiskLevel;
+use crate::app::policy::write::write_guardrails::RiskLevel;
 
 pub struct Palette;
 

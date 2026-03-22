@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::keybindings::{Key, KeyCombo, Modifiers};
+use crate::app::update::input::keybindings::{Key, KeyCombo, Modifiers};
 
 pub fn translate(event: KeyEvent) -> KeyCombo {
     let key = match event.code {

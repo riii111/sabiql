@@ -1,14 +1,14 @@
 ---
 paths:
-  - "**/src/app/reducer.rs"
-  - "**/src/app/reducers/**/*.rs"
+  - "**/src/app/update/reducer.rs"
+  - "**/src/app/update/**/*.rs"
 ---
 
 # Reducer 構造ルール
 
 ## 構造
 
-`reducer.rs` が dispatch chain → `reducers/{feature}.rs` にロジックを配置。`result/`, `connection/`, `query/`, `navigation/` は sub-dispatcher。共有ヘルパーは `reducers/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
+`update/reducer.rs` が dispatch chain → `update/{feature}.rs` にロジックを配置。`update/browse/result/`, `update/connection/`, `update/browse/query/`, `update/browse/navigation/` は sub-dispatcher。共有ヘルパーは `update/helpers.rs`（crate 全体）または各サブの `helpers.rs`（`pub(super)`）。
 
 ## Dispatcher パターン
 
@@ -19,7 +19,7 @@ Connection 系サブ reducer 間に passthrough 依存はない（dispatcher 順
 ## サブモジュール間共有ヘルパー
 
 - サブモジュール間: `pub(super)` で公開
-- crate 全体: `reducers/helpers.rs` に配置
+- crate 全体: `update/helpers.rs` に配置
 
 ## Passthrough パターン
 

@@ -4,14 +4,14 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
-use crate::app::focused_pane::FocusedPane;
-use crate::app::inspector_tab::InspectorTab;
-use crate::app::ports::DdlGenerator;
-use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::viewport::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
+use crate::app::ports::DdlGenerator;
+use crate::app::services::AppServices;
 use crate::domain::Table;
 use crate::ui::primitives::atoms::panel_block;
 use crate::ui::primitives::utils::text_utils::{
@@ -594,7 +594,7 @@ impl Inspector {
         table: &Table,
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
-        flash_timers: &crate::app::flash_timer::FlashTimerStore,
+        flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
     ) {
         let ddl = ddl_gen.generate_ddl(table);
 
@@ -607,7 +607,8 @@ impl Inspector {
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
         let now = std::time::Instant::now();
-        let flash_active = flash_timers.is_active(crate::app::flash_timer::FlashId::Ddl, now);
+        let flash_active =
+            flash_timers.is_active(crate::app::model::shared::flash_timer::FlashId::Ddl, now);
 
         let mut lines: Vec<Line> = ddl
             .lines()

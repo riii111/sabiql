@@ -4,9 +4,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
-use crate::app::connection_list::ConnectionListItem;
-use crate::app::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::list::ConnectionListItem;
+use crate::app::update::input::keybindings::{CONNECTION_SELECTOR_ROWS, idx};
 use crate::domain::connection::ConnectionId;
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, render_vertical_scroll_indicator_bar,
@@ -22,7 +22,7 @@ pub struct ConnectionSelector;
 
 impl ConnectionSelector {
     pub fn render(frame: &mut Frame, state: &mut AppState) {
-        let is_service_selected = crate::app::connection_list::is_service_selected(
+        let is_service_selected = crate::app::model::connection::list::is_service_selected(
             state.connection_list_items(),
             state.ui.connection_list_selected,
         );

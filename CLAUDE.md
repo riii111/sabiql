@@ -49,17 +49,17 @@ Skills（`.claude/skills/`）は手動で `/skill-name` で呼び出す。
 
 | Rule | 対象パス | 説明 |
 |------|---------|------|
-| **app-state** | `app/state.rs`, `app/reducers/**` | 派生状態パターン、aggregate不変条件、State/View分離 |
-| **reducer-structure** | `app/reducer.rs`, `app/reducers/**` | Reducer feature 分割、Dispatcher パターン、aggregate-first |
-| **effect-runner** | `app/effect_runner.rs`, `app/effect_handlers/**`, `app/effect.rs` | Dispatcher パターン、依存注入、RefCell borrow安全 |
-| **interaction-contract** | keybindings, handler, footer, help, palette | SSOT整合性、キー変換フロー、チェックリスト |
-| **nav-intent-design** | `app/nav_intent.rs`, `handlers/normal.rs` | NavIntent SSOT責務分離、NavigationContext |
+| **app-state** | `app/model/app_state.rs`, `app/model/browse/**`, `app/update/**` | 派生状態パターン、aggregate不変条件、State/View分離 |
+| **reducer-structure** | `app/update/reducer.rs`, `app/update/**` | Reducer feature 分割、Dispatcher パターン、aggregate-first |
+| **effect-runner** | `app/cmd/runner.rs`, `app/cmd/**`, `app/cmd/effect.rs` | Dispatcher パターン、依存注入、RefCell borrow安全 |
+| **interaction-contract** | `app/update/input/keybindings/**`, handler, footer, help, `app/update/input/palette.rs` | SSOT整合性、キー変換フロー、チェックリスト |
+| **nav-intent-design** | `app/update/input/nav_intent.rs`, `handlers/normal.rs` | NavIntent SSOT責務分離、NavigationContext |
 | **ui-design** | `src/ui/**` | Atomic Design、フッター順序、テキスト入力 |
 | **postgres-adapter** | `infra/adapters/postgres/**` | データフロー、可視性ルール |
 | **command-tag-rollback** | `domain/command_tag.rs`, `infra/**/parser/**` | CommandTag enum設計、rollback近似方針 |
 | **db-agnostic** | `app/ports/**`, `infra/adapters/**` | Port中立性、Adapter分離、MySQL準備 |
 | **visual-regression** | `tests/render_snapshots/**` | instaスナップショット、モードカバレッジ |
-| **rendering-strategy** | `app/render_schedule.rs`, `main.rs` | イベント駆動レンダリング、トリガー表 |
+| **rendering-strategy** | `app/cmd/render_schedule.rs`, `main.rs` | イベント駆動レンダリング、トリガー表 |
 | **config-migration** | config_writer, connection_store | 後方互換スキーマ変更 |
 
 ### Available Skills

@@ -1,12 +1,12 @@
 ---
 paths:
-  - "**/src/app/state.rs"
-  - "**/src/app/browse_session.rs"
-  - "**/src/app/result_interaction.rs"
+  - "**/src/app/model/app_state.rs"
+  - "**/src/app/model/browse/session.rs"
+  - "**/src/app/model/browse/result_interaction.rs"
   - "**/src/app/services.rs"
-  - "**/src/app/reducer.rs"
-  - "**/src/app/reducers/**/*.rs"
-  - "**/src/app/query_execution.rs"
+  - "**/src/app/update/reducer.rs"
+  - "**/src/app/update/**/*.rs"
+  - "**/src/app/model/browse/query_execution.rs"
   - "**/src/ui/shell/footer.rs"
   - "**/src/ui/features/browse/result.rs"
   - "**/src/ui/event/**/*.rs"
@@ -23,7 +23,7 @@ paths:
 
 ## ResultInteraction aggregate
 
-`ResultInteraction`（`app/result_interaction.rs`）は Result pane のインタラクション状態を集約する。
+`ResultInteraction`（`app/model/browse/result_interaction.rs`）は Result pane のインタラクション状態を集約する。
 
 ### Ownership
 
@@ -37,7 +37,7 @@ paths:
 
 ## BrowseSession aggregate
 
-`BrowseSession`（`app/browse_session.rs`）は接続・メタデータ・テーブル選択のライフサイクルを集約する。
+`BrowseSession`（`app/model/browse/session.rs`）は接続・メタデータ・テーブル選択のライフサイクルを集約する。
 
 ### Co-dependent fields（private）
 

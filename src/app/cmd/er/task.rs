@@ -1,0 +1,190 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+
+use crate::app::ports::ErDiagramExporter;
+use crate::app::update::action::{Action, ErDiagramInfo};
+use crate::domain::ErTableInfo;
+
+pub fn spawn_er_diagram_task(
+    exporter: Arc<dyn ErDiagramExporter>,
+    tables: Vec<ErTableInfo>,
+    total_tables: usize,
+    cache_dir: PathBuf,
+    tx: mpsc::Sender<Action>,
+    filename: String,
+) {
+    let table_count = tables.len();
+    tokio::spawn(async move {
+        let result = tokio::task::spawn_blocking(move || {
+            exporter.generate_and_export(&tables, &filename, &cache_dir)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(path)) => {
+                let _ = tx
+                    .send(Action::ErDiagramOpened(ErDiagramInfo {
+                        path: path.display().to_string(),
+                        table_count,
+                        total_tables,
+                    }))
+                    .await;
+            }
+            Ok(Err(e)) => {
+                let _ = tx
+                    .send(Action::ErDiagramFailed(
+                        crate::app::update::action::ErDiagramError::ExportFailed(e.to_string()),
+                    ))
+                    .await;
+            }
+            Err(e) => {
+                let _ = tx
+                    .send(Action::ErDiagramFailed(
+                        crate::app::update::action::ErDiagramError::TaskPanicked(e.to_string()),
+                    ))
+                    .await;
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::ports::ErExportResult;
+    use std::path::Path;
+    use std::time::Duration;
+
+    mod spawn_er_diagram_task {
+        use super::*;
+
+        struct SuccessExporter {
+            output_path: PathBuf,
+        }
+
+        impl ErDiagramExporter for SuccessExporter {
+            fn generate_and_export(
+                &self,
+                _tables: &[ErTableInfo],
+                _filename: &str,
+                _cache_dir: &Path,
+            ) -> ErExportResult<PathBuf> {
+                Ok(self.output_path.clone())
+            }
+        }
+
+        struct FailExporter;
+        impl ErDiagramExporter for FailExporter {
+            fn generate_and_export(
+                &self,
+                _tables: &[ErTableInfo],
+                _filename: &str,
+                _cache_dir: &Path,
+            ) -> ErExportResult<PathBuf> {
+                Err("export failed".into())
+            }
+        }
+
+        struct PanicExporter;
+        impl ErDiagramExporter for PanicExporter {
+            fn generate_and_export(
+                &self,
+                _tables: &[ErTableInfo],
+                _filename: &str,
+                _cache_dir: &Path,
+            ) -> ErExportResult<PathBuf> {
+                panic!("intentional panic")
+            }
+        }
+
+        async fn receive_action(rx: &mut mpsc::Receiver<Action>) -> Action {
+            tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("timeout")
+                .expect("channel closed")
+        }
+
+        #[tokio::test]
+        async fn success_sends_opened_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let output_path = temp_dir.path().join("test.svg");
+            let (tx, mut rx) = mpsc::channel(1);
+            let exporter = Arc::new(SuccessExporter {
+                output_path: output_path.clone(),
+            });
+
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
+
+            let action = receive_action(&mut rx).await;
+            match action {
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    path,
+                    table_count,
+                    total_tables,
+                }) => {
+                    assert!(path.contains("test.svg"));
+                    assert_eq!(table_count, 0);
+                    assert_eq!(total_tables, 5);
+                }
+                _ => panic!("expected ErDiagramOpened, got {:?}", action),
+            }
+        }
+
+        #[tokio::test]
+        async fn error_sends_failed_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let (tx, mut rx) = mpsc::channel(1);
+            let exporter = Arc::new(FailExporter);
+
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
+
+            let action = receive_action(&mut rx).await;
+            match action {
+                Action::ErDiagramFailed(e) => {
+                    assert!(e.to_string().contains("export failed"));
+                }
+                _ => panic!("expected ErDiagramFailed, got {:?}", action),
+            }
+        }
+
+        #[tokio::test]
+        async fn panic_sends_failed_action() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let (tx, mut rx) = mpsc::channel(1);
+            let exporter = Arc::new(PanicExporter);
+
+            spawn_er_diagram_task(
+                exporter,
+                vec![],
+                5,
+                temp_dir.path().to_path_buf(),
+                tx,
+                "er_full.dot".to_string(),
+            );
+
+            let action = receive_action(&mut rx).await;
+            match action {
+                Action::ErDiagramFailed(e) => {
+                    assert!(e.to_string().contains("Task panicked"));
+                }
+                _ => panic!("expected ErDiagramFailed, got {:?}", action),
+            }
+        }
+    }
+}

@@ -9,10 +9,10 @@ use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
 
 use crate::ui::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
-use crate::app::focused_pane::FocusedPane;
-use crate::app::state::AppState;
-use crate::app::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
-use crate::app::viewport::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
+use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
 };
 use crate::domain::{QueryResult, QuerySource};
@@ -60,7 +60,8 @@ impl ResultPane {
                             state.result_interaction.cell_edit().row.unwrap_or_default(),
                             state.result_interaction.cell_edit().col.unwrap_or_default(),
                             state.result_interaction.cell_edit().draft_value(),
-                            state.input_mode() == crate::app::input_mode::InputMode::CellEdit,
+                            state.input_mode()
+                                == crate::app::model::shared::input_mode::InputMode::CellEdit,
                             state.result_interaction.cell_edit().input.cursor(),
                         ))
                     } else {
