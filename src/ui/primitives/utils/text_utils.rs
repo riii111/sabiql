@@ -15,12 +15,11 @@ pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
         return 0;
     }
 
-    text.lines()
-        .map(|line| {
-            let w = UnicodeWidthStr::width(line) as u16;
-            w.max(1).div_ceil(width)
-        })
-        .sum()
+    text.lines().fold(0u16, |acc, line| {
+        let w = UnicodeWidthStr::width(line).min(u16::MAX as usize) as u16;
+        let wrapped = w.max(1).div_ceil(width);
+        acc.saturating_add(wrapped)
+    })
 }
 
 #[cfg(test)]
