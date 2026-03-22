@@ -112,7 +112,7 @@ fn render_verdict_section(
     };
 
     push_structural(lines, flash_mask, Line::raw(""));
-    push_content(
+    push_structural(
         lines,
         flash_mask,
         Line::from(Span::styled(format!(" {}", verdict_label), verdict_style)),
@@ -120,7 +120,7 @@ fn render_verdict_section(
     push_structural(lines, flash_mask, Line::raw(""));
 
     for reason in &result.reasons {
-        push_content(
+        push_structural(
             lines,
             flash_mask,
             Line::from(vec![

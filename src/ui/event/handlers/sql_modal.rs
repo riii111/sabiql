@@ -855,7 +855,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_tab_y_yanks() {
+    fn plan_tab_y_returns_sql_modal_yank() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('y')),
             false,
@@ -867,7 +867,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_y_yanks() {
+    fn compare_tab_y_returns_sql_modal_yank() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('y')),
             false,
