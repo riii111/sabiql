@@ -3,8 +3,8 @@ use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem};
 
-use crate::app::palette::palette_commands;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::update::input::palette::palette_commands;
 use crate::ui::theme::Theme;
 
 use crate::ui::primitives::molecules::render_modal;

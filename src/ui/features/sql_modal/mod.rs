@@ -11,11 +11,11 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::app::keybindings::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::app::update::input::keybindings::{
     SQL_MODAL_COMPARE_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
 };
-use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
-use crate::app::state::AppState;
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
 use crate::ui::primitives::molecules::render_modal_with_border_color;
 use crate::ui::theme::Theme;

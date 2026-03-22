@@ -1,8 +1,8 @@
 use color_eyre::eyre::Result;
 
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::viewport::ViewportPlan;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::viewport::ViewportPlan;
 
 #[derive(Default)]
 pub struct RenderOutput {

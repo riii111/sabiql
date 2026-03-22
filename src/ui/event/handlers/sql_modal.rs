@@ -1,6 +1,8 @@
-use crate::app::action::{Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::app::keybindings::{Key, KeyCombo};
-use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
+use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::app::update::action::{
+    Action, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+};
+use crate::app::update::input::keybindings::{Key, KeyCombo};
 
 pub fn handle_sql_modal_keys(
     combo: KeyCombo,
@@ -8,7 +10,7 @@ pub fn handle_sql_modal_keys(
     status: &SqlModalStatus,
     active_tab: SqlModalTab,
 ) -> Action {
-    use crate::app::action::CursorMove;
+    use crate::app::update::action::CursorMove;
 
     // Running state: suppress all key input while EXPLAIN is executing
     if matches!(status, SqlModalStatus::Running) {
@@ -307,8 +309,8 @@ pub fn handle_sql_modal_keys(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::CursorMove;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::action::CursorMove;
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -481,7 +483,7 @@ mod tests {
     }
 
     fn confirming_status() -> SqlModalStatus {
-        use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel};
+        use crate::app::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
         SqlModalStatus::Confirming(AdhocRiskDecision {
             risk_level: RiskLevel::High,
             label: "DROP",
@@ -1159,7 +1161,9 @@ mod tests {
     // Contract tests: keybinding definitions ↔ handler consistency
     // ================================================================
 
-    use crate::app::keybindings::{KeyBinding, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_PLAN_KEYS};
+    use crate::app::update::input::keybindings::{
+        KeyBinding, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_PLAN_KEYS,
+    };
 
     fn assert_keybindings_match_handler(keys: &[KeyBinding], tab: SqlModalTab, label: &str) {
         for kb in keys {

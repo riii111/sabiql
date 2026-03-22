@@ -2,10 +2,10 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::app::connection_setup_state::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
-use crate::app::state::AppState;
 use crate::domain::connection::SslMode;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::primitives::molecules::render_modal;

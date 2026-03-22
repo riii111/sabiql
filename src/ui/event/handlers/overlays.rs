@@ -1,6 +1,6 @@
-use crate::app::action::Action;
-use crate::app::keybindings::{self, KeyCombo};
-use crate::app::keymap;
+use crate::app::update::action::Action;
+use crate::app::update::input::keybindings::{self, KeyCombo};
+use crate::app::update::input::keymap;
 
 pub fn handle_help_keys(combo: KeyCombo) -> Action {
     keybindings::HELP.resolve(&combo).unwrap_or(Action::None)
@@ -13,7 +13,7 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

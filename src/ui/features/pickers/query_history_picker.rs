@@ -4,8 +4,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
-use crate::app::query_history_state::GroupedEntry;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::query_history::GroupedEntry;
 use crate::domain::query_history::QueryResultStatus;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;

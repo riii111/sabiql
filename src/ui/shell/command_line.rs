@@ -6,8 +6,8 @@ use ratatui::widgets::Paragraph;
 
 use crate::ui::theme::Theme;
 
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
 
 pub struct CommandLine;
 

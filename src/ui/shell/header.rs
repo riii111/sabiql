@@ -4,7 +4,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
 use crate::domain::MetadataState;
 
 pub struct Header;

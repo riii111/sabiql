@@ -7,8 +7,8 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
+use sabiql::app::model::app_state::AppState;
 use sabiql::app::services::AppServices;
-use sabiql::app::state::AppState;
 use sabiql::ui::shell::layout::MainLayout;
 
 pub const TEST_WIDTH: u16 = 80;
