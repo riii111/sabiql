@@ -9,14 +9,16 @@ pub fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
 }
 
 pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
+    use unicode_width::UnicodeWidthStr;
+
     if width == 0 {
         return 0;
     }
 
     text.lines()
         .map(|line| {
-            let chars = line.chars().count() as u16;
-            chars.max(1).div_ceil(width)
+            let w = UnicodeWidthStr::width(line) as u16;
+            w.max(1).div_ceil(width)
         })
         .sum()
 }
@@ -77,6 +79,13 @@ mod tests {
         #[test]
         fn exact_width() {
             assert_eq!(wrapped_line_count("12345", 5), 1);
+        }
+
+        #[test]
+        fn cjk_double_width() {
+            // "あいう" = 3 chars but display width 6
+            assert_eq!(wrapped_line_count("あいう", 6), 1);
+            assert_eq!(wrapped_line_count("あいう", 4), 2);
         }
     }
 }

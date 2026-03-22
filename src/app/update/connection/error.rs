@@ -38,6 +38,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
+            // Approximation: uses raw line count, not wrapped line count.
+            // Long lines that wrap in the UI may under-count; visible_height
+            // is not subtracted. Acceptable for typical short psql errors.
             let max_scroll = state.connection_error.detail_line_count().saturating_sub(1);
             state.connection_error.scroll_down(max_scroll);
             Some(vec![])
