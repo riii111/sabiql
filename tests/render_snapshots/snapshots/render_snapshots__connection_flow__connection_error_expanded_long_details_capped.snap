@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/connection_flow.rs
+expression: output
+---
+test_project | - | - | no dsn | localhost:5432/test                             
+┌ [1] Explor╭ Connection Error ────────────────────────────────────╮            
+│ Press 'r' │✗ Connection failed                                   │───────────┐
+│           │                                                      │           │
+│           │Hint: See details for more information                │           │
+│           │                                                      │           │
+│           │▼ Details                                             │           │
+│           │ERROR line 1: something went wrong in module_1        │           │
+│           │ERROR line 2: something went wrong in module_2        │           │
+│           │ERROR line 3: something went wrong in module_3        │           │
+│           │ERROR line 4: something went wrong in module_4        │           │
+│           │ERROR line 5: something went wrong in module_5        │───────────┘
+│           │ERROR line 6: something went wrong in module_6        │───────────┐
+│           │ERROR line 7: something went wrong in module_7        │           │
+│           │ERROR line 8: something went wrong in module_8        │           │
+│           │ERROR line 9: something went wrong in module_9        │           │
+│           │ERROR line 10: something went wrong in module_10      │           │
+│           │ERROR line 11: something went wrong in module_11      │           │
+│           │ERROR line 12: something went wrong in module_12      │           │
+│           │ERROR line 13: something went wrong in module_13      │           │
+│           │                                                      │           │
+└───────────│Actions:  e  Re-enter   s  Switch   d  Details   y  Co│───────────┘
+e:Edit  s:Sw╰ Scroll: ↑/↓/j/k  Esc to close ───────────────────────╯
