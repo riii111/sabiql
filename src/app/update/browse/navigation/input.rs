@@ -161,8 +161,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::reducers::navigation::reduce_navigation;
     use crate::app::services::AppServices;
+    use crate::app::update::browse::navigation::reduce_navigation;
     use std::time::Instant;
 
     mod paste {

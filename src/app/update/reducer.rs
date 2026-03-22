@@ -6,15 +6,15 @@
 
 use std::time::Instant;
 
+use super::{
+    reduce_connection, reduce_er, reduce_explain, reduce_metadata, reduce_modal, reduce_navigation,
+    reduce_query, reduce_result, reduce_sql_modal,
+};
 use crate::app::action::{Action, TableTarget};
 use crate::app::effect::Effect;
 use crate::app::focused_pane::FocusedPane;
 use crate::app::input_mode::InputMode;
 use crate::app::key_sequence::KeySequenceState;
-use crate::app::reducers::{
-    reduce_connection, reduce_er, reduce_explain, reduce_metadata, reduce_modal, reduce_navigation,
-    reduce_query, reduce_result, reduce_sql_modal,
-};
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
 use crate::domain::TableSummary;

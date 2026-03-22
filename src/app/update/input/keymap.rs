@@ -1,5 +1,5 @@
-use super::action::Action;
 use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
+use crate::app::action::Action;
 
 pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
     bindings

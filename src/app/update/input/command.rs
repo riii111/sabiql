@@ -1,4 +1,4 @@
-use super::action::Action;
+use crate::app::action::Action;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {

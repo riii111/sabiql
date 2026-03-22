@@ -56,8 +56,8 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::reducers::navigation::reduce_navigation;
     use crate::app::services::AppServices;
+    use crate::app::update::browse::navigation::reduce_navigation;
 
     mod toggle_read_only {
         use super::*;

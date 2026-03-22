@@ -1,12 +1,12 @@
 use std::time::Instant;
 
+use super::helpers::char_count;
 use crate::app::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::app::confirm_dialog_state::ConfirmIntent;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::reducers::char_count;
 use crate::app::state::AppState;
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {

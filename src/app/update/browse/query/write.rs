@@ -4,9 +4,9 @@ use crate::app::action::Action;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
 use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
-use crate::app::reducers::helpers::{build_bulk_delete_preview, editable_preview_base};
 use crate::app::services::AppServices;
 use crate::app::state::AppState;
+use crate::app::update::helpers::{build_bulk_delete_preview, editable_preview_base};
 use crate::app::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -360,8 +360,8 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::app::query_execution::{PostDeleteRowSelection, QueryStatus};
-    use crate::app::reducers::query::reduce_query;
-    use crate::app::reducers::query::tests::*;
+    use crate::app::update::browse::query::reduce_query;
+    use crate::app::update::browse::query::tests::*;
     use crate::app::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };

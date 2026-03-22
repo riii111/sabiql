@@ -135,7 +135,7 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::reducers::navigation::reduce_navigation;
+    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{Column, Table};
     use std::time::Instant;
 

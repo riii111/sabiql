@@ -5,10 +5,10 @@ use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, Connect
 use crate::app::connection_state::ConnectionState;
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::reducers::{
+use crate::app::state::AppState;
+use crate::app::update::helpers::{
     insert_char_at_cursor, insert_str_at_cursor, validate_all, validate_field,
 };
-use crate::app::state::AppState;
 use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
 

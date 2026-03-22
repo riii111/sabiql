@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 
+use super::helpers::{char_count, char_to_byte_index};
 use crate::app::action::{Action, CursorMove, InputTarget};
 use crate::app::effect::Effect;
 use crate::app::input_mode::InputMode;
-use crate::app::reducers::{char_count, char_to_byte_index};
 use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
 use crate::app::sql_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
 use crate::app::state::AppState;

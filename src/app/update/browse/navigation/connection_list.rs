@@ -99,8 +99,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::reducers::navigation::reduce_navigation;
     use crate::app::services::AppServices;
+    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
     fn create_test_profile(name: &str) -> ConnectionProfile {

@@ -1,5 +1,5 @@
-use super::action::Action;
 use super::keybindings::{GLOBAL_KEYS, KeyBinding, idx};
+use crate::app::action::Action;
 
 // - PALETTE: opening the palette from inside itself makes no sense
 // - COMMAND_LINE: command-line mode is a separate entry mechanism

@@ -249,8 +249,8 @@ pub fn reduce(
 mod tests {
     use super::*;
     use crate::app::query_execution::PaginationState;
-    use crate::app::reducers::query::reduce_query;
-    use crate::app::reducers::query::tests::*;
+    use crate::app::update::browse::query::reduce_query;
+    use crate::app::update::browse::query::tests::*;
 
     mod command_line_submit {
         use super::*;
@@ -738,7 +738,7 @@ mod tests {
 
     mod adhoc_refresh_integration {
         use super::*;
-        use crate::app::reducers::metadata::reduce_metadata;
+        use crate::app::update::browse::metadata::reduce_metadata;
         use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {

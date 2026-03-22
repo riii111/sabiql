@@ -205,8 +205,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::app::query_execution::PaginationState;
-    use crate::app::reducers::query::reduce_query;
-    use crate::app::reducers::query::tests::*;
+    use crate::app::update::browse::query::reduce_query;
+    use crate::app::update::browse::query::tests::*;
 
     mod next_page {
         use super::*;

@@ -228,8 +228,8 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 mod tests {
     use super::*;
     use crate::app::key_sequence::Prefix;
-    use crate::app::reducers::navigation::reduce_navigation;
     use crate::app::services::AppServices;
+    use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use std::sync::Arc;
     use std::time::Instant;

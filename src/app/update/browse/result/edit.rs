@@ -6,7 +6,7 @@ use crate::app::input_mode::InputMode;
 use crate::app::state::AppState;
 use crate::app::write_update::build_pk_pairs;
 
-use super::super::helpers::editable_preview_base;
+use crate::app::update::helpers::editable_preview_base;
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
     let row_idx = state

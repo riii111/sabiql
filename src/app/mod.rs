@@ -7,22 +7,39 @@ pub mod update;
 pub mod ports;
 pub mod services;
 
-// ── Not yet moved (Phase 2–4) ───────────────────────────────────
-pub mod action;
+// ── Not yet moved (Phase 4) ──────────────────────────────────────
 pub mod cache;
-pub mod command;
 pub mod completion;
 pub mod effect;
 pub(crate) mod effect_handlers;
 pub mod effect_runner;
 pub mod er_task;
-pub mod keybindings;
-pub mod keymap;
-pub mod nav_intent;
-pub mod palette;
-pub mod reducer;
-pub mod reducers;
 pub mod render_schedule;
+
+// ── Backward-compat re-exports for update/ (Phase 3) ────────────
+pub use update::action;
+pub use update::input::command;
+pub use update::input::keybindings;
+pub use update::input::keymap;
+pub use update::input::nav_intent;
+pub use update::input::palette;
+pub use update::reducer;
+// reducers re-export as module for backward compat
+pub mod reducers {
+    pub use super::update::helpers::{
+        char_count, char_to_byte_index, insert_char_at_cursor, insert_str_at_cursor, validate_all,
+        validate_field,
+    };
+    pub use super::update::reduce_connection;
+    pub use super::update::reduce_er;
+    pub use super::update::reduce_explain;
+    pub use super::update::reduce_metadata;
+    pub use super::update::reduce_modal;
+    pub use super::update::reduce_navigation;
+    pub use super::update::reduce_query;
+    pub use super::update::reduce_result;
+    pub use super::update::reduce_sql_modal;
+}
 // ── Backward-compat re-exports for policy/ (Phase 2) ────────────
 pub use policy::sql::lexer as sql_lexer;
 pub use policy::sql::statement_classifier;
