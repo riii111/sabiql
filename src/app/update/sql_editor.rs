@@ -16,6 +16,7 @@ use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
 use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -425,34 +426,31 @@ pub fn reduce_sql_modal(
                 SqlModalTab::Plan => state.explain.plan_text.clone(),
                 SqlModalTab::Compare => match (&state.explain.left, &state.explain.right) {
                     (Some(l), Some(r)) => {
-                        use crate::domain::explain_plan::compare_plans;
                         let result = compare_plans(&l.plan, &r.plan);
                         let verdict = match result.verdict {
-                            crate::domain::explain_plan::ComparisonVerdict::Improved => "Improved",
-                            crate::domain::explain_plan::ComparisonVerdict::Worsened => "Worsened",
-                            crate::domain::explain_plan::ComparisonVerdict::Similar => "Similar",
-                            crate::domain::explain_plan::ComparisonVerdict::Unavailable => {
-                                "Unavailable"
-                            }
+                            ComparisonVerdict::Improved => "Improved",
+                            ComparisonVerdict::Worsened => "Worsened",
+                            ComparisonVerdict::Similar => "Similar",
+                            ComparisonVerdict::Unavailable => "Unavailable",
                         };
-                        let mut sections = vec![verdict.to_string()];
+                        let mut verdict_section = verdict.to_string();
                         for reason in &result.reasons {
-                            sections[0].push_str(&format!("\n  • {}", reason));
+                            verdict_section.push_str(&format!("\n  • {}", reason));
                         }
 
+                        let mut sections = vec![verdict_section];
                         for (pos, s) in [("Left", l), ("Right", r)] {
                             let mode = if s.plan.is_analyze {
                                 "ANALYZE"
                             } else {
                                 "EXPLAIN"
                             };
-                            let secs = s.plan.execution_time_ms as f64 / 1000.0;
                             sections.push(format!(
                                 "--- {}: {} ({}, {:.2}s) ---\n{}",
                                 pos,
                                 s.source.label(),
                                 mode,
-                                secs,
+                                s.plan.execution_secs(),
                                 s.plan.raw_text
                             ));
                         }

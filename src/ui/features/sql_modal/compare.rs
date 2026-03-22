@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::explain_context::{CompareSlot, SlotSource};
+use crate::app::model::explain_context::CompareSlot;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 
@@ -172,11 +172,11 @@ fn render_slot_columns(
         .add_modifier(Modifier::BOLD);
 
     let left_label = match left {
-        Some(s) => format!(" {}", source_badge(&s.source)),
+        Some(s) => format!(" {}", s.source.label()),
         None => " Previous".to_string(),
     };
     let right_label = match right {
-        Some(s) => source_badge(&s.source).to_string(),
+        Some(s) => s.source.label().to_string(),
         None => "Latest".to_string(),
     };
 
@@ -310,12 +310,9 @@ fn render_stacked_slot(
             push_chrome(
                 lines,
                 flash_mask,
-                Line::from(Span::styled(
-                    format!(" {}", source_badge(&s.source)),
-                    active_style,
-                )),
+                Line::from(Span::styled(format!(" {}", s.source.label()), active_style)),
             );
-            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            let time_secs = s.plan.execution_secs();
             push_chrome(
                 lines,
                 flash_mask,
@@ -360,15 +357,11 @@ fn render_stacked_slot(
 fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
     match slot {
         Some(s) => {
-            let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
+            let time_secs = s.plan.execution_secs();
             format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs)
         }
         None => " Run EXPLAIN again".to_string(),
     }
-}
-
-fn source_badge(source: &SlotSource) -> &'static str {
-    source.label()
 }
 
 fn mode_label(is_analyze: bool) -> &'static str {
