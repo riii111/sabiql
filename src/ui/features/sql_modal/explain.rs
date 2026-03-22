@@ -86,6 +86,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .map(super::plan_highlight::highlight_plan_line),
         );
 
+        let now = std::time::Instant::now();
+        let flash_active = state.flash_timers.is_active(
+            crate::app::model::shared::flash_timer::FlashId::SqlModal,
+            now,
+        );
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
+
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
     } else {
         let placeholder = Line::from(Span::styled(

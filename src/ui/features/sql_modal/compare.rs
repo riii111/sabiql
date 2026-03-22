@@ -37,7 +37,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let max_scroll = lines.len().saturating_sub(area.height as usize);
     let clamped = scroll_offset.min(max_scroll);
-    let visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
+    let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
+
+    let now = std::time::Instant::now();
+    let flash_active = state.flash_timers.is_active(
+        crate::app::model::shared::flash_timer::FlashId::SqlModal,
+        now,
+    );
+    crate::ui::primitives::atoms::apply_yank_flash(&mut visible, flash_active);
+
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
 }
 
@@ -285,12 +293,7 @@ fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
 }
 
 fn source_badge(source: &SlotSource) -> &'static str {
-    match source {
-        SlotSource::AutoPrevious => "Previous",
-        SlotSource::AutoLatest => "Latest",
-        SlotSource::Manual => "Manual",
-        SlotSource::Pinned => "Pinned",
-    }
+    source.label()
 }
 
 fn mode_label(is_analyze: bool) -> &'static str {

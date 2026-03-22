@@ -421,16 +421,50 @@ pub fn reduce_sql_modal(
             Some(vec![])
         }
         Action::SqlModalYank => {
-            if state.sql_modal.content.is_empty() {
-                return Some(vec![]);
+            let content = match state.sql_modal.active_tab {
+                SqlModalTab::Plan => state.explain.plan_text.clone(),
+                SqlModalTab::Compare => {
+                    let mut parts = Vec::new();
+                    for s in [&state.explain.left, &state.explain.right]
+                        .into_iter()
+                        .flatten()
+                    {
+                        let mode = if s.plan.is_analyze {
+                            "ANALYZE"
+                        } else {
+                            "EXPLAIN"
+                        };
+                        let secs = s.plan.execution_time_ms as f64 / 1000.0;
+                        let label = s.source.label();
+                        parts.push(format!(
+                            "--- {} ({}, {:.2}s) ---\n{}",
+                            label, mode, secs, s.plan.raw_text
+                        ));
+                    }
+                    if parts.is_empty() {
+                        None
+                    } else {
+                        Some(parts.join("\n\n"))
+                    }
+                }
+                SqlModalTab::Sql => {
+                    if state.sql_modal.content.is_empty() {
+                        None
+                    } else {
+                        Some(state.sql_modal.content.clone())
+                    }
+                }
+            };
+            match content {
+                Some(c) if !c.is_empty() => Some(vec![Effect::CopyToClipboard {
+                    content: c,
+                    on_success: Some(Action::SqlModalYankSuccess),
+                    on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                        message: "Clipboard unavailable".into(),
+                    })),
+                }]),
+                _ => Some(vec![]),
             }
-            Some(vec![Effect::CopyToClipboard {
-                content: state.sql_modal.content.clone(),
-                on_success: Some(Action::SqlModalYankSuccess),
-                on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
-                    message: "Clipboard unavailable".into(),
-                })),
-            }])
         }
         Action::SqlModalYankSuccess => {
             state.flash_timers.set(
@@ -1180,6 +1214,167 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.content, "original");
+        }
+    }
+
+    mod yank {
+        use super::*;
+        use crate::app::model::explain_context::{CompareSlot, SlotSource};
+        use crate::domain::explain_plan::ExplainPlan;
+
+        fn sql_modal_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+        }
+
+        fn make_slot(raw: &str, is_analyze: bool, ms: u64, source: SlotSource) -> CompareSlot {
+            CompareSlot {
+                plan: ExplainPlan {
+                    raw_text: raw.to_string(),
+                    top_node_type: None,
+                    total_cost: None,
+                    estimated_rows: None,
+                    is_analyze,
+                    execution_time_ms: ms,
+                },
+                query_snippet: "SELECT 1".to_string(),
+                full_query: "SELECT 1".to_string(),
+                source,
+            }
+        }
+
+        #[test]
+        fn sql_tab_yank_copies_content() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "SELECT 1")
+            );
+        }
+
+        #[test]
+        fn sql_tab_yank_empty_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.content = String::new();
+            state.sql_modal.active_tab = SqlModalTab::Sql;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn plan_tab_yank_copies_plan_text() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Plan;
+            state.explain.plan_text = Some("Seq Scan on users".to_string());
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content == "Seq Scan on users")
+            );
+        }
+
+        #[test]
+        fn plan_tab_yank_no_plan_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Plan;
+            state.explain.plan_text = None;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn plan_tab_yank_error_state_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Plan;
+            state.explain.plan_text = None;
+            state.explain.error = Some("syntax error".to_string());
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn compare_tab_yank_both_slots() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
+            state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            if let Effect::CopyToClipboard { content, .. } = &effects[0] {
+                assert!(content.contains("--- Previous (EXPLAIN, 0.42s) ---"));
+                assert!(content.contains("Seq Scan"));
+                assert!(content.contains("--- Latest (ANALYZE, 0.05s) ---"));
+                assert!(content.contains("Index Scan"));
+            } else {
+                panic!("expected CopyToClipboard");
+            }
+        }
+
+        #[test]
+        fn compare_tab_yank_right_only() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = None;
+            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Latest"))
+            );
+        }
+
+        #[test]
+        fn compare_tab_yank_left_only() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::Pinned));
+            state.explain.right = None;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Pinned"))
+            );
+        }
+
+        #[test]
+        fn compare_tab_yank_empty_is_noop() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = None;
+            state.explain.right = None;
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert!(effects.is_empty());
         }
     }
 }
