@@ -12,6 +12,7 @@ use crate::ui::theme::Theme;
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.explain.compare_viewport_height = Some(area.height);
 
+    let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
     let scroll_offset = state.explain.compare_scroll_offset;
@@ -43,10 +44,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
     let now = std::time::Instant::now();
-    let flash_active = state.flash_timers.is_active(
-        crate::app::model::shared::flash_timer::FlashId::SqlModal,
-        now,
-    );
+    let flash_active = can_yank
+        && state.flash_timers.is_active(
+            crate::app::model::shared::flash_timer::FlashId::SqlModal,
+            now,
+        );
     if flash_active {
         let flash_style = Style::default()
             .fg(Theme::YANK_FLASH_FG)

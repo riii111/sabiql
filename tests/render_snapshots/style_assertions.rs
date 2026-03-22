@@ -162,7 +162,7 @@ fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
 }
 
 #[test]
-fn compare_flash_right_only_flashes_plan_text_only() {
+fn compare_flash_right_only_does_not_flash() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
     let now = test_instant();
@@ -181,28 +181,12 @@ fn compare_flash_right_only_flashes_plan_text_only() {
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
     for y in 0..TEST_HEIGHT {
-        let text = row_text(&buffer, y);
         let has_flash = row_has_flash_bg(&buffer, y);
-
-        // Plan text lines should flash
-        if text.contains("Seq Scan") || text.contains("Filter:") {
-            assert!(
-                has_flash,
-                "Row {} should flash: '{}'",
-                y,
-                &text[..60.min(text.len())]
-            );
-        }
-
-        // Column headers and chrome should NOT flash
-        if text.contains("Previous") || text.contains("Run EXPLAIN") {
-            assert!(
-                !has_flash,
-                "Row {} should NOT flash (chrome): '{}'",
-                y,
-                &text[..60.min(text.len())]
-            );
-        }
+        assert!(
+            !has_flash,
+            "Row {} should NOT flash (yank disabled with single slot)",
+            y
+        );
     }
 }
 
