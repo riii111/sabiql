@@ -6,8 +6,6 @@ use crate::domain::explain_plan::{self, ExplainPlan};
 pub enum SlotSource {
     AutoPrevious,
     AutoLatest,
-    Manual,
-    Pinned,
 }
 
 impl SlotSource {
@@ -15,8 +13,6 @@ impl SlotSource {
         match self {
             SlotSource::AutoPrevious => "Previous",
             SlotSource::AutoLatest => "Latest",
-            SlotSource::Manual => "Manual",
-            SlotSource::Pinned => "Pinned",
         }
     }
 }
@@ -42,13 +38,10 @@ pub struct ExplainContext {
 
     pub left: Option<CompareSlot>,
     pub right: Option<CompareSlot>,
-    pub left_pinned: bool,
     pub compare_scroll_offset: usize,
 
     pub history: VecDeque<CompareSlot>,
 
-    pub left_history_cursor: usize,
-    pub right_history_cursor: usize,
     pub compare_viewport_height: Option<u16>,
     pub confirm_scroll_offset: usize,
 }
@@ -72,13 +65,11 @@ impl ExplainContext {
             source: SlotSource::AutoLatest,
         };
 
-        // Auto-advance: right → left (unless left is pinned)
-        if !self.left_pinned {
-            self.left = self.right.take().map(|mut s| {
-                s.source = SlotSource::AutoPrevious;
-                s
-            });
-        }
+        // Auto-advance: right → left
+        self.left = self.right.take().map(|mut s| {
+            s.source = SlotSource::AutoPrevious;
+            s
+        });
         self.history.push_front(new_slot);
         self.history.truncate(MAX_EXPLAIN_HISTORY);
         self.right = self.history.front().cloned();
@@ -90,8 +81,6 @@ impl ExplainContext {
         self.execution_time_ms = execution_time_ms;
         self.scroll_offset = 0;
         self.compare_scroll_offset = 0;
-        self.left_history_cursor = 0;
-        self.right_history_cursor = 0;
     }
 
     pub fn set_error(&mut self, error: String) {
@@ -103,77 +92,13 @@ impl ExplainContext {
     pub fn reset(&mut self) {
         let left = self.left.take();
         let right = self.right.take();
-        let left_pinned = self.left_pinned;
         let history = std::mem::take(&mut self.history);
 
         *self = Self::default();
 
         self.left = left;
         self.right = right;
-        self.left_pinned = left_pinned;
         self.history = history;
-    }
-
-    pub fn pin_left(&mut self) -> bool {
-        if let Some(ref right) = self.right {
-            self.left = Some(CompareSlot {
-                source: SlotSource::Pinned,
-                ..right.clone()
-            });
-            self.left_pinned = true;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn select_left(&mut self, index: usize) -> bool {
-        if let Some(entry) = self.history.get(index) {
-            self.left = Some(CompareSlot {
-                source: SlotSource::Manual,
-                ..entry.clone()
-            });
-            self.left_pinned = true;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn select_right(&mut self, index: usize) -> bool {
-        if let Some(entry) = self.history.get(index) {
-            self.right = Some(CompareSlot {
-                source: SlotSource::Manual,
-                ..entry.clone()
-            });
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn cycle_left_slot(&mut self) -> bool {
-        let len = self.history.len();
-        if len == 0 {
-            return false;
-        }
-        let cursor = (self.left_history_cursor + 1) % len;
-        self.left_history_cursor = cursor;
-        self.select_left(cursor);
-        self.compare_scroll_offset = 0;
-        true
-    }
-
-    pub fn cycle_right_slot(&mut self) -> bool {
-        let len = self.history.len();
-        if len == 0 {
-            return false;
-        }
-        let cursor = (self.right_history_cursor + 1) % len;
-        self.right_history_cursor = cursor;
-        self.select_right(cursor);
-        self.compare_scroll_offset = 0;
-        true
     }
 
     pub fn line_count(&self) -> usize {
@@ -233,7 +158,6 @@ mod tests {
         assert!(ctx.error.is_none());
         assert!(ctx.left.is_none());
         assert!(ctx.right.is_none());
-        assert!(!ctx.left_pinned);
         assert!(ctx.history.is_empty());
     }
 
@@ -283,36 +207,6 @@ mod tests {
     }
 
     #[test]
-    fn pin_left_prevents_auto_advance() {
-        let mut ctx = ExplainContext::default();
-        ctx.set_plan(
-            "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
-            false,
-            0,
-            "A",
-        );
-        ctx.pin_left();
-
-        ctx.set_plan(
-            "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
-            false,
-            0,
-            "B",
-        );
-
-        assert_eq!(ctx.left.as_ref().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(ctx.left.as_ref().unwrap().source, SlotSource::Pinned);
-        assert_eq!(ctx.right.as_ref().unwrap().plan.total_cost, Some(50.0));
-    }
-
-    #[test]
-    fn pin_left_without_right_returns_false() {
-        let mut ctx = ExplainContext::default();
-
-        assert!(!ctx.pin_left());
-    }
-
-    #[test]
     fn history_stores_all_explains() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
@@ -340,57 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn select_left_from_history() {
-        let mut ctx = ExplainContext::default();
-        ctx.set_plan(
-            "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
-            false,
-            0,
-            "A",
-        );
-        ctx.set_plan(
-            "B  (cost=0.00..20.00 rows=2 width=32)".to_string(),
-            false,
-            0,
-            "B",
-        );
-        ctx.set_plan(
-            "C  (cost=0.00..30.00 rows=3 width=32)".to_string(),
-            false,
-            0,
-            "C",
-        );
-
-        ctx.select_left(2); // select A (oldest)
-
-        assert_eq!(ctx.left.as_ref().unwrap().query_snippet, "A");
-        assert_eq!(ctx.left.as_ref().unwrap().source, SlotSource::Manual);
-        assert!(ctx.left_pinned);
-    }
-
-    #[test]
-    fn select_right_from_history() {
-        let mut ctx = ExplainContext::default();
-        ctx.set_plan(
-            "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
-            false,
-            0,
-            "A",
-        );
-        ctx.set_plan(
-            "B  (cost=0.00..20.00 rows=2 width=32)".to_string(),
-            false,
-            0,
-            "B",
-        );
-
-        ctx.select_right(1); // select A
-
-        assert_eq!(ctx.right.as_ref().unwrap().query_snippet, "A");
-        assert_eq!(ctx.right.as_ref().unwrap().source, SlotSource::Manual);
-    }
-
-    #[test]
     fn reset_preserves_compare_state_and_history() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
@@ -405,7 +248,6 @@ mod tests {
             0,
             "B",
         );
-        ctx.pin_left();
         ctx.scroll_offset = 10;
         ctx.compare_scroll_offset = 5;
 
@@ -417,7 +259,6 @@ mod tests {
         assert_eq!(ctx.compare_scroll_offset, 0);
         assert!(ctx.left.is_some());
         assert!(ctx.right.is_some());
-        assert!(ctx.left_pinned);
         assert_eq!(ctx.history.len(), 2);
     }
 

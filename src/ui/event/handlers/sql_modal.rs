@@ -42,7 +42,6 @@ pub fn handle_sql_modal_keys(
         if active_tab == SqlModalTab::Plan {
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
-                Key::Char('b') if plain => Action::SaveExplainBaseline,
                 Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
@@ -64,8 +63,6 @@ pub fn handle_sql_modal_keys(
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('y') if plain => Action::SqlModalYank,
-                Key::Char('l') if plain => Action::CompareSelectLeftSlot,
-                Key::Char('r') if plain => Action::CompareSelectRightSlot,
                 Key::Char('e') if plain => Action::CompareEditQuery,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainCompare,
@@ -357,9 +354,6 @@ mod tests {
         ExplainPlanScrollDown,
         ExplainCompareScrollUp,
         ExplainCompareScrollDown,
-        SaveExplainBaseline,
-        CompareSelectLeftSlot,
-        CompareSelectRightSlot,
         CompareEditQuery,
         ExplainAnalyzeConfirm,
         ExplainAnalyzeCancel,
@@ -461,15 +455,6 @@ mod tests {
                         amount: ScrollAmount::Line
                     }
                 ))
-            }
-            Expected::SaveExplainBaseline => {
-                assert!(matches!(result, Action::SaveExplainBaseline))
-            }
-            Expected::CompareSelectLeftSlot => {
-                assert!(matches!(result, Action::CompareSelectLeftSlot))
-            }
-            Expected::CompareSelectRightSlot => {
-                assert!(matches!(result, Action::CompareSelectRightSlot))
             }
             Expected::CompareEditQuery => {
                 assert!(matches!(result, Action::CompareEditQuery))
@@ -879,18 +864,6 @@ mod tests {
     }
 
     #[test]
-    fn plan_tab_b_saves_baseline() {
-        let result = handle_sql_modal_keys(
-            combo(Key::Char('b')),
-            false,
-            &SqlModalStatus::Normal,
-            SqlModalTab::Plan,
-        );
-
-        assert_action(result, Expected::SaveExplainBaseline);
-    }
-
-    #[test]
     fn plan_tab_esc_closes_modal() {
         let result = handle_sql_modal_keys(
             combo(Key::Esc),
@@ -1013,30 +986,6 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_l_selects_left() {
-        let result = handle_sql_modal_keys(
-            combo(Key::Char('l')),
-            false,
-            &SqlModalStatus::Normal,
-            SqlModalTab::Compare,
-        );
-
-        assert_action(result, Expected::CompareSelectLeftSlot);
-    }
-
-    #[test]
-    fn compare_tab_r_selects_right() {
-        let result = handle_sql_modal_keys(
-            combo(Key::Char('r')),
-            false,
-            &SqlModalStatus::Normal,
-            SqlModalTab::Compare,
-        );
-
-        assert_action(result, Expected::CompareSelectRightSlot);
-    }
-
-    #[test]
     fn compare_tab_e_edits_query() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('e')),
@@ -1152,13 +1101,10 @@ mod tests {
     #[case(SqlModalStatus::Success)]
     #[case(SqlModalStatus::Error)]
     fn plan_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
-        let baseline =
-            handle_sql_modal_keys(combo(Key::Char('b')), false, &status, SqlModalTab::Plan);
         let scroll =
             handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Plan);
         let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
 
-        assert_action(baseline, Expected::SaveExplainBaseline);
         assert_action(scroll, Expected::ExplainPlanScrollDown);
         assert_action(close, Expected::CloseSqlModal);
     }

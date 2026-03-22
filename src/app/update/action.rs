@@ -378,9 +378,6 @@ pub enum Action {
         execution_time_ms: u64,
     },
     ExplainFailed(DbOperationError),
-    SaveExplainBaseline,
-    CompareSelectLeftSlot,
-    CompareSelectRightSlot,
     CompareEditQuery,
 
     // SQL Modal completion
