@@ -8,6 +8,19 @@ pub fn calculate_header_min_widths<S: AsRef<str>>(headers: &[S]) -> Vec<u16> {
         .collect()
 }
 
+pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
+    if width == 0 {
+        return 0;
+    }
+
+    text.lines()
+        .map(|line| {
+            let chars = line.chars().count() as u16;
+            chars.max(1).div_ceil(width)
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -31,5 +44,39 @@ mod tests {
         let headers = ["a"];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![MIN_COL_WIDTH]);
+    }
+
+    mod wrapped_line_count_tests {
+        use super::super::wrapped_line_count;
+
+        #[test]
+        fn empty_string() {
+            assert_eq!(wrapped_line_count("", 80), 0);
+        }
+
+        #[test]
+        fn single_line_shorter_than_width() {
+            assert_eq!(wrapped_line_count("hello", 80), 1);
+        }
+
+        #[test]
+        fn single_line_longer_than_width() {
+            assert_eq!(wrapped_line_count("hello world", 5), 3);
+        }
+
+        #[test]
+        fn multiline() {
+            assert_eq!(wrapped_line_count("line1\nline2\nline3", 80), 3);
+        }
+
+        #[test]
+        fn zero_width() {
+            assert_eq!(wrapped_line_count("hello", 0), 0);
+        }
+
+        #[test]
+        fn exact_width() {
+            assert_eq!(wrapped_line_count("12345", 5), 1);
+        }
     }
 }
