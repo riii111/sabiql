@@ -10,6 +10,7 @@ use crate::ui::theme::Theme;
 use crate::app::model::app_state::AppState;
 use crate::ui::primitives::atoms::key_chip;
 use crate::ui::primitives::molecules::render_modal;
+use crate::ui::primitives::utils::text_utils::wrapped_line_count;
 
 pub struct ConnectionError;
 
@@ -25,11 +26,25 @@ impl ConnectionError {
         };
 
         let details_expanded = error_state.details_expanded;
-        let height = if details_expanded {
-            Constraint::Percentage(60)
+        let full_area = frame.area();
+        let modal_outer_width = (full_area.width as u32 * 70 / 100) as u16;
+        let content_width = modal_outer_width.saturating_sub(4);
+
+        // Fixed overhead: summary(1) + spacer(1) + hint(1) + spacer(1)
+        //                 + spacer(1) + actions(1) + borders(2) = 8
+        const FIXED_OVERHEAD: u16 = 8;
+
+        let details_height = if details_expanded {
+            let detail_text = error_state.masked_details().unwrap_or("");
+            let tab_replaced = detail_text.replace('\t', "    ");
+            let detail_header = 1u16;
+            detail_header + wrapped_line_count(&tab_replaced, content_width)
         } else {
-            Constraint::Length(12)
+            1
         };
+
+        let max_height = full_area.height.saturating_sub(2).max(9);
+        let height = Constraint::Length((FIXED_OVERHEAD + details_height).clamp(9, max_height));
 
         let hint_text = if details_expanded {
             " Scroll: ↑/↓/j/k  Esc to close "
