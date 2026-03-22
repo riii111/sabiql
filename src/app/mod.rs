@@ -7,14 +7,24 @@ pub mod update;
 pub mod ports;
 pub mod services;
 
-// ── Not yet moved (Phase 4) ──────────────────────────────────────
-pub mod cache;
-pub mod completion;
-pub mod effect;
-pub(crate) mod effect_handlers;
-pub mod effect_runner;
-pub mod er_task;
-pub mod render_schedule;
+// ── Backward-compat re-exports for cmd/ (Phase 4) ───────────────
+pub use cmd::cache;
+pub use cmd::completion_engine as completion;
+pub use cmd::effect;
+pub use cmd::render_schedule;
+pub use cmd::runner as effect_runner;
+pub(crate) mod effect_handlers {
+    pub(crate) use super::cmd::browse::metadata;
+    pub(crate) use super::cmd::browse::query;
+    pub(crate) use super::cmd::connection;
+    pub(crate) use super::cmd::er::handler as er;
+    pub(crate) use super::cmd::sql_editor::completion;
+    pub(crate) use super::cmd::sql_editor::query_history;
+    #[cfg(test)]
+    pub(crate) use super::cmd::test_support;
+    pub(crate) use super::cmd::utility;
+}
+pub use cmd::er::task as er_task;
 
 // ── Backward-compat re-exports for update/ (Phase 3) ────────────
 pub use update::action;

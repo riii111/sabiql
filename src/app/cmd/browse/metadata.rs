@@ -153,9 +153,9 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use super::super::test_support::*;
     use crate::app::action::Action;
     use crate::app::cache::TtlCache;
+    use crate::app::cmd::test_support::*;
     use crate::app::completion::CompletionEngine;
     use crate::app::effect::Effect;
     use crate::app::ports::connection_store::MockConnectionStore;

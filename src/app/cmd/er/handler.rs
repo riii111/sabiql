@@ -5,12 +5,12 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
+use super::task::spawn_er_diagram_task;
 use crate::app::action::{
     Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
 };
 use crate::app::completion::CompletionEngine;
 use crate::app::effect::Effect;
-use crate::app::er_task::spawn_er_diagram_task;
 use crate::app::ports::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::app::state::AppState;
 use crate::domain::ErTableInfo;
