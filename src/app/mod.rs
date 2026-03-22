@@ -23,11 +23,12 @@ pub mod palette;
 pub mod reducer;
 pub mod reducers;
 pub mod render_schedule;
-pub mod sql_lexer;
-pub mod sql_risk;
-pub mod statement_classifier;
-pub mod write_guardrails;
-pub mod write_update;
+// ── Backward-compat re-exports for policy/ (Phase 2) ────────────
+pub use policy::sql::lexer as sql_lexer;
+pub use policy::sql::statement_classifier;
+pub use policy::write::sql_risk;
+pub use policy::write::write_guardrails;
+pub use policy::write::write_update;
 
 // ── Backward-compat re-exports for model/ (Phase 1) ────────────
 pub use model::app_state as state;
