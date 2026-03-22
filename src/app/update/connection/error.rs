@@ -38,7 +38,8 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            state.connection_error.scroll_down(100);
+            let max_scroll = state.connection_error.detail_line_count().saturating_sub(1);
+            state.connection_error.scroll_down(max_scroll);
             Some(vec![])
         }
         Action::CopyConnectionError => {
