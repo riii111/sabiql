@@ -344,6 +344,14 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
+        key_short: "Home/End",
+        key: "Home/End",
+        desc_short: "Jump",
+        description: "Jump to start/end",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Submit",
