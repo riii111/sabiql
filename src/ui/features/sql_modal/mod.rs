@@ -95,7 +95,11 @@ impl SqlModal {
                         " Esc: Cancel "
                     }
                 }
-                _ => Self::border_hint(state.sql_modal.active_tab),
+                _ => {
+                    let compare_can_yank =
+                        state.explain.left.is_some() && state.explain.right.is_some();
+                    Self::border_hint(state.sql_modal.active_tab, compare_can_yank)
+                }
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
@@ -216,13 +220,11 @@ impl SqlModal {
         ])
     }
 
-    fn border_hint(tab: SqlModalTab) -> &'static str {
-        // Explain/Analyze are shared across all tabs; Sql Normal borrows from
-        // Plan keys because SQL_MODAL_NORMAL_KEYS doesn't include them
-        // (they are not Normal-mode-specific — they work in Editing too).
+    fn border_hint(tab: SqlModalTab, compare_can_yank: bool) -> &'static str {
         static PLAN: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
                 (
                     "Tab/⇧Tab",
@@ -231,7 +233,23 @@ impl SqlModal {
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
             ])
         });
-        static COMPARE: LazyLock<String> = LazyLock::new(|| {
+        static COMPARE_WITH_YANK: LazyLock<String> = LazyLock::new(|| {
+            SqlModal::join_hint_pairs(&[
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
+                (
+                    "Tab/⇧Tab",
+                    SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB]
+                        .as_hint()
+                        .1,
+                ),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
+            ])
+        });
+        static COMPARE_NO_YANK: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
@@ -263,7 +281,8 @@ impl SqlModal {
         });
         match tab {
             SqlModalTab::Plan => &PLAN,
-            SqlModalTab::Compare => &COMPARE,
+            SqlModalTab::Compare if compare_can_yank => &COMPARE_WITH_YANK,
+            SqlModalTab::Compare => &COMPARE_NO_YANK,
             SqlModalTab::Sql => &SQL,
         }
     }

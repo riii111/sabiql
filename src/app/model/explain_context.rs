@@ -10,6 +10,17 @@ pub enum SlotSource {
     Pinned,
 }
 
+impl SlotSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SlotSource::AutoPrevious => "Previous",
+            SlotSource::AutoLatest => "Latest",
+            SlotSource::Manual => "Manual",
+            SlotSource::Pinned => "Pinned",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompareSlot {
     pub plan: ExplainPlan,

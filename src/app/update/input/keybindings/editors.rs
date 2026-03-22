@@ -103,6 +103,14 @@ pub const SQL_MODAL_PLAN_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Char('b'))],
     },
     KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy to clipboard",
+        action: Action::SqlModalYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
+    },
+    KeyBinding {
         key_short: "\u{2191}\u{2193}",
         key: "↑↓/jk",
         desc_short: "Scroll",
@@ -160,7 +168,7 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "l",
         key: "l",
-        desc_short: "Left slot",
+        desc_short: "Left",
         description: "Cycle left comparison slot",
         action: Action::CompareSelectLeftSlot,
         combos: &[KeyCombo::plain(Key::Char('l'))],
@@ -168,7 +176,7 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "r",
         key: "r",
-        desc_short: "Right slot",
+        desc_short: "Right",
         description: "Cycle right comparison slot",
         action: Action::CompareSelectRightSlot,
         combos: &[KeyCombo::plain(Key::Char('r'))],
@@ -180,6 +188,14 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
         description: "Edit query in SQL tab",
         action: Action::CompareEditQuery,
         combos: &[KeyCombo::plain(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Yank",
+        description: "Copy to clipboard",
+        action: Action::SqlModalYank,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
     },
     KeyBinding {
         key_short: "\u{2191}\u{2193}",

@@ -43,6 +43,7 @@ pub fn handle_sql_modal_keys(
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
                 Key::Char('b') if plain => Action::SaveExplainBaseline,
+                Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('j') | Key::Down if plain => Action::Scroll {
                     target: ScrollTarget::ExplainPlan,
                     direction: ScrollDirection::Down,
@@ -62,6 +63,7 @@ pub fn handle_sql_modal_keys(
         if active_tab == SqlModalTab::Compare {
             return match combo.key {
                 Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
+                Key::Char('y') if plain => Action::SqlModalYank,
                 Key::Char('l') if plain => Action::CompareSelectLeftSlot,
                 Key::Char('r') if plain => Action::CompareSelectRightSlot,
                 Key::Char('e') if plain => Action::CompareEditQuery,
@@ -853,6 +855,30 @@ mod tests {
     }
 
     #[test]
+    fn plan_tab_y_returns_sql_modal_yank() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('y')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Plan,
+        );
+
+        assert_action(result, Expected::SqlModalYank);
+    }
+
+    #[test]
+    fn compare_tab_y_returns_sql_modal_yank() {
+        let result = handle_sql_modal_keys(
+            combo(Key::Char('y')),
+            false,
+            &SqlModalStatus::Normal,
+            SqlModalTab::Compare,
+        );
+
+        assert_action(result, Expected::SqlModalYank);
+    }
+
+    #[test]
     fn plan_tab_b_saves_baseline() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('b')),
@@ -951,7 +977,6 @@ mod tests {
     #[rstest]
     #[case(Key::Char('a'))]
     #[case(Key::Enter)]
-    #[case(Key::Char('y'))]
     fn compare_tab_unbound_keys_returns_none(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),

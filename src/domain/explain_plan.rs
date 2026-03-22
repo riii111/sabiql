@@ -8,6 +8,12 @@ pub struct ExplainPlan {
     pub execution_time_ms: u64,
 }
 
+impl ExplainPlan {
+    pub fn execution_secs(&self) -> f64 {
+        self.execution_time_ms as f64 / 1000.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComparisonVerdict {
     Improved,
