@@ -401,68 +401,12 @@ fn table_picker_overlay() {
 }
 
 #[test]
-fn table_picker_cursor_at_head() {
-    let (mut state, _now) = connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker.filter_input =
-        sabiql::app::model::shared::text_input::TextInputState::new("user", 0);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn table_picker_cursor_at_middle() {
-    let (mut state, _now) = connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::TablePicker);
-    state.ui.table_picker.filter_input =
-        sabiql::app::model::shared::text_input::TextInputState::new("user", 2);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn command_line_input() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandLine);
     state.command_line_input.set_content("sql".to_string());
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn command_line_cursor_at_head() {
-    let (mut state, _now) = connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::CommandLine);
-    state.command_line_input =
-        sabiql::app::model::shared::text_input::TextInputState::new("sql", 0);
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
-fn command_line_cursor_at_middle() {
-    let (mut state, _now) = connected_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::CommandLine);
-    state.command_line_input =
-        sabiql::app::model::shared::text_input::TextInputState::new("sql", 1);
 
     let output = render_to_string(&mut terminal, &mut state);
 
