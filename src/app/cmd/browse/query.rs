@@ -5,10 +5,10 @@ use std::time::SystemTime;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
 use crate::app::ports::{DbOperationError, QueryExecutor, QueryHistoryStore};
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 use crate::domain::ConnectionId;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
@@ -418,17 +418,17 @@ mod tests {
 
         use tokio::sync::mpsc;
 
-        use crate::app::action::Action;
-        use crate::app::cache::TtlCache;
+        use crate::app::cmd::cache::TtlCache;
+        use crate::app::cmd::completion_engine::CompletionEngine;
+        use crate::app::cmd::effect::Effect;
         use crate::app::cmd::test_support::*;
-        use crate::app::completion::CompletionEngine;
-        use crate::app::effect::Effect;
+        use crate::app::model::app_state::AppState;
         use crate::app::ports::connection_store::MockConnectionStore;
         use crate::app::ports::metadata::MockMetadataProvider;
         use crate::app::ports::query_executor::MockQueryExecutor;
         use crate::app::ports::{DbOperationError, RenderOutput, Renderer};
         use crate::app::services::AppServices;
-        use crate::app::state::AppState;
+        use crate::app::update::action::Action;
         use color_eyre::eyre::Result;
 
         struct NoopRenderer;

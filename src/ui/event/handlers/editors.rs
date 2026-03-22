@@ -1,10 +1,10 @@
-use crate::app::action::{Action, InputTarget};
-use crate::app::keybindings;
-use crate::app::keybindings::{Key, KeyCombo};
-use crate::app::keymap;
+use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::input::keybindings;
+use crate::app::update::input::keybindings::{Key, KeyCombo};
+use crate::app::update::input::keymap;
 
 pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
-    use crate::app::action::CursorMove;
+    use crate::app::update::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
         return action;
     }
@@ -58,7 +58,7 @@ pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
@@ -67,7 +67,7 @@ mod tests {
 
     mod cell_edit_mode {
         use super::*;
-        use crate::app::action::CursorMove;
+        use crate::app::update::action::CursorMove;
 
         #[test]
         fn esc_in_cell_edit_returns_cancel_not_discard() {

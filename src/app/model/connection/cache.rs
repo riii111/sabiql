@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::app::inspector_tab::InspectorTab;
-use crate::app::result_history::ResultHistory;
+use crate::app::model::browse::result_history::ResultHistory;
+use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, Table};
 
 #[derive(Debug, Clone, Default)]

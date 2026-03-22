@@ -4,7 +4,7 @@ mod normal;
 mod overlays;
 pub mod types;
 
-use crate::app::action::Action;
+use crate::app::update::action::Action;
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -60,7 +60,7 @@ pub struct ModeBindings {
 
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
-        crate::app::keymap::resolve_mode(combo, self.rows)
+        crate::app::update::input::keymap::resolve_mode(combo, self.rows)
     }
 }
 
@@ -595,7 +595,7 @@ mod tests {
 
     mod semantic {
         use super::*;
-        use crate::app::keymap;
+        use crate::app::update::input::keymap;
         use rstest::rstest;
 
         // ------------------------------------------------------------------ //

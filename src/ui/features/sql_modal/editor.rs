@@ -4,8 +4,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::sql_modal_context::SqlModalStatus;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
@@ -96,9 +96,10 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let now = std::time::Instant::now();
-    let flash_active = state
-        .flash_timers
-        .is_active(crate::app::flash_timer::FlashId::SqlModal, now);
+    let flash_active = state.flash_timers.is_active(
+        crate::app::model::shared::flash_timer::FlashId::SqlModal,
+        now,
+    );
     crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
     frame.render_widget(

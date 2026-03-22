@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::app::action::{Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
-use crate::app::effect::Effect;
-use crate::app::er_state::ErStatus;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::er_state::ErStatus;
+use crate::app::update::action::{
+    Action, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult,
+};
 
 pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -190,7 +192,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::app::state::AppState;
+    use crate::app::model::app_state::AppState;
 
     fn state_with_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());

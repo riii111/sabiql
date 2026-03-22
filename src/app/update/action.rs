@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use crate::app::connection_error::ConnectionErrorInfo;
-use crate::app::focused_pane::FocusedPane;
-use crate::app::key_sequence::Prefix;
+use crate::app::model::connection::error::ConnectionErrorInfo;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::key_sequence::Prefix;
+use crate::app::model::sql_editor::completion::CompletionCandidate;
+use crate::app::policy::write::write_guardrails::WritePreview;
 use crate::app::ports::DbOperationError;
 use crate::app::ports::clipboard::ClipboardError;
 use crate::app::ports::connection_store::ConnectionStoreError;
 use crate::app::ports::folder_opener::FolderOpenError;
 use crate::app::ports::query_history::QueryHistoryError;
-use crate::app::sql_modal_context::CompletionCandidate;
-use crate::app::write_guardrails::WritePreview;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use std::collections::HashMap;
 

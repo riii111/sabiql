@@ -1,10 +1,10 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::app::connection_state::ConnectionState;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::state::ConnectionState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::domain::MetadataState;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {

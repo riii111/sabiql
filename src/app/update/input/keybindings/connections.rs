@@ -1,6 +1,6 @@
 use super::types::{Key, KeyCombo};
 use super::{ExecBinding, KeyBinding, ModeRow};
-use crate::app::action::{
+use crate::app::update::action::{
     Action, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 

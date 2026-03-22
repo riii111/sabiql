@@ -7,7 +7,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::theme::Theme;
 
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
 use crate::ui::primitives::atoms::key_chip;
 use crate::ui::primitives::molecules::render_modal;
 
@@ -100,7 +100,7 @@ impl ConnectionError {
     fn render_details_section(
         frame: &mut Frame,
         area: Rect,
-        error_state: &crate::app::connection_error_state::ConnectionErrorState,
+        error_state: &crate::app::model::connection::error_state::ConnectionErrorState,
         expanded: bool,
     ) {
         if expanded {

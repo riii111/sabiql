@@ -7,7 +7,7 @@ use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::viewport::ViewportPlan;
-use crate::app::keybindings::help_content_line_count;
+use crate::app::update::input::keybindings::help_content_line_count;
 
 pub use super::picker::clamp_scroll_offset;
 

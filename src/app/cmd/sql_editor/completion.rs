@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
-use crate::app::completion::CompletionEngine;
-use crate::app::effect::Effect;
-use crate::app::state::AppState;
+use crate::app::cmd::completion_engine::CompletionEngine;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::update::action::Action;
 
 pub(crate) async fn run(
     effect: Effect,

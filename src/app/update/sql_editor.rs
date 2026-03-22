@@ -1,15 +1,21 @@
 use std::time::{Duration, Instant};
 
 use super::helpers::{char_count, char_to_byte_index};
-use crate::app::action::{Action, CursorMove, InputTarget};
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab};
-use crate::app::sql_risk::{ConfirmationType, MultiStatementDecision, evaluate_multi_statement};
-use crate::app::state::AppState;
-use crate::app::statement_classifier::{self, StatementKind};
-use crate::app::text_input::TextInputState;
-use crate::app::write_guardrails::{AdhocRiskDecision, RiskLevel, evaluate_sql_risk};
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::sql_editor::modal::{
+    HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab,
+};
+use crate::app::policy::sql::statement_classifier::{self, StatementKind};
+use crate::app::policy::write::sql_risk::{
+    ConfirmationType, MultiStatementDecision, evaluate_multi_statement,
+};
+use crate::app::policy::write::write_guardrails::{
+    AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
+};
+use crate::app::update::action::{Action, CursorMove, InputTarget};
 
 pub fn reduce_sql_modal(
     state: &mut AppState,
@@ -193,7 +199,7 @@ pub fn reduce_sql_modal(
             state.sql_modal.completion_debounce = None;
             state
                 .flash_timers
-                .clear(crate::app::flash_timer::FlashId::SqlModal);
+                .clear(crate::app::model::shared::flash_timer::FlashId::SqlModal);
             if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
                 Some(vec![Effect::DispatchActions(vec![
                     Action::StartPrefetchAll,
@@ -427,9 +433,10 @@ pub fn reduce_sql_modal(
             }])
         }
         Action::SqlModalYankSuccess => {
-            state
-                .flash_timers
-                .set(crate::app::flash_timer::FlashId::SqlModal, now);
+            state.flash_timers.set(
+                crate::app::model::shared::flash_timer::FlashId::SqlModal,
+                now,
+            );
             Some(vec![])
         }
 
@@ -438,7 +445,7 @@ pub fn reduce_sql_modal(
 }
 
 fn multi_statement_label(sql: &str) -> &'static str {
-    use crate::app::sql_risk::split_statements;
+    use crate::app::policy::write::sql_risk::split_statements;
     let mut worst_level = RiskLevel::Low;
     let mut worst_label = "SQL";
     for stmt in split_statements(sql) {
@@ -561,7 +568,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.content = "DROP TABLE users".to_string();
             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
-                decision: crate::app::write_guardrails::AdhocRiskDecision {
+                decision: crate::app::policy::write::write_guardrails::AdhocRiskDecision {
                     risk_level: RiskLevel::High,
                     label: "DROP",
                 },
@@ -585,7 +592,7 @@ mod tests {
 
     mod confirming_high {
         use super::*;
-        use crate::app::write_guardrails::AdhocRiskDecision;
+        use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 
         fn sql_modal_state() -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -950,7 +957,7 @@ mod tests {
 
             // Simulate a prior adhoc success
             state.sql_modal.mark_adhoc_success(
-                crate::app::sql_modal_context::AdhocSuccessSnapshot {
+                crate::app::model::sql_editor::modal::AdhocSuccessSnapshot {
                     command_tag: None,
                     row_count: 5,
                     execution_time_ms: 10,
@@ -985,7 +992,7 @@ mod tests {
 
     mod confirmation_flow {
         use super::*;
-        use crate::app::write_guardrails::RiskLevel;
+        use crate::app::policy::write::write_guardrails::RiskLevel;
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -1136,11 +1143,10 @@ mod tests {
 
             reduce_sql_modal(&mut state, &Action::SqlModalYankSuccess, now);
 
-            assert!(
-                state
-                    .flash_timers
-                    .is_active(crate::app::flash_timer::FlashId::SqlModal, now)
-            );
+            assert!(state.flash_timers.is_active(
+                crate::app::model::shared::flash_timer::FlashId::SqlModal,
+                now
+            ));
         }
 
         #[test]

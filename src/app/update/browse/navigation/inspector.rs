@@ -1,9 +1,11 @@
-use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::app::effect::Effect;
-use crate::app::inspector_tab::InspectorTab;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::viewport::{
+    calculate_next_column_offset, calculate_prev_column_offset,
+};
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 use super::inspector_max_scroll;
 

@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::query_execution::PREVIEW_PAGE_SIZE;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+use crate::app::model::shared::input_mode::InputMode;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 use crate::domain::QuerySource;
 
 pub fn reduce(
@@ -75,7 +75,7 @@ pub fn reduce(
                 state.confirm_dialog.open(
                     "Confirm CSV Export",
                     msg,
-                    crate::app::confirm_dialog_state::ConfirmIntent::CsvExport {
+                    crate::app::model::shared::confirm_dialog::ConfirmIntent::CsvExport {
                         export_query: export_query.clone(),
                         file_name: file_name.clone(),
                         row_count: *row_count,
@@ -204,7 +204,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use crate::app::query_execution::PaginationState;
+    use crate::app::model::browse::query_execution::PaginationState;
     use crate::app::update::browse::query::reduce_query;
     use crate::app::update::browse::query::tests::*;
 

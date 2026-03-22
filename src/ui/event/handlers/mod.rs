@@ -5,10 +5,10 @@ mod overlays;
 mod pickers;
 mod sql_modal;
 
-use crate::app::action::Action;
-use crate::app::input_mode::InputMode;
-use crate::app::keybindings::KeyCombo;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::Action;
+use crate::app::update::input::keybindings::KeyCombo;
 
 use super::Event;
 
@@ -64,7 +64,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)

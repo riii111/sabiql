@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::app::action::{Action, TableTarget};
-use crate::app::command::{command_to_action, parse_command};
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus};
 use crate::app::services::AppServices;
-use crate::app::sql_modal_context::{AdhocSuccessSnapshot, SqlModalStatus};
-use crate::app::state::AppState;
+use crate::app::update::action::{Action, TableTarget};
+use crate::app::update::input::command::{command_to_action, parse_command};
 use crate::domain::{QueryResult, QuerySource};
 
 fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult) -> Vec<Effect> {
@@ -248,7 +248,7 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::query_execution::PaginationState;
+    use crate::app::model::browse::query_execution::PaginationState;
     use crate::app::update::browse::query::reduce_query;
     use crate::app::update::browse::query::tests::*;
 
@@ -507,8 +507,8 @@ mod tests {
 
     mod query_failed {
         use super::*;
+        use crate::app::model::shared::ui_state::ResultNavMode;
         use crate::app::ports::DbOperationError;
-        use crate::app::ui_state::ResultNavMode;
 
         #[test]
         fn resets_result_selection_and_offsets() {
@@ -890,7 +890,7 @@ mod tests {
             );
             assert_eq!(
                 *state.sql_modal.status(),
-                crate::app::sql_modal_context::SqlModalStatus::Success
+                crate::app::model::sql_editor::modal::SqlModalStatus::Success
             );
         }
 

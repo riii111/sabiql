@@ -3,14 +3,14 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
-use crate::app::cache::TtlCache;
-use crate::app::effect::Effect;
+use crate::app::cmd::cache::TtlCache;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
 use crate::app::ports::{
     ConnectionStore, ConnectionStoreError, DsnBuilder, MetadataProvider, ServiceFileError,
     ServiceFileReader,
 };
-use crate::app::state::AppState;
+use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 use crate::domain::DatabaseMetadata;
 use crate::domain::connection::ConnectionProfile;
 
@@ -210,17 +210,17 @@ mod tests {
 
     use tokio::sync::mpsc;
 
-    use crate::app::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
-    use crate::app::cache::TtlCache;
+    use crate::app::cmd::cache::TtlCache;
+    use crate::app::cmd::completion_engine::CompletionEngine;
+    use crate::app::cmd::effect::Effect;
     use crate::app::cmd::test_support::*;
-    use crate::app::completion::CompletionEngine;
-    use crate::app::effect::Effect;
+    use crate::app::model::app_state::AppState;
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
     use crate::app::ports::{ConnectionStoreError, DsnBuilder, RenderOutput, Renderer};
     use crate::app::services::AppServices;
-    use crate::app::state::AppState;
+    use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
     use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
     use color_eyre::eyre::Result;
 
@@ -373,7 +373,7 @@ mod tests {
 
     mod switch_connection {
         use super::*;
-        use crate::app::effect_runner::EffectRunner;
+        use crate::app::cmd::runner::EffectRunner;
 
         struct FakeDsnBuilder;
         impl DsnBuilder for FakeDsnBuilder {

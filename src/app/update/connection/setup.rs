@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ConnectionTarget, CursorMove, InputTarget};
-use crate::app::connection_setup_state::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
-use crate::app::connection_state::ConnectionState;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::setup::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
+use crate::app::model::connection::state::ConnectionState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::{Action, ConnectionTarget, CursorMove, InputTarget};
 use crate::app::update::helpers::{
     insert_char_at_cursor, insert_str_at_cursor, validate_all, validate_field,
 };
@@ -27,7 +27,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionEditLoaded(profile) => {
             state.connection_setup =
-                crate::app::connection_setup_state::ConnectionSetupState::from_profile(profile);
+                crate::app::model::connection::setup::ConnectionSetupState::from_profile(profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }
@@ -260,7 +260,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.confirm_dialog.open(
                     "Confirm",
                     "No connection configured.\nAre you sure you want to quit?",
-                    crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection,
+                    crate::app::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
                 Some(vec![])
@@ -313,7 +313,7 @@ mod tests {
 
     mod paste {
         use super::*;
-        use crate::app::connection_setup_state::ConnectionField;
+        use crate::app::model::connection::setup::ConnectionField;
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -425,8 +425,8 @@ mod tests {
 
     mod connection_save {
         use super::*;
-        use crate::app::action::ConnectionTarget;
-        use crate::app::connection_state::ConnectionState;
+        use crate::app::model::connection::state::ConnectionState;
+        use crate::app::update::action::ConnectionTarget;
         use crate::domain::MetadataState;
 
         fn fill_valid_form(state: &mut AppState) {

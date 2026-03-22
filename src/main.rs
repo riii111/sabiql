@@ -7,19 +7,19 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
-use sabiql::app::action::Action;
-use sabiql::app::cache::TtlCache;
-use sabiql::app::completion::CompletionEngine;
-use sabiql::app::effect::Effect;
-use sabiql::app::effect_runner::EffectRunner;
-use sabiql::app::input_mode::InputMode;
+use sabiql::app::cmd::cache::TtlCache;
+use sabiql::app::cmd::completion_engine::CompletionEngine;
+use sabiql::app::cmd::effect::Effect;
+use sabiql::app::cmd::render_schedule::next_animation_deadline;
+use sabiql::app::cmd::runner::EffectRunner;
+use sabiql::app::model::app_state::AppState;
+use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::ports::{
     ConnectionStore, ConnectionStoreError, ServiceFileError, ServiceFileReader,
 };
-use sabiql::app::reducer::reduce;
-use sabiql::app::render_schedule::next_animation_deadline;
 use sabiql::app::services::AppServices;
-use sabiql::app::state::AppState;
+use sabiql::app::update::action::Action;
+use sabiql::app::update::reducer::reduce;
 use sabiql::error;
 use sabiql::infra::adapters::{
     ArboardClipboard, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter, NativeFolderOpener,

@@ -4,17 +4,17 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::app::er_state::ErStatus;
-use crate::app::input_mode::InputMode;
-use crate::app::keybindings::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::er_state::ErStatus;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::ui_state::ResultNavMode;
+use crate::app::model::sql_editor::modal::SqlModalStatus;
+use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
     INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
     SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
-use crate::app::sql_modal_context::SqlModalStatus;
-use crate::app::state::AppState;
-use crate::app::ui_state::ResultNavMode;
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
 use crate::ui::theme::Theme;
@@ -59,7 +59,7 @@ impl Footer {
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
     fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
-        use crate::app::focused_pane::FocusedPane;
+        use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
             InputMode::Normal => {
@@ -157,7 +157,7 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {
-                        use crate::app::inspector_tab::InspectorTab;
+                        use crate::app::model::shared::inspector_tab::InspectorTab;
                         if state.ui.inspector_tab == InspectorTab::Ddl {
                             list.push(INSPECTOR_DDL_KEYS[idx::inspector_ddl::YANK].as_hint());
                         }
@@ -276,7 +276,7 @@ impl Footer {
             InputMode::ConnectionSelector => {
                 let r = CONNECTION_SELECTOR_ROWS;
                 use idx::connection_selector as cs;
-                let is_service_selected = crate::app::connection_list::is_service_selected(
+                let is_service_selected = crate::app::model::connection::list::is_service_selected(
                     state.connection_list_items(),
                     state.ui.connection_list_selected,
                 );

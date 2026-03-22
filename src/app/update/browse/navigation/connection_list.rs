@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::{Action, ConnectionsLoadedPayload, ListMotion, ListTarget};
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -67,7 +67,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
         Action::ConfirmConnectionSelection => {
-            use crate::app::connection_list::ConnectionListItem;
+            use crate::app::model::connection::list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
 
             let effect = match state.connection_list_items().get(selected_idx) {

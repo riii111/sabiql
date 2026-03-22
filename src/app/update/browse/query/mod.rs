@@ -4,10 +4,10 @@ mod write;
 
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 
 pub fn reduce_query(
     state: &mut AppState,
@@ -25,7 +25,7 @@ pub(super) mod tests {
     use std::sync::Arc;
     use std::time::Instant;
 
-    use crate::app::state::AppState;
+    use crate::app::model::app_state::AppState;
     use crate::domain::{
         Column, CommandTag, Index, IndexType, QueryResult, QuerySource, Table, Trigger,
         TriggerEvent, TriggerTiming,

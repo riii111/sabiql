@@ -4,7 +4,7 @@ use std::time::Instant;
 use super::cell_edit::CellEditState;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::shared::ui_state::{ResultSelection, YankFlash};
-use crate::app::write_guardrails::WritePreview;
+use crate::app::policy::write::write_guardrails::WritePreview;
 
 // # Invariants
 //
@@ -156,7 +156,7 @@ impl ResultInteraction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ui_state::ResultNavMode;
+    use crate::app::model::shared::ui_state::ResultNavMode;
     use std::time::Duration;
 
     #[test]
@@ -344,7 +344,7 @@ mod tests {
     }
 
     fn test_preview() -> WritePreview {
-        use crate::app::write_guardrails::*;
+        use crate::app::policy::write::write_guardrails::*;
         WritePreview {
             operation: WriteOperation::Update,
             sql: "UPDATE t SET x=1".to_string(),

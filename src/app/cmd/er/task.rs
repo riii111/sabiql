@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::app::action::{Action, ErDiagramInfo};
 use crate::app::ports::ErDiagramExporter;
+use crate::app::update::action::{Action, ErDiagramInfo};
 use crate::domain::ErTableInfo;
 
 pub fn spawn_er_diagram_task(
@@ -35,14 +35,14 @@ pub fn spawn_er_diagram_task(
             Ok(Err(e)) => {
                 let _ = tx
                     .send(Action::ErDiagramFailed(
-                        crate::app::action::ErDiagramError::ExportFailed(e.to_string()),
+                        crate::app::update::action::ErDiagramError::ExportFailed(e.to_string()),
                     ))
                     .await;
             }
             Err(e) => {
                 let _ = tx
                     .send(Action::ErDiagramFailed(
-                        crate::app::action::ErDiagramError::TaskPanicked(e.to_string()),
+                        crate::app::update::action::ErDiagramError::TaskPanicked(e.to_string()),
                     ))
                     .await;
             }

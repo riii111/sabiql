@@ -6,11 +6,11 @@ mod inspector;
 
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::inspector_tab::InspectorTab;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     state

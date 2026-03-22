@@ -10,13 +10,13 @@ use super::{
     reduce_connection, reduce_er, reduce_explain, reduce_metadata, reduce_modal, reduce_navigation,
     reduce_query, reduce_result, reduce_sql_modal,
 };
-use crate::app::action::{Action, TableTarget};
-use crate::app::effect::Effect;
-use crate::app::focused_pane::FocusedPane;
-use crate::app::input_mode::InputMode;
-use crate::app::key_sequence::KeySequenceState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::key_sequence::KeySequenceState;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::{Action, TableTarget};
 use crate::domain::TableSummary;
 
 pub fn reduce(
@@ -113,7 +113,7 @@ fn reduce_inner(
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::CommandPalette {
-                use crate::app::palette::palette_action_for_index;
+                use crate::app::update::input::palette::palette_action_for_index;
 
                 let cmd_action = palette_action_for_index(state.ui.table_picker.selected());
                 state.modal.set_mode(InputMode::Normal);
@@ -175,12 +175,12 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::app::action::{ConnectionSaveError, ConnectionTarget};
-    use crate::app::action::{
-        InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
-    };
     use crate::app::ports::DbOperationError;
     use crate::app::ports::connection_store::ConnectionStoreError;
+    use crate::app::update::action::{ConnectionSaveError, ConnectionTarget};
+    use crate::app::update::action::{
+        InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, SelectMotion,
+    };
 
     fn create_test_state() -> AppState {
         AppState::new("test_project".to_string())
@@ -449,7 +449,7 @@ mod tests {
 
     mod completion_ui {
         use super::*;
-        use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
+        use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
         fn make_candidate(text: &str) -> CompletionCandidate {
             CompletionCandidate {
@@ -498,7 +498,7 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::app::connection_error::ConnectionErrorInfo;
+        use crate::app::model::connection::error::ConnectionErrorInfo;
         use crate::domain::{DatabaseMetadata, MetadataState, TableSummary};
 
         #[test]
@@ -597,7 +597,7 @@ mod tests {
 
     mod connection_error_actions {
         use super::*;
-        use crate::app::connection_error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
         use crate::domain::MetadataState;
 
         fn state_with_error() -> AppState {
@@ -938,7 +938,7 @@ mod tests {
 
     mod er_diagram {
         use super::*;
-        use crate::app::er_state::ErStatus;
+        use crate::app::model::er_state::ErStatus;
         use crate::domain::DatabaseMetadata;
 
         #[test]
@@ -1124,8 +1124,8 @@ mod tests {
     }
 
     mod connection_setup_validation {
-        use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
-        use crate::app::reducers::{validate_all, validate_field};
+        use crate::app::model::connection::setup::{ConnectionField, ConnectionSetupState};
+        use crate::app::update::helpers::{validate_all, validate_field};
         use rstest::rstest;
 
         fn setup_state() -> ConnectionSetupState {
@@ -1314,7 +1314,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(matches!(
                 state.confirm_dialog.intent(),
-                Some(&crate::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection)
+                Some(&crate::app::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection)
             ));
             assert!(effects.is_empty());
         }
@@ -1341,7 +1341,7 @@ mod tests {
 
     mod confirm_dialog_transitions {
         use super::*;
-        use crate::app::confirm_dialog_state::ConfirmIntent;
+        use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 
         #[test]
         fn confirm_quit_no_connection_sets_should_quit() {
@@ -1386,7 +1386,7 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_success_preserves_delete_context() {
-            use crate::app::write_guardrails::{
+            use crate::app::policy::write::write_guardrails::{
                 GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
             };
 
@@ -1459,7 +1459,7 @@ mod tests {
 
         #[test]
         fn confirm_delete_write_then_failure_returns_to_normal() {
-            use crate::app::write_guardrails::{
+            use crate::app::policy::write::write_guardrails::{
                 GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
             };
 
@@ -1517,7 +1517,7 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::app::connection_state::ConnectionState;
+        use crate::app::model::connection::state::ConnectionState;
         use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
 
         #[test]
@@ -1805,7 +1805,7 @@ mod tests {
 
         #[test]
         fn switch_connection_restores_from_cache() {
-            use crate::app::inspector_tab::InspectorTab;
+            use crate::app::model::shared::inspector_tab::InspectorTab;
 
             let mut state = create_test_state();
             let conn_a = ConnectionId::new();
@@ -1817,7 +1817,7 @@ mod tests {
                 .set_connection_state(ConnectionState::Connected);
             state.ui.explorer_selected = 3;
 
-            let cached = crate::app::connection_cache::ConnectionCache {
+            let cached = crate::app::model::connection::cache::ConnectionCache {
                 explorer_selected: 10,
                 inspector_tab: InspectorTab::Indexes,
                 metadata: Some(Arc::new(DatabaseMetadata {
@@ -2072,7 +2072,7 @@ mod tests {
 
         #[test]
         fn prefetch_complete_dispatches_er_generate() {
-            use crate::app::er_state::ErStatus;
+            use crate::app::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
@@ -2104,7 +2104,7 @@ mod tests {
 
         #[test]
         fn prefetch_complete_with_failures_does_not_auto_open() {
-            use crate::app::er_state::ErStatus;
+            use crate::app::model::er_state::ErStatus;
 
             let mut state = state_with_metadata();
             state.sql_modal.begin_prefetch();
@@ -2142,7 +2142,7 @@ mod tests {
 
     mod pagination_integration {
         use super::*;
-        use crate::app::query_execution::PREVIEW_PAGE_SIZE;
+        use crate::app::model::browse::query_execution::PREVIEW_PAGE_SIZE;
         use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
         use std::sync::Arc;
 
@@ -2265,7 +2265,7 @@ mod tests {
 
     mod command_palette {
         use super::*;
-        use crate::app::palette::palette_commands;
+        use crate::app::update::input::palette::palette_commands;
         use rstest::rstest;
 
         fn state_in_palette_mode() -> AppState {

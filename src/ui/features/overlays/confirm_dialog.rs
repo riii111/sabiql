@@ -2,10 +2,10 @@ use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::confirm_dialog_state::ConfirmIntent;
-use crate::app::state::AppState;
-use crate::app::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
-use crate::app::write_update::escape_preview_value;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation, WritePreview};
+use crate::app::policy::write::write_update::escape_preview_value;
 use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
 use crate::ui::theme::Theme;
 

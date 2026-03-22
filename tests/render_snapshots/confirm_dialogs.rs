@@ -10,7 +10,7 @@ fn confirm_dialog() {
     state.confirm_dialog.open(
         "Confirm",
         "No connection configured.\nAre you sure you want to quit?",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::QuitNoConnection,
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::QuitNoConnection,
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -30,7 +30,7 @@ fn confirm_dialog_update_preview() {
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
         "email: \"bob@example.com\" -> \"new@example.com\"\n\nUPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
             sql: "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';".to_string(),
             blocked: false,
         },
@@ -76,7 +76,7 @@ fn confirm_dialog_update_preview_rich() {
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
         "email: \"bob@example.com\" -> \"new@example.com\"",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
             sql,
             blocked: false,
         },
@@ -117,7 +117,7 @@ fn confirm_dialog_delete_preview_low_risk() {
     state.confirm_dialog.open(
         "Confirm DELETE: users",
         "",
-        sabiql::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
             sql,
             blocked: false,
         },

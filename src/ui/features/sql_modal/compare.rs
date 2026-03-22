@@ -4,8 +4,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::app::explain_context::{CompareSlot, SlotSource};
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::explain_context::{CompareSlot, SlotSource};
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 

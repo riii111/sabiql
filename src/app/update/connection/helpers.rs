@@ -1,5 +1,5 @@
-use crate::app::connection_cache::ConnectionCache;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::cache::ConnectionCache;
 
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     state.session.to_cache(

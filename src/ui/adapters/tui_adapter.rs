@@ -1,8 +1,8 @@
 use color_eyre::eyre::Result;
 
+use crate::app::model::app_state::AppState;
 use crate::app::ports::renderer::{RenderOutput, Renderer};
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
 use crate::ui::shell::layout::MainLayout;
 use crate::ui::tui::TuiRunner;
 

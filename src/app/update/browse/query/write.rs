@@ -1,16 +1,16 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
-use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::update::helpers::{build_bulk_delete_preview, editable_preview_base};
-use crate::app::write_guardrails::{
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::{build_pk_pairs, escape_preview_value};
+use crate::app::policy::write::write_update::{build_pk_pairs, escape_preview_value};
+use crate::app::services::AppServices;
+use crate::app::update::action::Action;
+use crate::app::update::helpers::{build_bulk_delete_preview, editable_preview_base};
 
 fn build_update_preview(state: &AppState, services: &AppServices) -> Result<WritePreview, String> {
     if !state.result_interaction.cell_edit().is_active() {
@@ -45,7 +45,7 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
     }
 
     let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
-    let target = crate::app::write_guardrails::TargetSummary {
+    let target = crate::app::policy::write::write_guardrails::TargetSummary {
         schema: state.query.pagination.schema.clone(),
         table: state.query.pagination.table.clone(),
         key_values: pk_pairs.clone().unwrap_or_default(),
@@ -203,7 +203,7 @@ pub fn reduce(
             state.confirm_dialog.open(
                 title,
                 build_write_preview_fallback_message(preview),
-                crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                crate::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
                     sql: preview.sql.clone(),
                     blocked: preview.guardrail.blocked,
                 },
@@ -359,12 +359,12 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::query_execution::{PostDeleteRowSelection, QueryStatus};
-    use crate::app::update::browse::query::reduce_query;
-    use crate::app::update::browse::query::tests::*;
-    use crate::app::write_guardrails::{
+    use crate::app::model::browse::query_execution::{PostDeleteRowSelection, QueryStatus};
+    use crate::app::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };
+    use crate::app::update::browse::query::reduce_query;
+    use crate::app::update::browse::query::tests::*;
 
     mod write_flow {
         use super::*;
@@ -547,7 +547,7 @@ mod tests {
                 Some(expected_sql.as_str())
             );
             match state.confirm_dialog.intent() {
-                Some(crate::app::confirm_dialog_state::ConfirmIntent::ExecuteWrite {
+                Some(crate::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
                     sql,
                     blocked,
                 }) => {

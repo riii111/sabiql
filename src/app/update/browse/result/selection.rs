@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::update::action::Action;
 
 use super::scroll::{result_col_count, result_row_count};
 
@@ -77,7 +77,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 return Some(vec![]);
             }
             if state.result_interaction.selection().mode()
-                == crate::app::ui_state::ResultNavMode::RowActive
+                == crate::app::model::shared::ui_state::ResultNavMode::RowActive
                 && let Some(row_idx) = state.result_interaction.selection().row()
             {
                 state.result_interaction.stage_row(row_idx);

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
 use crate::app::model::shared::text_input::TextInputState;
-use crate::app::write_guardrails::AdhocRiskDecision;
+use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::domain::CommandTag;
 
 use super::completion::CompletionState;
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn confirming_high_with_target_name() {
-        use crate::app::write_guardrails::RiskLevel;
+        use crate::app::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {
             decision: AdhocRiskDecision {
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn confirming_high_without_target_name() {
-        use crate::app::write_guardrails::RiskLevel;
+        use crate::app::policy::write::write_guardrails::RiskLevel;
 
         let status = SqlModalStatus::ConfirmingHigh {
             decision: AdhocRiskDecision {

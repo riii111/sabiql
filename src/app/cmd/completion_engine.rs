@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use crate::app::cache::BoundedLruCache;
-use crate::app::reducers::char_to_byte_index;
-use crate::app::sql_lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
-use crate::app::sql_modal_context::{CompletionCandidate, CompletionKind};
+use crate::app::cmd::cache::BoundedLruCache;
+use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
+use crate::app::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
+use crate::app::update::helpers::char_to_byte_index;
 use crate::domain::{DatabaseMetadata, Table};
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
@@ -1442,7 +1442,7 @@ mod tests {
 
     mod alias_column_context {
         use super::*;
-        use crate::app::sql_lexer::{SqlContext, TableReference};
+        use crate::app::policy::sql::lexer::{SqlContext, TableReference};
 
         #[test]
         fn alias_dot_returns_alias_column_context() {
@@ -1539,7 +1539,7 @@ mod tests {
 
     mod cte_or_table_context {
         use super::*;
-        use crate::app::sql_lexer::{CteDefinition, SqlContext};
+        use crate::app::policy::sql::lexer::{CteDefinition, SqlContext};
         use crate::domain::DatabaseMetadata;
 
         #[test]
@@ -1617,7 +1617,7 @@ mod tests {
 
     mod alias_column_completion {
         use super::*;
-        use crate::app::sql_lexer::{SqlContext, TableReference};
+        use crate::app::policy::sql::lexer::{SqlContext, TableReference};
         use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
 
         #[test]

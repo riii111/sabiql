@@ -1,13 +1,13 @@
 use std::time::Instant;
 
 use super::helpers::char_count;
-use crate::app::action::{
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };
-use crate::app::confirm_dialog_state::ConfirmIntent;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
 
 pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -68,7 +68,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.sql_modal.completion_debounce = None;
             state
                 .flash_timers
-                .clear(crate::app::flash_timer::FlashId::SqlModal);
+                .clear(crate::app::model::shared::flash_timer::FlashId::SqlModal);
             Some(vec![])
         }
         Action::OpenErTablePicker => {
@@ -241,7 +241,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.modal.set_mode(InputMode::SqlModal);
                     state
                         .sql_modal
-                        .set_status(crate::app::sql_modal_context::SqlModalStatus::Editing);
+                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
                     state.sql_modal.content = query;
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state.sql_modal.completion.visible = false;
@@ -253,7 +253,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state.sql_modal.cursor = char_count(&state.sql_modal.content);
                     state
                         .sql_modal
-                        .set_status(crate::app::sql_modal_context::SqlModalStatus::Editing);
+                        .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
                 }
                 _ => {}
             }
@@ -355,7 +355,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::confirm_dialog_state::ConfirmIntent;
+    use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 
     use std::time::Instant;
 
@@ -477,17 +477,17 @@ mod tests {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
             state.result_interaction.set_write_preview(
-                crate::app::write_guardrails::WritePreview {
-                    operation: crate::app::write_guardrails::WriteOperation::Update,
+                crate::app::policy::write::write_guardrails::WritePreview {
+                    operation: crate::app::policy::write::write_guardrails::WriteOperation::Update,
                     sql: "UPDATE t SET x=1".to_string(),
-                    target_summary: crate::app::write_guardrails::TargetSummary {
+                    target_summary: crate::app::policy::write::write_guardrails::TargetSummary {
                         schema: "public".to_string(),
                         table: "t".to_string(),
                         key_values: vec![],
                     },
                     diff: vec![],
-                    guardrail: crate::app::write_guardrails::GuardrailDecision {
-                        risk_level: crate::app::write_guardrails::RiskLevel::High,
+                    guardrail: crate::app::policy::write::write_guardrails::GuardrailDecision {
+                        risk_level: crate::app::policy::write::write_guardrails::RiskLevel::High,
                         blocked: true,
                         reason: Some("too risky".to_string()),
                         target_summary: None,

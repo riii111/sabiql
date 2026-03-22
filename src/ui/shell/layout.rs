@@ -1,11 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
-use crate::app::input_mode::InputMode;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::viewport::ViewportPlan;
 use crate::app::ports::RenderOutput;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::viewport::ViewportPlan;
 use crate::ui::features::browse::explorer::Explorer;
 use crate::ui::features::browse::inspector::Inspector;
 use crate::ui::features::browse::result::ResultPane;

@@ -6,7 +6,8 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::ui::theme::Theme;
 
-use crate::app::keybindings::{
+use crate::app::model::app_state::AppState;
+use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
     GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS, INSPECTOR_DDL_KEYS, KeyBinding, NAVIGATION_KEYS,
@@ -14,7 +15,6 @@ use crate::app::keybindings::{
     SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS,
     TABLE_PICKER_ROWS,
 };
-use crate::app::state::AppState;
 
 use crate::ui::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,

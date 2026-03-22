@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::inspector_tab::InspectorTab;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::inspector_tab::InspectorTab;
+use crate::app::model::shared::ui_state::YankFlash;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::ui_state::YankFlash;
+use crate::app::update::action::Action;
 
 pub fn reduce(
     state: &mut AppState,
@@ -60,7 +60,7 @@ pub fn reduce(
                 let ddl = services.ddl_generator.generate_ddl(table);
                 state
                     .flash_timers
-                    .set(crate::app::flash_timer::FlashId::Ddl, now);
+                    .set(crate::app::model::shared::flash_timer::FlashId::Ddl, now);
                 return Some(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Action::CellCopied),
@@ -446,7 +446,7 @@ mod tests {
             assert!(
                 state
                     .flash_timers
-                    .is_active(crate::app::flash_timer::FlashId::Ddl, now)
+                    .is_active(crate::app::model::shared::flash_timer::FlashId::Ddl, now)
             );
         }
 

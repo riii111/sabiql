@@ -1,5 +1,5 @@
-use crate::app::action::{Action, InputTarget};
-use crate::app::keybindings::{self, Key, KeyCombo};
+use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::input::keybindings::{self, Key, KeyCombo};
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
@@ -49,8 +49,8 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::{ListMotion, ListTarget};
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::action::{ListMotion, ListTarget};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

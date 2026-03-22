@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::Action;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -15,7 +15,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
         // ===== Connection Deletion =====
         Action::RequestDeleteSelectedConnection => {
-            use crate::app::connection_list::ConnectionListItem;
+            use crate::app::model::connection::list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
@@ -37,7 +37,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 state.confirm_dialog.open(
                     "Delete Connection",
                     message,
-                    crate::app::confirm_dialog_state::ConfirmIntent::DeleteConnection(id),
+                    crate::app::model::shared::confirm_dialog::ConfirmIntent::DeleteConnection(id),
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
             }
@@ -78,7 +78,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
         // ===== Connection Edit =====
         Action::RequestEditSelectedConnection => {
-            use crate::app::connection_list::ConnectionListItem;
+            use crate::app::model::connection::list::ConnectionListItem;
             let selected_idx = state.ui.connection_list_selected;
             let profile_idx = match state.connection_list_items().get(selected_idx) {
                 Some(ConnectionListItem::Profile(i)) => *i,
@@ -99,7 +99,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::connection_list::build_connection_list;
+    use crate::app::model::connection::list::build_connection_list;
     use crate::domain::connection::ConnectionProfile;
 
     fn create_profile(name: &str) -> ConnectionProfile {
@@ -256,7 +256,7 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
-        use crate::app::connection_state::ConnectionState;
+        use crate::app::model::connection::state::ConnectionState;
 
         #[test]
         fn removes_connection_from_list() {
@@ -329,7 +329,7 @@ mod tests {
             assert_eq!(state.query.pagination.current_page, 0);
             assert_eq!(
                 state.result_interaction.selection().mode(),
-                crate::app::ui_state::ResultNavMode::Scroll
+                crate::app::model::shared::ui_state::ResultNavMode::Scroll
             );
             assert_eq!(state.result_interaction.scroll_offset, 0);
             assert_eq!(state.result_interaction.horizontal_offset, 0);

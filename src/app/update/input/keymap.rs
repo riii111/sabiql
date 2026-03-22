@@ -1,5 +1,5 @@
 use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
-use crate::app::action::Action;
+use crate::app::update::action::Action;
 
 pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
     bindings
@@ -23,7 +23,7 @@ pub fn resolve_mode(combo: &KeyCombo, rows: &[ModeRow]) -> Option<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::keybindings::{Key, KeyCombo};
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
 
     static QUIT_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('q'))];
     static HELP_COMBOS: &[KeyCombo] = &[KeyCombo::plain(Key::Char('?'))];
@@ -130,7 +130,9 @@ mod tests {
 
     mod resolve_mode_tests {
         use super::*;
-        use crate::app::keybindings::{CONNECTION_ERROR_ROWS, HELP_ROWS, TABLE_PICKER_ROWS};
+        use crate::app::update::input::keybindings::{
+            CONNECTION_ERROR_ROWS, HELP_ROWS, TABLE_PICKER_ROWS,
+        };
 
         #[test]
         fn empty_rows_returns_none() {

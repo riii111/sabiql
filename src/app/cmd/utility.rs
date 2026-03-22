@@ -3,9 +3,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
+use crate::app::cmd::effect::Effect;
 use crate::app::ports::{ClipboardWriter, FolderOpener};
+use crate::app::update::action::Action;
 
 pub(crate) async fn run(
     effect: Effect,

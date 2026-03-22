@@ -7,17 +7,22 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
-use crate::app::cache::TtlCache;
-use crate::app::completion::CompletionEngine;
-use crate::app::effect::Effect;
-use crate::app::effect_handlers;
+use crate::app::cmd::browse as cmd_browse;
+use crate::app::cmd::cache::TtlCache;
+use crate::app::cmd::completion_engine::CompletionEngine;
+use crate::app::cmd::connection as cmd_connection;
+use crate::app::cmd::effect::Effect;
+use crate::app::cmd::er::handler as cmd_er;
+use crate::app::cmd::sql_editor::completion as cmd_completion;
+use crate::app::cmd::sql_editor::query_history as cmd_query_history;
+use crate::app::cmd::utility as cmd_utility;
+use crate::app::model::app_state::AppState;
 use crate::app::ports::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, QueryExecutor, QueryHistoryStore, Renderer, ServiceFileReader,
 };
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
 
 pub struct EffectRunner {
@@ -220,13 +225,7 @@ impl EffectRunner {
             }
 
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
-                effect_handlers::utility::run(
-                    e,
-                    &self.action_tx,
-                    &self.clipboard,
-                    &self.folder_opener,
-                )
-                .await
+                cmd_utility::run(e, &self.action_tx, &self.clipboard, &self.folder_opener).await
             }
 
             e @ (Effect::SaveAndConnect { .. }
@@ -235,7 +234,7 @@ impl EffectRunner {
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
-                effect_handlers::connection::run(
+                cmd_connection::run(
                     e,
                     &self.action_tx,
                     &self.dsn_builder,
@@ -254,7 +253,7 @@ impl EffectRunner {
             | Effect::ProcessPrefetchQueue
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
-                effect_handlers::metadata::run(
+                cmd_browse::metadata::run(
                     e,
                     &self.action_tx,
                     &self.metadata_provider,
@@ -271,7 +270,7 @@ impl EffectRunner {
             | Effect::ExecuteWrite { .. }
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }) => {
-                effect_handlers::query::run(
+                cmd_browse::query::run(
                     e,
                     &self.action_tx,
                     &self.query_executor,
@@ -285,7 +284,7 @@ impl EffectRunner {
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
             | Effect::SmartErRefresh { .. }) => {
-                effect_handlers::er::run(
+                cmd_er::run(
                     e,
                     &self.action_tx,
                     &self.metadata_provider,
@@ -299,8 +298,7 @@ impl EffectRunner {
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                effect_handlers::query_history::run(e, &self.action_tx, &self.query_history_store)
-                    .await
+                cmd_query_history::run(e, &self.action_tx, &self.query_history_store).await
             }
 
             e @ (Effect::CacheTableInCompletionEngine { .. }
@@ -308,7 +306,7 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                effect_handlers::completion::run(e, &self.action_tx, state, completion_engine).await
+                cmd_completion::run(e, &self.action_tx, state, completion_engine).await
             }
         }
     }
@@ -317,7 +315,7 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::effect_handlers::test_support::*;
+    use crate::app::cmd::test_support::*;
     use crate::app::ports::RenderOutput;
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;

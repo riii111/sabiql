@@ -1,4 +1,4 @@
-use crate::app::action::Action;
+use crate::app::update::action::Action;
 use crate::domain::Table;
 use crate::domain::connection::{ConnectionId, SslMode};
 

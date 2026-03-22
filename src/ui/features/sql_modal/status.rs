@@ -4,8 +4,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::app::sql_modal_context::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::ui::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::ui::theme::Theme;
 
@@ -150,8 +150,8 @@ fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
 fn render_confirming_high_status(
     frame: &mut Frame,
     area: Rect,
-    decision: &crate::app::write_guardrails::AdhocRiskDecision,
-    input: &crate::app::text_input::TextInputState,
+    decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
+    input: &crate::app::model::shared::text_input::TextInputState,
     target_name: &Option<String>,
 ) {
     let error_style = Style::default().fg(Theme::STATUS_ERROR);

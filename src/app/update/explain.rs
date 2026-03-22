@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::app::effect::Effect;
-use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
-use crate::app::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
-use crate::app::state::AppState;
-use crate::app::statement_classifier;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::app::policy::sql::statement_classifier;
+use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
+use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
 fn is_multi_statement(content: &str) -> bool {
     split_statements(content).len() > 1
@@ -147,9 +147,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             // blank + title + blank + separator + blank + warning(2) + blank = 8
             const CONFIRM_HEADER_LINES: usize = 8;
             let content_lines = CONFIRM_HEADER_LINES + state.sql_modal.content.lines().count();
-            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
-            );
+            let modal_inner =
+                crate::app::model::explain_context::ExplainContext::modal_inner_height(
+                    state.ui.terminal_height,
+                );
             let max = content_lines.saturating_sub(modal_inner);
             if state.explain.confirm_scroll_offset < max {
                 state.explain.confirm_scroll_offset += 1;
@@ -244,9 +245,10 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             direction: ScrollDirection::Down,
             amount: ScrollAmount::Line,
         } => {
-            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
-            );
+            let modal_inner =
+                crate::app::model::explain_context::ExplainContext::modal_inner_height(
+                    state.ui.terminal_height,
+                );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             if state.explain.scroll_offset < max {
                 state.explain.scroll_offset += 1;
@@ -323,7 +325,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::input_mode::InputMode;
+    use crate::app::model::shared::input_mode::InputMode;
     use std::time::Instant;
 
     fn sql_modal_state() -> AppState {
@@ -668,7 +670,7 @@ mod tests {
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
             state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::app::text_input::TextInputState::default();
+            let mut input = crate::app::model::shared::text_input::TextInputState::default();
             for c in "users".chars() {
                 input.insert_char(c);
             }
@@ -691,7 +693,7 @@ mod tests {
         fn confirm_from_high_with_mismatch_is_noop() {
             let mut state = sql_modal_state();
             state.session.dsn = Some("dsn://test".to_string());
-            let mut input = crate::app::text_input::TextInputState::default();
+            let mut input = crate::app::model::shared::text_input::TextInputState::default();
             input.insert_char('x');
             state
                 .sql_modal
@@ -960,9 +962,10 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
-            let modal_inner = crate::app::explain_context::ExplainContext::modal_inner_height(
-                state.ui.terminal_height,
-            );
+            let modal_inner =
+                crate::app::model::explain_context::ExplainContext::modal_inner_height(
+                    state.ui.terminal_height,
+                );
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
 

@@ -1,10 +1,12 @@
-use crate::app::action::{
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::key_sequence::KeySequenceState;
+use crate::app::model::shared::viewport::{
+    calculate_next_column_offset, calculate_prev_column_offset,
+};
+use crate::app::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };
-use crate::app::effect::Effect;
-use crate::app::key_sequence::KeySequenceState;
-use crate::app::state::AppState;
-use crate::app::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
     state
@@ -322,7 +324,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::key_sequence::Prefix;
+    use crate::app::model::shared::key_sequence::Prefix;
     use std::sync::Arc;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {

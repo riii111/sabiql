@@ -1,11 +1,11 @@
-use crate::app::action::{
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::key_sequence::KeySequenceState;
+use crate::app::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
 };
-use crate::app::effect::Effect;
-use crate::app::focused_pane::FocusedPane;
-use crate::app::key_sequence::KeySequenceState;
-use crate::app::state::AppState;
 
 use super::explorer_item_count;
 
@@ -227,7 +227,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::key_sequence::Prefix;
+    use crate::app::model::shared::key_sequence::Prefix;
     use crate::app::services::AppServices;
     use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{DatabaseMetadata, TableSummary};

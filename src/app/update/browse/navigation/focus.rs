@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::confirm_dialog_state::ConfirmIntent;
-use crate::app::effect::Effect;
-use crate::app::focused_pane::FocusedPane;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::update::action::Action;
 
 pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Vec<Effect>> {
     match action {

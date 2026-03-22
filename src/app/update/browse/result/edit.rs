@@ -1,10 +1,10 @@
 use std::time::Instant;
 
-use crate::app::action::{Action, InputTarget};
-use crate::app::effect::Effect;
-use crate::app::input_mode::InputMode;
-use crate::app::state::AppState;
-use crate::app::write_update::build_pk_pairs;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::policy::write::write_update::build_pk_pairs;
+use crate::app::update::action::{Action, InputTarget};
 
 use crate::app::update::helpers::editable_preview_base;
 
@@ -123,7 +123,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::action::CursorMove;
+    use crate::app::update::action::CursorMove;
     use crate::domain::{QueryResult, QuerySource, Table};
     use std::sync::Arc;
 

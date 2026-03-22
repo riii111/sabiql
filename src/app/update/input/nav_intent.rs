@@ -1,11 +1,11 @@
-use crate::app::action::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::ui_state::ResultNavMode;
+use crate::app::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
 };
-use crate::app::focused_pane::FocusedPane;
-use crate::app::keybindings::{Key, KeyCombo};
-use crate::app::state::AppState;
-use crate::app::ui_state::ResultNavMode;
+use crate::app::update::input::keybindings::{Key, KeyCombo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavigationContext {
@@ -311,9 +311,9 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::focused_pane::FocusedPane;
-    use crate::app::keybindings::{Key, KeyCombo};
-    use crate::app::state::AppState;
+    use crate::app::model::app_state::AppState;
+    use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     // =========================================================================

@@ -75,7 +75,7 @@ impl ConnectionErrorState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::connection_error::ConnectionErrorKind;
+    use crate::app::model::connection::error::ConnectionErrorKind;
 
     fn sample_error() -> ConnectionErrorInfo {
         ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out")

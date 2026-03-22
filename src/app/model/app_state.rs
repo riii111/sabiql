@@ -206,7 +206,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::app::focused_pane::FocusedPane;
+    use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::domain::DatabaseMetadata;
     use rstest::rstest;
     use std::time::Instant;
@@ -441,7 +441,7 @@ mod tests {
 
         state.sql_modal.failed_prefetch_tables.insert(
             "public.users".to_string(),
-            crate::app::sql_modal_context::FailedPrefetchEntry {
+            crate::app::model::sql_editor::modal::FailedPrefetchEntry {
                 failed_at: now,
                 error: "connection timeout".to_string(),
                 retry_count: 0,
@@ -465,7 +465,7 @@ mod tests {
 
     mod er_preparation {
         use super::*;
-        use crate::app::er_state::ErStatus;
+        use crate::app::model::er_state::ErStatus;
 
         #[test]
         fn new_state_defaults_to_idle() {
@@ -510,7 +510,7 @@ mod tests {
                 .insert("public.orders".to_string());
             state.sql_modal.failed_prefetch_tables.insert(
                 "public.failed".to_string(),
-                crate::app::sql_modal_context::FailedPrefetchEntry {
+                crate::app::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
                     retry_count: 0,
@@ -528,7 +528,7 @@ mod tests {
 
         #[test]
         fn resets_er_preparation() {
-            use crate::app::er_state::ErStatus;
+            use crate::app::model::er_state::ErStatus;
 
             let mut state = AppState::new("test".to_string());
             state.er_preparation.status = ErStatus::Waiting;
@@ -619,7 +619,7 @@ mod tests {
 
     mod connection_setters {
         use super::*;
-        use crate::app::connection_list::ConnectionListItem;
+        use crate::app::model::connection::list::ConnectionListItem;
         use crate::domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
 
         fn make_profile(name: &str) -> ConnectionProfile {

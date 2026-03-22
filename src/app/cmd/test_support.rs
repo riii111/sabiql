@@ -4,14 +4,14 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use crate::app::action::Action;
-use crate::app::cache::TtlCache;
-use crate::app::effect_runner::EffectRunner;
+use crate::app::cmd::cache::TtlCache;
+use crate::app::cmd::runner::EffectRunner;
 use crate::app::ports::{
     ClipboardError, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter,
     ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider, QueryExecutor,
     QueryHistoryError, QueryHistoryStore, ServiceFileError, ServiceFileReader,
 };
+use crate::app::update::action::Action;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};

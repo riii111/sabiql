@@ -1,4 +1,4 @@
-use crate::app::statement_classifier::StatementKind;
+use crate::app::policy::sql::statement_classifier::StatementKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOperation {

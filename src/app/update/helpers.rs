@@ -1,10 +1,10 @@
-use crate::app::connection_setup_state::{ConnectionField, ConnectionSetupState};
-use crate::app::services::AppServices;
-use crate::app::state::AppState;
-use crate::app::write_guardrails::{
+use crate::app::model::app_state::AppState;
+use crate::app::model::connection::setup::{ConnectionField, ConnectionSetupState};
+use crate::app::policy::write::write_guardrails::{
     TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::write_update::build_pk_pairs;
+use crate::app::policy::write::write_update::build_pk_pairs;
+use crate::app::services::AppServices;
 use crate::domain::{QueryResult, QuerySource};
 
 pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
@@ -63,7 +63,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn.is_none() {
         return Err("No active connection".to_string());
     }
-    if state.query.status() != crate::app::query_execution::QueryStatus::Idle {
+    if state.query.status() != crate::app::model::browse::query_execution::QueryStatus::Idle {
         return Err("Write is unavailable while query is running".to_string());
     }
 

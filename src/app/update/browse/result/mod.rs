@@ -6,10 +6,10 @@ mod yank;
 
 use std::time::Instant;
 
-use crate::app::action::Action;
-use crate::app::effect::Effect;
+use crate::app::cmd::effect::Effect;
+use crate::app::model::app_state::AppState;
 use crate::app::services::AppServices;
-use crate::app::state::AppState;
+use crate::app::update::action::Action;
 
 pub fn reduce_result(
     state: &mut AppState,

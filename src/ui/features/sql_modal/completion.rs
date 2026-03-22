@@ -3,8 +3,8 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
-use crate::app::sql_modal_context::CompletionKind;
-use crate::app::state::AppState;
+use crate::app::model::app_state::AppState;
+use crate::app::model::sql_editor::completion::CompletionKind;
 use crate::ui::theme::Theme;
 
 pub(super) fn render_completion_popup(
