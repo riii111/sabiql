@@ -339,6 +339,7 @@ pub fn reduce_sql_modal(
                         .sql_modal
                         .editor
                         .set_content_with_cursor(content, new_cursor);
+                    state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
                 }
                 state.sql_modal.completion.visible = false;
                 state.sql_modal.completion_debounce = None;

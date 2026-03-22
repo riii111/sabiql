@@ -1,11 +1,18 @@
-use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::action::{Action, InputTarget};
 use crate::app::update::input::keybindings::{self, Key, KeyCombo};
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
         return action;
     }
-    filter_fallback(combo, InputTarget::Filter)
+    // Char input falls through to filter (keybindings resolve Backspace/Left/Right/Home/End)
+    match combo.key {
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::Filter,
+            ch: c,
+        },
+        _ => Action::None,
+    }
 }
 
 pub fn handle_command_palette_keys(combo: KeyCombo) -> Action {
@@ -18,35 +25,24 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::QUERY_HISTORY_PICKER.resolve(&combo) {
         return action;
     }
-    filter_fallback(combo, InputTarget::QueryHistoryFilter)
+    match combo.key {
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::QueryHistoryFilter,
+            ch: c,
+        },
+        _ => Action::None,
+    }
 }
 
 pub fn handle_er_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::ER_PICKER.resolve(&combo) {
         return action;
     }
-    filter_fallback(combo, InputTarget::ErFilter)
-}
-
-fn filter_fallback(combo: KeyCombo, target: InputTarget) -> Action {
     match combo.key {
-        Key::Left => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::Left,
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::ErFilter,
+            ch: c,
         },
-        Key::Right => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::Right,
-        },
-        Key::Home => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::Home,
-        },
-        Key::End => Action::TextMoveCursor {
-            target,
-            direction: CursorMove::End,
-        },
-        Key::Char(c) => Action::TextInput { target, ch: c },
         _ => Action::None,
     }
 }

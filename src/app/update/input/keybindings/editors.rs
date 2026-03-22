@@ -336,6 +336,14 @@ pub const COMMAND_LINE_KEYS: &[KeyBinding] = &[
         combos: &[],
     },
     KeyBinding {
+        key_short: "←→",
+        key: "←→",
+        desc_short: "Move",
+        description: "Move cursor",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
         key_short: "Enter",
         key: "Enter",
         desc_short: "Submit",
