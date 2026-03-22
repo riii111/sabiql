@@ -13,8 +13,7 @@ pub(super) fn render_completion_popup(
     editor_area: Rect,
     state: &AppState,
 ) {
-    let (cursor_row, cursor_col) =
-        super::cursor::cursor_to_position(&state.sql_modal.content, state.sql_modal.cursor);
+    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
 
     let max_items = 8;
     let visible_count = state.sql_modal.completion.candidates.len().min(max_items);

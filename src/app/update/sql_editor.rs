@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use super::helpers::{char_count, char_to_byte_index};
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
@@ -15,7 +14,7 @@ use crate::app::policy::write::sql_risk::{
 use crate::app::policy::write::write_guardrails::{
     AdhocRiskDecision, RiskLevel, evaluate_sql_risk,
 };
-use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::action::{Action, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
 pub fn reduce_sql_modal(
@@ -61,9 +60,7 @@ pub fn reduce_sql_modal(
                 return Some(vec![]);
             }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert_str(byte_idx, &normalized);
-            state.sql_modal.cursor += normalized.chars().count();
+            state.sql_modal.editor.insert_str(&normalized);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             state.sql_modal.set_status(SqlModalStatus::Editing);
@@ -76,9 +73,7 @@ pub fn reduce_sql_modal(
             ch: c,
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert(byte_idx, *c);
-            state.sql_modal.cursor += 1;
+            state.sql_modal.editor.insert_char(*c);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -86,11 +81,7 @@ pub fn reduce_sql_modal(
             target: InputTarget::SqlModal,
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            if state.sql_modal.cursor > 0 {
-                state.sql_modal.cursor -= 1;
-                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                state.sql_modal.content.remove(byte_idx);
-            }
+            state.sql_modal.editor.backspace();
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -98,27 +89,19 @@ pub fn reduce_sql_modal(
             target: InputTarget::SqlModal,
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            let total_chars = char_count(&state.sql_modal.content);
-            if state.sql_modal.cursor < total_chars {
-                let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                state.sql_modal.content.remove(byte_idx);
-            }
+            state.sql_modal.editor.delete();
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalNewLine => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert(byte_idx, '\n');
-            state.sql_modal.cursor += 1;
+            state.sql_modal.editor.insert_newline();
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalTab => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
-            let byte_idx = char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-            state.sql_modal.content.insert_str(byte_idx, "    ");
-            state.sql_modal.cursor += 4;
+            state.sql_modal.editor.insert_tab();
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -126,64 +109,11 @@ pub fn reduce_sql_modal(
             target: InputTarget::SqlModal,
             direction: movement,
         } => {
-            let content = &state.sql_modal.content;
-            let cursor = state.sql_modal.cursor;
-            let total_chars = char_count(content);
-
-            let lines: Vec<(usize, usize)> = {
-                let mut result = Vec::new();
-                let mut start = 0;
-                for line in content.split('\n') {
-                    let len = line.chars().count();
-                    result.push((start, len));
-                    start += len + 1;
-                }
-                result
-            };
-
-            let (current_line, current_col) = {
-                let mut line_idx = 0;
-                let mut col = cursor;
-                for (i, (start, len)) in lines.iter().enumerate() {
-                    if cursor >= *start && cursor <= start + len {
-                        line_idx = i;
-                        col = cursor - start;
-                        break;
-                    }
-                }
-                (line_idx, col)
-            };
-
-            state.sql_modal.cursor = match movement {
-                CursorMove::Left => cursor.saturating_sub(1),
-                CursorMove::Right => (cursor + 1).min(total_chars),
-                CursorMove::Home => lines.get(current_line).map(|(s, _)| *s).unwrap_or(0),
-                CursorMove::End => lines
-                    .get(current_line)
-                    .map(|(s, l)| s + l)
-                    .unwrap_or(total_chars),
-                CursorMove::Up => {
-                    if current_line == 0 {
-                        cursor
-                    } else {
-                        let (prev_start, prev_len) = lines[current_line - 1];
-                        prev_start + current_col.min(prev_len)
-                    }
-                }
-                CursorMove::Down => {
-                    if current_line + 1 >= lines.len() {
-                        cursor
-                    } else {
-                        let (next_start, next_len) = lines[current_line + 1];
-                        next_start + current_col.min(next_len)
-                    }
-                }
-            };
+            state.sql_modal.editor.move_cursor(*movement);
             Some(vec![])
         }
         Action::SqlModalClear => {
-            state.sql_modal.content.clear();
-            state.sql_modal.cursor = 0;
+            state.sql_modal.editor.clear();
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion.candidates.clear();
             Some(vec![])
@@ -210,7 +140,7 @@ pub fn reduce_sql_modal(
             }
         }
         Action::SqlModalSubmit => {
-            let query = state.sql_modal.content.trim().to_string();
+            let query = state.sql_modal.editor.content().trim().to_string();
             if query.is_empty() {
                 return Some(vec![]);
             }
@@ -266,7 +196,7 @@ pub fn reduce_sql_modal(
         }
         Action::SqlModalConfirmExecute => {
             if matches!(state.sql_modal.status(), SqlModalStatus::Confirming(_)) {
-                let query = state.sql_modal.content.trim().to_string();
+                let query = state.sql_modal.editor.content().trim().to_string();
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 Some(adhoc_effects(state, query))
             } else {
@@ -358,7 +288,7 @@ pub fn reduce_sql_modal(
                 } if target_name.as_ref().is_some_and(|n| input.content() == n)
             );
             if matched {
-                let query = state.sql_modal.content.trim().to_string();
+                let query = state.sql_modal.editor.content().trim().to_string();
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 if let Some(dsn) = &state.session.dsn {
                     return Some(vec![Effect::ExecuteAdhoc {
@@ -381,15 +311,26 @@ pub fn reduce_sql_modal(
                 let candidates = std::mem::take(&mut state.sql_modal.completion.candidates);
 
                 if let Some(candidate) = candidates.into_iter().nth(selected_idx) {
-                    let start_byte = char_to_byte_index(&state.sql_modal.content, trigger_pos);
-                    let end_byte =
-                        char_to_byte_index(&state.sql_modal.content, state.sql_modal.cursor);
-                    state.sql_modal.content.drain(start_byte..end_byte);
-                    state
+                    let start_byte = state.sql_modal.editor.char_to_byte_index(trigger_pos);
+                    let end_byte = state
                         .sql_modal
-                        .content
-                        .insert_str(start_byte, &candidate.text);
-                    state.sql_modal.cursor = trigger_pos + candidate.text.chars().count();
+                        .editor
+                        .char_to_byte_index(state.sql_modal.editor.cursor());
+                    // Manually manipulate the underlying content for drain + insert_str at byte level.
+                    // This is the one place where we need byte-level access that MultiLineInputState
+                    // doesn't directly support, so we rebuild via set_content.
+                    let mut content = state.sql_modal.editor.content().to_string();
+                    content.drain(start_byte..end_byte);
+                    content.insert_str(start_byte, &candidate.text);
+                    let new_cursor = trigger_pos + candidate.text.chars().count();
+                    state.sql_modal.editor.set_content(content);
+                    // set_content moves cursor to end; adjust to desired position
+                    state.sql_modal.editor = {
+                        let c = state.sql_modal.editor.content().to_string();
+                        crate::app::model::shared::multi_line_input::MultiLineInputState::new(
+                            c, new_cursor,
+                        )
+                    };
                 }
                 state.sql_modal.completion.visible = false;
                 state.sql_modal.completion_debounce = None;
@@ -459,10 +400,10 @@ pub fn reduce_sql_modal(
                     _ => None,
                 },
                 SqlModalTab::Sql => {
-                    if state.sql_modal.content.is_empty() {
+                    if state.sql_modal.editor.content().is_empty() {
                         None
                     } else {
-                        Some(state.sql_modal.content.clone())
+                        Some(state.sql_modal.editor.content().to_string())
                     }
                 }
             };
@@ -538,12 +479,16 @@ mod tests {
         #[test]
         fn paste_inserts_at_cursor() {
             let mut state = editing_state();
-            state.sql_modal.content = "SELCT".to_string();
-            state.sql_modal.cursor = 3;
+            state.sql_modal.editor.set_content("SELCT".to_string());
+            {
+                let c = state.sql_modal.editor.content().to_string();
+                state.sql_modal.editor =
+                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 3);
+            }
 
             reduce_sql_modal(&mut state, &Action::Paste("E".to_string()), Instant::now());
 
-            assert_eq!(state.sql_modal.content, "SELECT");
+            assert_eq!(state.sql_modal.editor.content(), "SELECT");
         }
 
         #[test]
@@ -556,7 +501,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.content, "SELECT\n*\nFROM");
+            assert_eq!(state.sql_modal.editor.content(), "SELECT\n*\nFROM");
         }
 
         #[test]
@@ -569,14 +514,18 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.content, "a\nb");
+            assert_eq!(state.sql_modal.editor.content(), "a\nb");
         }
 
         #[test]
         fn paste_advances_cursor() {
             let mut state = editing_state();
-            state.sql_modal.content = "AB".to_string();
-            state.sql_modal.cursor = 1;
+            state.sql_modal.editor.set_content("AB".to_string());
+            {
+                let c = state.sql_modal.editor.content().to_string();
+                state.sql_modal.editor =
+                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 1);
+            }
 
             reduce_sql_modal(
                 &mut state,
@@ -584,7 +533,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
+            assert_eq!(state.sql_modal.editor.cursor(), 4); // 1 + 3
         }
 
         #[test]
@@ -600,8 +549,12 @@ mod tests {
         #[test]
         fn paste_with_multibyte() {
             let mut state = editing_state();
-            state.sql_modal.content = "ab".to_string();
-            state.sql_modal.cursor = 1;
+            state.sql_modal.editor.set_content("ab".to_string());
+            {
+                let c = state.sql_modal.editor.content().to_string();
+                state.sql_modal.editor =
+                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 1);
+            }
 
             reduce_sql_modal(
                 &mut state,
@@ -609,14 +562,17 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.content, "a日本語b");
-            assert_eq!(state.sql_modal.cursor, 4); // 1 + 3
+            assert_eq!(state.sql_modal.editor.content(), "a日本語b");
+            assert_eq!(state.sql_modal.editor.cursor(), 4); // 1 + 3
         }
 
         #[test]
         fn paste_in_confirming_high_is_ignored() {
             let mut state = editing_state();
-            state.sql_modal.content = "DROP TABLE users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE users".to_string());
             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                 decision: crate::app::policy::write::write_guardrails::AdhocRiskDecision {
                     risk_level: RiskLevel::High,
@@ -632,7 +588,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.content, "DROP TABLE users");
+            assert_eq!(state.sql_modal.editor.content(), "DROP TABLE users");
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingHigh { .. }
@@ -643,10 +599,11 @@ mod tests {
     mod confirming_high {
         use super::*;
         use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
+        use crate::app::update::action::CursorMove;
 
         fn confirming_high_state(content: &str, target: Option<&str>) -> AppState {
             let mut state = sql_modal_state();
-            state.sql_modal.content = content.to_string();
+            state.sql_modal.editor.set_content(content.to_string());
             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                 decision: AdhocRiskDecision {
                     risk_level: RiskLevel::High,
@@ -661,7 +618,10 @@ mod tests {
         #[test]
         fn submit_high_risk_drop_enters_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DROP TABLE users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -677,7 +637,10 @@ mod tests {
         #[test]
         fn submit_other_falls_back_to_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "GRANT ALL ON users TO role1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("GRANT ALL ON users TO role1".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -690,7 +653,10 @@ mod tests {
         #[test]
         fn submit_unsupported_falls_back_to_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "COPY users FROM '/tmp/data.csv'".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("COPY users FROM '/tmp/data.csv'".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -703,7 +669,10 @@ mod tests {
         #[test]
         fn submit_medium_risk_stays_confirming() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "UPDATE users SET x=1 WHERE id=1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -878,7 +847,10 @@ mod tests {
         #[test]
         fn submit_delete_no_where_enters_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DELETE FROM users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -894,7 +866,10 @@ mod tests {
         #[test]
         fn submit_update_no_where_enters_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "UPDATE users SET x=1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE users SET x=1".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -910,7 +885,10 @@ mod tests {
         #[test]
         fn submit_truncate_enters_confirming_high() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "TRUNCATE users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("TRUNCATE users".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -926,7 +904,10 @@ mod tests {
         #[test]
         fn submit_drop_schema_qualified_preserves_full_name() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DROP TABLE my_schema.very_long_table_name".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE my_schema.very_long_table_name".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -977,7 +958,10 @@ mod tests {
         fn read_only_blocks_write_query_in_sql_modal() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users WHERE id = 1".to_string());
             state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.read_only = true;
 
@@ -1010,7 +994,10 @@ mod tests {
             assert!(state.sql_modal.last_adhoc_success().is_some());
 
             // Now submit a write query in read-only mode
-            state.sql_modal.content = "DELETE FROM users WHERE id = 1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users WHERE id = 1".to_string());
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
@@ -1022,7 +1009,7 @@ mod tests {
         fn read_only_allows_select_query() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("postgres://localhost/test".to_string());
             state.session.read_only = true;
 
@@ -1041,7 +1028,7 @@ mod tests {
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            state.sql_modal.content = query.to_string();
+            state.sql_modal.editor.set_content(query.to_string());
             state.session.dsn = Some("postgres://localhost/test".to_string());
             state
         }
@@ -1163,7 +1150,7 @@ mod tests {
         #[test]
         fn yank_non_empty_emits_copy_effect() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
@@ -1209,7 +1196,7 @@ mod tests {
         #[test]
         fn paste_ignored_in_normal_mode() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "original".to_string();
+            state.sql_modal.editor.set_content("original".to_string());
 
             reduce_sql_modal(
                 &mut state,
@@ -1217,7 +1204,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.sql_modal.content, "original");
+            assert_eq!(state.sql_modal.editor.content(), "original");
         }
     }
 
@@ -1245,7 +1232,7 @@ mod tests {
         #[test]
         fn sql_tab_yank_copies_content() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.sql_modal.active_tab = SqlModalTab::Sql;
 
             let effects =
@@ -1260,7 +1247,7 @@ mod tests {
         #[test]
         fn sql_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = String::new();
+            state.sql_modal.editor.set_content(String::new());
             state.sql_modal.active_tab = SqlModalTab::Sql;
 
             let effects =

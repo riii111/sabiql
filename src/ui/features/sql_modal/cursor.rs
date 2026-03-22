@@ -1,3 +1,4 @@
+#[allow(dead_code)] // Will be removed in Phase 5 cleanup
 pub(super) fn cursor_to_position(content: &str, cursor_pos: usize) -> (usize, usize) {
     let mut row = 0;
     let mut col = 0;

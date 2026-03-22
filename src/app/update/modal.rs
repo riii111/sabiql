@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use super::helpers::char_count;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
@@ -242,15 +241,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
                     state
                         .sql_modal
                         .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
-                    state.sql_modal.content = query;
-                    state.sql_modal.cursor = char_count(&state.sql_modal.content);
+                    state.sql_modal.editor.set_content(query);
                     state.sql_modal.completion.visible = false;
                     state.sql_modal.completion.candidates.clear();
                     state.sql_modal.completion.selected_index = 0;
                 }
                 InputMode::SqlModal => {
-                    state.sql_modal.content = query;
-                    state.sql_modal.cursor = char_count(&state.sql_modal.content);
+                    state.sql_modal.editor.set_content(query);
                     state
                         .sql_modal
                         .set_status(crate::app::model::sql_editor::modal::SqlModalStatus::Editing);
@@ -785,7 +782,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(state.sql_modal.cursor, expected_chars);
+            assert_eq!(state.sql_modal.editor.cursor(), expected_chars);
         }
 
         #[test]
@@ -805,7 +802,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
-            assert_eq!(state.sql_modal.content, "SELECT * FROM users");
+            assert_eq!(state.sql_modal.editor.content(), "SELECT * FROM users");
             assert!(effects.is_empty());
         }
 
@@ -813,7 +810,7 @@ mod tests {
         fn confirm_from_sql_modal_overwrites_editor_content() {
             let mut state = connected_state();
             enter_query_history(&mut state, InputMode::SqlModal);
-            state.sql_modal.content = "old query".to_string();
+            state.sql_modal.editor.set_content("old query".to_string());
             let test_conn = ConnectionId::from_string("test-conn");
             state.query_history_picker.entries = vec![make_entry("new query", &test_conn)];
             state.query_history_picker.selected = 0;
@@ -826,7 +823,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::SqlModal);
-            assert_eq!(state.sql_modal.content, "new query");
+            assert_eq!(state.sql_modal.editor.content(), "new query");
         }
 
         #[test]

@@ -10,7 +10,7 @@ use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
 pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
-    let content = &state.sql_modal.content;
+    let content = state.sql_modal.editor.content();
 
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
     if matches!(
@@ -35,8 +35,7 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
     );
 
-    let cursor_pos = state.sql_modal.cursor;
-    let (cursor_row, cursor_col) = super::cursor::cursor_to_position(content, cursor_pos);
+    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
     let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
 
     let mut lines: Vec<Line> = if content.is_empty() {

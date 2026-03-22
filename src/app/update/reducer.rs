@@ -399,8 +399,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.content, "a");
-            assert_eq!(state.sql_modal.cursor, 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce.is_some());
         }
@@ -408,8 +408,7 @@ mod tests {
         #[test]
         fn sql_modal_backspace_sets_debounce_state() {
             let mut state = create_test_state();
-            state.sql_modal.content = "ab".to_string();
-            state.sql_modal.cursor = 2;
+            state.sql_modal.editor.set_content("ab".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -421,8 +420,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.content, "a");
-            assert_eq!(state.sql_modal.cursor, 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce.is_some());
         }
