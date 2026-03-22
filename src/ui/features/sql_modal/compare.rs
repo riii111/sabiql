@@ -176,8 +176,8 @@ fn render_slot_columns(
         None => " Previous".to_string(),
     };
     let right_label = match right {
-        Some(s) => s.source.label().to_string(),
-        None => "Latest".to_string(),
+        Some(s) => format!(" {}", s.source.label()),
+        None => " Latest".to_string(),
     };
 
     push_chrome(

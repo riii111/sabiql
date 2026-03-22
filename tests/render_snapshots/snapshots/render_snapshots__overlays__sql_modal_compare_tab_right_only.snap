@@ -8,7 +8,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                  ││(select a table)                                          │
 │                  ││                                                          │
 │       ╭ SQL Editor ── [SQL] [Plan] [Compare] ────────────────────────╮       │
-│       │  Previous                    │ Latest                        │       │
+│       │  Previous                    │  Latest                       │       │
 │       │  Run EXPLAIN again           │  EXPLAIN  (0.04s)             │       │
 │       │  ─────────────────────────── │  ───────────────────────────  │       │
 │       │                              │  Seq Scan on users  (cost=0…  │       │
