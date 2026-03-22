@@ -425,21 +425,23 @@ pub fn reduce_sql_modal(
                 SqlModalTab::Plan => state.explain.plan_text.clone(),
                 SqlModalTab::Compare => {
                     let mut parts = Vec::new();
-                    for s in [&state.explain.left, &state.explain.right]
-                        .into_iter()
-                        .flatten()
-                    {
-                        let mode = if s.plan.is_analyze {
-                            "ANALYZE"
-                        } else {
-                            "EXPLAIN"
-                        };
-                        let secs = s.plan.execution_time_ms as f64 / 1000.0;
-                        let label = s.source.label();
-                        parts.push(format!(
-                            "--- {} ({}, {:.2}s) ---\n{}",
-                            label, mode, secs, s.plan.raw_text
-                        ));
+                    for (pos, slot) in [
+                        ("Left", &state.explain.left),
+                        ("Right", &state.explain.right),
+                    ] {
+                        if let Some(s) = slot {
+                            let mode = if s.plan.is_analyze {
+                                "ANALYZE"
+                            } else {
+                                "EXPLAIN"
+                            };
+                            let secs = s.plan.execution_time_ms as f64 / 1000.0;
+                            let label = s.source.label();
+                            parts.push(format!(
+                                "--- {}: {} ({}, {:.2}s) ---\n{}",
+                                pos, label, mode, secs, s.plan.raw_text
+                            ));
+                        }
                     }
                     if parts.is_empty() {
                         None
@@ -1323,10 +1325,29 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {
-                assert!(content.contains("--- Previous (EXPLAIN, 0.42s) ---"));
+                assert!(content.contains("--- Left: Previous (EXPLAIN, 0.42s) ---"));
                 assert!(content.contains("Seq Scan"));
-                assert!(content.contains("--- Latest (ANALYZE, 0.05s) ---"));
+                assert!(content.contains("--- Right: Latest (ANALYZE, 0.05s) ---"));
                 assert!(content.contains("Index Scan"));
+            } else {
+                panic!("expected CopyToClipboard");
+            }
+        }
+
+        #[test]
+        fn compare_tab_yank_both_manual_distinguishable() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::Manual));
+            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::Manual));
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            if let Effect::CopyToClipboard { content, .. } = &effects[0] {
+                assert!(content.contains("--- Left: Manual"));
+                assert!(content.contains("--- Right: Manual"));
             } else {
                 panic!("expected CopyToClipboard");
             }
@@ -1344,7 +1365,7 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Latest"))
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Right: Latest"))
             );
         }
 
@@ -1360,7 +1381,7 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(
-                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Pinned"))
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("Left: Pinned"))
             );
         }
 

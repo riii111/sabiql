@@ -168,7 +168,7 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "l",
         key: "l",
-        desc_short: "Left slot",
+        desc_short: "Left",
         description: "Cycle left comparison slot",
         action: Action::CompareSelectLeftSlot,
         combos: &[KeyCombo::plain(Key::Char('l'))],
@@ -176,7 +176,7 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "r",
         key: "r",
-        desc_short: "Right slot",
+        desc_short: "Right",
         description: "Cycle right comparison slot",
         action: Action::CompareSelectRightSlot,
         combos: &[KeyCombo::plain(Key::Char('r'))],
