@@ -9,7 +9,7 @@ pub mod modal;
 pub mod reducer;
 pub mod sql_editor;
 
-// Re-exports (backward compat with old reducers/mod.rs)
+// Facade: re-export sub-reducer entry points for update/reducer.rs dispatch
 pub use browse::metadata::reduce_metadata;
 pub use browse::navigation::reduce_navigation;
 pub use browse::query::reduce_query;
