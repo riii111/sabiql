@@ -293,15 +293,30 @@ fn render_slot_stacked(
         .add_modifier(Modifier::BOLD);
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
-    render_stacked_slot(lines, flash_mask, left, header_style, badge_style);
+    render_stacked_slot(
+        lines,
+        flash_mask,
+        left,
+        " Previous",
+        header_style,
+        badge_style,
+    );
     push_empty(lines, flash_mask);
-    render_stacked_slot(lines, flash_mask, right, header_style, badge_style);
+    render_stacked_slot(
+        lines,
+        flash_mask,
+        right,
+        " Latest",
+        header_style,
+        badge_style,
+    );
 }
 
 fn render_stacked_slot(
     lines: &mut Vec<Line>,
     flash_mask: &mut Vec<bool>,
     slot: Option<&CompareSlot>,
+    empty_label: &str,
     active_style: Style,
     badge_style: Style,
 ) {
@@ -334,7 +349,7 @@ fn render_stacked_slot(
                 lines,
                 flash_mask,
                 Line::from(Span::styled(
-                    " Previous",
+                    empty_label.to_string(),
                     Style::default()
                         .fg(Theme::TEXT_DIM)
                         .add_modifier(Modifier::BOLD),

@@ -1334,7 +1334,7 @@ mod tests {
         }
 
         #[test]
-        fn compare_tab_yank_both_auto_distinguishable() {
+        fn both_auto_slots_yank_returns_distinguishable_headers() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Compare;
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));

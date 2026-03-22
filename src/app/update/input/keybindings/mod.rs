@@ -634,6 +634,39 @@ mod tests {
             );
         }
 
+        #[rstest]
+        #[case(idx::sql_modal_plan::EXPLAIN, Action::ExplainRequest)]
+        #[case(idx::sql_modal_plan::ANALYZE, Action::ExplainAnalyzeRequest)]
+        #[case(idx::sql_modal_plan::YANK, Action::SqlModalYank)]
+        #[case(idx::sql_modal_plan::TAB, Action::SqlModalNextTab)]
+        #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
+        #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
+        fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
+                    == std::mem::discriminant(&expected),
+                "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
+                SQL_MODAL_PLAN_KEYS[i].action
+            );
+        }
+
+        #[rstest]
+        #[case(idx::sql_modal_compare::EXPLAIN, Action::ExplainRequest)]
+        #[case(idx::sql_modal_compare::ANALYZE, Action::ExplainAnalyzeRequest)]
+        #[case(idx::sql_modal_compare::EDIT_QUERY, Action::CompareEditQuery)]
+        #[case(idx::sql_modal_compare::YANK, Action::SqlModalYank)]
+        #[case(idx::sql_modal_compare::TAB, Action::SqlModalNextTab)]
+        #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
+        #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
+        fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
+            assert!(
+                std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
+                    == std::mem::discriminant(&expected),
+                "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
+                SQL_MODAL_COMPARE_KEYS[i].action
+            );
+        }
+
         // ------------------------------------------------------------------ //
         // 2. Non-None bindings have at least one combo (KeyBinding arrays)
         // ------------------------------------------------------------------ //
