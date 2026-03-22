@@ -101,9 +101,11 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
     );
     crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
+    let scroll_row = state.sql_modal.editor.scroll_row() as u16;
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
+            .scroll((scroll_row, 0))
             .style(Style::default()),
         area,
     );

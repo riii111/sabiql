@@ -6,6 +6,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
 use crate::domain::er::er_output_filename;
+use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
 use crate::ui::primitives::molecules::render_modal;
@@ -65,17 +66,20 @@ impl ErTablePicker {
         state.ui.er_picker.pane_height = list_area.height;
 
         // Filter input
-        let filter_line = Line::from(vec![
-            Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(state.ui.er_picker.filter_input.content()),
-            Span::styled(
-                "█",
-                Style::default()
-                    .fg(Theme::CURSOR_FG)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ]);
-        frame.render_widget(Paragraph::new(filter_line), filter_area);
+        let input = &state.ui.er_picker.filter_input;
+        let visible_width = filter_area.width.saturating_sub(4) as usize;
+        let cursor_spans = text_cursor_spans(
+            input.content(),
+            input.cursor(),
+            input.viewport_offset(),
+            visible_width,
+        );
+        let mut spans = vec![Span::styled(
+            "  > ",
+            Style::default().fg(Theme::MODAL_TITLE),
+        )];
+        spans.extend(cursor_spans);
+        frame.render_widget(Paragraph::new(Line::from(spans)), filter_area);
 
         // 3-line execution preview
         let preview_lines = vec![

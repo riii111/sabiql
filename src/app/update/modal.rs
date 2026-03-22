@@ -1,6 +1,8 @@
 use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
+
+const FILTER_VISIBLE_WIDTH: usize = 40;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::model::shared::input_mode::InputMode;
@@ -95,6 +97,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             ch: c,
         } => {
             state.ui.er_picker.filter_input.insert_char(*c);
+            state
+                .ui
+                .er_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             state.ui.er_picker.reset();
             Some(vec![])
         }
@@ -102,6 +109,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             target: InputTarget::ErFilter,
         } => {
             state.ui.er_picker.filter_input.backspace();
+            state
+                .ui
+                .er_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             state.ui.er_picker.reset();
             Some(vec![])
         }
@@ -110,6 +122,11 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             direction: movement,
         } => {
             state.ui.er_picker.filter_input.move_cursor(*movement);
+            state
+                .ui
+                .er_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             Some(vec![])
         }
         Action::ErToggleSelection => {

@@ -4,6 +4,11 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::app::update::input::palette::palette_command_count;
 
+// Approximate visible width for filter inputs. Exact width depends on modal size,
+// but a conservative estimate prevents cursor from going off-screen.
+const FILTER_VISIBLE_WIDTH: usize = 40;
+const COMMAND_LINE_VISIBLE_WIDTH: usize = 70;
+
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::Paste(text) => match state.modal.active_mode() {
@@ -47,6 +52,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             ch: c,
         } => {
             state.ui.table_picker.filter_input.insert_char(*c);
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             state.ui.table_picker.reset();
             Some(vec![])
         }
@@ -54,6 +64,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             target: InputTarget::Filter,
         } => {
             state.ui.table_picker.filter_input.backspace();
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             state.ui.table_picker.reset();
             Some(vec![])
         }
@@ -62,6 +77,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             direction: movement,
         } => {
             state.ui.table_picker.filter_input.move_cursor(*movement);
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .update_viewport(FILTER_VISIBLE_WIDTH);
             Some(vec![])
         }
 
@@ -79,12 +99,18 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             ch: c,
         } => {
             state.command_line_input.insert_char(*c);
+            state
+                .command_line_input
+                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
             Some(vec![])
         }
         Action::TextBackspace {
             target: InputTarget::CommandLine,
         } => {
             state.command_line_input.backspace();
+            state
+                .command_line_input
+                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
             Some(vec![])
         }
         Action::TextMoveCursor {
@@ -92,6 +118,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             direction: movement,
         } => {
             state.command_line_input.move_cursor(*movement);
+            state
+                .command_line_input
+                .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
             Some(vec![])
         }
 

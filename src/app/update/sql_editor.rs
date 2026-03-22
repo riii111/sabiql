@@ -17,6 +17,11 @@ use crate::app::policy::write::write_guardrails::{
 use crate::app::update::action::{Action, InputTarget};
 use crate::domain::explain_plan::{ComparisonVerdict, compare_plans};
 
+// Conservative estimate for visible editor rows. The actual height depends on terminal size
+// and modal layout (60% height - status bar - separator). This ensures scroll tracking stays
+// reasonably close even without exact dimensions.
+const EDITOR_VISIBLE_ROWS: usize = 8;
+
 pub fn reduce_sql_modal(
     state: &mut AppState,
     action: &Action,
@@ -61,6 +66,7 @@ pub fn reduce_sql_modal(
             }
             let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
             state.sql_modal.editor.insert_str(&normalized);
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion.visible = false;
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             state.sql_modal.set_status(SqlModalStatus::Editing);
@@ -74,6 +80,7 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_char(*c);
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -82,6 +89,7 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.backspace();
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -90,18 +98,21 @@ pub fn reduce_sql_modal(
         } => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.delete();
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalNewLine => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_newline();
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
         Action::SqlModalTab => {
             state.sql_modal.set_status(SqlModalStatus::Editing);
             state.sql_modal.editor.insert_tab();
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             state.sql_modal.completion_debounce = Some(now + Duration::from_millis(100));
             Some(vec![])
         }
@@ -110,6 +121,7 @@ pub fn reduce_sql_modal(
             direction: movement,
         } => {
             state.sql_modal.editor.move_cursor(*movement);
+            state.sql_modal.editor.update_scroll(EDITOR_VISIBLE_ROWS);
             Some(vec![])
         }
         Action::SqlModalClear => {
