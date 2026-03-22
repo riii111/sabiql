@@ -1,3 +1,8 @@
+pub mod cmd;
+pub mod model;
+pub mod policy;
+pub mod update;
+
 pub mod action;
 pub mod browse_session;
 pub mod cache;
