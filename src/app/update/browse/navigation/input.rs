@@ -1,12 +1,10 @@
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::picker::FILTER_VISIBLE_WIDTH;
 use crate::app::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::app::update::input::palette::palette_command_count;
 
-// Approximate visible width for filter inputs. Exact width depends on modal size,
-// but a conservative estimate prevents cursor from going off-screen.
-const FILTER_VISIBLE_WIDTH: usize = 40;
 const COMMAND_LINE_VISIBLE_WIDTH: usize = 70;
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {

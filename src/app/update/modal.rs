@@ -1,11 +1,10 @@
 use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
-
-const FILTER_VISIBLE_WIDTH: usize = 40;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::picker::FILTER_VISIBLE_WIDTH;
 use crate::app::update::action::{
     Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
 };

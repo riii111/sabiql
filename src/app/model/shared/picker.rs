@@ -1,5 +1,7 @@
 use super::text_input::TextInputState;
 
+pub const FILTER_VISIBLE_WIDTH: usize = 40;
+
 #[derive(Debug, Clone, Default)]
 pub struct PickerState {
     selected: usize,
