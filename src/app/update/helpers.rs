@@ -172,19 +172,19 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
 
     match field {
         ConnectionField::Host => {
-            if state.host.trim().is_empty() {
+            if state.host.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::Port => {
-            if state.port.trim().is_empty() {
+            if state.port.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             } else {
-                match state.port.parse::<u16>() {
+                match state.port.content().parse::<u16>() {
                     Err(_) => {
                         state
                             .validation_errors
@@ -200,21 +200,21 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
             }
         }
         ConnectionField::Database => {
-            if state.database.trim().is_empty() {
+            if state.database.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::User => {
-            if state.user.trim().is_empty() {
+            if state.user.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::Name => {
-            let name = state.name.trim();
+            let name = state.name.content().trim().to_string();
             if name.is_empty() {
                 state
                     .validation_errors
@@ -298,13 +298,11 @@ mod tests {
 
     mod validate_field_name {
         use super::*;
+        use crate::app::model::shared::text_input::TextInputState;
 
         #[test]
         fn empty_name_sets_error() {
-            let mut state = ConnectionSetupState {
-                name: "".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -315,11 +313,10 @@ mod tests {
         }
 
         #[test]
+        #[allow(clippy::field_reassign_with_default)]
         fn whitespace_only_name_sets_error() {
-            let mut state = ConnectionSetupState {
-                name: "   ".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state.name = TextInputState::new("   ", 3);
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -333,10 +330,9 @@ mod tests {
         #[case("a".repeat(50), false)]
         #[case("a".repeat(51), true)]
         fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
-            let mut state = ConnectionSetupState {
-                name,
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            let len = name.chars().count();
+            state.name = TextInputState::new(name, len);
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -352,14 +348,11 @@ mod tests {
 
         #[test]
         fn valid_name_clears_previous_error() {
-            let mut state = ConnectionSetupState {
-                name: "".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
             assert!(state.validation_errors.contains_key(&ConnectionField::Name));
 
-            state.name = "Valid Name".to_string();
+            state.name.set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));

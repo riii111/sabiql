@@ -6,8 +6,14 @@ fn connection_setup_form() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state.connection_setup.database = "mydb".to_string();
-    state.connection_setup.user = "postgres".to_string();
+    state
+        .connection_setup
+        .database
+        .set_content("mydb".to_string());
+    state
+        .connection_setup
+        .user
+        .set_content("postgres".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -21,9 +27,8 @@ fn connection_setup_cursor_at_head() {
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state.connection_setup.focused_field = ConnectionField::Host;
-    state.connection_setup.host = "db.example.com".to_string();
-    state.connection_setup.cursor_position = 0;
-    state.connection_setup.viewport_offset = 0;
+    state.connection_setup.host =
+        sabiql::app::model::shared::text_input::TextInputState::new("db.example.com", 0);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -37,9 +42,8 @@ fn connection_setup_cursor_at_middle() {
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state.connection_setup.focused_field = ConnectionField::Host;
-    state.connection_setup.host = "db.example.com".to_string();
-    state.connection_setup.cursor_position = 7;
-    state.connection_setup.viewport_offset = 0;
+    state.connection_setup.host =
+        sabiql::app::model::shared::text_input::TextInputState::new("db.example.com", 7);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -53,9 +57,10 @@ fn connection_setup_cursor_at_tail() {
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state.connection_setup.focused_field = ConnectionField::Host;
-    state.connection_setup.host = "db.example.com".to_string();
-    state.connection_setup.cursor_position = 14;
-    state.connection_setup.viewport_offset = 0;
+    state
+        .connection_setup
+        .host
+        .set_content("db.example.com".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -68,9 +73,9 @@ fn connection_setup_with_validation_errors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state.connection_setup.host = String::new();
-    state.connection_setup.database = String::new();
-    state.connection_setup.user = String::new();
+    state.connection_setup.host = Default::default();
+    state.connection_setup.database = Default::default();
+    state.connection_setup.user = Default::default();
     state
         .connection_setup
         .validation_errors

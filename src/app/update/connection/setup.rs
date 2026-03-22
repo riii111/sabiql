@@ -5,10 +5,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
 use crate::app::model::connection::state::ConnectionState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::update::action::{Action, ConnectionTarget, CursorMove, InputTarget};
-use crate::app::update::helpers::{
-    insert_char_at_cursor, insert_str_at_cursor, validate_all, validate_field,
-};
+use crate::app::update::action::{Action, ConnectionTarget, InputTarget};
+use crate::app::update::helpers::{validate_all, validate_field};
 use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
 
@@ -46,7 +44,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             match setup.focused_field {
                 ConnectionField::Port => {
-                    let current_len = setup.port.chars().count();
+                    let current_len = setup.port.char_count();
                     let remaining = 5usize.saturating_sub(current_len);
                     let digits: String = clean
                         .chars()
@@ -54,25 +52,16 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                         .take(remaining)
                         .collect();
                     if !digits.is_empty() {
-                        let inserted =
-                            insert_str_at_cursor(&mut setup.port, setup.cursor_position, &digits);
-                        let new_cursor = setup.cursor_position + inserted;
-                        setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                        setup.port.insert_str(&digits);
+                        setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::SslMode => {}
                 _ => {
-                    let field_str = match setup.focused_field {
-                        ConnectionField::Name => &mut setup.name,
-                        ConnectionField::Host => &mut setup.host,
-                        ConnectionField::Database => &mut setup.database,
-                        ConnectionField::User => &mut setup.user,
-                        ConnectionField::Password => &mut setup.password,
-                        _ => unreachable!(),
-                    };
-                    let inserted = insert_str_at_cursor(field_str, setup.cursor_position, &clean);
-                    let new_cursor = setup.cursor_position + inserted;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                    if let Some(input) = setup.focused_input_mut() {
+                        input.insert_str(&clean);
+                        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                    }
                 }
             }
             Some(vec![])
@@ -85,39 +74,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         } => {
             let setup = &mut state.connection_setup;
             match setup.focused_field {
-                ConnectionField::Name => {
-                    insert_char_at_cursor(&mut setup.name, setup.cursor_position, *c);
-                    let new_cursor = setup.cursor_position + 1;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
-                ConnectionField::Host => {
-                    insert_char_at_cursor(&mut setup.host, setup.cursor_position, *c);
-                    let new_cursor = setup.cursor_position + 1;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.chars().count() < 5 {
-                        insert_char_at_cursor(&mut setup.port, setup.cursor_position, *c);
-                        let new_cursor = setup.cursor_position + 1;
-                        setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
+                    if c.is_ascii_digit() && setup.port.char_count() < 5 {
+                        setup.port.insert_char(*c);
+                        setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::Database => {
-                    insert_char_at_cursor(&mut setup.database, setup.cursor_position, *c);
-                    let new_cursor = setup.cursor_position + 1;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
-                ConnectionField::User => {
-                    insert_char_at_cursor(&mut setup.user, setup.cursor_position, *c);
-                    let new_cursor = setup.cursor_position + 1;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
-                ConnectionField::Password => {
-                    insert_char_at_cursor(&mut setup.password, setup.cursor_position, *c);
-                    let new_cursor = setup.cursor_position + 1;
-                    setup.update_cursor(new_cursor, CONNECTION_INPUT_VISIBLE_WIDTH);
-                }
                 ConnectionField::SslMode => {}
+                _ => {
+                    if let Some(input) = setup.focused_input_mut() {
+                        input.insert_char(*c);
+                        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                    }
+                }
             }
             Some(vec![])
         }
@@ -125,22 +94,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             target: InputTarget::ConnectionSetup,
         } => {
             let setup = &mut state.connection_setup;
-            if setup.cursor_position == 0 {
-                return Some(vec![]);
-            }
-            let field_str = match setup.focused_field {
-                ConnectionField::Name => &mut setup.name,
-                ConnectionField::Host => &mut setup.host,
-                ConnectionField::Port => &mut setup.port,
-                ConnectionField::Database => &mut setup.database,
-                ConnectionField::User => &mut setup.user,
-                ConnectionField::Password => &mut setup.password,
-                ConnectionField::SslMode => return Some(vec![]),
-            };
-            let char_pos = setup.cursor_position - 1;
-            if let Some((byte_idx, _)) = field_str.char_indices().nth(char_pos) {
-                field_str.remove(byte_idx);
-                setup.update_cursor(char_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
+            if let Some(input) = setup.focused_input_mut() {
+                input.backspace();
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
             Some(vec![])
         }
@@ -149,24 +105,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             direction: movement,
         } => {
             let setup = &mut state.connection_setup;
-            let field_str = match setup.focused_field {
-                ConnectionField::Name => &setup.name,
-                ConnectionField::Host => &setup.host,
-                ConnectionField::Port => &setup.port,
-                ConnectionField::Database => &setup.database,
-                ConnectionField::User => &setup.user,
-                ConnectionField::Password => &setup.password,
-                ConnectionField::SslMode => return Some(vec![]),
-            };
-            let len = field_str.chars().count();
-            let new_pos = match movement {
-                CursorMove::Left => setup.cursor_position.saturating_sub(1),
-                CursorMove::Right => (setup.cursor_position + 1).min(len),
-                CursorMove::Home => 0,
-                CursorMove::End => len,
-                CursorMove::Up | CursorMove::Down => return Some(vec![]),
-            };
-            setup.update_cursor(new_pos, CONNECTION_INPUT_VISIBLE_WIDTH);
+            if let Some(input) = setup.focused_input_mut() {
+                input.move_cursor(*movement);
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
             Some(vec![])
         }
         Action::ConnectionSetupNextField => {
@@ -174,7 +116,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             validate_field(setup, setup.focused_field);
             if let Some(next) = setup.focused_field.next() {
                 setup.focused_field = next;
-                setup.cursor_to_end();
+                // Each field retains its own cursor position (per-field TextInputState)
             }
             Some(vec![])
         }
@@ -183,7 +125,6 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             validate_field(setup, setup.focused_field);
             if let Some(prev) = setup.focused_field.prev() {
                 setup.focused_field = prev;
-                setup.cursor_to_end();
             }
             Some(vec![])
         }
@@ -236,19 +177,19 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             let setup = &mut state.connection_setup;
             validate_all(setup);
             if setup.validation_errors.is_empty() {
-                let port = setup.port.parse().unwrap_or(5432);
+                let port = setup.port.content().parse().unwrap_or(5432);
                 state
                     .session
                     .set_connection_state(ConnectionState::Connecting);
                 state.session.set_metadata_state(MetadataState::Loading);
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
-                    name: setup.name.clone(),
-                    host: setup.host.clone(),
+                    name: setup.name.content().to_string(),
+                    host: setup.host.content().to_string(),
                     port,
-                    database: setup.database.clone(),
-                    user: setup.user.clone(),
-                    password: setup.password.clone(),
+                    database: setup.database.content().to_string(),
+                    user: setup.user.content().to_string(),
+                    password: setup.password.content().to_string(),
                     ssl_mode: setup.ssl_mode,
                 }])
             } else {
@@ -314,19 +255,19 @@ mod tests {
     mod paste {
         use super::*;
         use crate::app::model::connection::setup::ConnectionField;
+        use crate::app::model::shared::text_input::TextInputState;
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.focused_field = field;
-            state.connection_setup.cursor_position = 0;
             // Clear default values so tests start clean
-            state.connection_setup.host.clear();
-            state.connection_setup.port.clear();
-            state.connection_setup.database.clear();
-            state.connection_setup.user.clear();
-            state.connection_setup.name.clear();
-            state.connection_setup.password.clear();
+            state.connection_setup.host = TextInputState::default();
+            state.connection_setup.port = TextInputState::default();
+            state.connection_setup.database = TextInputState::default();
+            state.connection_setup.user = TextInputState::default();
+            state.connection_setup.name = TextInputState::default();
+            state.connection_setup.password = TextInputState::default();
             state
         }
 
@@ -340,7 +281,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host, "db.example.com");
+            assert_eq!(state.connection_setup.host.content(), "db.example.com");
         }
 
         #[test]
@@ -353,14 +294,13 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port, "5432");
+            assert_eq!(state.connection_setup.port.content(), "5432");
         }
 
         #[test]
         fn paste_into_port_respects_limit() {
             let mut state = setup_state_with_field(ConnectionField::Port);
-            state.connection_setup.port = "54".to_string();
-            state.connection_setup.cursor_position = 2;
+            state.connection_setup.port.set_content("54".to_string());
 
             reduce(
                 &mut state,
@@ -368,18 +308,17 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.port, "54321");
+            assert_eq!(state.connection_setup.port.content(), "54321");
         }
 
         #[test]
         fn paste_into_full_port_does_nothing() {
             let mut state = setup_state_with_field(ConnectionField::Port);
-            state.connection_setup.port = "12345".to_string();
-            state.connection_setup.cursor_position = 5;
+            state.connection_setup.port.set_content("12345".to_string());
 
             reduce(&mut state, &Action::Paste("6".to_string()), Instant::now());
 
-            assert_eq!(state.connection_setup.port, "12345");
+            assert_eq!(state.connection_setup.port.content(), "12345");
         }
 
         #[test]
@@ -392,7 +331,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.host, "localhost");
+            assert_eq!(state.connection_setup.host.content(), "localhost");
         }
 
         #[test]
@@ -410,7 +349,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_updates_cursor_and_viewport() {
+        fn paste_updates_cursor() {
             let mut state = setup_state_with_field(ConnectionField::Host);
 
             reduce(
@@ -419,7 +358,7 @@ mod tests {
                 Instant::now(),
             );
 
-            assert_eq!(state.connection_setup.cursor_position, 14);
+            assert_eq!(state.connection_setup.host.cursor(), 14);
         }
     }
 
@@ -430,12 +369,21 @@ mod tests {
         use crate::domain::MetadataState;
 
         fn fill_valid_form(state: &mut AppState) {
-            state.connection_setup.name = "test".to_string();
-            state.connection_setup.host = "localhost".to_string();
-            state.connection_setup.port = "5432".to_string();
-            state.connection_setup.database = "db".to_string();
-            state.connection_setup.user = "user".to_string();
-            state.connection_setup.password = "pass".to_string();
+            state.connection_setup.name.set_content("test".to_string());
+            state
+                .connection_setup
+                .host
+                .set_content("localhost".to_string());
+            state.connection_setup.port.set_content("5432".to_string());
+            state
+                .connection_setup
+                .database
+                .set_content("db".to_string());
+            state.connection_setup.user.set_content("user".to_string());
+            state
+                .connection_setup
+                .password
+                .set_content("pass".to_string());
         }
 
         #[test]
