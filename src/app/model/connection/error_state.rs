@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::connection_error::ConnectionErrorInfo;
+use super::error::ConnectionErrorInfo;
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionErrorState {

@@ -1,7 +1,7 @@
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher};
 
-use super::text_input::TextInputState;
+use crate::app::model::shared::text_input::TextInputState;
 use crate::domain::query_history::QueryHistoryEntry;
 
 #[derive(Debug, Clone, Default)]

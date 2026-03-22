@@ -3,54 +3,65 @@ pub mod model;
 pub mod policy;
 pub mod update;
 
+// ── Unchanged top-level modules ─────────────────────────────────
+pub mod ports;
+pub mod services;
+
+// ── Not yet moved (Phase 2–4) ───────────────────────────────────
 pub mod action;
-pub mod browse_session;
 pub mod cache;
-pub mod cell_edit_state;
 pub mod command;
 pub mod completion;
-pub mod confirm_dialog_state;
-pub mod connection_cache;
-pub mod connection_error;
-pub mod connection_error_state;
-pub mod connection_list;
-pub mod connection_setup_state;
-pub mod connection_state;
 pub mod effect;
 pub(crate) mod effect_handlers;
 pub mod effect_runner;
-pub mod er_state;
 pub mod er_task;
-pub mod explain_context;
-pub mod flash_timer;
-pub mod focused_pane;
-pub mod input_mode;
-pub mod inspector_tab;
-pub mod key_sequence;
 pub mod keybindings;
 pub mod keymap;
-pub mod message_state;
-pub mod modal_state;
 pub mod nav_intent;
 pub mod palette;
-pub mod picker_state;
-pub mod ports;
-pub mod query_execution;
-pub mod query_history_state;
 pub mod reducer;
 pub mod reducers;
 pub mod render_schedule;
-pub mod result_history;
-pub mod result_interaction;
-pub mod runtime_state;
-pub mod services;
 pub mod sql_lexer;
-pub mod sql_modal_context;
 pub mod sql_risk;
-pub mod state;
 pub mod statement_classifier;
-pub mod text_input;
-pub mod ui_state;
-pub mod viewport;
 pub mod write_guardrails;
 pub mod write_update;
+
+// ── Backward-compat re-exports for model/ (Phase 1) ────────────
+pub use model::app_state as state;
+pub use model::browse::cell_edit as cell_edit_state;
+pub use model::browse::query_execution;
+pub use model::browse::result_history;
+pub use model::browse::result_interaction;
+pub use model::browse::session as browse_session;
+pub use model::connection::cache as connection_cache;
+pub use model::connection::error as connection_error;
+pub use model::connection::error_state as connection_error_state;
+pub use model::connection::list as connection_list;
+pub use model::connection::setup as connection_setup_state;
+pub use model::connection::state as connection_state;
+pub use model::er_state;
+pub use model::explain_context;
+pub use model::runtime_state;
+pub use model::shared::confirm_dialog as confirm_dialog_state;
+pub use model::shared::flash_timer;
+pub use model::shared::focused_pane;
+pub use model::shared::input_mode;
+pub use model::shared::inspector_tab;
+pub use model::shared::key_sequence;
+pub use model::shared::message as message_state;
+pub use model::shared::modal as modal_state;
+pub use model::shared::picker as picker_state;
+pub use model::shared::text_input;
+pub use model::shared::ui_state;
+pub use model::shared::viewport;
+pub use model::sql_editor::query_history as query_history_state;
+
+// sql_modal_context re-export: re-exports both modal and completion types
+// so that `crate::app::sql_modal_context::*` continues to work.
+pub mod sql_modal_context {
+    pub use super::model::sql_editor::completion::*;
+    pub use super::model::sql_editor::modal::*;
+}

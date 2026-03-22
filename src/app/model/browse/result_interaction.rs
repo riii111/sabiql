@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 use std::time::Instant;
 
-use super::cell_edit_state::CellEditState;
-use super::text_input::TextInputState;
-use super::ui_state::{ResultSelection, YankFlash};
-use super::write_guardrails::WritePreview;
+use super::cell_edit::CellEditState;
+use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::shared::ui_state::{ResultSelection, YankFlash};
+use crate::app::write_guardrails::WritePreview;
 
 // # Invariants
 //

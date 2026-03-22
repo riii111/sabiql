@@ -5,11 +5,11 @@ use super::focused_pane::FocusedPane;
 
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
-use super::keybindings::help_content_line_count;
-use super::picker_state::PickerState;
+use super::picker::PickerState;
 use super::viewport::ViewportPlan;
+use crate::app::keybindings::help_content_line_count;
 
-pub use super::picker_state::clamp_scroll_offset;
+pub use super::picker::clamp_scroll_offset;
 
 // header (1) + scroll indicators (2), used by rendering (border already excluded)
 pub const RESULT_INNER_OVERHEAD: u16 = 3;

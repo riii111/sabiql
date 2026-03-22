@@ -1,23 +1,22 @@
-use super::browse_session::BrowseSession;
-use super::confirm_dialog_state::ConfirmDialogState;
-use super::connection_cache::ConnectionCacheStore;
-use super::connection_error_state::ConnectionErrorState;
-use super::connection_setup_state::ConnectionSetupState;
 use super::explain_context::ExplainContext;
-use super::flash_timer::FlashTimerStore;
-use super::input_mode::InputMode;
-use super::message_state::MessageState;
-use super::modal_state::ModalState;
-use super::query_execution::QueryExecution;
-use super::query_history_state::QueryHistoryPickerState;
-use super::result_interaction::ResultInteraction;
 use super::runtime_state::RuntimeState;
-use super::sql_modal_context::SqlModalContext;
-use super::ui_state::UiState;
+use crate::app::model::browse::query_execution::QueryExecution;
+use crate::app::model::browse::result_interaction::ResultInteraction;
+use crate::app::model::browse::session::BrowseSession;
+use crate::app::model::connection::cache::ConnectionCacheStore;
+use crate::app::model::connection::error_state::ConnectionErrorState;
+use crate::app::model::connection::list::ConnectionListItem;
+use crate::app::model::connection::setup::ConnectionSetupState;
+use crate::app::model::shared::confirm_dialog::ConfirmDialogState;
+use crate::app::model::shared::flash_timer::FlashTimerStore;
+use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::message::MessageState;
+use crate::app::model::shared::modal::ModalState;
+use crate::app::model::shared::ui_state::UiState;
+use crate::app::model::sql_editor::modal::SqlModalContext;
+use crate::app::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::domain::TableSummary;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-
-use super::connection_list::ConnectionListItem;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -191,7 +190,7 @@ impl AppState {
     }
 
     fn rebuild_connection_list(&mut self) {
-        self.connection_list_items = super::connection_list::build_connection_list(
+        self.connection_list_items = crate::app::model::connection::list::build_connection_list(
             self.connections.len(),
             self.service_entries.len(),
         );
