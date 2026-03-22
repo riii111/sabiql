@@ -10,8 +10,9 @@ use crate::app::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
     GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS, INSPECTOR_DDL_KEYS, KeyBinding, NAVIGATION_KEYS,
-    OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS,
-    SQL_MODAL_EXPLAIN_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, TABLE_PICKER_ROWS,
+    OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_COMPARE_KEYS,
+    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS,
+    TABLE_PICKER_ROWS,
 };
 use crate::app::state::AppState;
 
@@ -76,8 +77,14 @@ impl HelpOverlay {
         }
 
         help_lines.push(Line::from(""));
-        help_lines.push(Self::section("SQL Editor (Explain)"));
-        for kb in SQL_MODAL_EXPLAIN_KEYS {
+        help_lines.push(Self::section("SQL Editor (Plan)"));
+        for kb in SQL_MODAL_PLAN_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("SQL Editor (Compare)"));
+        for kb in SQL_MODAL_COMPARE_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 

@@ -74,10 +74,10 @@ pub const SQL_MODAL_NORMAL_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
-// SQL Modal — Shared EXPLAIN keys (used across Normal/Editing/Plan contexts)
+// SQL Modal — Plan tab (read-only viewer)
 // =============================================================================
 
-pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
+pub const SQL_MODAL_PLAN_KEYS: &[KeyBinding] = &[
     KeyBinding {
         key_short: "^E",
         key: "Ctrl+E",
@@ -93,6 +93,14 @@ pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
         description: "Run EXPLAIN ANALYZE on current query",
         action: Action::ExplainAnalyzeRequest,
         combos: &[KeyCombo::alt(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "b",
+        key: "b",
+        desc_short: "Pin",
+        description: "Pin left slot",
+        action: Action::SaveExplainBaseline,
+        combos: &[KeyCombo::plain(Key::Char('b'))],
     },
     KeyBinding {
         key_short: "\u{2191}\u{2193}",
@@ -111,12 +119,99 @@ pub const SQL_MODAL_EXPLAIN_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Tab)],
     },
     KeyBinding {
-        key_short: "b",
-        key: "b",
-        desc_short: "Pin",
-        description: "Pin left slot",
-        action: Action::SaveExplainBaseline,
-        combos: &[KeyCombo::plain(Key::Char('b'))],
+        key_short: "⇧Tab",
+        key: "Shift+Tab",
+        desc_short: "Prev",
+        description: "Previous tab",
+        action: Action::SqlModalPrevTab,
+        combos: &[KeyCombo::plain(Key::BackTab)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close editor",
+        action: Action::CloseSqlModal,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
+];
+
+// =============================================================================
+// SQL Modal — Compare tab (read-only viewer)
+// =============================================================================
+
+pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "^E",
+        key: "Ctrl+E",
+        desc_short: "Explain",
+        description: "Run EXPLAIN on current query",
+        action: Action::ExplainRequest,
+        combos: &[KeyCombo::ctrl(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "\u{2325}E",
+        key: "Alt+E",
+        desc_short: "Analyze",
+        description: "Run EXPLAIN ANALYZE on current query",
+        action: Action::ExplainAnalyzeRequest,
+        combos: &[KeyCombo::alt(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "l",
+        key: "l",
+        desc_short: "Left slot",
+        description: "Cycle left comparison slot",
+        action: Action::CompareSelectLeftSlot,
+        combos: &[KeyCombo::plain(Key::Char('l'))],
+    },
+    KeyBinding {
+        key_short: "r",
+        key: "r",
+        desc_short: "Right slot",
+        description: "Cycle right comparison slot",
+        action: Action::CompareSelectRightSlot,
+        combos: &[KeyCombo::plain(Key::Char('r'))],
+    },
+    KeyBinding {
+        key_short: "e",
+        key: "e",
+        desc_short: "Edit",
+        description: "Edit query in SQL tab",
+        action: Action::CompareEditQuery,
+        combos: &[KeyCombo::plain(Key::Char('e'))],
+    },
+    KeyBinding {
+        key_short: "\u{2191}\u{2193}",
+        key: "↑↓/jk",
+        desc_short: "Scroll",
+        description: "Scroll comparison text",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Tab",
+        key: "Tab",
+        desc_short: "Switch",
+        description: "Switch tab",
+        action: Action::SqlModalNextTab,
+        combos: &[KeyCombo::plain(Key::Tab)],
+    },
+    KeyBinding {
+        key_short: "⇧Tab",
+        key: "Shift+Tab",
+        desc_short: "Prev",
+        description: "Previous tab",
+        action: Action::SqlModalPrevTab,
+        combos: &[KeyCombo::plain(Key::BackTab)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Close",
+        description: "Close editor",
+        action: Action::CloseSqlModal,
+        combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
 

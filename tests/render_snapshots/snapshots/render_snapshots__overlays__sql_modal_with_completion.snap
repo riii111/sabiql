@@ -20,7 +20,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [INSERT]                                             Ready  │       │
-│       ╰ ⌥Enter: Run │ ^E: EXPLAIN │ ^L: Clear │ ^O: Hist │ Esc: Norma╯       │
+│       ╰ ⌥Enter: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc: No╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
