@@ -542,6 +542,27 @@ mod tests {
         }
 
         #[test]
+        fn set_content_with_cursor_sets_exact_position() {
+            let mut s = ml("old\ncontent", 3);
+            s.scroll_row = 5;
+
+            s.set_content_with_cursor("new\nvalue".to_string(), 4);
+
+            assert_eq!(s.content(), "new\nvalue");
+            assert_eq!(s.cursor(), 4);
+            assert_eq!(s.scroll_row(), 0);
+        }
+
+        #[test]
+        fn set_content_with_cursor_clamps_past_end() {
+            let mut s = ml("x", 0);
+
+            s.set_content_with_cursor("ab".to_string(), 100);
+
+            assert_eq!(s.cursor(), 2);
+        }
+
+        #[test]
         fn clear_resets_all_fields() {
             let mut s = ml("multi\nline", 8);
             s.scroll_row = 3;

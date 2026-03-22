@@ -27,8 +27,7 @@ fn connection_setup_cursor_at_head() {
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state.connection_setup.focused_field = ConnectionField::Host;
-    state.connection_setup.host =
-        sabiql::app::model::shared::text_input::TextInputState::new("db.example.com", 0);
+    state.connection_setup.host = TextInputState::new("db.example.com", 0);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -42,8 +41,7 @@ fn connection_setup_cursor_at_middle() {
 
     state.modal.set_mode(InputMode::ConnectionSetup);
     state.connection_setup.focused_field = ConnectionField::Host;
-    state.connection_setup.host =
-        sabiql::app::model::shared::text_input::TextInputState::new("db.example.com", 7);
+    state.connection_setup.host = TextInputState::new("db.example.com", 7);
 
     let output = render_to_string(&mut terminal, &mut state);
 

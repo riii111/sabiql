@@ -13,12 +13,22 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             InputMode::TablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.ui.table_picker.filter_input.insert_str(&clean);
+                state
+                    .ui
+                    .table_picker
+                    .filter_input
+                    .update_viewport(FILTER_VISIBLE_WIDTH);
                 state.ui.table_picker.reset();
                 Some(vec![])
             }
             InputMode::ErTablePicker => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.ui.er_picker.filter_input.insert_str(&clean);
+                state
+                    .ui
+                    .er_picker
+                    .filter_input
+                    .update_viewport(FILTER_VISIBLE_WIDTH);
                 state.ui.er_picker.reset();
                 Some(vec![])
             }

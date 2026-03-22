@@ -2,6 +2,7 @@ use super::*;
 use harness::connected_state;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use sabiql::app::model::shared::multi_line_input::MultiLineInputState;
 
 #[test]
 fn sql_modal_with_completion() {
@@ -95,8 +96,7 @@ fn sql_modal_cursor_at_head() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor =
-        sabiql::app::model::shared::multi_line_input::MultiLineInputState::new("SELECT 1", 0);
+    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 0);
     state.sql_modal.set_status(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -110,8 +110,7 @@ fn sql_modal_cursor_at_middle() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor =
-        sabiql::app::model::shared::multi_line_input::MultiLineInputState::new("SELECT 1", 4);
+    state.sql_modal.editor = MultiLineInputState::new("SELECT 1", 4);
     state.sql_modal.set_status(SqlModalStatus::Editing);
 
     let output = render_to_string(&mut terminal, &mut state);
