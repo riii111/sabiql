@@ -67,6 +67,13 @@ impl MultiLineInputState {
         self.scroll_row = 0;
     }
 
+    pub fn set_content_with_cursor(&mut self, s: String, cursor: usize) {
+        let len = s.chars().count();
+        self.inner.set_content(s);
+        self.inner.set_cursor(cursor.min(len));
+        self.scroll_row = 0;
+    }
+
     pub fn clear(&mut self) {
         self.inner.clear();
         self.scroll_row = 0;

@@ -335,14 +335,10 @@ pub fn reduce_sql_modal(
                     content.drain(start_byte..end_byte);
                     content.insert_str(start_byte, &candidate.text);
                     let new_cursor = trigger_pos + candidate.text.chars().count();
-                    state.sql_modal.editor.set_content(content);
-                    // set_content moves cursor to end; adjust to desired position
-                    state.sql_modal.editor = {
-                        let c = state.sql_modal.editor.content().to_string();
-                        crate::app::model::shared::multi_line_input::MultiLineInputState::new(
-                            c, new_cursor,
-                        )
-                    };
+                    state
+                        .sql_modal
+                        .editor
+                        .set_content_with_cursor(content, new_cursor);
                 }
                 state.sql_modal.completion.visible = false;
                 state.sql_modal.completion_debounce = None;
@@ -491,12 +487,10 @@ mod tests {
         #[test]
         fn paste_inserts_at_cursor() {
             let mut state = editing_state();
-            state.sql_modal.editor.set_content("SELCT".to_string());
-            {
-                let c = state.sql_modal.editor.content().to_string();
-                state.sql_modal.editor =
-                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 3);
-            }
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("SELCT".to_string(), 3);
 
             reduce_sql_modal(&mut state, &Action::Paste("E".to_string()), Instant::now());
 
@@ -532,12 +526,10 @@ mod tests {
         #[test]
         fn paste_advances_cursor() {
             let mut state = editing_state();
-            state.sql_modal.editor.set_content("AB".to_string());
-            {
-                let c = state.sql_modal.editor.content().to_string();
-                state.sql_modal.editor =
-                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 1);
-            }
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("AB".to_string(), 1);
 
             reduce_sql_modal(
                 &mut state,
@@ -561,12 +553,10 @@ mod tests {
         #[test]
         fn paste_with_multibyte() {
             let mut state = editing_state();
-            state.sql_modal.editor.set_content("ab".to_string());
-            {
-                let c = state.sql_modal.editor.content().to_string();
-                state.sql_modal.editor =
-                    crate::app::model::shared::multi_line_input::MultiLineInputState::new(c, 1);
-            }
+            state
+                .sql_modal
+                .editor
+                .set_content_with_cursor("ab".to_string(), 1);
 
             reduce_sql_modal(
                 &mut state,
