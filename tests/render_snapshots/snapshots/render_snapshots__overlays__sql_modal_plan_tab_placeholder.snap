@@ -20,7 +20,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │  [NORMAL]                                             Ready  │       │
-│       ╰ b: Pin │ y: Yank │ ↑↓: Scroll │ Tab/⇧Tab: Switch │ Esc: Close╯       │
+│       ╰ y: Yank │ ↑↓: Scroll │ Tab/⇧Tab: Switch │ Esc: Close ────────╯       │
 │                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘

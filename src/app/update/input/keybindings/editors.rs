@@ -95,14 +95,6 @@ pub const SQL_MODAL_PLAN_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::alt(Key::Char('e'))],
     },
     KeyBinding {
-        key_short: "b",
-        key: "b",
-        desc_short: "Pin",
-        description: "Pin left slot",
-        action: Action::SaveExplainBaseline,
-        combos: &[KeyCombo::plain(Key::Char('b'))],
-    },
-    KeyBinding {
         key_short: "y",
         key: "y",
         desc_short: "Yank",
@@ -164,22 +156,6 @@ pub const SQL_MODAL_COMPARE_KEYS: &[KeyBinding] = &[
         description: "Run EXPLAIN ANALYZE on current query",
         action: Action::ExplainAnalyzeRequest,
         combos: &[KeyCombo::alt(Key::Char('e'))],
-    },
-    KeyBinding {
-        key_short: "l",
-        key: "l",
-        desc_short: "Left",
-        description: "Cycle left comparison slot",
-        action: Action::CompareSelectLeftSlot,
-        combos: &[KeyCombo::plain(Key::Char('l'))],
-    },
-    KeyBinding {
-        key_short: "r",
-        key: "r",
-        desc_short: "Right",
-        description: "Cycle right comparison slot",
-        action: Action::CompareSelectRightSlot,
-        combos: &[KeyCombo::plain(Key::Char('r'))],
     },
     KeyBinding {
         key_short: "e",

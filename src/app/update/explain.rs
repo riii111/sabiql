@@ -222,15 +222,6 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             Some(vec![])
         }
 
-        Action::SaveExplainBaseline => {
-            if state.explain.pin_left() {
-                state
-                    .messages
-                    .set_success_at("Left pinned".to_string(), now);
-            }
-            Some(vec![])
-        }
-
         Action::Scroll {
             target: ScrollTarget::ExplainPlan,
             direction: ScrollDirection::Up,
@@ -275,16 +266,6 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if state.explain.compare_scroll_offset < max {
                 state.explain.compare_scroll_offset += 1;
             }
-            Some(vec![])
-        }
-
-        Action::CompareSelectLeftSlot => {
-            state.explain.cycle_left_slot();
-            Some(vec![])
-        }
-
-        Action::CompareSelectRightSlot => {
-            state.explain.cycle_right_slot();
             Some(vec![])
         }
 
@@ -795,72 +776,17 @@ mod tests {
         }
     }
 
-    mod pin_left {
-        use super::*;
-
-        #[test]
-        fn pins_left_when_right_exists() {
-            let mut state = sql_modal_state();
-            state.explain.set_plan(
-                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
-                false,
-                0,
-                "Q1",
-            );
-
-            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
-
-            assert!(state.explain.left.is_some());
-            assert!(state.messages.last_success.is_some());
-        }
-
-        #[test]
-        fn noop_when_no_right() {
-            let mut state = sql_modal_state();
-
-            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
-
-            assert!(state.explain.left.is_none());
-            assert!(state.messages.last_success.is_none());
-        }
-
-        #[test]
-        fn overwrites_previous_left() {
-            let mut state = sql_modal_state();
-            state.explain.set_plan(
-                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
-                false,
-                0,
-                "Q1",
-            );
-            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
-
-            state.explain.set_plan(
-                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
-                false,
-                0,
-                "Q2",
-            );
-            reduce_explain(&mut state, &Action::SaveExplainBaseline, Instant::now());
-
-            assert_eq!(
-                state.explain.left.as_ref().unwrap().plan.total_cost,
-                Some(5.0)
-            );
-        }
-    }
-
     mod compare_workflow {
         use super::*;
 
         #[test]
-        fn pin_then_second_explain_enables_comparison() {
+        fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.content = "SELECT 1".to_string();
             state.session.dsn = Some("dsn://test".to_string());
             let now = Instant::now();
 
-            // Step 1: Run EXPLAIN
+            // Step 1: First EXPLAIN
             reduce_explain(&mut state, &Action::ExplainRequest, now);
             reduce_explain(
                 &mut state,
@@ -872,19 +798,11 @@ mod tests {
                 now,
             );
             assert!(state.explain.right.is_some());
+            assert!(state.explain.left.is_none());
 
-            // Step 2: Pin left
-            reduce_explain(&mut state, &Action::SaveExplainBaseline, now);
-            assert!(state.explain.left.is_some());
-
-            // Step 3: Run EXPLAIN again (simulating second query)
+            // Step 2: Second EXPLAIN — auto-advance moves right→left
             state.sql_modal.content = "SELECT 2".to_string();
             reduce_explain(&mut state, &Action::ExplainRequest, now);
-
-            // reset() should preserve left
-            assert!(state.explain.left.is_some());
-
-            // Step 4: Second EXPLAIN completes
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
@@ -895,7 +813,6 @@ mod tests {
                 now,
             );
 
-            // Both should be present for comparison
             assert!(state.explain.left.is_some());
             assert!(state.explain.right.is_some());
             assert_eq!(
@@ -1008,7 +925,6 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
-            state.explain.pin_left();
             state.explain.set_plan(long_plan, false, 0, "Q2");
 
             reduce_explain(
@@ -1033,7 +949,6 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
-            state.explain.pin_left();
             state.explain.set_plan(long_plan, false, 0, "Q2");
 
             let max = state.explain.compare_max_scroll(state.ui.terminal_height);
