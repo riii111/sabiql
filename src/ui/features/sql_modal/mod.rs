@@ -9,6 +9,9 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
+use crate::app::keybindings::{
+    SQL_MODAL_COMPARE_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, idx,
+};
 use crate::app::sql_modal_context::{SqlModalStatus, SqlModalTab};
 use crate::app::state::AppState;
 use crate::ui::primitives::molecules::overlay::{centered_rect, render_scrim};
@@ -74,7 +77,8 @@ impl SqlModal {
                 _ => unreachable!(),
             }
         } else {
-            let hint = match state.sql_modal.status() {
+            let hint_owned: String;
+            let hint: &str = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
                     " \u{2325}Enter: Run \u{2502} ^E: EXPLAIN \u{2502} ^L: Clear \u{2502} ^O: Hist \u{2502} Esc: Normal "
                 }
@@ -92,17 +96,10 @@ impl SqlModal {
                         " Esc: Cancel "
                     }
                 }
-                _ => match state.sql_modal.active_tab {
-                    SqlModalTab::Plan => {
-                        " b: Set baseline \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
-                    }
-                    SqlModalTab::Compare => {
-                        " l/r: Slot \u{2502} e: Edit \u{2502} \u{2191}\u{2193}: Scroll \u{2502} Tab: Switch \u{2502} Esc: Close "
-                    }
-                    SqlModalTab::Sql => {
-                        " \u{2325}Enter: Run \u{2502} ^E: EXPLAIN \u{2502} \u{2325}E: EXPLAIN ANALYZE \u{2502} y: Yank \u{2502} ^O: Hist \u{2502} Enter: Insert \u{2502} Tab: Switch \u{2502} Esc: Close "
-                    }
-                },
+                _ => {
+                    hint_owned = Self::build_border_hint(state.sql_modal.active_tab);
+                    &hint_owned
+                }
             };
             Self::render_modal_with_tabs(frame, state.sql_modal.active_tab, hint)
         };
@@ -221,5 +218,39 @@ impl SqlModal {
             Span::styled("[Compare]", style_for(SqlModalTab::Compare)),
             Span::raw(" "),
         ])
+    }
+
+    fn build_border_hint(tab: SqlModalTab) -> String {
+        let pairs: &[(&str, &str)] = match tab {
+            SqlModalTab::Plan => &[
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::CLOSE].as_hint(),
+            ],
+            SqlModalTab::Compare => &[
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::TAB].as_hint(),
+                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::CLOSE].as_hint(),
+            ],
+            SqlModalTab::Sql => &[
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::RUN].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::EXPLAIN].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::ANALYZE].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::YANK].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::QUERY_HISTORY].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::ENTER_INSERT].as_hint(),
+                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::TAB].as_hint(),
+                SQL_MODAL_NORMAL_KEYS[idx::sql_modal_normal::CLOSE].as_hint(),
+            ],
+        };
+        let parts: Vec<String> = pairs
+            .iter()
+            .map(|(key, desc)| format!("{key}: {desc}"))
+            .collect();
+        format!(" {} ", parts.join(" \u{2502} "))
     }
 }
