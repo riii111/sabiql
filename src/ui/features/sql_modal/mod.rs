@@ -223,7 +223,6 @@ impl SqlModal {
     fn border_hint(tab: SqlModalTab, compare_can_yank: bool) -> &'static str {
         static PLAN: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
-                SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::BASELINE].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::YANK].as_hint(),
                 SQL_MODAL_PLAN_KEYS[idx::sql_modal_plan::SCROLL].as_hint(),
                 (
@@ -235,8 +234,6 @@ impl SqlModal {
         });
         static COMPARE_WITH_YANK: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::YANK].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
@@ -251,8 +248,6 @@ impl SqlModal {
         });
         static COMPARE_NO_YANK: LazyLock<String> = LazyLock::new(|| {
             SqlModal::join_hint_pairs(&[
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::LEFT_SLOT].as_hint(),
-                SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::RIGHT_SLOT].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::EDIT_QUERY].as_hint(),
                 SQL_MODAL_COMPARE_KEYS[idx::sql_modal_compare::SCROLL].as_hint(),
                 (

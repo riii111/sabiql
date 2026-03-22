@@ -152,25 +152,22 @@ pub mod idx {
     pub mod sql_modal_plan {
         pub const EXPLAIN: usize = 0;
         pub const ANALYZE: usize = 1;
-        pub const BASELINE: usize = 2;
-        pub const YANK: usize = 3;
-        pub const SCROLL: usize = 4;
-        pub const TAB: usize = 5;
-        pub const BACKTAB: usize = 6;
-        pub const CLOSE: usize = 7;
+        pub const YANK: usize = 2;
+        pub const SCROLL: usize = 3;
+        pub const TAB: usize = 4;
+        pub const BACKTAB: usize = 5;
+        pub const CLOSE: usize = 6;
     }
 
     pub mod sql_modal_compare {
         pub const EXPLAIN: usize = 0;
         pub const ANALYZE: usize = 1;
-        pub const LEFT_SLOT: usize = 2;
-        pub const RIGHT_SLOT: usize = 3;
-        pub const EDIT_QUERY: usize = 4;
-        pub const YANK: usize = 5;
-        pub const SCROLL: usize = 6;
-        pub const TAB: usize = 7;
-        pub const BACKTAB: usize = 8;
-        pub const CLOSE: usize = 9;
+        pub const EDIT_QUERY: usize = 2;
+        pub const YANK: usize = 3;
+        pub const SCROLL: usize = 4;
+        pub const TAB: usize = 5;
+        pub const BACKTAB: usize = 6;
+        pub const CLOSE: usize = 7;
     }
 
     pub mod sql_modal_confirming {
@@ -443,7 +440,6 @@ mod tests {
         // SQL_MODAL_PLAN_KEYS
         assert!(idx::sql_modal_plan::EXPLAIN < SQL_MODAL_PLAN_KEYS.len());
         assert!(idx::sql_modal_plan::ANALYZE < SQL_MODAL_PLAN_KEYS.len());
-        assert!(idx::sql_modal_plan::BASELINE < SQL_MODAL_PLAN_KEYS.len());
         assert!(idx::sql_modal_plan::YANK < SQL_MODAL_PLAN_KEYS.len());
         assert!(idx::sql_modal_plan::SCROLL < SQL_MODAL_PLAN_KEYS.len());
         assert!(idx::sql_modal_plan::TAB < SQL_MODAL_PLAN_KEYS.len());
@@ -453,8 +449,6 @@ mod tests {
         // SQL_MODAL_COMPARE_KEYS
         assert!(idx::sql_modal_compare::EXPLAIN < SQL_MODAL_COMPARE_KEYS.len());
         assert!(idx::sql_modal_compare::ANALYZE < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::LEFT_SLOT < SQL_MODAL_COMPARE_KEYS.len());
-        assert!(idx::sql_modal_compare::RIGHT_SLOT < SQL_MODAL_COMPARE_KEYS.len());
         assert!(idx::sql_modal_compare::EDIT_QUERY < SQL_MODAL_COMPARE_KEYS.len());
         assert!(idx::sql_modal_compare::YANK < SQL_MODAL_COMPARE_KEYS.len());
         assert!(idx::sql_modal_compare::SCROLL < SQL_MODAL_COMPARE_KEYS.len());

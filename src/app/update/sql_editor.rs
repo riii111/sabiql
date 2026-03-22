@@ -1334,19 +1334,19 @@ mod tests {
         }
 
         #[test]
-        fn compare_tab_yank_both_manual_distinguishable() {
+        fn compare_tab_yank_both_auto_distinguishable() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Compare;
-            state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::Manual));
-            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::Manual));
+            state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
+            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {
-                assert!(content.contains("--- Left: Manual"));
-                assert!(content.contains("--- Right: Manual"));
+                assert!(content.contains("--- Left: Previous"));
+                assert!(content.contains("--- Right: Latest"));
             } else {
                 panic!("expected CopyToClipboard");
             }
@@ -1369,7 +1369,7 @@ mod tests {
         fn compare_tab_yank_left_only_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Compare;
-            state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::Pinned));
+            state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
             state.explain.right = None;
 
             let effects =
