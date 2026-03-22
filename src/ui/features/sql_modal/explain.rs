@@ -91,7 +91,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             crate::app::model::shared::flash_timer::FlashId::SqlModal,
             now,
         );
-        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
+        let content_start = 3; // skip header, query snippet, empty line
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines[content_start..], flash_active);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
     } else {

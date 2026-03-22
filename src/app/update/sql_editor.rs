@@ -424,7 +424,28 @@ pub fn reduce_sql_modal(
             let content = match state.sql_modal.active_tab {
                 SqlModalTab::Plan => state.explain.plan_text.clone(),
                 SqlModalTab::Compare => {
-                    let mut parts = Vec::new();
+                    let mut sections = Vec::new();
+
+                    // Verdict summary (when both slots present)
+                    if let (Some(l), Some(r)) = (&state.explain.left, &state.explain.right) {
+                        use crate::domain::explain_plan::compare_plans;
+                        let result = compare_plans(&l.plan, &r.plan);
+                        let verdict = match result.verdict {
+                            crate::domain::explain_plan::ComparisonVerdict::Improved => "Improved",
+                            crate::domain::explain_plan::ComparisonVerdict::Worsened => "Worsened",
+                            crate::domain::explain_plan::ComparisonVerdict::Similar => "Similar",
+                            crate::domain::explain_plan::ComparisonVerdict::Unavailable => {
+                                "Unavailable"
+                            }
+                        };
+                        let mut verdict_lines = vec![verdict.to_string()];
+                        for reason in &result.reasons {
+                            verdict_lines.push(format!("  • {}", reason));
+                        }
+                        sections.push(verdict_lines.join("\n"));
+                    }
+
+                    // Slot plans
                     for (pos, slot) in [
                         ("Left", &state.explain.left),
                         ("Right", &state.explain.right),
@@ -437,16 +458,16 @@ pub fn reduce_sql_modal(
                             };
                             let secs = s.plan.execution_time_ms as f64 / 1000.0;
                             let label = s.source.label();
-                            parts.push(format!(
+                            sections.push(format!(
                                 "--- {}: {} ({}, {:.2}s) ---\n{}",
                                 pos, label, mode, secs, s.plan.raw_text
                             ));
                         }
                     }
-                    if parts.is_empty() {
+                    if sections.is_empty() {
                         None
                     } else {
-                        Some(parts.join("\n\n"))
+                        Some(sections.join("\n\n"))
                     }
                 }
                 SqlModalTab::Sql => {
@@ -1325,6 +1346,9 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             if let Effect::CopyToClipboard { content, .. } = &effects[0] {
+                // Verdict section comes first
+                assert!(content.starts_with("Unavailable\n"));
+                // Then slot plans
                 assert!(content.contains("--- Left: Previous (EXPLAIN, 0.42s) ---"));
                 assert!(content.contains("Seq Scan"));
                 assert!(content.contains("--- Right: Latest (ANALYZE, 0.05s) ---"));
@@ -1396,6 +1420,74 @@ mod tests {
                 reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn compare_tab_yank_includes_verdict_with_reasons() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            // Use parseable EXPLAIN output so compare_plans produces a real verdict
+            state.explain.left = Some(CompareSlot {
+                plan: ExplainPlan {
+                    raw_text: "Seq Scan on users  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                    top_node_type: Some("Seq Scan".to_string()),
+                    total_cost: Some(100.0),
+                    estimated_rows: Some(10),
+                    is_analyze: false,
+                    execution_time_ms: 420,
+                },
+                query_snippet: "SELECT *".to_string(),
+                full_query: "SELECT * FROM users".to_string(),
+                source: SlotSource::AutoPrevious,
+            });
+            state.explain.right = Some(CompareSlot {
+                plan: ExplainPlan {
+                    raw_text: "Index Scan using idx on users  (cost=0.00..5.00 rows=1 width=32)"
+                        .to_string(),
+                    top_node_type: Some("Index Scan".to_string()),
+                    total_cost: Some(5.0),
+                    estimated_rows: Some(1),
+                    is_analyze: false,
+                    execution_time_ms: 50,
+                },
+                query_snippet: "SELECT *".to_string(),
+                full_query: "SELECT * FROM users WHERE id=1".to_string(),
+                source: SlotSource::AutoLatest,
+            });
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            if let Effect::CopyToClipboard { content, .. } = &effects[0] {
+                assert!(content.starts_with("Improved\n"));
+                assert!(content.contains("Total cost:"));
+                assert!(content.contains("--- Left: Previous"));
+                assert!(content.contains("--- Right: Latest"));
+            } else {
+                panic!("expected CopyToClipboard");
+            }
+        }
+
+        #[test]
+        fn compare_tab_yank_right_only_no_verdict() {
+            let mut state = sql_modal_state();
+            state.sql_modal.active_tab = SqlModalTab::Compare;
+            state.explain.left = None;
+            state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
+
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalYank, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            if let Effect::CopyToClipboard { content, .. } = &effects[0] {
+                // No verdict when only one slot
+                assert!(!content.contains("Improved"));
+                assert!(!content.contains("Worsened"));
+                assert!(content.contains("Right: Latest"));
+            } else {
+                panic!("expected CopyToClipboard");
+            }
         }
     }
 }

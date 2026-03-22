@@ -17,15 +17,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let scroll_offset = state.explain.compare_scroll_offset;
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut flash_mask: Vec<bool> = Vec::new();
 
     if let (Some(l), Some(r)) = (left, right) {
-        render_verdict_section(&mut lines, l, r, area.width);
+        render_verdict_section(&mut lines, &mut flash_mask, l, r, area.width);
     }
 
     if area.width >= 60 {
-        render_slot_columns(&mut lines, left, right, area.width);
+        render_slot_columns(&mut lines, &mut flash_mask, left, right, area.width);
     } else {
-        render_slot_stacked(&mut lines, left, right);
+        render_slot_stacked(&mut lines, &mut flash_mask, left, right);
     }
 
     if lines.is_empty() {
@@ -33,26 +34,50 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             " Run EXPLAIN (Ctrl+E) to start comparing.",
             Style::default().fg(Theme::PLACEHOLDER_TEXT),
         )));
+        flash_mask.push(false);
     }
 
     let max_scroll = lines.len().saturating_sub(area.height as usize);
     let clamped = scroll_offset.min(max_scroll);
     let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
+    let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
     let now = std::time::Instant::now();
     let flash_active = state.flash_timers.is_active(
         crate::app::model::shared::flash_timer::FlashId::SqlModal,
         now,
     );
-    crate::ui::primitives::atoms::apply_yank_flash(&mut visible, flash_active);
+    if flash_active {
+        let flash_style = Style::default()
+            .fg(Theme::YANK_FLASH_FG)
+            .bg(Theme::YANK_FLASH_BG);
+        for (line, &is_target) in visible.iter_mut().zip(visible_mask.iter()) {
+            if is_target {
+                *line = std::mem::take(line).style(flash_style);
+            }
+        }
+    }
 
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
+}
+
+// ── Helpers for pushing lines with flash mask ────────────────────────────────
+
+fn push_structural(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
+    lines.push(line);
+    flash_mask.push(false);
+}
+
+fn push_content(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
+    lines.push(line);
+    flash_mask.push(true);
 }
 
 // ── Verdict (only when both slots are populated) ─────────────────────────────
 
 fn render_verdict_section(
     lines: &mut Vec<Line>,
+    flash_mask: &mut Vec<bool>,
     left: &CompareSlot,
     right: &CompareSlot,
     width: u16,
@@ -86,35 +111,45 @@ fn render_verdict_section(
         ),
     };
 
-    lines.push(Line::raw(""));
-    lines.push(Line::from(Span::styled(
-        format!(" {}", verdict_label),
-        verdict_style,
-    )));
-    lines.push(Line::raw(""));
+    push_structural(lines, flash_mask, Line::raw(""));
+    push_content(
+        lines,
+        flash_mask,
+        Line::from(Span::styled(format!(" {}", verdict_label), verdict_style)),
+    );
+    push_structural(lines, flash_mask, Line::raw(""));
 
     for reason in &result.reasons {
-        lines.push(Line::from(vec![
-            Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(reason.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
-        ]));
+        push_content(
+            lines,
+            flash_mask,
+            Line::from(vec![
+                Span::styled("  \u{2022} ", Style::default().fg(Theme::TEXT_MUTED)),
+                Span::styled(reason.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
+            ]),
+        );
     }
     if !result.reasons.is_empty() {
-        lines.push(Line::raw(""));
+        push_structural(lines, flash_mask, Line::raw(""));
     }
 
     let sep = "\u{2500}".repeat(width.saturating_sub(2) as usize);
-    lines.push(Line::styled(
-        format!(" {}", sep),
-        Style::default().fg(Theme::MODAL_BORDER),
-    ));
-    lines.push(Line::raw(""));
+    push_structural(
+        lines,
+        flash_mask,
+        Line::styled(
+            format!(" {}", sep),
+            Style::default().fg(Theme::MODAL_BORDER),
+        ),
+    );
+    push_structural(lines, flash_mask, Line::raw(""));
 }
 
 // ── Side-by-side slot columns (shared across all states) ─────────────────────
 
 fn render_slot_columns(
     lines: &mut Vec<Line>,
+    flash_mask: &mut Vec<bool>,
     left: Option<&CompareSlot>,
     right: Option<&CompareSlot>,
     total_width: u16,
@@ -138,25 +173,29 @@ fn render_slot_columns(
         None => "Latest".to_string(),
     };
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            pad_or_truncate(&left_label, half),
-            if left.is_some() {
-                active_header
-            } else {
-                empty_header
-            },
-        ),
-        sep.clone(),
-        Span::styled(
-            pad_or_truncate(&right_label, half),
-            if right.is_some() {
-                active_header
-            } else {
-                empty_header
-            },
-        ),
-    ]));
+    push_structural(
+        lines,
+        flash_mask,
+        Line::from(vec![
+            Span::styled(
+                pad_or_truncate(&left_label, half),
+                if left.is_some() {
+                    active_header
+                } else {
+                    empty_header
+                },
+            ),
+            sep.clone(),
+            Span::styled(
+                pad_or_truncate(&right_label, half),
+                if right.is_some() {
+                    active_header
+                } else {
+                    empty_header
+                },
+            ),
+        ]),
+    );
 
     let detail_style = Style::default().fg(Theme::TEXT_MUTED);
     let placeholder_style = Style::default().fg(Theme::PLACEHOLDER_TEXT);
@@ -164,39 +203,47 @@ fn render_slot_columns(
     let left_detail = slot_detail_text(left);
     let right_detail = slot_detail_text(right);
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            pad_or_truncate(&left_detail, half),
-            if left.is_some() {
-                detail_style
-            } else {
-                placeholder_style
-            },
-        ),
-        sep.clone(),
-        Span::styled(
-            pad_or_truncate(&right_detail, half),
-            if right.is_some() {
-                detail_style
-            } else {
-                placeholder_style
-            },
-        ),
-    ]));
+    push_structural(
+        lines,
+        flash_mask,
+        Line::from(vec![
+            Span::styled(
+                pad_or_truncate(&left_detail, half),
+                if left.is_some() {
+                    detail_style
+                } else {
+                    placeholder_style
+                },
+            ),
+            sep.clone(),
+            Span::styled(
+                pad_or_truncate(&right_detail, half),
+                if right.is_some() {
+                    detail_style
+                } else {
+                    placeholder_style
+                },
+            ),
+        ]),
+    );
 
     // Separator between query detail and plan body
     let thin_sep = "\u{2500}".repeat(half.saturating_sub(1));
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!(" {}", thin_sep),
-            Style::default().fg(Theme::TEXT_DIM),
-        ),
-        sep.clone(),
-        Span::styled(
-            format!(" {}", thin_sep),
-            Style::default().fg(Theme::TEXT_DIM),
-        ),
-    ]));
+    push_structural(
+        lines,
+        flash_mask,
+        Line::from(vec![
+            Span::styled(
+                format!(" {}", thin_sep),
+                Style::default().fg(Theme::TEXT_DIM),
+            ),
+            sep.clone(),
+            Span::styled(
+                format!(" {}", thin_sep),
+                Style::default().fg(Theme::TEXT_DIM),
+            ),
+        ]),
+    );
 
     let dim_style = Style::default().fg(Theme::TEXT_DIM);
 
@@ -223,7 +270,7 @@ fn render_slot_columns(
             r,
             half.saturating_sub(1),
         ));
-        lines.push(Line::from(row_spans));
+        push_content(lines, flash_mask, Line::from(row_spans));
     }
 }
 
@@ -231,6 +278,7 @@ fn render_slot_columns(
 
 fn render_slot_stacked(
     lines: &mut Vec<Line>,
+    flash_mask: &mut Vec<bool>,
     left: Option<&CompareSlot>,
     right: Option<&CompareSlot>,
 ) {
@@ -239,43 +287,64 @@ fn render_slot_stacked(
         .add_modifier(Modifier::BOLD);
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
-    render_stacked_slot(lines, left, header_style, badge_style);
-    lines.push(Line::raw(""));
-    render_stacked_slot(lines, right, header_style, badge_style);
+    render_stacked_slot(lines, flash_mask, left, header_style, badge_style);
+    push_structural(lines, flash_mask, Line::raw(""));
+    render_stacked_slot(lines, flash_mask, right, header_style, badge_style);
 }
 
 fn render_stacked_slot(
     lines: &mut Vec<Line>,
+    flash_mask: &mut Vec<bool>,
     slot: Option<&CompareSlot>,
     active_style: Style,
     badge_style: Style,
 ) {
     match slot {
         Some(s) => {
-            lines.push(Line::from(Span::styled(
-                format!(" {}", source_badge(&s.source)),
-                active_style,
-            )));
+            push_structural(
+                lines,
+                flash_mask,
+                Line::from(Span::styled(
+                    format!(" {}", source_badge(&s.source)),
+                    active_style,
+                )),
+            );
             let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
-            lines.push(Line::from(Span::styled(
-                format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
-                badge_style,
-            )));
+            push_structural(
+                lines,
+                flash_mask,
+                Line::from(Span::styled(
+                    format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
+                    badge_style,
+                )),
+            );
             for line in s.plan.raw_text.lines() {
-                lines.push(super::plan_highlight::highlight_plan_line(line));
+                push_content(
+                    lines,
+                    flash_mask,
+                    super::plan_highlight::highlight_plan_line(line),
+                );
             }
         }
         None => {
-            lines.push(Line::from(Span::styled(
-                " Previous",
-                Style::default()
-                    .fg(Theme::TEXT_DIM)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(Span::styled(
-                "  Run EXPLAIN again to compare",
-                Style::default().fg(Theme::PLACEHOLDER_TEXT),
-            )));
+            push_structural(
+                lines,
+                flash_mask,
+                Line::from(Span::styled(
+                    " Previous",
+                    Style::default()
+                        .fg(Theme::TEXT_DIM)
+                        .add_modifier(Modifier::BOLD),
+                )),
+            );
+            push_structural(
+                lines,
+                flash_mask,
+                Line::from(Span::styled(
+                    "  Run EXPLAIN again to compare",
+                    Style::default().fg(Theme::PLACEHOLDER_TEXT),
+                )),
+            );
         }
     }
 }
