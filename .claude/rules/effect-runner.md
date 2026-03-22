@@ -1,20 +1,20 @@
 ---
 paths:
-  - "**/src/app/effect_runner.rs"
-  - "**/src/app/effect_handlers/**/*.rs"
-  - "**/src/app/effect.rs"
+  - "**/src/app/cmd/runner.rs"
+  - "**/src/app/cmd/**/*.rs"
+  - "**/src/app/cmd/effect.rs"
 ---
 
 # Effect 実行ルール
 
 ## 構造
 
-`effect.rs`（enum 定義）→ `effect_runner.rs`（dispatcher のみ）→ `effect_handlers/<feature>.rs`（ビジネスロジック）。
+`cmd/effect.rs`（enum 定義）→ `cmd/runner.rs`（dispatcher のみ）→ `cmd/<feature>.rs`（ビジネスロジック）。
 
 ## Dispatcher パターン
 
-`effect_runner.rs` は **dispatcher のみ**。Effect のビジネスロジックは `effect_handlers/<feature>.rs` に配置する。
-`effect_runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、Sequence、DispatchActions のみ。
+`cmd/runner.rs` は **dispatcher のみ**。Effect のビジネスロジックは `cmd/<feature>.rs` に配置する。
+`cmd/runner.rs` に inline で残すのは Render（`tui: &mut T` が必要）、Sequence、DispatchActions のみ。
 
 ## 依存注入ルール
 

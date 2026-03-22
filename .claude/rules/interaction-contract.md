@@ -1,18 +1,18 @@
 ---
 paths:
-  - "**/src/app/keybindings/**/*.rs"
-  - "**/src/app/keymap.rs"
+  - "**/src/app/update/input/keybindings/**/*.rs"
+  - "**/src/app/update/input/keymap.rs"
   - "**/src/ui/event/**/*.rs"
   - "**/src/ui/shell/footer.rs"
   - "**/src/ui/features/overlays/help.rs"
-  - "**/src/app/palette.rs"
+  - "**/src/app/update/input/palette.rs"
 ---
 
 # インタラクション契約
 
 ## 唯一の信頼できる情報源
 
-- `app/keybindings/` がすべてのキーバインドの **SSOT**
+- `app/update/input/keybindings/` がすべてのキーバインドの **SSOT**
 - フッターヒント、ヘルプオーバーレイ、コマンドパレットはキーバインドデータから派生させること
 - `keybindings/` で宣言されていないキーコンボを `handlers/` に定義してはならない
 
@@ -37,9 +37,9 @@ crossterm::KeyEvent
 ```
 
 **責務分担:**
-- `app/keybindings/`: SSOT モジュール — `KeyBinding`（simple modes）と `ModeRow`（mixed modes）。サブモジュール: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`。Mixed modes は `ModeBindings { rows: &[ModeRow] }` を使い `.resolve()` で解決
-- `app/nav_intent.rs`: `map_nav_intent()` (関数: `KeyCombo → Option<NavIntent>`) は文脈を見ずキーの意味だけ変換。`resolve()` (関数: `NavIntent + NavigationContext → Action`) は文脈適用を1箇所に集約
-- `app/keymap.rs`: `KeyBinding` スライス用の `resolve(combo, bindings)` と `ModeRow` スライス用の `resolve_mode(combo, rows)`
+- `app/update/input/keybindings/`: SSOT モジュール — `KeyBinding`（simple modes）と `ModeRow`（mixed modes）。サブモジュール: `normal.rs`, `overlays.rs`, `connections.rs`, `editors.rs`, `types.rs`。Mixed modes は `ModeBindings { rows: &[ModeRow] }` を使い `.resolve()` で解決
+- `app/update/input/nav_intent.rs`: `map_nav_intent()` (関数: `KeyCombo → Option<NavIntent>`) は文脈を見ずキーの意味だけ変換。`resolve()` (関数: `NavIntent + NavigationContext → Action`) は文脈適用を1箇所に集約
+- `app/update/input/keymap.rs`: `KeyBinding` スライス用の `resolve(combo, bindings)` と `ModeRow` スライス用の `resolve_mode(combo, rows)`
 - `ui/event/key_translator.rs`: UI adapter — `crossterm::KeyEvent` → app 層の canonical `KeyCombo` に変換。terminal/backend 依存の表現揺れ（例: Kitty が大文字 `Char('G')` に `SHIFT` フラグを付与する二重符号化）はここで吸収し、下流は正規化済みの `KeyCombo` のみを扱う。新たな正規化ルールを追加した場合は translator 内にユニットテストを追加すること
 - `ui/event/handlers/`: モードディスパッチ — `handlers/mod.rs` でディスパッチし、各モード固有ロジックは `normal.rs`, `connections.rs`, `sql_modal.rs`, `editors.rs`, `pickers.rs`, `overlays.rs` に分割
 
@@ -47,7 +47,7 @@ crossterm::KeyEvent
 
 ## 新規キーバインド追加手順
 
-1. `app/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
+1. `app/update/input/keybindings/{normal,overlays,connections,editors}.rs` にエントリ追加
 2. Normal mode の場合、3つのパターンがある:
    - **predicate dispatch**: 1つのキーが1つの Action に対応する場合（例: `Ctrl+Q` → Quit）。`keybindings/mod.rs` に `is_*()` predicate fn を追加し、`handlers/normal.rs` で使う。キーは `combos` 配列で宣言する
    - **context-dependent navigation (NavIntent)**: vim-like ナビゲーションキー。詳細は nav-intent-design.md
@@ -55,6 +55,6 @@ crossterm::KeyEvent
 3. ModeBindings mode の場合: `ModeRow` エントリを追加（ディスパッチは自動）
 4. バインドをフッターに表示する場合: `display_hint` を更新
 5. 該当モードのヘルプオーバーレイセクションを更新
-6. パレットに表示すべきアクションなら `app/palette.rs` に追加
+6. パレットに表示すべきアクションなら `app/update/input/palette.rs` に追加
 7. スナップショットテストを実行してフッター/ヘルプの描画を確認
 
