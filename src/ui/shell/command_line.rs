@@ -15,7 +15,12 @@ impl CommandLine {
     pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let content = if state.input_mode() == InputMode::CommandLine {
             let input = &state.command_line_input;
-            let visible_width = area.width.saturating_sub(1) as usize; // ":" prefix
+            let raw_width = area.width.saturating_sub(1) as usize; // ":" prefix
+            let visible_width = if input.cursor() == input.char_count() {
+                raw_width.saturating_sub(1)
+            } else {
+                raw_width
+            };
             let cursor_spans = text_cursor_spans(
                 input.content(),
                 input.cursor(),

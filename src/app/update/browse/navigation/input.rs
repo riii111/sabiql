@@ -25,6 +25,9 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             InputMode::CommandLine => {
                 let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
                 state.command_line_input.insert_str(&clean);
+                state
+                    .command_line_input
+                    .update_viewport(COMMAND_LINE_VISIBLE_WIDTH);
                 Some(vec![])
             }
             InputMode::CellEdit => {

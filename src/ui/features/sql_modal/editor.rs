@@ -26,7 +26,13 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
                 ))
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+        let scroll_row = state.sql_modal.editor.scroll_row() as u16;
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll_row, 0)),
+            area,
+        );
         return;
     }
 

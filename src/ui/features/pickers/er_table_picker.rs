@@ -67,7 +67,12 @@ impl ErTablePicker {
 
         // Filter input
         let input = &state.ui.er_picker.filter_input;
-        let visible_width = filter_area.width.saturating_sub(4) as usize;
+        let raw_width = filter_area.width.saturating_sub(4) as usize;
+        let visible_width = if input.cursor() == input.char_count() {
+            raw_width.saturating_sub(1)
+        } else {
+            raw_width
+        };
         let cursor_spans = text_cursor_spans(
             input.content(),
             input.cursor(),

@@ -169,7 +169,7 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                     .validation_errors
                     .insert(field, "Required".to_string());
             } else {
-                match state.port.content().parse::<u16>() {
+                match state.port.content().trim().parse::<u16>() {
                     Err(_) => {
                         state
                             .validation_errors

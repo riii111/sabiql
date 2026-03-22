@@ -218,19 +218,19 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_string() {
+        fn empty_string_returns_origin() {
             let s = ml("", 0);
             assert_eq!(s.cursor_to_position(), (0, 0));
         }
 
         #[test]
-        fn single_line() {
+        fn single_line_returns_correct_col() {
             let s = ml("SELECT * FROM users", 7);
             assert_eq!(s.cursor_to_position(), (0, 7));
         }
 
         #[test]
-        fn multiple_lines() {
+        fn multiline_returns_correct_row_and_col() {
             // "SELECT *\nFROM users\nWHERE id = 1"
             //  cursor at 17 → "FROM user" (8 chars of line0 + \n + 8 chars into line1)
             let s = ml("SELECT *\nFROM users\nWHERE id = 1", 17);
@@ -241,7 +241,7 @@ mod tests {
         #[case("こんにちは\n世界", 5, (0, 5))]
         #[case("こんにちは\n世界", 6, (1, 0))]
         #[case("こんにちは\n世界", 7, (1, 1))]
-        fn multibyte(
+        fn multibyte_returns_correct_position(
             #[case] content: &str,
             #[case] cursor: usize,
             #[case] expected: (usize, usize),
@@ -257,7 +257,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn left_right_single_line() {
+        fn left_right_moves_cursor_by_one() {
             let mut s = ml("abc", 1);
             s.move_cursor(CursorMove::Left);
             assert_eq!(s.cursor(), 0);
@@ -266,21 +266,21 @@ mod tests {
         }
 
         #[test]
-        fn left_at_start_stays() {
+        fn left_at_start_returns_zero() {
             let mut s = ml("abc", 0);
             s.move_cursor(CursorMove::Left);
             assert_eq!(s.cursor(), 0);
         }
 
         #[test]
-        fn right_at_end_stays() {
+        fn right_at_end_returns_unchanged() {
             let mut s = ml("abc", 3);
             s.move_cursor(CursorMove::Right);
             assert_eq!(s.cursor(), 3);
         }
 
         #[test]
-        fn up_from_second_line() {
+        fn up_from_second_line_returns_same_col_in_first() {
             // "abc\ndef" → cursor at 5 (d=4, e=5) → col=1
             // Up → line 0, col 1 → cursor=1
             let mut s = ml("abc\ndef", 5);
@@ -289,14 +289,14 @@ mod tests {
         }
 
         #[test]
-        fn up_from_first_line_stays() {
+        fn up_from_first_line_returns_unchanged() {
             let mut s = ml("abc\ndef", 1);
             s.move_cursor(CursorMove::Up);
             assert_eq!(s.cursor(), 1);
         }
 
         #[test]
-        fn down_from_first_line() {
+        fn down_from_first_line_returns_same_col_in_second() {
             // "abc\ndef" → cursor at 1 → col=1
             // Down → line 1, col 1 → cursor=5
             let mut s = ml("abc\ndef", 1);
@@ -305,14 +305,14 @@ mod tests {
         }
 
         #[test]
-        fn down_from_last_line_stays() {
+        fn down_from_last_line_returns_unchanged() {
             let mut s = ml("abc\ndef", 5);
             s.move_cursor(CursorMove::Down);
             assert_eq!(s.cursor(), 5);
         }
 
         #[test]
-        fn up_clamps_to_shorter_line() {
+        fn up_clamps_col_to_shorter_line_length() {
             // "ab\ncdef" → cursor at 7 (end of "cdef"), col=4
             // Up → line 0 has len 2, so col clamped to 2 → cursor=2
             let mut s = ml("ab\ncdef", 7);
@@ -321,7 +321,7 @@ mod tests {
         }
 
         #[test]
-        fn down_clamps_to_shorter_line() {
+        fn down_clamps_col_to_shorter_line_length() {
             // "cdef\nab" → cursor at 4 (end of "cdef"), col=4
             // Down → line 1 has len 2, so col clamped to 2 → cursor=7
             let mut s = ml("cdef\nab", 4);
@@ -330,7 +330,7 @@ mod tests {
         }
 
         #[test]
-        fn home_goes_to_line_start() {
+        fn home_returns_line_start() {
             // "abc\ndef" → cursor at 5 (on 'e'), col=1
             // Home → start of line 1 → cursor=4
             let mut s = ml("abc\ndef", 5);
@@ -339,7 +339,7 @@ mod tests {
         }
 
         #[test]
-        fn end_goes_to_line_end() {
+        fn end_returns_line_end() {
             // "abc\ndef" → cursor at 4 (on 'd'), col=0
             // End → end of line 1 → cursor=7
             let mut s = ml("abc\ndef", 4);
@@ -348,14 +348,14 @@ mod tests {
         }
 
         #[test]
-        fn home_on_first_line() {
+        fn home_on_first_line_returns_zero() {
             let mut s = ml("abc\ndef", 2);
             s.move_cursor(CursorMove::Home);
             assert_eq!(s.cursor(), 0);
         }
 
         #[test]
-        fn end_on_first_line() {
+        fn end_on_first_line_returns_line_length() {
             let mut s = ml("abc\ndef", 0);
             s.move_cursor(CursorMove::End);
             assert_eq!(s.cursor(), 3);
@@ -368,7 +368,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn trailing_newline_cursor_at_empty_last_line() {
+        fn trailing_newline_returns_next_row_origin() {
             // "abc\n" → 2 lines: ("abc", 3) and ("", 0)
             // cursor at 4 → line 1, col 0
             let s = ml("abc\n", 4);
@@ -376,7 +376,7 @@ mod tests {
         }
 
         #[test]
-        fn up_from_empty_trailing_line() {
+        fn up_from_empty_trailing_line_returns_prev_line_origin() {
             // "abc\n" → cursor at 4 (empty line 1)
             // Up → line 0, col 0.min(3) = 0 → cursor=0
             let mut s = ml("abc\n", 4);
@@ -385,7 +385,7 @@ mod tests {
         }
 
         #[test]
-        fn down_to_empty_trailing_line() {
+        fn down_to_empty_trailing_line_returns_next_row_origin() {
             // "abc\n" → cursor at 2 (col=2)
             // Down → line 1, col 2.min(0) = 0 → cursor=4
             let mut s = ml("abc\n", 2);
@@ -394,7 +394,7 @@ mod tests {
         }
 
         #[test]
-        fn consecutive_newlines() {
+        fn consecutive_newlines_returns_middle_row() {
             // "a\n\nb" → lines: ("a",1), ("",0), ("b",1)
             // cursor at 2 → line 1, col 0
             let s = ml("a\n\nb", 2);
@@ -402,7 +402,7 @@ mod tests {
         }
 
         #[test]
-        fn up_down_through_empty_line() {
+        fn up_down_through_empty_line_clamps_col() {
             // "abc\n\ndef" → lines: (0,3), (4,0), (5,3)
             // Start at cursor=6 (line 2, col 1 → 'e')
             let mut s = ml("abc\n\ndef", 6);
@@ -419,7 +419,7 @@ mod tests {
         }
 
         #[test]
-        fn home_end_on_empty_line() {
+        fn home_end_on_empty_line_returns_same_position() {
             // "abc\n\ndef" → cursor at 4 (empty line 1)
             let mut s = ml("abc\n\ndef", 4);
 
@@ -431,14 +431,14 @@ mod tests {
         }
 
         #[test]
-        fn cursor_just_before_newline() {
+        fn cursor_before_newline_returns_end_of_current_line() {
             // "abc\ndef" → cursor at 3 (on \n boundary, actually end of line 0)
             let s = ml("abc\ndef", 3);
             assert_eq!(s.cursor_to_position(), (0, 3));
         }
 
         #[test]
-        fn cursor_just_after_newline() {
+        fn cursor_after_newline_returns_start_of_next_line() {
             // "abc\ndef" → cursor at 4 (start of line 1)
             let s = ml("abc\ndef", 4);
             assert_eq!(s.cursor_to_position(), (1, 0));
@@ -451,7 +451,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_newline() {
+        fn insert_newline_splits_content() {
             let mut s = ml("abcdef", 3);
             s.insert_newline();
             assert_eq!(s.content(), "abc\ndef");
@@ -459,7 +459,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_tab() {
+        fn insert_tab_adds_four_spaces() {
             let mut s = ml("abc", 3);
             s.insert_tab();
             assert_eq!(s.content(), "abc    ");
@@ -467,7 +467,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_at_newline_joins_lines() {
+        fn backspace_at_newline_joins_adjacent_lines() {
             // "abc\ndef" → cursor at 4 (start of "def")
             // backspace removes \n → "abcdef", cursor=3
             let mut s = ml("abc\ndef", 4);
@@ -477,7 +477,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_at_newline_joins_lines() {
+        fn delete_at_newline_joins_adjacent_lines() {
             // "abc\ndef" → cursor at 3 (end of "abc", on \n)
             // delete removes \n → "abcdef", cursor=3
             let mut s = ml("abc\ndef", 3);
@@ -493,14 +493,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn scroll_stays_when_cursor_visible() {
+        fn cursor_within_viewport_returns_unchanged_scroll() {
             let mut s = ml("line1\nline2\nline3", 0);
             s.update_scroll(3);
             assert_eq!(s.scroll_row(), 0);
         }
 
         #[test]
-        fn scroll_follows_cursor_down() {
+        fn cursor_below_viewport_advances_scroll() {
             // cursor on line 2 (index 2), visible_rows=2, scroll should advance
             let mut s = ml("line1\nline2\nline3", 12); // "line3" start
             s.update_scroll(2);
@@ -508,7 +508,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_follows_cursor_up() {
+        fn cursor_above_viewport_retreats_scroll() {
             let mut s = ml("line1\nline2\nline3", 0);
             s.scroll_row = 2;
             s.update_scroll(2);
@@ -516,7 +516,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_zero_visible_rows_noop() {
+        fn zero_visible_rows_returns_unchanged_scroll() {
             let mut s = ml("line1\nline2", 6);
             s.scroll_row = 1;
             s.update_scroll(0);
@@ -530,7 +530,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn set_content_resets_scroll_and_moves_cursor_to_end() {
+        fn set_content_resets_scroll_and_sets_cursor_to_end() {
             let mut s = ml("old\ncontent", 3);
             s.scroll_row = 5;
 
@@ -542,7 +542,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_resets_everything() {
+        fn clear_resets_all_fields() {
             let mut s = ml("multi\nline", 8);
             s.scroll_row = 3;
 
@@ -560,13 +560,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ascii() {
+        fn ascii_returns_same_index() {
             let s = ml("abcdef", 0);
             assert_eq!(s.char_to_byte_index(3), 3);
         }
 
         #[test]
-        fn multibyte() {
+        fn multibyte_returns_correct_position() {
             let s = ml("あいう", 0);
             // each hiragana is 3 bytes
             assert_eq!(s.char_to_byte_index(1), 3);
@@ -574,7 +574,7 @@ mod tests {
         }
 
         #[test]
-        fn past_end_returns_len() {
+        fn past_end_returns_content_byte_len() {
             let s = ml("abc", 0);
             assert_eq!(s.char_to_byte_index(100), 3);
         }
@@ -586,7 +586,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn up_down_with_multibyte_lines() {
+        fn multibyte_up_down_preserves_col() {
             // "あいう\nかき" → lines: (0,3), (4,2)
             // cursor at 5 (line 1, col 1 → 'き')
             let mut s = ml("あいう\nかき", 5);
@@ -602,7 +602,7 @@ mod tests {
         }
 
         #[test]
-        fn home_end_multibyte() {
+        fn multibyte_home_end_returns_line_boundaries() {
             let mut s = ml("あいう\nかき", 5);
 
             s.move_cursor(CursorMove::Home);
