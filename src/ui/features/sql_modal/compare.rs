@@ -63,12 +63,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
 // ── Helpers for pushing lines with flash mask ────────────────────────────────
 
-fn push_structural(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
-    lines.push(line);
+/// Empty line — no flash.
+fn push_empty(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>) {
+    lines.push(Line::raw(""));
     flash_mask.push(false);
 }
 
-fn push_content(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
+/// Line with visible text — flash.
+fn push_line(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>, line: Line<'static>) {
     lines.push(line);
     flash_mask.push(true);
 }
@@ -111,16 +113,16 @@ fn render_verdict_section(
         ),
     };
 
-    push_structural(lines, flash_mask, Line::raw(""));
-    push_structural(
+    push_empty(lines, flash_mask);
+    push_line(
         lines,
         flash_mask,
         Line::from(Span::styled(format!(" {}", verdict_label), verdict_style)),
     );
-    push_structural(lines, flash_mask, Line::raw(""));
+    push_empty(lines, flash_mask);
 
     for reason in &result.reasons {
-        push_structural(
+        push_line(
             lines,
             flash_mask,
             Line::from(vec![
@@ -130,11 +132,11 @@ fn render_verdict_section(
         );
     }
     if !result.reasons.is_empty() {
-        push_structural(lines, flash_mask, Line::raw(""));
+        push_empty(lines, flash_mask);
     }
 
     let sep = "\u{2500}".repeat(width.saturating_sub(2) as usize);
-    push_structural(
+    push_line(
         lines,
         flash_mask,
         Line::styled(
@@ -142,7 +144,7 @@ fn render_verdict_section(
             Style::default().fg(Theme::MODAL_BORDER),
         ),
     );
-    push_structural(lines, flash_mask, Line::raw(""));
+    push_empty(lines, flash_mask);
 }
 
 // ── Side-by-side slot columns (shared across all states) ─────────────────────
@@ -173,7 +175,7 @@ fn render_slot_columns(
         None => "Latest".to_string(),
     };
 
-    push_structural(
+    push_line(
         lines,
         flash_mask,
         Line::from(vec![
@@ -203,7 +205,7 @@ fn render_slot_columns(
     let left_detail = slot_detail_text(left);
     let right_detail = slot_detail_text(right);
 
-    push_structural(
+    push_line(
         lines,
         flash_mask,
         Line::from(vec![
@@ -229,7 +231,7 @@ fn render_slot_columns(
 
     // Separator between query detail and plan body
     let thin_sep = "\u{2500}".repeat(half.saturating_sub(1));
-    push_structural(
+    push_line(
         lines,
         flash_mask,
         Line::from(vec![
@@ -270,7 +272,7 @@ fn render_slot_columns(
             r,
             half.saturating_sub(1),
         ));
-        push_content(lines, flash_mask, Line::from(row_spans));
+        push_line(lines, flash_mask, Line::from(row_spans));
     }
 }
 
@@ -288,7 +290,7 @@ fn render_slot_stacked(
     let badge_style = Style::default().fg(Theme::TEXT_MUTED);
 
     render_stacked_slot(lines, flash_mask, left, header_style, badge_style);
-    push_structural(lines, flash_mask, Line::raw(""));
+    push_empty(lines, flash_mask);
     render_stacked_slot(lines, flash_mask, right, header_style, badge_style);
 }
 
@@ -301,7 +303,7 @@ fn render_stacked_slot(
 ) {
     match slot {
         Some(s) => {
-            push_structural(
+            push_line(
                 lines,
                 flash_mask,
                 Line::from(Span::styled(
@@ -310,7 +312,7 @@ fn render_stacked_slot(
                 )),
             );
             let time_secs = s.plan.execution_time_ms as f64 / 1000.0;
-            push_structural(
+            push_line(
                 lines,
                 flash_mask,
                 Line::from(Span::styled(
@@ -319,7 +321,7 @@ fn render_stacked_slot(
                 )),
             );
             for line in s.plan.raw_text.lines() {
-                push_content(
+                push_line(
                     lines,
                     flash_mask,
                     super::plan_highlight::highlight_plan_line(line),
@@ -327,7 +329,7 @@ fn render_stacked_slot(
             }
         }
         None => {
-            push_structural(
+            push_line(
                 lines,
                 flash_mask,
                 Line::from(Span::styled(
@@ -337,7 +339,7 @@ fn render_stacked_slot(
                         .add_modifier(Modifier::BOLD),
                 )),
             );
-            push_structural(
+            push_line(
                 lines,
                 flash_mask,
                 Line::from(Span::styled(
