@@ -157,7 +157,7 @@ fn build_analyze_confirm_lines<'a>(
         )));
         lines.push(Line::raw(""));
 
-        let full_query = &state.sql_modal.content;
+        let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
                 format!("  {}", line),
@@ -206,7 +206,7 @@ fn build_analyze_confirm_lines<'a>(
         )));
         lines.push(Line::raw(""));
 
-        let full_query = &state.sql_modal.content;
+        let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
                 format!("  {}", line),
@@ -224,7 +224,7 @@ fn build_analyze_confirm_lines<'a>(
         )));
         lines.push(Line::raw(""));
 
-        let full_query = &state.sql_modal.content;
+        let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
                 format!("  {}", line),

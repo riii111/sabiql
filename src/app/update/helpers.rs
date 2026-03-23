@@ -152,39 +152,24 @@ pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-pub fn char_count(s: &str) -> usize {
-    s.chars().count()
-}
-
-pub fn insert_char_at_cursor(s: &mut String, char_pos: usize, c: char) {
-    let byte_idx = char_to_byte_index(s, char_pos);
-    s.insert(byte_idx, c);
-}
-
-pub fn insert_str_at_cursor(s: &mut String, char_pos: usize, text: &str) -> usize {
-    let byte_idx = char_to_byte_index(s, char_pos);
-    s.insert_str(byte_idx, text);
-    text.chars().count()
-}
-
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.validation_errors.remove(&field);
 
     match field {
         ConnectionField::Host => {
-            if state.host.trim().is_empty() {
+            if state.host.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::Port => {
-            if state.port.trim().is_empty() {
+            if state.port.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             } else {
-                match state.port.parse::<u16>() {
+                match state.port.content().trim().parse::<u16>() {
                     Err(_) => {
                         state
                             .validation_errors
@@ -200,21 +185,21 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
             }
         }
         ConnectionField::Database => {
-            if state.database.trim().is_empty() {
+            if state.database.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::User => {
-            if state.user.trim().is_empty() {
+            if state.user.content().trim().is_empty() {
                 state
                     .validation_errors
                     .insert(field, "Required".to_string());
             }
         }
         ConnectionField::Name => {
-            let name = state.name.trim();
+            let name = state.name.content().trim().to_string();
             if name.is_empty() {
                 state
                     .validation_errors
@@ -242,69 +227,13 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    mod insert_str_at_cursor_tests {
-        use super::*;
-
-        #[test]
-        fn insert_str_at_empty_string() {
-            let mut s = String::new();
-
-            let count = insert_str_at_cursor(&mut s, 0, "abc");
-
-            assert_eq!(s, "abc");
-            assert_eq!(count, 3);
-        }
-
-        #[test]
-        fn insert_str_at_beginning() {
-            let mut s = "hello".to_string();
-
-            let count = insert_str_at_cursor(&mut s, 0, "xy");
-
-            assert_eq!(s, "xyhello");
-            assert_eq!(count, 2);
-        }
-
-        #[test]
-        fn insert_str_at_middle() {
-            let mut s = "abcd".to_string();
-
-            let count = insert_str_at_cursor(&mut s, 2, "XX");
-
-            assert_eq!(s, "abXXcd");
-            assert_eq!(count, 2);
-        }
-
-        #[test]
-        fn insert_str_at_end() {
-            let mut s = "abcd".to_string();
-
-            let count = insert_str_at_cursor(&mut s, 4, "!");
-
-            assert_eq!(s, "abcd!");
-            assert_eq!(count, 1);
-        }
-
-        #[test]
-        fn insert_str_with_multibyte() {
-            let mut s = "abc".to_string();
-
-            let count = insert_str_at_cursor(&mut s, 1, "日本");
-
-            assert_eq!(s, "a日本bc");
-            assert_eq!(count, 2);
-        }
-    }
-
     mod validate_field_name {
         use super::*;
+        use crate::app::model::shared::text_input::TextInputState;
 
         #[test]
         fn empty_name_sets_error() {
-            let mut state = ConnectionSetupState {
-                name: "".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -315,11 +244,10 @@ mod tests {
         }
 
         #[test]
+        #[allow(clippy::field_reassign_with_default)]
         fn whitespace_only_name_sets_error() {
-            let mut state = ConnectionSetupState {
-                name: "   ".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state.name = TextInputState::new("   ", 3);
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -333,10 +261,9 @@ mod tests {
         #[case("a".repeat(50), false)]
         #[case("a".repeat(51), true)]
         fn name_length_validation(#[case] name: String, #[case] expect_error: bool) {
-            let mut state = ConnectionSetupState {
-                name,
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            let len = name.chars().count();
+            state.name = TextInputState::new(name, len);
 
             validate_field(&mut state, ConnectionField::Name);
 
@@ -352,14 +279,11 @@ mod tests {
 
         #[test]
         fn valid_name_clears_previous_error() {
-            let mut state = ConnectionSetupState {
-                name: "".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
             validate_field(&mut state, ConnectionField::Name);
             assert!(state.validation_errors.contains_key(&ConnectionField::Name));
 
-            state.name = "Valid Name".to_string();
+            state.name.set_content("Valid Name".to_string());
             validate_field(&mut state, ConnectionField::Name);
 
             assert!(!state.validation_errors.contains_key(&ConnectionField::Name));

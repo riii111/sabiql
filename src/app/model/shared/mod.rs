@@ -6,6 +6,7 @@ pub mod inspector_tab;
 pub mod key_sequence;
 pub mod message;
 pub mod modal;
+pub mod multi_line_input;
 pub mod picker;
 pub mod text_input;
 pub mod ui_state;

@@ -13,8 +13,8 @@ pub(super) fn render_completion_popup(
     editor_area: Rect,
     state: &AppState,
 ) {
-    let (cursor_row, cursor_col) =
-        super::cursor::cursor_to_position(&state.sql_modal.content, state.sql_modal.cursor);
+    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
+    let scroll_row = state.sql_modal.editor.scroll_row();
 
     let max_items = 8;
     let visible_count = state.sql_modal.completion.candidates.len().min(max_items);
@@ -26,7 +26,8 @@ pub(super) fn render_completion_popup(
     } else {
         (editor_area.x + cursor_col as u16).min(modal_area.right().saturating_sub(popup_width))
     };
-    let cursor_screen_y = editor_area.y + cursor_row as u16;
+    let visible_row = cursor_row.saturating_sub(scroll_row);
+    let cursor_screen_y = editor_area.y + visible_row as u16;
 
     let popup_y = if cursor_screen_y + 1 + popup_height > modal_area.bottom() {
         cursor_screen_y.saturating_sub(popup_height)

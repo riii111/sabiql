@@ -147,8 +147,9 @@ impl ConnectionSetup {
         };
 
         let input_line = if is_focused {
-            let viewport = state.viewport_offset;
-            let cursor = state.cursor_position;
+            let input = state.focused_input().unwrap();
+            let viewport = input.viewport_offset();
+            let cursor = input.cursor();
             let char_count = display_value.chars().count();
 
             // same reservation logic as TextInputState::update_viewport

@@ -5,6 +5,7 @@ pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
         return action;
     }
+    // Char input falls through to filter (keybindings resolve Backspace/Left/Right/Home/End)
     match combo.key {
         Key::Char(c) => Action::TextInput {
             target: InputTarget::Filter,

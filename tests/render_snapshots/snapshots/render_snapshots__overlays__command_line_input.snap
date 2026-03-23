@@ -25,4 +25,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
 Enter:Execute  Esc:Cancel                                                       
-:sql█
+:sql

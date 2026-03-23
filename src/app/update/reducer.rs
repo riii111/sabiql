@@ -329,7 +329,11 @@ mod tests {
         #[test]
         fn open_table_picker_sets_mode_and_clears_filter() {
             let mut state = create_test_state();
-            state.ui.table_picker.filter_input = "test".to_string();
+            state
+                .ui
+                .table_picker
+                .filter_input
+                .set_content("test".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -340,7 +344,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::TablePicker);
-            assert!(state.ui.table_picker.filter_input.is_empty());
+            assert!(state.ui.table_picker.filter_input.content().is_empty());
             assert_eq!(state.ui.table_picker.selected(), 0);
             assert!(effects.is_empty());
         }
@@ -399,8 +403,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.content, "a");
-            assert_eq!(state.sql_modal.cursor, 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce.is_some());
         }
@@ -408,8 +412,7 @@ mod tests {
         #[test]
         fn sql_modal_backspace_sets_debounce_state() {
             let mut state = create_test_state();
-            state.sql_modal.content = "ab".to_string();
-            state.sql_modal.cursor = 2;
+            state.sql_modal.editor.set_content("ab".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -421,8 +424,8 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.content, "a");
-            assert_eq!(state.sql_modal.cursor, 1);
+            assert_eq!(state.sql_modal.editor.content(), "a");
+            assert_eq!(state.sql_modal.editor.cursor(), 1);
             assert!(effects.is_empty());
             assert!(state.sql_modal.completion_debounce.is_some());
         }
@@ -1147,9 +1150,9 @@ mod tests {
         ) {
             let mut state = setup_state();
             match field {
-                ConnectionField::Host => state.host = value.to_string(),
-                ConnectionField::Database => state.database = value.to_string(),
-                ConnectionField::User => state.user = value.to_string(),
+                ConnectionField::Host => state.host.set_content(value.to_string()),
+                ConnectionField::Database => state.database.set_content(value.to_string()),
+                ConnectionField::User => state.user.set_content(value.to_string()),
                 _ => {}
             }
 
@@ -1163,7 +1166,7 @@ mod tests {
         #[case("abc")]
         fn port_validation_invalid_format(#[case] value: &str) {
             let mut state = setup_state();
-            state.port = value.to_string();
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
@@ -1176,7 +1179,7 @@ mod tests {
         #[case("99999")]
         fn port_validation_out_of_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port = value.to_string();
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
@@ -1189,7 +1192,7 @@ mod tests {
         #[case("65535")]
         fn port_validation_valid_range(#[case] value: &str) {
             let mut state = setup_state();
-            state.port = value.to_string();
+            state.port.set_content(value.to_string());
 
             validate_field(&mut state, ConnectionField::Port);
 
@@ -1201,7 +1204,7 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.password = String::new();
+            state.password = Default::default();
 
             validate_field(&mut state, field);
 
@@ -1211,10 +1214,10 @@ mod tests {
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.host = String::new();
-            state.port = "invalid".to_string();
-            state.database = String::new();
-            state.user = String::new();
+            state.host = Default::default();
+            state.port.set_content("invalid".to_string());
+            state.database = Default::default();
+            state.user = Default::default();
 
             validate_all(&mut state);
 
@@ -1248,9 +1251,15 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = true;
-            state.connection_setup.host = "db.example.com".to_string();
-            state.connection_setup.port = "5432".to_string();
-            state.connection_setup.database = "mydb".to_string();
+            state
+                .connection_setup
+                .host
+                .set_content("db.example.com".to_string());
+            state.connection_setup.port.set_content("5432".to_string());
+            state
+                .connection_setup
+                .database
+                .set_content("mydb".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1714,11 +1723,20 @@ mod tests {
         #[test]
         fn reenter_connection_setup_preserves_form_values() {
             let mut state = create_test_state();
-            state.connection_setup.host = "custom-host".to_string();
-            state.connection_setup.port = "5433".to_string();
-            state.connection_setup.database = "mydb".to_string();
-            state.connection_setup.user = "admin".to_string();
-            state.connection_setup.password = "secret".to_string();
+            state
+                .connection_setup
+                .host
+                .set_content("custom-host".to_string());
+            state.connection_setup.port.set_content("5433".to_string());
+            state
+                .connection_setup
+                .database
+                .set_content("mydb".to_string());
+            state.connection_setup.user.set_content("admin".to_string());
+            state
+                .connection_setup
+                .password
+                .set_content("secret".to_string());
             state.session.set_connection_state(ConnectionState::Failed);
             let now = Instant::now();
 
@@ -1729,11 +1747,11 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.connection_setup.host, "custom-host");
-            assert_eq!(state.connection_setup.port, "5433");
-            assert_eq!(state.connection_setup.database, "mydb");
-            assert_eq!(state.connection_setup.user, "admin");
-            assert_eq!(state.connection_setup.password, "secret");
+            assert_eq!(state.connection_setup.host.content(), "custom-host");
+            assert_eq!(state.connection_setup.port.content(), "5433");
+            assert_eq!(state.connection_setup.database.content(), "mydb");
+            assert_eq!(state.connection_setup.user.content(), "admin");
+            assert_eq!(state.connection_setup.password.content(), "secret");
         }
 
         #[test]
@@ -1875,7 +1893,11 @@ mod tests {
         #[test]
         fn open_clears_selections_and_filter() {
             let mut state = state_with_metadata();
-            state.ui.er_picker.filter_input = "old".to_string();
+            state
+                .ui
+                .er_picker
+                .filter_input
+                .set_content("old".to_string());
             state
                 .ui
                 .er_selected_tables
@@ -1890,7 +1912,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::ErTablePicker);
-            assert!(state.ui.er_picker.filter_input.is_empty());
+            assert!(state.ui.er_picker.filter_input.content().is_empty());
             assert!(state.ui.er_selected_tables.is_empty());
             assert!(effects.is_empty());
         }
@@ -1991,7 +2013,11 @@ mod tests {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
-            state.ui.er_picker.filter_input = "test".to_string();
+            state
+                .ui
+                .er_picker
+                .filter_input
+                .set_content("test".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -2002,7 +2028,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.ui.er_picker.filter_input.is_empty());
+            assert!(state.ui.er_picker.filter_input.content().is_empty());
             assert!(effects.is_empty());
         }
 

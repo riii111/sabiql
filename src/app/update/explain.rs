@@ -14,7 +14,7 @@ fn is_multi_statement(content: &str) -> bool {
 pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
         Action::ExplainRequest => {
-            let content = state.sql_modal.content.trim().to_string();
+            let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
             }
@@ -47,7 +47,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         }
 
         Action::ExplainAnalyzeRequest => {
-            let content = state.sql_modal.content.trim().to_string();
+            let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return Some(vec![]);
             }
@@ -146,7 +146,8 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         } => {
             // blank + title + blank + separator + blank + warning(2) + blank = 8
             const CONFIRM_HEADER_LINES: usize = 8;
-            let content_lines = CONFIRM_HEADER_LINES + state.sql_modal.content.lines().count();
+            let content_lines =
+                CONFIRM_HEADER_LINES + state.sql_modal.editor.content().lines().count();
             let modal_inner =
                 crate::app::model::explain_context::ExplainContext::modal_inner_height(
                     state.ui.terminal_height,
@@ -204,7 +205,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             is_analyze,
             execution_time_ms,
         } => {
-            let query = state.sql_modal.content.clone();
+            let query = state.sql_modal.editor.content().to_string();
             state
                 .explain
                 .set_plan(plan_text.clone(), *is_analyze, *execution_time_ms, &query);
@@ -272,8 +273,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         Action::CompareEditQuery => {
             if let Some(ref right) = state.explain.right {
                 let query = right.full_query.clone();
-                state.sql_modal.content = query;
-                state.sql_modal.cursor = state.sql_modal.content.chars().count();
+                state.sql_modal.editor.set_content(query);
                 state.sql_modal.set_status(SqlModalStatus::Editing);
                 state.sql_modal.completion = Default::default();
                 state.sql_modal.active_tab = SqlModalTab::Sql;
@@ -321,7 +321,7 @@ mod tests {
         #[test]
         fn empty_query_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "  ".to_string();
+            state.sql_modal.editor.set_content("  ".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             let effects =
@@ -333,7 +333,7 @@ mod tests {
         #[test]
         fn no_dsn_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
 
             let effects =
                 reduce_explain(&mut state, &Action::ExplainRequest, Instant::now()).unwrap();
@@ -344,7 +344,7 @@ mod tests {
         #[test]
         fn running_is_noop() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
             state.sql_modal.set_status(SqlModalStatus::Running);
 
@@ -357,7 +357,10 @@ mod tests {
         #[test]
         fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             let effects =
@@ -374,7 +377,7 @@ mod tests {
         #[test]
         fn starts_query_timer() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainRequest, Instant::now());
@@ -386,7 +389,7 @@ mod tests {
         #[test]
         fn emits_execute_explain_effect() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             let effects =
@@ -424,7 +427,10 @@ mod tests {
         #[test]
         fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1; DELETE FROM users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; DELETE FROM users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             let effects =
@@ -442,7 +448,7 @@ mod tests {
         #[test]
         fn select_executes_immediately_without_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             let effects =
@@ -462,7 +468,10 @@ mod tests {
         #[test]
         fn insert_shows_enter_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "INSERT INTO users VALUES (1)".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -476,7 +485,10 @@ mod tests {
         #[test]
         fn update_with_where_shows_enter_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "UPDATE users SET name='x' WHERE id=1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -490,7 +502,10 @@ mod tests {
         #[test]
         fn delete_without_where_shows_high_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DELETE FROM users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -507,7 +522,10 @@ mod tests {
         #[test]
         fn delete_with_where_shows_enter_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DELETE FROM users WHERE id=1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -521,7 +539,10 @@ mod tests {
         #[test]
         fn drop_shows_high_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DROP TABLE users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP TABLE users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -538,7 +559,10 @@ mod tests {
         #[test]
         fn truncate_shows_high_confirm() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "TRUNCATE users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("TRUNCATE users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
             reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
@@ -559,7 +583,10 @@ mod tests {
         #[test]
         fn read_only_blocks_dml_analyze() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "DELETE FROM users WHERE id=1".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
             state.session.read_only = true;
 
@@ -581,7 +608,10 @@ mod tests {
         #[test]
         fn read_only_allows_select_analyze() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT * FROM users".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT * FROM users".to_string());
             state.session.dsn = Some("dsn://test".to_string());
             state.session.read_only = true;
 
@@ -602,7 +632,10 @@ mod tests {
         #[test]
         fn read_only_blocks_insert_analyze() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "INSERT INTO users VALUES (1)".to_string();
+            state
+                .sql_modal
+                .editor
+                .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.dsn = Some("dsn://test".to_string());
             state.session.read_only = true;
 
@@ -782,7 +815,7 @@ mod tests {
         #[test]
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
-            state.sql_modal.content = "SELECT 1".to_string();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
             let now = Instant::now();
 
@@ -801,7 +834,7 @@ mod tests {
             assert!(state.explain.left.is_none());
 
             // Step 2: Second EXPLAIN — auto-advance moves right→left
-            state.sql_modal.content = "SELECT 2".to_string();
+            state.sql_modal.editor.set_content("SELECT 2".to_string());
             reduce_explain(&mut state, &Action::ExplainRequest, now);
             reduce_explain(
                 &mut state,

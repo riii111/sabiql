@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
+use crate::app::model::shared::multi_line_input::MultiLineInputState;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::domain::CommandTag;
@@ -61,8 +62,7 @@ pub enum SqlModalStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlModalContext {
-    pub content: String,
-    pub cursor: usize,
+    pub editor: MultiLineInputState,
     status: SqlModalStatus,
     last_adhoc_success: Option<AdhocSuccessSnapshot>,
     last_adhoc_error: Option<String>,
@@ -154,8 +154,7 @@ impl SqlModalContext {
 #[cfg(test)]
 impl SqlModalContext {
     pub fn clear_content(&mut self) {
-        self.content.clear();
-        self.cursor = 0;
+        self.editor.clear();
         self.completion.visible = false;
         self.completion.candidates.clear();
     }
@@ -170,8 +169,8 @@ mod tests {
     fn default_creates_empty_context() {
         let ctx = SqlModalContext::default();
 
-        assert!(ctx.content.is_empty());
-        assert_eq!(ctx.cursor, 0);
+        assert!(ctx.editor.content().is_empty());
+        assert_eq!(ctx.editor.cursor(), 0);
         assert_eq!(ctx.status, SqlModalStatus::Normal);
         assert!(!ctx.completion.visible);
         assert!(!ctx.is_prefetch_started());
@@ -202,11 +201,8 @@ mod tests {
 
     #[test]
     fn clear_content_resets_editor_state() {
-        let mut ctx = SqlModalContext {
-            content: "SELECT * FROM users".to_string(),
-            cursor: 10,
-            ..Default::default()
-        };
+        let mut ctx = SqlModalContext::default();
+        ctx.editor.set_content("SELECT * FROM users".to_string());
         ctx.completion.visible = true;
         ctx.completion.candidates.push(CompletionCandidate {
             text: "test".to_string(),
@@ -216,8 +212,8 @@ mod tests {
 
         ctx.clear_content();
 
-        assert!(ctx.content.is_empty());
-        assert_eq!(ctx.cursor, 0);
+        assert!(ctx.editor.content().is_empty());
+        assert_eq!(ctx.editor.cursor(), 0);
         assert!(!ctx.completion.visible);
         assert!(ctx.completion.candidates.is_empty());
     }
