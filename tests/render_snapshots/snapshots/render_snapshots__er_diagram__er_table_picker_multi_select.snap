@@ -7,7 +7,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││(select a table)                                          │
 │  public.commen╭ ER Diagram ──────────────────────────────────╮               │
-│               │  > █                                         │               │
+│               │  >                                           │               │
 │               │  Mode:    Partial ER                         │               │
 │               │  Targets: 2 tables                           │               │
 │               │  Output:  er_partial_multi_2_89466781.dot    │               │

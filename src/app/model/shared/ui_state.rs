@@ -238,7 +238,7 @@ mod tests {
         assert!(!state.focus_mode);
         assert!(state.focus_mode_prev_pane.is_none());
         assert_eq!(state.explorer_selected, 0);
-        assert!(state.table_picker.filter_input.is_empty());
+        assert!(state.table_picker.filter_input.content().is_empty());
     }
 
     #[test]

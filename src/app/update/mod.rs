@@ -17,9 +17,6 @@ pub use browse::result::reduce_result;
 pub use connection::reduce_connection;
 pub use er::reduce_er;
 pub use explain::reduce_explain;
-pub use helpers::{
-    char_count, char_to_byte_index, insert_char_at_cursor, insert_str_at_cursor, validate_all,
-    validate_field,
-};
+pub use helpers::{char_to_byte_index, validate_all, validate_field};
 pub use modal::reduce_modal;
 pub use sql_editor::reduce_sql_modal;

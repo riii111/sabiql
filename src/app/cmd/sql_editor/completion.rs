@@ -41,8 +41,8 @@ pub(crate) async fn run(
         }
 
         Effect::TriggerCompletion => {
-            let cursor = state.sql_modal.cursor;
-            let content = &state.sql_modal.content;
+            let cursor = state.sql_modal.editor.cursor();
+            let content = state.sql_modal.editor.content();
 
             let (prep, missing) = {
                 let engine = completion_engine.borrow();

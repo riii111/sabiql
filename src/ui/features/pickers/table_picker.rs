@@ -5,9 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
-use crate::ui::theme::Theme;
-
+use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::primitives::molecules::render_modal;
+use crate::ui::theme::Theme;
 
 pub struct TablePicker;
 
@@ -26,17 +26,27 @@ impl TablePicker {
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
 
         state.ui.table_picker.pane_height = list_area.height;
+        let raw_width = filter_area.width.saturating_sub(4) as usize; // "  > " prefix
+        state.ui.table_picker.filter_visible_width = raw_width;
 
-        let filter_line = Line::from(vec![
-            Span::styled("  > ", Style::default().fg(Theme::MODAL_TITLE)),
-            Span::raw(&state.ui.table_picker.filter_input),
-            Span::styled(
-                "█",
-                Style::default()
-                    .fg(Theme::CURSOR_FG)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ]);
+        let input = &state.ui.table_picker.filter_input;
+        let visible_width = if input.cursor() == input.char_count() {
+            raw_width.saturating_sub(1)
+        } else {
+            raw_width
+        };
+        let cursor_spans = text_cursor_spans(
+            input.content(),
+            input.cursor(),
+            input.viewport_offset(),
+            visible_width,
+        );
+        let mut spans = vec![Span::styled(
+            "  > ",
+            Style::default().fg(Theme::MODAL_TITLE),
+        )];
+        spans.extend(cursor_spans);
+        let filter_line = Line::from(spans);
 
         frame.render_widget(Paragraph::new(filter_line), filter_area);
 

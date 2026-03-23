@@ -40,12 +40,29 @@ pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
+    use crate::app::update::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::COMMAND_LINE_KEYS) {
         return action;
     }
     match combo.key {
         Key::Backspace => Action::TextBackspace {
             target: InputTarget::CommandLine,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::CommandLine,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::CommandLine,
+            direction: CursorMove::Right,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::CommandLine,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::CommandLine,
+            direction: CursorMove::End,
         },
         Key::Char(c) => Action::TextInput {
             target: InputTarget::CommandLine,

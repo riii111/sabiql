@@ -152,7 +152,7 @@ pub fn reduce(
         }
 
         Action::CommandLineSubmit => {
-            let cmd = parse_command(&state.command_line_input);
+            let cmd = parse_command(state.command_line_input.content());
             let follow_up = command_to_action(cmd);
             state.modal.pop_mode();
             state.command_line_input.clear();
@@ -259,7 +259,7 @@ mod tests {
         fn submit_quit_pops_mode_and_sets_quit() {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input = "q".to_string();
+            state.command_line_input.set_content("q".to_string());
 
             reduce_query(
                 &mut state,
@@ -277,7 +277,9 @@ mod tests {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::CellEdit);
             state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input = "unknown_cmd".to_string();
+            state
+                .command_line_input
+                .set_content("unknown_cmd".to_string());
 
             reduce_query(
                 &mut state,
@@ -294,7 +296,7 @@ mod tests {
         fn submit_erd_dispatches_open_er_table_picker() {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
-            state.command_line_input = "erd".to_string();
+            state.command_line_input.set_content("erd".to_string());
 
             let effects = reduce_query(
                 &mut state,
@@ -305,7 +307,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(state.command_line_input.is_empty());
+            assert!(state.command_line_input.content().is_empty());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::DispatchActions(actions) => {

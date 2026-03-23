@@ -1,7 +1,8 @@
 use super::types::{Key, KeyCombo};
 use super::{ExecBinding, KeyBinding, ModeRow};
 use crate::app::update::action::{
-    Action, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    Action, CursorMove, InputTarget, ListMotion, ListTarget, ScrollAmount, ScrollDirection,
+    ScrollTarget,
 };
 
 // =============================================================================
@@ -150,12 +151,42 @@ pub const TABLE_PICKER_ROWS: &[ModeRow] = &[
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
-        bindings: &[ExecBinding {
-            action: Action::TextBackspace {
-                target: InputTarget::Filter,
+        bindings: &[
+            ExecBinding {
+                action: Action::TextBackspace {
+                    target: InputTarget::Filter,
+                },
+                combos: &[KeyCombo::plain(Key::Backspace)],
             },
-            combos: &[KeyCombo::plain(Key::Backspace)],
-        }],
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::Filter,
+                    direction: CursorMove::Left,
+                },
+                combos: &[KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::Filter,
+                    direction: CursorMove::Right,
+                },
+                combos: &[KeyCombo::plain(Key::Right)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::Filter,
+                    direction: CursorMove::Home,
+                },
+                combos: &[KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::Filter,
+                    direction: CursorMove::End,
+                },
+                combos: &[KeyCombo::plain(Key::End)],
+            },
+        ],
     },
     ModeRow {
         key_short: "Esc",
@@ -231,12 +262,42 @@ pub const ER_PICKER_ROWS: &[ModeRow] = &[
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
-        bindings: &[ExecBinding {
-            action: Action::TextBackspace {
-                target: InputTarget::ErFilter,
+        bindings: &[
+            ExecBinding {
+                action: Action::TextBackspace {
+                    target: InputTarget::ErFilter,
+                },
+                combos: &[KeyCombo::plain(Key::Backspace)],
             },
-            combos: &[KeyCombo::plain(Key::Backspace)],
-        }],
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: CursorMove::Left,
+                },
+                combos: &[KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: CursorMove::Right,
+                },
+                combos: &[KeyCombo::plain(Key::Right)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: CursorMove::Home,
+                },
+                combos: &[KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: CursorMove::End,
+                },
+                combos: &[KeyCombo::plain(Key::End)],
+            },
+        ],
     },
     ModeRow {
         key_short: "Esc",
@@ -292,12 +353,42 @@ pub const QUERY_HISTORY_PICKER_ROWS: &[ModeRow] = &[
         key: "type",
         desc_short: "Filter",
         description: "Type to filter",
-        bindings: &[ExecBinding {
-            action: Action::TextBackspace {
-                target: InputTarget::QueryHistoryFilter,
+        bindings: &[
+            ExecBinding {
+                action: Action::TextBackspace {
+                    target: InputTarget::QueryHistoryFilter,
+                },
+                combos: &[KeyCombo::plain(Key::Backspace)],
             },
-            combos: &[KeyCombo::plain(Key::Backspace)],
-        }],
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::QueryHistoryFilter,
+                    direction: CursorMove::Left,
+                },
+                combos: &[KeyCombo::plain(Key::Left)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::QueryHistoryFilter,
+                    direction: CursorMove::Right,
+                },
+                combos: &[KeyCombo::plain(Key::Right)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::QueryHistoryFilter,
+                    direction: CursorMove::Home,
+                },
+                combos: &[KeyCombo::plain(Key::Home)],
+            },
+            ExecBinding {
+                action: Action::TextMoveCursor {
+                    target: InputTarget::QueryHistoryFilter,
+                    direction: CursorMove::End,
+                },
+                combos: &[KeyCombo::plain(Key::End)],
+            },
+        ],
     },
     ModeRow {
         key_short: "Esc",

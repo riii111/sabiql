@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::app::model::shared::text_input::TextInputState;
 use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 
 pub const CONNECTION_INPUT_WIDTH: u16 = 30;
@@ -85,20 +86,17 @@ pub struct SslModeDropdown {
 
 #[derive(Debug, Clone)]
 pub struct ConnectionSetupState {
-    pub name: String,
-    pub host: String,
-    pub port: String,
-    pub database: String,
-    pub user: String,
-    pub password: String,
+    pub name: TextInputState,
+    pub host: TextInputState,
+    pub port: TextInputState,
+    pub database: TextInputState,
+    pub user: TextInputState,
+    pub password: TextInputState,
     pub ssl_mode: SslMode,
 
     pub focused_field: ConnectionField,
     pub ssl_dropdown: SslModeDropdown,
     pub validation_errors: HashMap<ConnectionField, String>,
-
-    pub cursor_position: usize,
-    pub viewport_offset: usize,
 
     pub is_first_run: bool,
 
@@ -108,18 +106,16 @@ pub struct ConnectionSetupState {
 impl Default for ConnectionSetupState {
     fn default() -> Self {
         Self {
-            name: String::new(),
-            host: "localhost".to_string(),
-            port: "5432".to_string(),
-            database: String::new(),
-            user: String::new(),
-            password: String::new(),
+            name: TextInputState::default(),
+            host: TextInputState::new("localhost", 9),
+            port: TextInputState::new("5432", 4),
+            database: TextInputState::default(),
+            user: TextInputState::default(),
+            password: TextInputState::default(),
             ssl_mode: SslMode::Prefer,
             focused_field: ConnectionField::Name,
             ssl_dropdown: SslModeDropdown::default(),
             validation_errors: HashMap::new(),
-            cursor_position: 0,
-            viewport_offset: 0,
             is_first_run: true,
             editing_id: None,
         }
@@ -128,22 +124,46 @@ impl Default for ConnectionSetupState {
 
 impl ConnectionSetupState {
     pub fn default_name(&self) -> String {
-        if self.database.is_empty() {
-            self.host.clone()
+        if self.database.content().is_empty() {
+            self.host.content().to_string()
         } else {
-            format!("{}@{}", self.database, self.host)
+            format!("{}@{}", self.database.content(), self.host.content())
         }
     }
 
     pub fn field_value(&self, field: ConnectionField) -> &str {
         match field {
-            ConnectionField::Name => &self.name,
-            ConnectionField::Host => &self.host,
-            ConnectionField::Port => &self.port,
-            ConnectionField::Database => &self.database,
-            ConnectionField::User => &self.user,
-            ConnectionField::Password => &self.password,
+            ConnectionField::Name => self.name.content(),
+            ConnectionField::Host => self.host.content(),
+            ConnectionField::Port => self.port.content(),
+            ConnectionField::Database => self.database.content(),
+            ConnectionField::User => self.user.content(),
+            ConnectionField::Password => self.password.content(),
             ConnectionField::SslMode => "",
+        }
+    }
+
+    pub fn focused_input(&self) -> Option<&TextInputState> {
+        match self.focused_field {
+            ConnectionField::Name => Some(&self.name),
+            ConnectionField::Host => Some(&self.host),
+            ConnectionField::Port => Some(&self.port),
+            ConnectionField::Database => Some(&self.database),
+            ConnectionField::User => Some(&self.user),
+            ConnectionField::Password => Some(&self.password),
+            ConnectionField::SslMode => None,
+        }
+    }
+
+    pub fn focused_input_mut(&mut self) -> Option<&mut TextInputState> {
+        match self.focused_field {
+            ConnectionField::Name => Some(&mut self.name),
+            ConnectionField::Host => Some(&mut self.host),
+            ConnectionField::Port => Some(&mut self.port),
+            ConnectionField::Database => Some(&mut self.database),
+            ConnectionField::User => Some(&mut self.user),
+            ConnectionField::Password => Some(&mut self.password),
+            ConnectionField::SslMode => None,
         }
     }
 
@@ -159,35 +179,25 @@ impl ConnectionSetupState {
         !self.validation_errors.is_empty()
     }
 
-    pub fn update_cursor(&mut self, cursor: usize, visible_width: usize) {
-        self.cursor_position = cursor;
-        if cursor < self.viewport_offset {
-            self.viewport_offset = cursor;
-        } else if cursor >= self.viewport_offset + visible_width {
-            self.viewport_offset = cursor.saturating_sub(visible_width) + 1;
-        }
-    }
-
-    pub fn cursor_to_end(&mut self) {
-        let len = self.field_value(self.focused_field).chars().count();
-        self.cursor_position = len;
-        self.viewport_offset = 0;
-    }
-
     pub fn from_profile(profile: &ConnectionProfile) -> Self {
+        let name_len = profile.name.as_str().chars().count();
+        let host_len = profile.host.chars().count();
+        let port_str = profile.port.to_string();
+        let port_len = port_str.chars().count();
+        let db_len = profile.database.chars().count();
+        let user_len = profile.username.chars().count();
+        let pw_len = profile.password.chars().count();
         Self {
-            name: profile.name.as_str().to_string(),
-            host: profile.host.clone(),
-            port: profile.port.to_string(),
-            database: profile.database.clone(),
-            user: profile.username.clone(),
-            password: profile.password.clone(),
+            name: TextInputState::new(profile.name.as_str(), name_len),
+            host: TextInputState::new(&profile.host, host_len),
+            port: TextInputState::new(&port_str, port_len),
+            database: TextInputState::new(&profile.database, db_len),
+            user: TextInputState::new(&profile.username, user_len),
+            password: TextInputState::new(&profile.password, pw_len),
             ssl_mode: profile.ssl_mode,
             focused_field: ConnectionField::Name,
             ssl_dropdown: SslModeDropdown::default(),
             validation_errors: HashMap::new(),
-            cursor_position: 0,
-            viewport_offset: 0,
             is_first_run: false,
             editing_id: Some(profile.id.clone()),
         }
@@ -266,12 +276,12 @@ mod tests {
         #[test]
         fn default_has_correct_values() {
             let state = ConnectionSetupState::default();
-            assert!(state.name.is_empty());
-            assert_eq!(state.host, "localhost");
-            assert_eq!(state.port, "5432");
-            assert!(state.database.is_empty());
-            assert!(state.user.is_empty());
-            assert!(state.password.is_empty());
+            assert!(state.name.content().is_empty());
+            assert_eq!(state.host.content(), "localhost");
+            assert_eq!(state.port.content(), "5432");
+            assert!(state.database.content().is_empty());
+            assert!(state.user.content().is_empty());
+            assert!(state.password.content().is_empty());
             assert_eq!(state.ssl_mode, SslMode::Prefer);
             assert_eq!(state.focused_field, ConnectionField::Name);
             assert!(state.is_first_run);
@@ -286,10 +296,8 @@ mod tests {
 
         #[test]
         fn default_name_with_database() {
-            let state = ConnectionSetupState {
-                database: "mydb".to_string(),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state.database.set_content("mydb".to_string());
             assert_eq!(state.default_name(), "mydb@localhost");
         }
 
@@ -301,22 +309,22 @@ mod tests {
 
         #[test]
         fn has_errors_returns_true_when_errors_exist() {
-            let state = ConnectionSetupState {
-                validation_errors: HashMap::from([(ConnectionField::Host, "Required".to_string())]),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state
+                .validation_errors
+                .insert(ConnectionField::Host, "Required".to_string());
             assert!(state.has_errors());
         }
 
         #[test]
         fn clear_errors_removes_all_errors() {
-            let mut state = ConnectionSetupState {
-                validation_errors: HashMap::from([
-                    (ConnectionField::Host, "Required".to_string()),
-                    (ConnectionField::Port, "Invalid".to_string()),
-                ]),
-                ..Default::default()
-            };
+            let mut state = ConnectionSetupState::default();
+            state
+                .validation_errors
+                .insert(ConnectionField::Host, "Required".to_string());
+            state
+                .validation_errors
+                .insert(ConnectionField::Port, "Invalid".to_string());
             state.clear_errors();
             assert!(!state.has_errors());
         }
@@ -336,12 +344,12 @@ mod tests {
 
             let state = ConnectionSetupState::from_profile(&profile);
 
-            assert_eq!(state.name, "Test DB");
-            assert_eq!(state.host, "db.example.com");
-            assert_eq!(state.port, "5433");
-            assert_eq!(state.database, "testdb");
-            assert_eq!(state.user, "testuser");
-            assert_eq!(state.password, "secret");
+            assert_eq!(state.name.content(), "Test DB");
+            assert_eq!(state.host.content(), "db.example.com");
+            assert_eq!(state.port.content(), "5433");
+            assert_eq!(state.database.content(), "testdb");
+            assert_eq!(state.user.content(), "testuser");
+            assert_eq!(state.password.content(), "secret");
             assert_eq!(state.ssl_mode, SslMode::Require);
             assert_eq!(state.editing_id, Some(profile.id));
             assert!(!state.is_first_run);
@@ -367,6 +375,25 @@ mod tests {
             .unwrap();
             let state = ConnectionSetupState::from_profile(&profile);
             assert!(state.is_edit_mode());
+        }
+
+        #[test]
+        fn focused_input_returns_correct_field() {
+            let state = ConnectionSetupState {
+                focused_field: ConnectionField::Host,
+                ..Default::default()
+            };
+            assert!(state.focused_input().is_some());
+            assert_eq!(state.focused_input().unwrap().content(), "localhost");
+        }
+
+        #[test]
+        fn focused_input_returns_none_for_ssl() {
+            let state = ConnectionSetupState {
+                focused_field: ConnectionField::SslMode,
+                ..Default::default()
+            };
+            assert!(state.focused_input().is_none());
         }
     }
 }
