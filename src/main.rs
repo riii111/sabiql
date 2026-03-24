@@ -278,7 +278,7 @@ async fn process_action(
         }
         pending = next;
     }
-    if depth >= MAX_DEPTH {
+    if depth >= MAX_DEPTH && !pending.is_empty() {
         eprintln!(
             "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
              falling back to channel for {} remaining actions",
