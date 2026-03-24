@@ -36,6 +36,10 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 - **Yank** (`y`) — Copy any cell value to clipboard
 - **CSV Export** (`Ctrl+E`) — Export query results to a CSV file
 
+### Query Analysis
+
+- **EXPLAIN / EXPLAIN ANALYZE** — Run your query, then switch tabs to instantly view its execution plan. Compare two plans side-by-side to pinpoint performance bottlenecks — no copy-paste, no external tools, all within the same modal.
+
 ### Navigation
 
 - **Fuzzy Search** (`/`) — Incremental table filtering
@@ -95,7 +99,7 @@ On first run, enter your connection details — saved to `~/.config/sabiql/conne
 - [ ] JSON/JSONB support (tree view, editing, validation)
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
-- [ ] EXPLAIN workflow (plan tree view & comparison)
+- [x] EXPLAIN workflow (plan tree view & comparison)
 - [ ] Google Cloud SQL / AlloyDB support
 - [ ] MySQL support
 
