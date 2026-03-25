@@ -150,7 +150,15 @@ async fn main() -> Result<()> {
     state.ui.terminal_height = initial_size.height;
 
     if state.session.dsn.is_some() && state.input_mode() == InputMode::Normal {
-        let _ = action_tx.send(Action::TryConnect).await;
+        process_action(
+            Action::TryConnect,
+            &mut state,
+            &mut tui,
+            &effect_runner,
+            &completion_engine,
+            &services,
+        )
+        .await?;
     }
 
     let cache_cleanup_interval = Duration::from_secs(150);
@@ -164,21 +172,11 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
                 if !action.is_none() {
-                    let _ = action_tx.send(action).await;
+                    process_action(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
             }
             Some(action) = action_rx.recv() => {
-                let now = Instant::now();
-                let mut effects = reduce(&mut state, action, now, &services);
-
-                if state.render_dirty {
-                    state.clear_expired_timers(now);
-                    effects.push(Effect::Render);
-                }
-
-                let mut tui_adapter = TuiAdapter::new(&mut tui);
-                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine, &services).await?;
-                state.clear_dirty();
+                process_action(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
             }
             // Animation deadline reached (spinner, cursor blink, message timeout)
             _ = async {
@@ -187,12 +185,7 @@ async fn main() -> Result<()> {
                     None => std::future::pending::<()>().await,
                 }
             } => {
-                let now = Instant::now();
-                state.clear_expired_timers(now);
-                let effects = reduce(&mut state, Action::Render, now, &services);
-                let mut tui_adapter = TuiAdapter::new(&mut tui);
-                effect_runner.run(effects, &mut tui_adapter, &mut state, &completion_engine, &services).await?;
-                state.clear_dirty();
+                process_action(Action::Render, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
             }
         }
 
@@ -200,7 +193,15 @@ async fn main() -> Result<()> {
             && Instant::now() >= debounce_until
         {
             state.sql_modal.completion_debounce = None;
-            let _ = action_tx.send(Action::CompletionTrigger).await;
+            process_action(
+                Action::CompletionTrigger,
+                &mut state,
+                &mut tui,
+                &effect_runner,
+                &completion_engine,
+                &services,
+            )
+            .await?;
         }
 
         if last_cache_cleanup.elapsed() >= cache_cleanup_interval {
@@ -214,6 +215,81 @@ async fn main() -> Result<()> {
     }
 
     tui.exit()?;
+    Ok(())
+}
+
+async fn process_action(
+    action: Action,
+    state: &mut AppState,
+    tui: &mut TuiRunner,
+    effect_runner: &EffectRunner,
+    completion_engine: &RefCell<CompletionEngine>,
+    services: &AppServices,
+) -> Result<()> {
+    let now = Instant::now();
+    let is_animation_tick = matches!(action, Action::Render);
+    if is_animation_tick {
+        state.clear_expired_timers(now);
+    }
+    let mut effects = reduce(state, action, now, services);
+    if state.render_dirty {
+        if !is_animation_tick {
+            state.clear_expired_timers(now);
+        }
+        effects.push(Effect::Render);
+    }
+    let mut tui_adapter = TuiAdapter::new(tui);
+    let mut pending = effect_runner
+        .run(
+            effects,
+            &mut tui_adapter,
+            state,
+            completion_engine,
+            services,
+        )
+        .await?;
+    state.clear_dirty();
+
+    const MAX_DEPTH: usize = 16;
+    let mut depth = 0;
+    while !pending.is_empty() && depth < MAX_DEPTH {
+        depth += 1;
+        let mut next = Vec::new();
+        for action in pending {
+            let now = Instant::now();
+            let mut effects = reduce(state, action, now, services);
+            if state.render_dirty {
+                state.clear_expired_timers(now);
+                effects.push(Effect::Render);
+            }
+            let mut tui_adapter = TuiAdapter::new(tui);
+            next.extend(
+                effect_runner
+                    .run(
+                        effects,
+                        &mut tui_adapter,
+                        state,
+                        completion_engine,
+                        services,
+                    )
+                    .await?,
+            );
+            state.clear_dirty();
+        }
+        pending = next;
+    }
+    if depth >= MAX_DEPTH && !pending.is_empty() {
+        eprintln!(
+            "DispatchActions recursion depth exceeded ({MAX_DEPTH}), \
+             falling back to channel for {} remaining actions",
+            pending.len()
+        );
+        for action in pending {
+            if let Err(e) = effect_runner.action_tx().try_send(action) {
+                eprintln!("DispatchActions fallback: channel full, dropping action: {e}");
+            }
+        }
+    }
     Ok(())
 }
 

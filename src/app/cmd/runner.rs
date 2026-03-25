@@ -137,6 +137,10 @@ impl EffectRunnerBuilder {
 }
 
 impl EffectRunner {
+    pub fn action_tx(&self) -> &mpsc::Sender<Action> {
+        &self.action_tx
+    }
+
     pub fn builder() -> EffectRunnerBuilder {
         EffectRunnerBuilder {
             metadata_provider: None,
@@ -162,22 +166,27 @@ impl EffectRunner {
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
         services: &AppServices,
-    ) -> Result<()> {
+    ) -> Result<Vec<Action>> {
+        let mut dispatched = Vec::new();
         for effect in effects {
             match effect {
                 Effect::Sequence(seq_effects) => {
                     for seq_effect in seq_effects {
-                        self.run_single(seq_effect, tui, state, completion_engine, services)
-                            .await?;
+                        dispatched.extend(
+                            self.run_single(seq_effect, tui, state, completion_engine, services)
+                                .await?,
+                        );
                     }
                 }
                 single_effect => {
-                    self.run_single(single_effect, tui, state, completion_engine, services)
-                        .await?;
+                    dispatched.extend(
+                        self.run_single(single_effect, tui, state, completion_engine, services)
+                            .await?,
+                    );
                 }
             }
         }
-        Ok(())
+        Ok(dispatched)
     }
 
     async fn run_single<T: Renderer>(
@@ -187,7 +196,7 @@ impl EffectRunner {
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
         services: &AppServices,
-    ) -> Result<()> {
+    ) -> Result<Vec<Action>> {
         self.run_normal(effect, tui, state, completion_engine, services)
             .await
     }
@@ -199,7 +208,7 @@ impl EffectRunner {
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
         _services: &AppServices,
-    ) -> Result<()> {
+    ) -> Result<Vec<Action>> {
         match effect {
             Effect::Render => {
                 let output = tui.draw(state, _services)?;
@@ -210,22 +219,18 @@ impl EffectRunner {
                 state.ui.explorer_pane_height = output.explorer_pane_height;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
-                Ok(())
+                Ok(vec![])
             }
 
             Effect::Sequence(_) => {
                 // Handled in run()
-                Ok(())
+                Ok(vec![])
             }
-            Effect::DispatchActions(actions) => {
-                for action in actions {
-                    self.action_tx.send(action).await.ok();
-                }
-                Ok(())
-            }
+            Effect::DispatchActions(actions) => Ok(actions),
 
             e @ (Effect::CopyToClipboard { .. } | Effect::OpenFolder { .. }) => {
-                cmd_utility::run(e, &self.action_tx, &self.clipboard, &self.folder_opener).await
+                cmd_utility::run(e, &self.action_tx, &self.clipboard, &self.folder_opener).await?;
+                Ok(vec![])
             }
 
             e @ (Effect::SaveAndConnect { .. }
@@ -244,7 +249,8 @@ impl EffectRunner {
                     &self.service_file_reader,
                     state,
                 )
-                .await
+                .await?;
+                Ok(vec![])
             }
 
             e @ (Effect::FetchMetadata { .. }
@@ -261,7 +267,8 @@ impl EffectRunner {
                     state,
                     completion_engine,
                 )
-                .await
+                .await?;
+                Ok(vec![])
             }
 
             e @ (Effect::ExecutePreview { .. }
@@ -277,7 +284,8 @@ impl EffectRunner {
                     &self.query_history_store,
                     state,
                 )
-                .await
+                .await?;
+                Ok(vec![])
             }
 
             e @ (Effect::GenerateErDiagramFromCache { .. }
@@ -294,11 +302,13 @@ impl EffectRunner {
                     state,
                     completion_engine,
                 )
-                .await
+                .await?;
+                Ok(vec![])
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                cmd_query_history::run(e, &self.action_tx, &self.query_history_store).await
+                cmd_query_history::run(e, &self.action_tx, &self.query_history_store).await?;
+                Ok(vec![])
             }
 
             e @ (Effect::CacheTableInCompletionEngine { .. }
@@ -306,7 +316,8 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                cmd_completion::run(e, &self.action_tx, state, completion_engine).await
+                cmd_completion::run(e, &self.action_tx, state, completion_engine).await?;
+                Ok(vec![])
             }
         }
     }
@@ -366,8 +377,8 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn dispatches_all_actions() {
-            let (tx, mut rx) = mpsc::channel(8);
+        async fn returns_all_actions() {
+            let (tx, _rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -380,7 +391,7 @@ mod tests {
             let ce = RefCell::new(CompletionEngine::new());
             let mut renderer = NoopRenderer;
 
-            runner
+            let result = runner
                 .run(
                     vec![Effect::DispatchActions(vec![
                         Action::ProcessPrefetchQueue,
@@ -394,10 +405,9 @@ mod tests {
                 .await
                 .unwrap();
 
-            let a1 = rx.recv().await.unwrap();
-            let a2 = rx.recv().await.unwrap();
-            assert!(matches!(a1, Action::ProcessPrefetchQueue));
-            assert!(matches!(a2, Action::ProcessPrefetchQueue));
+            assert_eq!(result.len(), 2);
+            assert!(matches!(result[0], Action::ProcessPrefetchQueue));
+            assert!(matches!(result[1], Action::ProcessPrefetchQueue));
         }
     }
 }
