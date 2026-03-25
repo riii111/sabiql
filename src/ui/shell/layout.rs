@@ -72,10 +72,11 @@ impl MainLayout {
         services: &AppServices,
     ) -> RenderOutput {
         if state.ui.focus_mode {
-            let result_plan = ResultPane::render(frame, main_area, state);
+            let (result_plan, result_widths_cache) = ResultPane::render(frame, main_area, state);
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
                 result_viewport_plan: result_plan,
+                result_widths_cache,
                 explorer_pane_height: 0,
                 inspector_pane_height: 0,
                 result_pane_height: main_area.height,
@@ -92,11 +93,12 @@ impl MainLayout {
                     .areas(right_area);
 
             let inspector_plan = Inspector::render(frame, inspector_area, state, services);
-            let result_plan = ResultPane::render(frame, result_area, state);
+            let (result_plan, result_widths_cache) = ResultPane::render(frame, result_area, state);
 
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,
                 result_viewport_plan: result_plan,
+                result_widths_cache,
                 explorer_pane_height: left_area.height,
                 inspector_pane_height: inspector_area.height,
                 result_pane_height: result_area.height,

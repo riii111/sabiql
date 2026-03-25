@@ -90,7 +90,7 @@ pub fn reduce(
                 }
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
-                    state.query.result_history.push(Arc::clone(result));
+                    state.query.push_history(Arc::clone(result));
                 }
 
                 if let Some(page) = target_page {
@@ -440,7 +440,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.query.result_history.len(), 1);
+            assert_eq!(state.query.result_history().len(), 1);
             assert_eq!(state.query.history_index(), None);
             assert!(state.query.current_result().is_some());
             assert_eq!(
@@ -473,7 +473,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert!(state.query.result_history.is_empty());
+            assert!(state.query.result_history().is_empty());
             assert_eq!(state.query.history_index(), None);
             assert_eq!(
                 state.query.current_result().unwrap().source,
@@ -488,7 +488,7 @@ mod tests {
         fn preview_clears_history_index() {
             let mut state = create_test_state();
             state.session.set_selection_generation(1);
-            state.query.result_history.push(adhoc_result());
+            state.query.push_history(adhoc_result());
             state.query.enter_history(0);
 
             reduce_query(

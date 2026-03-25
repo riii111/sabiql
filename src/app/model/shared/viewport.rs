@@ -339,6 +339,36 @@ pub fn calculate_prev_column_offset(current_offset: usize) -> usize {
     current_offset.saturating_sub(1)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ColumnWidthsCache {
+    pub ideal_widths: Vec<u16>,
+    pub header_min_widths: Vec<u16>,
+    generation: u64,
+    history_index: Option<usize>,
+}
+
+impl ColumnWidthsCache {
+    pub fn new(
+        ideal_widths: Vec<u16>,
+        header_min_widths: Vec<u16>,
+        generation: u64,
+        history_index: Option<usize>,
+    ) -> Self {
+        Self {
+            ideal_widths,
+            header_min_widths,
+            generation,
+            history_index,
+        }
+    }
+
+    pub fn is_valid(&self, generation: u64, history_index: Option<usize>) -> bool {
+        self.generation == generation
+            && self.history_index == history_index
+            && !self.ideal_widths.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

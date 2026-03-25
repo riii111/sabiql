@@ -13,7 +13,8 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
-    ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
+    ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
+    select_viewport_columns,
 };
 use crate::domain::{QueryResult, QuerySource};
 use crate::ui::primitives::utils::text_utils::{
@@ -24,7 +25,11 @@ use crate::ui::theme::Theme;
 pub struct ResultPane;
 
 impl ResultPane {
-    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> ViewportPlan {
+    pub fn render(
+        frame: &mut Frame,
+        area: Rect,
+        state: &AppState,
+    ) -> (ViewportPlan, ColumnWidthsCache) {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
             .query
@@ -37,13 +42,15 @@ impl ResultPane {
 
         let block = panel_block_highlight(&title, is_focused, should_highlight);
 
+        let default_result = || (ViewportPlan::default(), ColumnWidthsCache::default());
+
         if let Some(result) = result {
             if result.is_error() {
                 Self::render_error(frame, area, result, block);
-                ViewportPlan::default()
+                default_result()
             } else if result.rows.is_empty() {
                 Self::render_empty(frame, area, block);
-                ViewportPlan::default()
+                default_result()
             } else {
                 let history_bar = state.query.history_bar();
                 Self::render_table(
@@ -54,6 +61,9 @@ impl ResultPane {
                     state.result_interaction.scroll_offset,
                     state.result_interaction.horizontal_offset,
                     &state.ui.result_viewport_plan,
+                    &state.ui.result_widths_cache,
+                    state.query.result_generation(),
+                    state.query.history_index(),
                     state.result_interaction.selection(),
                     if state.result_interaction.cell_edit().is_active() {
                         Some((
@@ -74,7 +84,7 @@ impl ResultPane {
             }
         } else {
             Self::render_placeholder(frame, area, block);
-            ViewportPlan::default()
+            default_result()
         }
     }
 
@@ -144,42 +154,68 @@ impl ResultPane {
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
+        stored_cache: &ColumnWidthsCache,
+        result_generation: u64,
+        history_index: Option<usize>,
         selection: &ResultSelection,
         editing_cell: Option<(usize, usize, &str, bool, usize)>,
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
         yank_flash: Option<YankFlash>,
-    ) -> ViewportPlan {
+    ) -> (ViewportPlan, ColumnWidthsCache) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return ViewportPlan::default();
+            return (ViewportPlan::default(), ColumnWidthsCache::default());
         }
 
-        let header_min_widths = calculate_header_min_widths(&result.columns);
-        let all_ideal_widths = calculate_ideal_widths(&result.columns, &result.rows);
-        let current_min_widths_sum: u16 = header_min_widths.iter().sum();
-        let current_ideal_widths_sum: u16 = all_ideal_widths.iter().sum();
-        let current_ideal_widths_max: u16 = all_ideal_widths.iter().copied().max().unwrap_or(0);
+        let cached = stored_cache.is_valid(result_generation, history_index);
+        let fresh_ideal;
+        let fresh_min;
+        let (ideal_widths, min_widths) = if cached {
+            (
+                &stored_cache.ideal_widths[..],
+                &stored_cache.header_min_widths[..],
+            )
+        } else {
+            fresh_ideal = calculate_ideal_widths(&result.columns, &result.rows);
+            fresh_min = calculate_header_min_widths(&result.columns);
+            (&fresh_ideal[..], &fresh_min[..])
+        };
+
+        let current_min_widths_sum: u16 = min_widths.iter().sum();
+        let current_ideal_widths_sum: u16 = ideal_widths.iter().sum();
+        let current_ideal_widths_max: u16 = ideal_widths.iter().copied().max().unwrap_or(0);
 
         let plan = if stored_plan.needs_recalculation(
-            all_ideal_widths.len(),
+            ideal_widths.len(),
             inner.width,
             current_min_widths_sum,
             current_ideal_widths_sum,
             current_ideal_widths_max,
         ) {
-            ViewportPlan::calculate(&all_ideal_widths, &header_min_widths, inner.width)
+            ViewportPlan::calculate(ideal_widths, min_widths, inner.width)
         } else {
             stored_plan.clone()
+        };
+
+        let widths_cache = if cached {
+            stored_cache.clone()
+        } else {
+            ColumnWidthsCache::new(
+                ideal_widths.to_vec(),
+                min_widths.to_vec(),
+                result_generation,
+                history_index,
+            )
         };
 
         let clamped_offset = horizontal_offset.min(plan.max_offset);
 
         let config = ColumnWidthConfig {
-            ideal_widths: &all_ideal_widths,
-            min_widths: &header_min_widths,
+            ideal_widths,
+            min_widths,
         };
         let ctx = SelectionContext {
             horizontal_offset: clamped_offset,
@@ -191,7 +227,7 @@ impl ResultPane {
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
-            return plan;
+            return (plan, widths_cache);
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -364,11 +400,11 @@ impl ResultPane {
             },
         );
 
-        plan
+        (plan, widths_cache)
     }
 }
 
-fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
     const SAMPLE_ROWS: usize = 50;
 
     headers
@@ -626,5 +662,57 @@ mod tests {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
+    }
+
+    // tracked: local-only dev benchmark, not tied to a CI issue
+    #[test]
+    #[ignore]
+    fn bench_ideal_widths_cache_speedup() {
+        use crate::app::model::shared::viewport::ColumnWidthsCache;
+        use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;
+        use std::time::Instant;
+
+        let cols = 20;
+        let rows = 50;
+        let headers: Vec<String> = (0..cols).map(|i| format!("column_{i}")).collect();
+        let data: Vec<Vec<String>> = (0..rows)
+            .map(|r| {
+                (0..cols)
+                    .map(|c| format!("value_r{r}_c{c}_padding"))
+                    .collect()
+            })
+            .collect();
+
+        let iterations = 1000;
+
+        // Baseline: compute both widths every iteration (pre-optimization path)
+        let start = Instant::now();
+        for _ in 0..iterations {
+            std::hint::black_box(calculate_ideal_widths(&headers, &data));
+            std::hint::black_box(calculate_header_min_widths(&headers));
+        }
+        let baseline = start.elapsed();
+
+        // Cached: is_valid check + clone (actual cache-hit path)
+        let ideal = calculate_ideal_widths(&headers, &data);
+        let min = calculate_header_min_widths(&headers);
+        let cache = ColumnWidthsCache::new(ideal, min, 1, None);
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let valid = std::hint::black_box(cache.is_valid(1, None));
+            if valid {
+                std::hint::black_box(cache.clone());
+            }
+        }
+        let cached = start.elapsed();
+
+        eprintln!(
+            "Baseline: {:?} ({:.1} µs/iter), Cached (is_valid+clone): {:?} ({:.1} µs/iter), Speedup: {:.0}x",
+            baseline,
+            baseline.as_micros() as f64 / iterations as f64,
+            cached,
+            cached.as_micros() as f64 / iterations as f64,
+            baseline.as_secs_f64() / cached.as_secs_f64(),
+        );
     }
 }

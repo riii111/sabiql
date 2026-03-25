@@ -72,8 +72,9 @@ pub struct QueryExecution {
     status: QueryStatus,
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
-    pub result_history: ResultHistory,
+    result_history: ResultHistory,
     history_index: Option<usize>,
+    result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
     // (target_page, target_row, expected_delete_count)
@@ -110,10 +111,30 @@ impl QueryExecution {
 
     pub fn set_current_result(&mut self, result: Arc<QueryResult>) {
         self.current_result = Some(result);
+        self.result_generation += 1;
     }
 
     pub fn clear_current_result(&mut self) {
         self.current_result = None;
+        self.result_generation += 1;
+    }
+
+    pub fn push_history(&mut self, result: Arc<QueryResult>) {
+        self.result_history.push(result);
+        self.result_generation += 1;
+    }
+
+    pub fn result_generation(&self) -> u64 {
+        self.result_generation
+    }
+
+    pub fn result_history(&self) -> &ResultHistory {
+        &self.result_history
+    }
+
+    pub fn restore_history(&mut self, history: ResultHistory) {
+        self.result_history = history;
+        self.result_generation += 1;
     }
 
     pub fn current_result(&self) -> Option<&Arc<QueryResult>> {
@@ -142,10 +163,12 @@ impl QueryExecution {
 
     pub fn enter_history(&mut self, idx: usize) {
         self.history_index = Some(idx);
+        self.result_generation += 1;
     }
 
     pub fn exit_history(&mut self) {
         self.history_index = None;
+        self.result_generation += 1;
     }
 
     pub fn history_index(&self) -> Option<usize> {
@@ -457,6 +480,67 @@ mod tests {
         assert!(execution.start_time().is_none());
         assert!(execution.current_result().is_none());
         assert!(execution.history_index().is_none());
+        assert_eq!(execution.result_generation(), 0);
+    }
+
+    mod result_generation_tests {
+        use super::*;
+
+        #[test]
+        fn increments_on_set_current_result() {
+            let mut qe = QueryExecution::default();
+            assert_eq!(qe.result_generation(), 0);
+
+            qe.set_current_result(make_result(QuerySource::Preview));
+            assert_eq!(qe.result_generation(), 1);
+
+            qe.set_current_result(make_result(QuerySource::Adhoc));
+            assert_eq!(qe.result_generation(), 2);
+        }
+
+        #[test]
+        fn increments_on_clear_current_result() {
+            let mut qe = QueryExecution::default();
+            qe.set_current_result(make_result(QuerySource::Preview));
+
+            qe.clear_current_result();
+            assert_eq!(qe.result_generation(), 2);
+        }
+
+        #[test]
+        fn increments_on_enter_and_exit_history() {
+            let mut qe = QueryExecution::default();
+
+            qe.enter_history(0);
+            assert_eq!(qe.result_generation(), 1);
+
+            qe.exit_history();
+            assert_eq!(qe.result_generation(), 2);
+        }
+
+        #[test]
+        fn increments_on_push_history() {
+            let mut qe = QueryExecution::default();
+
+            qe.push_history(make_result(QuerySource::Adhoc));
+            assert_eq!(qe.result_generation(), 1);
+            assert_eq!(qe.result_history.len(), 1);
+        }
+
+        #[test]
+        fn does_not_increment_on_cursor_like_operations() {
+            let mut qe = QueryExecution::default();
+            qe.set_current_result(make_result(QuerySource::Preview));
+            let before = qe.result_generation();
+
+            // These should not change generation
+            let _ = qe.visible_result();
+            let _ = qe.visible_result_kind();
+            let _ = qe.history_bar();
+            let _ = qe.is_history_mode();
+
+            assert_eq!(qe.result_generation(), before);
+        }
     }
 
     #[test]

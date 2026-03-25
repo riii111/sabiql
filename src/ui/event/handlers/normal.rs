@@ -1191,8 +1191,7 @@ mod tests {
             for i in 0..count {
                 state
                     .query
-                    .result_history
-                    .push(make_result(&format!("SELECT {}", i + 1)));
+                    .push_history(make_result(&format!("SELECT {}", i + 1)));
             }
             state.query.set_current_result(make_result("SELECT latest"));
             state
@@ -1632,7 +1631,7 @@ mod tests {
                 10,
                 QuerySource::Adhoc,
             ));
-            state.query.result_history.push(qr.clone());
+            state.query.push_history(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
@@ -1721,7 +1720,7 @@ mod tests {
         fn history_focus_ctx() -> AppState {
             let mut state = browse_state();
             let qr = make_result();
-            state.query.result_history.push(qr.clone());
+            state.query.push_history(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
             state.ui.focus_mode = true;
