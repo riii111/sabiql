@@ -404,7 +404,7 @@ impl ResultPane {
     }
 }
 
-fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
     const SAMPLE_ROWS: usize = 50;
 
     headers
@@ -662,5 +662,50 @@ mod tests {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_ideal_widths_cache_speedup() {
+        use crate::app::model::shared::viewport::ColumnWidthsCache;
+        use std::time::Instant;
+
+        let cols = 20;
+        let rows = 50;
+        let headers: Vec<String> = (0..cols).map(|i| format!("column_{i}")).collect();
+        let data: Vec<Vec<String>> = (0..rows)
+            .map(|r| {
+                (0..cols)
+                    .map(|c| format!("value_r{r}_c{c}_padding"))
+                    .collect()
+            })
+            .collect();
+
+        let iterations = 1000;
+
+        // Baseline: compute every iteration
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let _ = std::hint::black_box(calculate_ideal_widths(&headers, &data));
+        }
+        let baseline = start.elapsed();
+
+        // Cached: compute once, then just validate
+        let ideal = calculate_ideal_widths(&headers, &data);
+        let cache = ColumnWidthsCache::new(ideal, vec![], 1, None);
+        let start = Instant::now();
+        for _ in 0..iterations {
+            std::hint::black_box(cache.is_valid(1, None));
+        }
+        let cached = start.elapsed();
+
+        eprintln!(
+            "Baseline: {:?} ({:.1} µs/iter), Cached: {:?} ({:.1} µs/iter), Speedup: {:.0}x",
+            baseline,
+            baseline.as_micros() as f64 / iterations as f64,
+            cached,
+            cached.as_micros() as f64 / iterations as f64,
+            baseline.as_secs_f64() / cached.as_secs_f64(),
+        );
     }
 }
