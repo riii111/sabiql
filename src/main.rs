@@ -285,7 +285,7 @@ async fn process_action(
             pending.len()
         );
         for action in pending {
-            let _ = effect_runner.action_tx().send(action).await;
+            let _ = effect_runner.action_tx().try_send(action);
         }
     }
     Ok(())
