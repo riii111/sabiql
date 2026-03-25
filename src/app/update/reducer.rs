@@ -258,6 +258,7 @@ mod tests {
 
     mod scroll_actions {
         use super::*;
+        use rstest::rstest;
 
         #[test]
         fn result_scroll_up_decrements_offset() {
@@ -320,6 +321,41 @@ mod tests {
 
             assert_eq!(state.result_interaction.scroll_offset, 0);
             assert!(effects.is_empty());
+        }
+
+        #[rstest]
+        #[case(ScrollTarget::Result, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::Result, ScrollDirection::Up, ScrollAmount::HalfPage)]
+        #[case(ScrollTarget::Inspector, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::Help, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(
+            ScrollTarget::ConnectionError,
+            ScrollDirection::Down,
+            ScrollAmount::Line
+        )]
+        fn scroll_reduce_never_returns_effects(
+            #[case] target: ScrollTarget,
+            #[case] direction: ScrollDirection,
+            #[case] amount: ScrollAmount,
+        ) {
+            let mut state = create_test_state();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::Scroll {
+                    target,
+                    direction,
+                    amount,
+                },
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects.is_empty(),
+                "scroll reduce must return empty effects for coalescing safety"
+            );
         }
     }
 
