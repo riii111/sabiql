@@ -285,7 +285,9 @@ async fn process_action(
             pending.len()
         );
         for action in pending {
-            let _ = effect_runner.action_tx().try_send(action);
+            if let Err(e) = effect_runner.action_tx().try_send(action) {
+                eprintln!("DispatchActions fallback: channel full, dropping action: {e}");
+            }
         }
     }
     Ok(())
