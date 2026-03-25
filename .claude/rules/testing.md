@@ -67,9 +67,9 @@ fn scroll_keys(#[case] code: Key, #[case] expected: Action) { ... }
 | UI | 描画の境界条件（空テーブル、オーバーフロー、エラー） |
 | Integration | `tests/render_snapshots/<category>.rs` |
 
-## `#[ignore]` トラッキング
+## `#[ignore]`
 
-すべての `#[ignore]` にトラッキング Issue リンクが必要:
+`#[ignore]` には理由コメントを付けること:
 ```rust
-#[ignore] // tracked: #42 — MySQL adapter 待ち
+#[ignore] // requires PostgreSQL
 ```
