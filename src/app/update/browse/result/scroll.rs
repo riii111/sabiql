@@ -880,8 +880,7 @@ mod tests {
             // history entry: 5 rows
             state
                 .query
-                .result_history
-                .push(make_result(5, crate::domain::QuerySource::Adhoc));
+                .push_history(make_result(5, crate::domain::QuerySource::Adhoc));
             state.query.enter_history(0);
 
             state.result_interaction.enter_row(2);
@@ -910,8 +909,7 @@ mod tests {
                 .set_current_result(make_result(100, crate::domain::QuerySource::Preview));
             state
                 .query
-                .result_history
-                .push(make_result(7, crate::domain::QuerySource::Adhoc));
+                .push_history(make_result(7, crate::domain::QuerySource::Adhoc));
             state.query.enter_history(0);
 
             assert_eq!(result_row_count(&state), 7);

@@ -25,8 +25,7 @@ fn preview_with_history_hint() {
     with_current_result(&mut state, now);
     state
         .query
-        .result_history
-        .push(Arc::new(adhoc_result(now, "SELECT 1")));
+        .push_history(Arc::new(adhoc_result(now, "SELECT 1")));
     state.ui.focused_pane = FocusedPane::Result;
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -43,8 +42,7 @@ fn result_pane_history_mode() {
     for i in 1..=3 {
         state
             .query
-            .result_history
-            .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
     }
     state
         .query
@@ -80,8 +78,7 @@ fn history_mode_with_horizontal_scroll() {
     for i in 1..=3 {
         state
             .query
-            .result_history
-            .push(Arc::new(wide_adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(wide_adhoc_result(now, &format!("SELECT {}", i))));
     }
     state
         .query
@@ -103,8 +100,7 @@ fn result_query_with_history_hint() {
     for i in 1..=2 {
         state
             .query
-            .result_history
-            .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
     }
     state
         .query
@@ -124,8 +120,7 @@ fn focus_mode_history_mode() {
     for i in 1..=3 {
         state
             .query
-            .result_history
-            .push(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
     }
     state
         .query

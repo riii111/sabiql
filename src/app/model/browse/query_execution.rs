@@ -72,7 +72,7 @@ pub struct QueryExecution {
     status: QueryStatus,
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
-    pub result_history: ResultHistory,
+    result_history: ResultHistory,
     history_index: Option<usize>,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
@@ -126,6 +126,15 @@ impl QueryExecution {
 
     pub fn result_generation(&self) -> u64 {
         self.result_generation
+    }
+
+    pub fn result_history(&self) -> &ResultHistory {
+        &self.result_history
+    }
+
+    pub fn restore_history(&mut self, history: ResultHistory) {
+        self.result_history = history;
+        self.result_generation += 1;
     }
 
     pub fn current_result(&self) -> Option<&Arc<QueryResult>> {

@@ -145,7 +145,7 @@ impl BrowseSession {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
         }
-        query.result_history = cache.result_history.clone();
+        query.restore_history(cache.result_history.clone());
         query.exit_history();
     }
 
@@ -164,7 +164,7 @@ impl BrowseSession {
         self.is_reloading = false;
         query.pagination.reset();
         query.clear_current_result();
-        query.result_history = Default::default();
+        query.restore_history(Default::default());
         query.exit_history();
     }
 
@@ -498,7 +498,7 @@ mod tests {
             assert!(new_session.connection_state().is_connected());
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
-            assert_eq!(query.result_history.len(), 1);
+            assert_eq!(query.result_history().len(), 1);
             assert!(query.history_index().is_none());
         }
 

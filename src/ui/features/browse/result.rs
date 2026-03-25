@@ -664,10 +664,12 @@ mod tests {
         assert_eq!(result, expected);
     }
 
+    // tracked: local-only dev benchmark, not tied to a CI issue
     #[test]
     #[ignore]
     fn bench_ideal_widths_cache_speedup() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;
+        use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;
         use std::time::Instant;
 
         let cols = 20;
@@ -683,24 +685,29 @@ mod tests {
 
         let iterations = 1000;
 
-        // Baseline: compute every iteration
+        // Baseline: compute both widths every iteration (pre-optimization path)
         let start = Instant::now();
         for _ in 0..iterations {
-            let _ = std::hint::black_box(calculate_ideal_widths(&headers, &data));
+            std::hint::black_box(calculate_ideal_widths(&headers, &data));
+            std::hint::black_box(calculate_header_min_widths(&headers));
         }
         let baseline = start.elapsed();
 
-        // Cached: compute once, then just validate
+        // Cached: is_valid check + clone (actual cache-hit path)
         let ideal = calculate_ideal_widths(&headers, &data);
-        let cache = ColumnWidthsCache::new(ideal, vec![], 1, None);
+        let min = calculate_header_min_widths(&headers);
+        let cache = ColumnWidthsCache::new(ideal, min, 1, None);
         let start = Instant::now();
         for _ in 0..iterations {
-            std::hint::black_box(cache.is_valid(1, None));
+            let valid = std::hint::black_box(cache.is_valid(1, None));
+            if valid {
+                std::hint::black_box(cache.clone());
+            }
         }
         let cached = start.elapsed();
 
         eprintln!(
-            "Baseline: {:?} ({:.1} µs/iter), Cached: {:?} ({:.1} µs/iter), Speedup: {:.0}x",
+            "Baseline: {:?} ({:.1} µs/iter), Cached (is_valid+clone): {:?} ({:.1} µs/iter), Speedup: {:.0}x",
             baseline,
             baseline.as_micros() as f64 / iterations as f64,
             cached,

@@ -5,7 +5,7 @@ use crate::app::update::action::Action;
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::OpenResultHistory => {
-            let len = state.query.result_history.len();
+            let len = state.query.result_history().len();
             if len == 0 {
                 return Some(vec![]);
             }
@@ -24,7 +24,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::HistoryNewer => {
             if let Some(idx) = state.query.history_index() {
-                let len = state.query.result_history.len();
+                let len = state.query.result_history().len();
                 if idx + 1 < len {
                     state.query.enter_history(idx + 1);
                     state.result_interaction.reset_view();
@@ -62,8 +62,7 @@ mod tests {
         for i in 0..count {
             state
                 .query
-                .result_history
-                .push(make_result(&format!("SELECT {}", i + 1)));
+                .push_history(make_result(&format!("SELECT {}", i + 1)));
         }
         state.query.set_current_result(make_result("SELECT latest"));
         state
