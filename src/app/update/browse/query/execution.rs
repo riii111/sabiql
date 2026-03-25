@@ -90,7 +90,7 @@ pub fn reduce(
                 }
 
                 if result.source == QuerySource::Adhoc && !result.is_error() {
-                    state.query.result_history.push(Arc::clone(result));
+                    state.query.push_history(Arc::clone(result));
                 }
 
                 if let Some(page) = target_page {
