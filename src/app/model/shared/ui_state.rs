@@ -6,7 +6,7 @@ use super::focused_pane::FocusedPane;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
-use super::viewport::ViewportPlan;
+use super::viewport::{ColumnWidthsCache, ViewportPlan};
 use crate::app::update::input::keybindings::help_content_line_count;
 
 pub use super::picker::clamp_scroll_offset;
@@ -130,6 +130,7 @@ pub struct UiState {
     pub explorer_pane_height: u16,
 
     pub result_viewport_plan: ViewportPlan,
+    pub result_widths_cache: ColumnWidthsCache,
     pub result_pane_height: u16,
 
     pub help_scroll_offset: usize,
