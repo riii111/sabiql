@@ -172,7 +172,7 @@ async fn main() -> Result<()> {
             Some(event) = tui.next_event() => {
                 let action = handle_event(event, &state);
                 if !action.is_none() {
-                    process_action(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
+                    drain_and_process_terminal_events(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
                 }
             }
             Some(action) = action_rx.recv() => {
@@ -238,6 +238,25 @@ async fn process_action(
         }
         effects.push(Effect::Render);
     }
+    flush_effects(
+        effects,
+        state,
+        tui,
+        effect_runner,
+        completion_engine,
+        services,
+    )
+    .await
+}
+
+async fn flush_effects(
+    effects: Vec<Effect>,
+    state: &mut AppState,
+    tui: &mut TuiRunner,
+    effect_runner: &EffectRunner,
+    completion_engine: &RefCell<CompletionEngine>,
+    services: &AppServices,
+) -> Result<()> {
     let mut tui_adapter = TuiAdapter::new(tui);
     let mut pending = effect_runner
         .run(
@@ -290,6 +309,120 @@ async fn process_action(
             }
         }
     }
+    Ok(())
+}
+
+const MAX_DRAIN: usize = 32;
+
+async fn drain_and_process_terminal_events(
+    first_action: Action,
+    state: &mut AppState,
+    tui: &mut TuiRunner,
+    effect_runner: &EffectRunner,
+    completion_engine: &RefCell<CompletionEngine>,
+    services: &AppServices,
+) -> Result<()> {
+    if !first_action.is_scroll() {
+        return process_action(
+            first_action,
+            state,
+            tui,
+            effect_runner,
+            completion_engine,
+            services,
+        )
+        .await;
+    }
+
+    let now = Instant::now();
+    let mut effects = reduce(state, first_action, now, services);
+    if !effects.is_empty() {
+        if state.render_dirty {
+            state.clear_expired_timers(now);
+            effects.push(Effect::Render);
+        }
+        return flush_effects(
+            effects,
+            state,
+            tui,
+            effect_runner,
+            completion_engine,
+            services,
+        )
+        .await;
+    }
+
+    let mut drained = 0;
+    while drained < MAX_DRAIN {
+        let Some(event) = tui.try_next_event() else {
+            break;
+        };
+        drained += 1;
+        let action = handle_event(event, state);
+        if action.is_none() {
+            continue;
+        }
+
+        if action.is_scroll() {
+            let now = Instant::now();
+            let mut effects = reduce(state, action, now, services);
+            if !effects.is_empty() {
+                if state.render_dirty {
+                    state.clear_expired_timers(now);
+                    effects.push(Effect::Render);
+                }
+                flush_effects(
+                    effects,
+                    state,
+                    tui,
+                    effect_runner,
+                    completion_engine,
+                    services,
+                )
+                .await?;
+                break;
+            }
+        } else {
+            if state.render_dirty {
+                state.clear_dirty();
+                process_action(
+                    Action::Render,
+                    state,
+                    tui,
+                    effect_runner,
+                    completion_engine,
+                    services,
+                )
+                .await?;
+            }
+            process_action(
+                action,
+                state,
+                tui,
+                effect_runner,
+                completion_engine,
+                services,
+            )
+            .await?;
+            if state.should_quit {
+                return Ok(());
+            }
+        }
+    }
+
+    if state.render_dirty {
+        state.clear_dirty();
+        process_action(
+            Action::Render,
+            state,
+            tui,
+            effect_runner,
+            completion_engine,
+            services,
+        )
+        .await?;
+    }
+
     Ok(())
 }
 
