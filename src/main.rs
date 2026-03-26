@@ -316,11 +316,26 @@ async fn drain_and_process_terminal_events(
     }
 
     let now = Instant::now();
-    let effects = reduce(state, first_action, now, services);
-    debug_assert!(
-        effects.is_empty(),
-        "scroll reduce returned non-empty effects"
-    );
+    let mut effects = reduce(state, first_action, now, services);
+    if !effects.is_empty() {
+        // Scroll reducer gained effects — abandon coalescing, run as normal
+        if state.render_dirty {
+            state.clear_expired_timers(now);
+            effects.push(Effect::Render);
+        }
+        let mut tui_adapter = TuiAdapter::new(tui);
+        effect_runner
+            .run(
+                effects,
+                &mut tui_adapter,
+                state,
+                completion_engine,
+                services,
+            )
+            .await?;
+        state.clear_dirty();
+        return Ok(());
+    }
 
     let mut drained = 0;
     while drained < MAX_DRAIN {
@@ -336,10 +351,32 @@ async fn drain_and_process_terminal_events(
         if action.is_scroll() {
             let now = Instant::now();
             let effects = reduce(state, action, now, services);
-            debug_assert!(
-                effects.is_empty(),
-                "scroll reduce returned non-empty effects"
-            );
+            if !effects.is_empty() {
+                // Scroll reducer gained effects — stop coalescing, flush and process remaining
+                if state.render_dirty {
+                    state.clear_dirty();
+                    process_action(
+                        Action::Render,
+                        state,
+                        tui,
+                        effect_runner,
+                        completion_engine,
+                        services,
+                    )
+                    .await?;
+                }
+                let mut tui_adapter = TuiAdapter::new(tui);
+                effect_runner
+                    .run(
+                        effects,
+                        &mut tui_adapter,
+                        state,
+                        completion_engine,
+                        services,
+                    )
+                    .await?;
+                break;
+            }
         } else {
             if state.render_dirty {
                 state.clear_dirty();
