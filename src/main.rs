@@ -238,6 +238,25 @@ async fn process_action(
         }
         effects.push(Effect::Render);
     }
+    flush_effects(
+        effects,
+        state,
+        tui,
+        effect_runner,
+        completion_engine,
+        services,
+    )
+    .await
+}
+
+async fn flush_effects(
+    effects: Vec<Effect>,
+    state: &mut AppState,
+    tui: &mut TuiRunner,
+    effect_runner: &EffectRunner,
+    completion_engine: &RefCell<CompletionEngine>,
+    services: &AppServices,
+) -> Result<()> {
     let mut tui_adapter = TuiAdapter::new(tui);
     let mut pending = effect_runner
         .run(
@@ -318,23 +337,19 @@ async fn drain_and_process_terminal_events(
     let now = Instant::now();
     let mut effects = reduce(state, first_action, now, services);
     if !effects.is_empty() {
-        // Scroll reducer gained effects — abandon coalescing, run as normal
         if state.render_dirty {
             state.clear_expired_timers(now);
             effects.push(Effect::Render);
         }
-        let mut tui_adapter = TuiAdapter::new(tui);
-        effect_runner
-            .run(
-                effects,
-                &mut tui_adapter,
-                state,
-                completion_engine,
-                services,
-            )
-            .await?;
-        state.clear_dirty();
-        return Ok(());
+        return flush_effects(
+            effects,
+            state,
+            tui,
+            effect_runner,
+            completion_engine,
+            services,
+        )
+        .await;
     }
 
     let mut drained = 0;
@@ -350,31 +365,21 @@ async fn drain_and_process_terminal_events(
 
         if action.is_scroll() {
             let now = Instant::now();
-            let effects = reduce(state, action, now, services);
+            let mut effects = reduce(state, action, now, services);
             if !effects.is_empty() {
-                // Scroll reducer gained effects — stop coalescing, flush and process remaining
                 if state.render_dirty {
-                    state.clear_dirty();
-                    process_action(
-                        Action::Render,
-                        state,
-                        tui,
-                        effect_runner,
-                        completion_engine,
-                        services,
-                    )
-                    .await?;
+                    state.clear_expired_timers(now);
+                    effects.push(Effect::Render);
                 }
-                let mut tui_adapter = TuiAdapter::new(tui);
-                effect_runner
-                    .run(
-                        effects,
-                        &mut tui_adapter,
-                        state,
-                        completion_engine,
-                        services,
-                    )
-                    .await?;
+                flush_effects(
+                    effects,
+                    state,
+                    tui,
+                    effect_runner,
+                    completion_engine,
+                    services,
+                )
+                .await?;
                 break;
             }
         } else {
