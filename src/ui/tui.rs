@@ -115,6 +115,10 @@ impl TuiRunner {
         self.event_rx.recv().await
     }
 
+    pub fn try_next_event(&mut self) -> Option<Event> {
+        self.event_rx.try_recv().ok()
+    }
+
     pub fn terminal(&mut self) -> &mut Tui {
         &mut self.terminal
     }

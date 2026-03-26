@@ -502,4 +502,36 @@ impl Action {
     pub fn is_none(&self) -> bool {
         matches!(self, Action::None)
     }
+
+    pub fn is_scroll(&self) -> bool {
+        matches!(self, Action::Scroll { .. })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[test]
+    fn scroll_action_returns_true() {
+        let action = Action::Scroll {
+            target: ScrollTarget::Result,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        };
+        assert!(action.is_scroll());
+    }
+
+    #[rstest]
+    #[case(Action::None)]
+    #[case(Action::Quit)]
+    #[case(Action::Render)]
+    #[case(Action::ScrollToCursor {
+        target: ScrollToCursorTarget::Result,
+        position: CursorPosition::Center,
+    })]
+    fn non_scroll_action_returns_false(#[case] action: Action) {
+        assert!(!action.is_scroll());
+    }
 }
