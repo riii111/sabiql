@@ -157,6 +157,8 @@ mod tests {
     use crate::app::cmd::completion_engine::CompletionEngine;
     use crate::app::cmd::effect::Effect;
     use crate::app::cmd::test_support::*;
+    use std::time::Instant;
+
     use crate::app::model::app_state::AppState;
     use crate::app::ports::connection_store::MockConnectionStore;
     use crate::app::ports::metadata::MockMetadataProvider;
@@ -169,7 +171,12 @@ mod tests {
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
-        fn draw(&mut self, _state: &mut AppState, _services: &AppServices) -> Result<RenderOutput> {
+        fn draw(
+            &mut self,
+            _state: &mut AppState,
+            _services: &AppServices,
+            _now: Instant,
+        ) -> Result<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }

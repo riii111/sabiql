@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use color_eyre::eyre::Result;
 
 use crate::app::model::app_state::AppState;
@@ -15,5 +17,10 @@ pub struct RenderOutput {
 }
 
 pub trait Renderer {
-    fn draw(&mut self, state: &mut AppState, services: &AppServices) -> Result<RenderOutput>;
+    fn draw(
+        &mut self,
+        state: &mut AppState,
+        services: &AppServices,
+        now: Instant,
+    ) -> Result<RenderOutput>;
 }

@@ -15,8 +15,8 @@ use crate::ui::primitives::utils::text_utils::wrapped_line_count;
 pub struct ConnectionError;
 
 impl ConnectionError {
-    pub fn render(frame: &mut Frame, state: &AppState) {
-        Self::render_at(frame, state, Instant::now())
+    pub fn render(frame: &mut Frame, state: &AppState, now: Instant) {
+        Self::render_at(frame, state, now)
     }
 
     pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant) {

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
@@ -31,6 +33,7 @@ impl MainLayout {
         state: &mut AppState,
         time_ms: Option<u128>,
         services: &AppServices,
+        now: Instant,
     ) -> RenderOutput {
         let area = frame.area();
 
@@ -43,7 +46,7 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state);
-        let output = Self::render_browse_mode(frame, main_area, state, services);
+        let output = Self::render_browse_mode(frame, main_area, state, services, now);
 
         Footer::render(frame, footer_area, state, time_ms);
         CommandLine::render(frame, cmdline_area, state);
@@ -54,9 +57,9 @@ impl MainLayout {
             InputMode::QueryHistoryPicker => QueryHistoryPicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
-            InputMode::SqlModal => SqlModal::render(frame, state),
+            InputMode::SqlModal => SqlModal::render(frame, state, now),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
-            InputMode::ConnectionError => ConnectionError::render(frame, state),
+            InputMode::ConnectionError => ConnectionError::render(frame, state, now),
             InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
             InputMode::ConnectionSelector => ConnectionSelector::render(frame, state),
             _ => {}
@@ -70,9 +73,11 @@ impl MainLayout {
         main_area: Rect,
         state: &mut AppState,
         services: &AppServices,
+        now: Instant,
     ) -> RenderOutput {
         if state.ui.focus_mode {
-            let (result_plan, result_widths_cache) = ResultPane::render(frame, main_area, state);
+            let (result_plan, result_widths_cache) =
+                ResultPane::render(frame, main_area, state, now);
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
                 result_viewport_plan: result_plan,
@@ -92,8 +97,9 @@ impl MainLayout {
                 Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
                     .areas(right_area);
 
-            let inspector_plan = Inspector::render(frame, inspector_area, state, services);
-            let (result_plan, result_widths_cache) = ResultPane::render(frame, result_area, state);
+            let inspector_plan = Inspector::render(frame, inspector_area, state, services, now);
+            let (result_plan, result_widths_cache) =
+                ResultPane::render(frame, result_area, state, now);
 
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,

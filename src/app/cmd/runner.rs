@@ -3,6 +3,7 @@
 
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::time::Instant;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -211,7 +212,8 @@ impl EffectRunner {
     ) -> Result<Vec<Action>> {
         match effect {
             Effect::Render => {
-                let output = tui.draw(state, _services)?;
+                let now = Instant::now();
+                let output = tui.draw(state, _services, now)?;
                 if !state.ui.focus_mode {
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                 }
@@ -338,7 +340,12 @@ mod tests {
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
-        fn draw(&mut self, _state: &mut AppState, _services: &AppServices) -> Result<RenderOutput> {
+        fn draw(
+            &mut self,
+            _state: &mut AppState,
+            _services: &AppServices,
+            _now: Instant,
+        ) -> Result<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }

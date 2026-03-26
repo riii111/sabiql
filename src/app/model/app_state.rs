@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::app::model::browse::query_execution::QueryExecution;
@@ -101,7 +103,7 @@ impl AppState {
         self.messages.clear_expired();
     }
 
-    pub fn clear_expired_timers(&mut self, now: std::time::Instant) {
+    pub fn clear_expired_timers(&mut self, now: Instant) {
         self.messages.clear_expired();
         self.query.clear_expired_highlight(now);
         self.result_interaction.clear_expired_flash(now);
@@ -279,7 +281,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
-            fetched_at: std::time::Instant::now(),
+            fetched_at: Instant::now(),
         })));
         state
             .ui
@@ -302,7 +304,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "users".to_string(), Some(100), false),
                 TableSummary::new("public".to_string(), "posts".to_string(), Some(50), false),
             ],
-            fetched_at: std::time::Instant::now(),
+            fetched_at: Instant::now(),
         })));
         state
             .ui
@@ -328,7 +330,7 @@ mod tests {
                 Some(100),
                 false,
             )],
-            fetched_at: std::time::Instant::now(),
+            fetched_at: Instant::now(),
         })));
         state
             .ui

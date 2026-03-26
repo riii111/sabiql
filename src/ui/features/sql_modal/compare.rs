@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -9,7 +11,7 @@ use crate::app::model::explain_context::CompareSlot;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, now: Instant) {
     state.explain.compare_viewport_height = Some(area.height);
 
     let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
@@ -43,7 +45,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let mut visible: Vec<Line> = lines.into_iter().skip(clamped).collect();
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
-    let now = std::time::Instant::now();
     let flash_active = can_yank
         && state.flash_timers.is_active(
             crate::app::model::shared::flash_timer::FlashId::SqlModal,
