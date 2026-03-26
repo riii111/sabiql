@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -27,13 +29,14 @@ impl Inspector {
         area: Rect,
         state: &AppState,
         services: &AppServices,
+        now: Instant,
     ) -> ViewportPlan {
         let is_focused = state.ui.focused_pane == FocusedPane::Inspector;
         let [tab_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
 
         Self::render_tab_bar(frame, tab_area, state);
-        Self::render_content(frame, content_area, state, is_focused, services)
+        Self::render_content(frame, content_area, state, is_focused, services, now)
     }
 
     fn render_tab_bar(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -70,6 +73,7 @@ impl Inspector {
         state: &AppState,
         is_focused: bool,
         services: &AppServices,
+        now: Instant,
     ) -> ViewportPlan {
         let block = panel_block(" [2] Inspector ", is_focused);
 
@@ -119,6 +123,7 @@ impl Inspector {
                         state.ui.inspector_scroll_offset,
                         &*services.ddl_generator,
                         &state.flash_timers,
+                        now,
                     );
                     ViewportPlan::default()
                 }
@@ -595,6 +600,7 @@ impl Inspector {
         scroll_offset: usize,
         ddl_gen: &dyn DdlGenerator,
         flash_timers: &crate::app::model::shared::flash_timer::FlashTimerStore,
+        now: Instant,
     ) {
         let ddl = ddl_gen.generate_ddl(table);
 
@@ -606,7 +612,6 @@ impl Inspector {
         };
         let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
 
-        let now = std::time::Instant::now();
         let flash_active =
             flash_timers.is_active(crate::app::model::shared::flash_timer::FlashId::Ddl, now);
 

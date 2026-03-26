@@ -3,7 +3,8 @@ mod harness;
 
 use harness::fixtures;
 use harness::{
-    create_test_state, create_test_terminal, render_and_get_buffer, render_to_string, test_instant,
+    create_test_state, create_test_terminal, render_and_get_buffer, render_and_get_buffer_at,
+    render_to_string, test_instant,
 };
 
 use std::sync::Arc;

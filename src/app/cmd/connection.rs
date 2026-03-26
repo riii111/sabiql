@@ -207,6 +207,7 @@ pub(crate) async fn run(
 mod tests {
     use std::cell::RefCell;
     use std::sync::Arc;
+    use std::time::Instant;
 
     use tokio::sync::mpsc;
 
@@ -226,7 +227,12 @@ mod tests {
 
     struct NoopRenderer;
     impl Renderer for NoopRenderer {
-        fn draw(&mut self, _state: &mut AppState, _services: &AppServices) -> Result<RenderOutput> {
+        fn draw(
+            &mut self,
+            _state: &mut AppState,
+            _services: &AppServices,
+            _now: Instant,
+        ) -> Result<RenderOutput> {
             Ok(RenderOutput::default())
         }
     }

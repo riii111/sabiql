@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 use harness::{
     TEST_HEIGHT, TEST_WIDTH, connected_state, table_detail_loaded_state, with_current_result,
@@ -110,6 +112,49 @@ fn scrim_applies_dim_modifier() {
         cell.modifier.contains(Modifier::DIM),
         "Expected DIM modifier on scrim cell (0,0), got {:?}",
         cell.modifier
+    );
+}
+
+#[test]
+fn result_highlight_respects_injected_now() {
+    let (mut state, now) = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state, now);
+    // Unfocused so highlight border is distinguishable from focus border
+    state.ui.focused_pane = FocusedPane::Explorer;
+
+    let highlight_until = now + Duration::from_millis(500);
+    state.query.set_result_highlight(highlight_until);
+
+    // Find the Result pane border by searching for "Result" title with Green fg
+    let before = now + Duration::from_millis(100);
+    let buf_before = render_and_get_buffer_at(&mut terminal, &mut state, before);
+
+    let has_green_border = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            let cell = buf_before.cell((x, y)).unwrap();
+            cell.fg == Color::Green && cell.symbol() == "─"
+        });
+    assert!(
+        has_green_border,
+        "Expected Green border cells when now < highlight_until"
+    );
+
+    // now >= highlight_until → no Green border cells
+    let after = highlight_until + Duration::from_millis(1);
+    let buf_after = render_and_get_buffer_at(&mut terminal, &mut state, after);
+
+    let has_green_border_after = (0..TEST_HEIGHT)
+        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
+        .any(|(x, y)| {
+            let cell = buf_after.cell((x, y)).unwrap();
+            cell.fg == Color::Green && cell.symbol() == "─"
+        });
+    assert!(
+        !has_green_border_after,
+        "Expected no Green border cells when now >= highlight_until"
     );
 }
 

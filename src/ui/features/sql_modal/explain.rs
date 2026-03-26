@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -9,7 +11,7 @@ use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlMod
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
     // Inline EXPLAIN ANALYZE confirmation
     match state.sql_modal.status() {
         SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
@@ -86,7 +88,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 .map(super::plan_highlight::highlight_plan_line),
         );
 
-        let now = std::time::Instant::now();
         let flash_active = state.flash_timers.is_active(
             crate::app::model::shared::flash_timer::FlashId::SqlModal,
             now,

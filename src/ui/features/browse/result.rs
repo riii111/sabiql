@@ -29,12 +29,13 @@ impl ResultPane {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
+        now: Instant,
     ) -> (ViewportPlan, ColumnWidthsCache) {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()
-            .map(|t| Instant::now() < t)
+            .map(|t| now < t)
             .unwrap_or(false);
 
         let result = state.query.visible_result();
@@ -80,6 +81,7 @@ impl ResultPane {
                     state.result_interaction.staged_delete_rows(),
                     history_bar,
                     state.result_interaction.yank_flash,
+                    now,
                 )
             }
         } else {
@@ -162,6 +164,7 @@ impl ResultPane {
         staged_delete_rows: &BTreeSet<usize>,
         history_bar: Option<(usize, usize)>,
         yank_flash: Option<YankFlash>,
+        now: Instant,
     ) -> (ViewportPlan, ColumnWidthsCache) {
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -252,7 +255,6 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
-        let now = Instant::now();
         let yank_flash_active = yank_flash.map(|f| now < f.until).unwrap_or(false);
 
         let rows: Vec<Row> = result

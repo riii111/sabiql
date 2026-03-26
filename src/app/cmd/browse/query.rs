@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -147,7 +147,7 @@ pub(crate) async fn run(
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                let start = std::time::Instant::now();
+                let start = Instant::now();
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         let elapsed = start.elapsed().as_millis() as u64;
@@ -422,6 +422,8 @@ mod tests {
         use crate::app::cmd::completion_engine::CompletionEngine;
         use crate::app::cmd::effect::Effect;
         use crate::app::cmd::test_support::*;
+        use std::time::Instant;
+
         use crate::app::model::app_state::AppState;
         use crate::app::ports::connection_store::MockConnectionStore;
         use crate::app::ports::metadata::MockMetadataProvider;
@@ -437,6 +439,7 @@ mod tests {
                 &mut self,
                 _state: &mut AppState,
                 _services: &AppServices,
+                _now: Instant,
             ) -> Result<RenderOutput> {
                 Ok(RenderOutput::default())
             }

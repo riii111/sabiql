@@ -33,10 +33,18 @@ pub fn create_test_terminal() -> Terminal<TestBackend> {
 const FIXED_TIME_MS: u128 = 0;
 
 pub fn render_and_get_buffer(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> Buffer {
+    render_and_get_buffer_at(terminal, state, test_instant())
+}
+
+pub fn render_and_get_buffer_at(
+    terminal: &mut Terminal<TestBackend>,
+    state: &mut AppState,
+    now: Instant,
+) -> Buffer {
     terminal
         .draw(|frame| {
             let output =
-                MainLayout::render(frame, state, Some(FIXED_TIME_MS), &AppServices::stub());
+                MainLayout::render(frame, state, Some(FIXED_TIME_MS), &AppServices::stub(), now);
             state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
             state.ui.result_viewport_plan = output.result_viewport_plan;
             state.ui.result_widths_cache = output.result_widths_cache;

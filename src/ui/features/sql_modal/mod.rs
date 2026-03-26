@@ -3,6 +3,7 @@ mod explain;
 mod plan_highlight;
 
 use std::sync::LazyLock;
+use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -27,7 +28,7 @@ mod status;
 pub struct SqlModal;
 
 impl SqlModal {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &mut AppState, now: Instant) {
         let is_confirming = matches!(
             state.sql_modal.status(),
             SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
@@ -137,7 +138,7 @@ impl SqlModal {
         );
 
         if is_confirming || state.sql_modal.active_tab == SqlModalTab::Sql {
-            editor::render_editor(frame, main_area, state);
+            editor::render_editor(frame, main_area, state, now);
             status::render_status(frame, status_area, state);
 
             if matches!(state.sql_modal.status(), SqlModalStatus::Editing)
@@ -147,10 +148,10 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state);
             }
         } else if state.sql_modal.active_tab == SqlModalTab::Plan {
-            explain::render(frame, main_area, state);
+            explain::render(frame, main_area, state, now);
             status::render_status(frame, status_area, state);
         } else {
-            compare::render(frame, main_area, state);
+            compare::render(frame, main_area, state, now);
             status::render_status(frame, status_area, state);
         }
     }

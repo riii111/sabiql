@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -9,7 +11,7 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
-pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
+pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
     let content = state.sql_modal.editor.content();
 
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
@@ -100,7 +102,6 @@ pub(super) fn render_editor(frame: &mut Frame, area: Rect, state: &AppState) {
         );
     }
 
-    let now = std::time::Instant::now();
     let flash_active = state.flash_timers.is_active(
         crate::app::model::shared::flash_timer::FlashId::SqlModal,
         now,
