@@ -326,13 +326,35 @@ mod tests {
         #[rstest]
         #[case(ScrollTarget::Result, ScrollDirection::Down, ScrollAmount::Line)]
         #[case(ScrollTarget::Result, ScrollDirection::Up, ScrollAmount::HalfPage)]
+        #[case(ScrollTarget::Result, ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(ScrollTarget::Result, ScrollDirection::Right, ScrollAmount::Line)]
+        #[case(ScrollTarget::Result, ScrollDirection::Up, ScrollAmount::ToStart)]
+        #[case(ScrollTarget::Result, ScrollDirection::Down, ScrollAmount::FullPage)]
         #[case(ScrollTarget::Inspector, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::Inspector, ScrollDirection::Up, ScrollAmount::Line)]
         #[case(ScrollTarget::Help, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(ScrollTarget::Help, ScrollDirection::Down, ScrollAmount::Line)]
         #[case(
             ScrollTarget::ConnectionError,
             ScrollDirection::Down,
             ScrollAmount::Line
         )]
+        #[case(ScrollTarget::ExplainPlan, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::ExplainPlan, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(
+            ScrollTarget::ExplainCompare,
+            ScrollDirection::Down,
+            ScrollAmount::Line
+        )]
+        #[case(ScrollTarget::ExplainCompare, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(
+            ScrollTarget::ExplainConfirm,
+            ScrollDirection::Down,
+            ScrollAmount::Line
+        )]
+        #[case(ScrollTarget::ExplainConfirm, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(ScrollTarget::Explorer, ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(ScrollTarget::Explorer, ScrollDirection::Right, ScrollAmount::Line)]
         fn scroll_reduce_never_returns_effects(
             #[case] target: ScrollTarget,
             #[case] direction: ScrollDirection,

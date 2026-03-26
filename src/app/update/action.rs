@@ -511,9 +511,10 @@ impl Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
-    fn is_scroll_true_for_scroll_variants() {
+    fn scroll_action_returns_true() {
         let action = Action::Scroll {
             target: ScrollTarget::Result,
             direction: ScrollDirection::Down,
@@ -522,15 +523,15 @@ mod tests {
         assert!(action.is_scroll());
     }
 
-    #[test]
-    fn is_scroll_false_for_non_scroll() {
-        assert!(!Action::None.is_scroll());
-        assert!(!Action::Quit.is_scroll());
-        assert!(!Action::Render.is_scroll());
-        let scroll_to_cursor = Action::ScrollToCursor {
-            target: ScrollToCursorTarget::Result,
-            position: CursorPosition::Center,
-        };
-        assert!(!scroll_to_cursor.is_scroll());
+    #[rstest]
+    #[case(Action::None)]
+    #[case(Action::Quit)]
+    #[case(Action::Render)]
+    #[case(Action::ScrollToCursor {
+        target: ScrollToCursorTarget::Result,
+        position: CursorPosition::Center,
+    })]
+    fn non_scroll_action_returns_false(#[case] action: Action) {
+        assert!(!action.is_scroll());
     }
 }
