@@ -11,6 +11,7 @@ pub enum InspectorTab {
 }
 
 impl InspectorTab {
+    #[must_use]
     pub fn next(self) -> Self {
         match self {
             Self::Info => Self::Columns,
@@ -23,6 +24,7 @@ impl InspectorTab {
         }
     }
 
+    #[must_use]
     pub fn prev(self) -> Self {
         match self {
             Self::Info => Self::Ddl,
