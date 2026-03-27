@@ -243,7 +243,10 @@ mod tests {
         }
 
         #[test]
-        #[allow(clippy::field_reassign_with_default, reason = "intentional partial override of Default for clarity")]
+        #[allow(
+            clippy::field_reassign_with_default,
+            reason = "intentional partial override of Default for clarity"
+        )]
         fn whitespace_only_name_sets_error() {
             let mut state = ConnectionSetupState::default();
             state.name = TextInputState::new("   ", 3);

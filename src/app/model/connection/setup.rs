@@ -57,11 +57,7 @@ impl ConnectionField {
     pub fn is_required(&self) -> bool {
         matches!(
             self,
-            Self::Name
-                | Self::Host
-                | Self::Port
-                | Self::Database
-                | Self::User
+            Self::Name | Self::Host | Self::Port | Self::Database | Self::User
         )
     }
 

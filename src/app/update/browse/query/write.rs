@@ -56,7 +56,6 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
     if guardrail.blocked {
         let reason = guardrail
             .reason
-            
             .unwrap_or_else(|| "Write blocked by guardrails".to_string());
         return Err(reason);
     }
@@ -307,10 +306,10 @@ pub fn reduce(
                     state.result_interaction.clear_staged_deletes();
                     state.modal.set_mode(InputMode::Normal);
 
-                    state.query.set_post_delete_selection(
-                        target_row
-                            .map_or(PostDeleteRowSelection::Clear, PostDeleteRowSelection::Select),
-                    );
+                    state.query.set_post_delete_selection(target_row.map_or(
+                        PostDeleteRowSelection::Clear,
+                        PostDeleteRowSelection::Select,
+                    ));
 
                     if let Some(dsn) = &state.session.dsn {
                         state.query.begin_running(now);

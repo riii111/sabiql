@@ -238,7 +238,11 @@ fn error_status_message(state: &AppState) -> String {
     state
         .sql_modal
         .last_adhoc_error()
-        .and_then(|e| e.lines().next()).map_or_else(|| "\u{2717} Error".to_string(), |line| format!("\u{2717} {line}"))
+        .and_then(|e| e.lines().next())
+        .map_or_else(
+            || "\u{2717} Error".to_string(),
+            |line| format!("\u{2717} {line}"),
+        )
 }
 
 #[cfg(test)]

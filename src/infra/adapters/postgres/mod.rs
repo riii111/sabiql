@@ -127,7 +127,10 @@ impl MetadataProvider for PostgresAdapter {
 
 #[async_trait]
 impl QueryExecutor for PostgresAdapter {
-    #[allow(clippy::print_stderr, reason = "fallback warning when PK column fetch fails; no logging framework")]
+    #[allow(
+        clippy::print_stderr,
+        reason = "fallback warning when PK column fetch fails; no logging framework"
+    )]
     async fn execute_preview(
         &self,
         dsn: &str,
@@ -143,9 +146,7 @@ impl QueryExecutor for PostgresAdapter {
         let order_columns = match self.fetch_preview_order_columns(dsn, schema, table).await {
             Ok(cols) => cols,
             Err(e) => {
-                eprintln!(
-                    "warn: failed to fetch PK columns for {schema}.{table}: {e}"
-                );
+                eprintln!("warn: failed to fetch PK columns for {schema}.{table}: {e}");
                 Vec::new()
             }
         };

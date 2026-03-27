@@ -146,7 +146,10 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
-    #[allow(clippy::too_many_arguments, reason = "render function requires full viewport context (16 params)")]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "render function requires full viewport context (16 params)"
+    )]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -238,7 +241,10 @@ impl ResultPane {
             .collect();
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
-            let col_name = result.columns.get(idx).map_or("", std::string::String::as_str);
+            let col_name = result
+                .columns
+                .get(idx)
+                .map_or("", std::string::String::as_str);
             Cell::from(col_name.to_string())
         }))
         .style(

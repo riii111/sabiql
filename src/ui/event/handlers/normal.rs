@@ -156,8 +156,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if state.ui.focus_mode {
                 Action::ToggleFocus
             } else {
-                FocusedPane::from_browse_key(c)
-                    .map_or(Action::None, Action::SetFocusedPane)
+                FocusedPane::from_browse_key(c).map_or(Action::None, Action::SetFocusedPane)
             }
         }
 

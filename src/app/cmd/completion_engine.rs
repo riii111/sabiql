@@ -317,7 +317,8 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                let selected_qualified = table_detail.map(crate::domain::table::Table::qualified_name);
+                let selected_qualified =
+                    table_detail.map(crate::domain::table::Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
@@ -899,7 +900,11 @@ impl CompletionEngine {
             metadata
                 .table_summaries
                 .iter()
-                .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase()).map_or_else(|| table_ref.table.clone(), crate::domain::table::TableSummary::qualified_name)
+                .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
+                .map_or_else(
+                    || table_ref.table.clone(),
+                    crate::domain::table::TableSummary::qualified_name,
+                )
         } else {
             table_ref.table.clone()
         }

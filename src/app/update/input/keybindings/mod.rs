@@ -735,7 +735,8 @@ mod tests {
                 .filter(|kb| !matches!(kb.action, Action::None))
             {
                 for combo in kb.combos {
-                    assert!(!seen.contains(combo), 
+                    assert!(
+                        !seen.contains(combo),
                         "{name}: duplicate combo {combo:?} in binding {:?}",
                         kb.action
                     );
@@ -749,7 +750,8 @@ mod tests {
             for row in rows {
                 for eb in row.bindings {
                     for combo in eb.combos {
-                        assert!(!seen.contains(combo), 
+                        assert!(
+                            !seen.contains(combo),
                             "{name}: duplicate combo {combo:?} in binding {:?}",
                             eb.action
                         );
@@ -917,7 +919,8 @@ mod tests {
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {
-                assert!(!matches!(kb.action, Action::None) || kb.combos.is_empty(),
+                assert!(
+                    !matches!(kb.action, Action::None) || kb.combos.is_empty(),
                     "{name}[{i}] has action Action::None but non-empty combos: {:?}",
                     kb.combos
                 );

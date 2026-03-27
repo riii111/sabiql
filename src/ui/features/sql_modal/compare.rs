@@ -145,10 +145,7 @@ fn render_verdict_section(
     push_chrome(
         lines,
         flash_mask,
-        Line::styled(
-            format!(" {sep}"),
-            Style::default().fg(Theme::MODAL_BORDER),
-        ),
+        Line::styled(format!(" {sep}"), Style::default().fg(Theme::MODAL_BORDER)),
     );
     push_empty(lines, flash_mask);
 }
@@ -240,15 +237,9 @@ fn render_slot_columns(
         lines,
         flash_mask,
         Line::from(vec![
-            Span::styled(
-                format!(" {thin_sep}"),
-                Style::default().fg(Theme::TEXT_DIM),
-            ),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
             sep.clone(),
-            Span::styled(
-                format!(" {thin_sep}"),
-                Style::default().fg(Theme::TEXT_DIM),
-            ),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
         ]),
     );
 

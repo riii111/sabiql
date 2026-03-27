@@ -96,8 +96,12 @@ pub fn map_nav_intent(combo: &KeyCombo) -> Option<NavIntent> {
 }
 
 pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
-    use NavIntent::{MoveDown, MoveUp, MoveToFirst, MoveToLast, ViewportTop, ViewportMiddle, ViewportBottom, MoveLeft, MoveRight, HalfPageDown, HalfPageUp, FullPageDown, FullPageUp, ScrollCursorCenter, ScrollCursorTop, ScrollCursorBottom};
-    use NavigationContext::{Explorer, Inspector, ResultScroll, ResultRowActive, ResultCellActive};
+    use NavIntent::{
+        FullPageDown, FullPageUp, HalfPageDown, HalfPageUp, MoveDown, MoveLeft, MoveRight,
+        MoveToFirst, MoveToLast, MoveUp, ScrollCursorBottom, ScrollCursorCenter, ScrollCursorTop,
+        ViewportBottom, ViewportMiddle, ViewportTop,
+    };
+    use NavigationContext::{Explorer, Inspector, ResultCellActive, ResultRowActive, ResultScroll};
 
     match (intent, ctx) {
         // MoveDown

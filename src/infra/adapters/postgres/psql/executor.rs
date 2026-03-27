@@ -280,7 +280,10 @@ impl PostgresAdapter {
         for result in reader.records() {
             let record = result
                 .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?;
-            let row: Vec<String> = record.iter().map(std::string::ToString::to_string).collect();
+            let row: Vec<String> = record
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
             rows.push(row);
         }
 
@@ -755,7 +758,10 @@ mod tests {
         ) {
             let tag = PostgresAdapter::extract_command_tag(stdout);
             assert_eq!(tag.as_ref(), Some(&expected_tag));
-            let rows = tag.as_ref().and_then(crate::domain::command_tag::CommandTag::affected_rows).unwrap_or(0) as usize;
+            let rows = tag
+                .as_ref()
+                .and_then(crate::domain::command_tag::CommandTag::affected_rows)
+                .unwrap_or(0) as usize;
             assert_eq!(rows, expected_rows);
         }
 
@@ -787,7 +793,9 @@ mod tests {
             let csv = "id,name\n1,Alice\n2,Bob\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
             // Should be Other or None, never a DML/DDL variant
-            let is_dml = tag.as_ref().is_some_and(crate::domain::command_tag::CommandTag::is_data_modifying);
+            let is_dml = tag
+                .as_ref()
+                .is_some_and(crate::domain::command_tag::CommandTag::is_data_modifying);
             assert!(!is_dml, "CSV output should not be parsed as DML tag");
         }
 

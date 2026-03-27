@@ -34,11 +34,9 @@ pub fn reduce(
                     Some(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(
-                            crate::app::ports::ClipboardError {
-                                message: "Clipboard unavailable".into(),
-                            },
-                        )),
+                        on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                            message: "Clipboard unavailable".into(),
+                        })),
                     }])
                 } else {
                     state
@@ -97,11 +95,9 @@ pub fn reduce(
                     Some(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(
-                            crate::app::ports::ClipboardError {
-                                message: "Clipboard unavailable".into(),
-                            },
-                        )),
+                        on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
+                            message: "Clipboard unavailable".into(),
+                        })),
                     }])
                 } else {
                     state
@@ -237,7 +233,12 @@ mod tests {
         fn state_with_row(values: Vec<&str>) -> AppState {
             let mut state = AppState::new("test".to_string());
             let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{c}")).collect();
-            let rows = vec![values.iter().map(std::string::ToString::to_string).collect()];
+            let rows = vec![
+                values
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
+            ];
             state
                 .query
                 .set_current_result(Arc::new(crate::domain::QueryResult {

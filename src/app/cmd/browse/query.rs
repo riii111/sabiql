@@ -38,9 +38,7 @@ fn utc_now_iso8601() -> String {
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
     let (y, m, d) = epoch_days_to_ymd(days as i64);
-    format!(
-        "{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z"
-    )
+    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 fn save_query_history(
@@ -82,9 +80,7 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
     let (y, m, d) = epoch_days_to_ymd(days as i64);
-    let timestamp = format!(
-        "{y:04}{m:02}{d:02}_{hours:02}{minutes:02}{seconds:02}_{millis:03}"
-    );
+    let timestamp = format!("{y:04}{m:02}{d:02}_{hours:02}{minutes:02}{seconds:02}_{millis:03}");
     let file_stem = format!("sabiql_export_{file_name}_{timestamp}.csv");
     let dir = dirs::download_dir()
         .or_else(dirs::home_dir)
@@ -92,7 +88,10 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     dir.join(file_stem)
 }
 
-#[allow(clippy::unused_async, reason = "consistent async interface for effect runner dispatch")]
+#[allow(
+    clippy::unused_async,
+    reason = "consistent async interface for effect runner dispatch"
+)]
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
@@ -213,8 +212,9 @@ pub async fn run(
                             let (status, rows) = if result.is_error() {
                                 (QueryResultStatus::Failed, None)
                             } else {
-                                let rows =
-                                    result.command_tag.as_ref().and_then(crate::domain::command_tag::CommandTag::affected_rows);
+                                let rows = result.command_tag.as_ref().and_then(
+                                    crate::domain::command_tag::CommandTag::affected_rows,
+                                );
                                 (QueryResultStatus::Success, rows)
                             };
                             save_query_history(
@@ -407,9 +407,11 @@ mod tests {
             let path = resolve_export_path("users");
             let file_name = path.file_name().unwrap().to_str().unwrap();
             assert!(file_name.starts_with("sabiql_export_users_"));
-            assert!(std::path::Path::new(file_name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("csv")));
+            assert!(
+                std::path::Path::new(file_name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("csv"))
+            );
         }
     }
 

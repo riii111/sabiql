@@ -144,7 +144,8 @@ impl Inspector {
         let owner_value = table.owner.as_deref().unwrap_or("(none)");
         let comment_value = table.comment.as_deref().unwrap_or("(none)");
         let row_count_value = table
-            .row_count_estimate.map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
+            .row_count_estimate
+            .map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
 
         let owner_style = if table.owner.is_some() {
             Style::default()

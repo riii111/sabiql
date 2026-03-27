@@ -43,7 +43,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections_and_services(sorted, services.clone());
-            state.runtime.service_file_path.clone_from(service_file_path);
+            state
+                .runtime
+                .service_file_path
+                .clone_from(service_file_path);
 
             if let Some(warning) = profile_load_warning {
                 state.messages.set_error_at(warning.clone(), now);

@@ -50,7 +50,10 @@ enum Command {
 }
 
 #[tokio::main]
-#[allow(clippy::print_stderr, reason = "CLI error output before TUI initialization")]
+#[allow(
+    clippy::print_stderr,
+    reason = "CLI error output before TUI initialization"
+)]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     error::install_hooks()?;
@@ -250,7 +253,10 @@ async fn process_action(
     .await
 }
 
-#[allow(clippy::print_stderr, reason = "last-resort fallback when effect dispatch exceeds recursion limit")]
+#[allow(
+    clippy::print_stderr,
+    reason = "last-resort fallback when effect dispatch exceeds recursion limit"
+)]
 async fn flush_effects(
     effects: Vec<Effect>,
     state: &mut AppState,

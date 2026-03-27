@@ -139,7 +139,8 @@ impl ExplainContext {
 
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
         let viewport = self
-            .compare_viewport_height.map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
+            .compare_viewport_height
+            .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
     }
 }

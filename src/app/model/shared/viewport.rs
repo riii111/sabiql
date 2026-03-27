@@ -819,10 +819,7 @@ mod tests {
             let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 35, Some(3), 1));
 
             for (i, (w, min_w)) in selected.iter().zip(min.iter()).enumerate() {
-                assert!(
-                    *w >= *min_w,
-                    "Column {i} width {w} is below min {min_w}"
-                );
+                assert!(*w >= *min_w, "Column {i} width {w} is below min {min_w}");
             }
         }
 
@@ -855,10 +852,7 @@ mod tests {
                 for (i, &w) in widths.iter().enumerate() {
                     let col_idx = indices[i];
                     let min_w = min[col_idx];
-                    assert!(
-                        w >= min_w,
-                        "offset={offset}, col={col_idx}: {w} < {min_w}"
-                    );
+                    assert!(w >= min_w, "offset={offset}, col={col_idx}: {w} < {min_w}");
                 }
             }
         }

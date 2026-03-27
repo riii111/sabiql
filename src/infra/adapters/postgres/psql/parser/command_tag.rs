@@ -228,7 +228,11 @@ impl ResolvedTags {
             return Some(tag.clone());
         }
 
-        if self.all.iter().any(crate::domain::command_tag::CommandTag::needs_refresh) {
+        if self
+            .all
+            .iter()
+            .any(crate::domain::command_tag::CommandTag::needs_refresh)
+        {
             return Some(CommandTag::Rollback);
         }
 

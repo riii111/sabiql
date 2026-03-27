@@ -74,7 +74,10 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
-            state.er_preparation.last_signatures.clone_from(new_signatures);
+            state
+                .er_preparation
+                .last_signatures
+                .clone_from(new_signatures);
             state.er_preparation.total_tables = new_metadata.table_summaries.len();
 
             let mut effects: Vec<Effect> = Vec::new();
@@ -523,8 +526,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let new_sigs: HashMap<String, String> =
-                std::iter::once(("public.users".to_string(), "abc123".to_string()))
-                    .collect();
+                std::iter::once(("public.users".to_string(), "abc123".to_string())).collect();
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {
                 run_id: 1,

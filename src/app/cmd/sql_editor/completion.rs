@@ -47,8 +47,10 @@ pub async fn run(
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare(content, cursor);
-                let missing = engine
-                    .missing_tables_prepared(&prep, state.session.metadata().map(std::convert::AsRef::as_ref));
+                let missing = engine.missing_tables_prepared(
+                    &prep,
+                    state.session.metadata().map(std::convert::AsRef::as_ref),
+                );
                 (prep, missing)
             };
 
