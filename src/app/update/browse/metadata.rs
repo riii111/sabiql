@@ -239,7 +239,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
                 state.er_preparation.fk_expanded = false;
-                state.er_preparation.seed_tables = tables.clone();
+                state.er_preparation.seed_tables.clone_from(tables);
                 state.er_preparation.total_tables = tables.len();
 
                 for qualified_name in tables {

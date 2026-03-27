@@ -74,7 +74,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             }
 
             state.session.set_metadata(Some(Arc::clone(new_metadata)));
-            state.er_preparation.last_signatures = new_signatures.clone();
+            state.er_preparation.last_signatures.clone_from(new_signatures);
             state.er_preparation.total_tables = new_metadata.table_summaries.len();
 
             let mut effects: Vec<Effect> = Vec::new();
