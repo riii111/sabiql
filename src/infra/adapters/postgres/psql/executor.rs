@@ -732,7 +732,7 @@ mod tests {
         fn delete_large_number_returns_correct_value() {
             assert_eq!(
                 PostgresAdapter::parse_affected_rows("DELETE 1000000"),
-                Some(1000000)
+                Some(1_000_000)
             );
         }
 
