@@ -236,12 +236,7 @@ mod tests {
         fn state_with_row(values: Vec<&str>) -> AppState {
             let mut state = AppState::new("test".to_string());
             let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{c}")).collect();
-            let rows = vec![
-                values
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-            ];
+            let rows = vec![values.iter().map(ToString::to_string).collect()];
             state
                 .query
                 .set_current_result(Arc::new(crate::domain::QueryResult {

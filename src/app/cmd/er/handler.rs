@@ -85,10 +85,7 @@ pub async fn run(
         Effect::ExtractFkNeighbors { seed_tables } => {
             use crate::domain::er::fk_neighbors_of_seeds;
 
-            let seed_set: HashSet<&str> = seed_tables
-                .iter()
-                .map(String::as_str)
-                .collect();
+            let seed_set: HashSet<&str> = seed_tables.iter().map(String::as_str).collect();
 
             let (cached_seeds, cached_names): (Vec<ErTableInfo>, HashSet<String>) = {
                 let engine = completion_engine.borrow();
@@ -185,14 +182,8 @@ pub async fn run(
                     .map(|s| (s.qualified_name(), s.signature.clone()))
                     .collect();
 
-                let old_names: HashSet<&str> = old_signatures
-                    .keys()
-                    .map(String::as_str)
-                    .collect();
-                let new_names: HashSet<&str> = new_signatures
-                    .keys()
-                    .map(String::as_str)
-                    .collect();
+                let old_names: HashSet<&str> = old_signatures.keys().map(String::as_str).collect();
+                let new_names: HashSet<&str> = new_signatures.keys().map(String::as_str).collect();
 
                 let added_tables: Vec<String> = new_names
                     .difference(&old_names)

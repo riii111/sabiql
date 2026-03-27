@@ -280,10 +280,7 @@ impl PostgresAdapter {
         for result in reader.records() {
             let record = result
                 .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?;
-            let row: Vec<String> = record
-                .iter()
-                .map(ToString::to_string)
-                .collect();
+            let row: Vec<String> = record.iter().map(ToString::to_string).collect();
             rows.push(row);
         }
 

@@ -241,10 +241,7 @@ impl ResultPane {
             .collect();
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
-            let col_name = result
-                .columns
-                .get(idx)
-                .map_or("", String::as_str);
+            let col_name = result.columns.get(idx).map_or("", String::as_str);
             Cell::from(col_name.to_string())
         }))
         .style(
@@ -292,10 +289,7 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let val = row
-                            .get(orig_idx)
-                            .map_or("", String::as_str)
-                            .to_string();
+                        let val = row.get(orig_idx).map_or("", String::as_str).to_string();
                         let is_editing_cell = editing_cell
                             .is_some_and(|(er, ec, _, _, _)| er == abs_row_idx && ec == orig_idx);
                         let mut cell;
