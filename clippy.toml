@@ -1,0 +1,2 @@
+allow-dbg-in-tests = true
+too-many-arguments-threshold = 8

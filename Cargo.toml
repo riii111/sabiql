@@ -2,6 +2,7 @@
 name = "sabiql"
 version = "1.9.0"
 edition = "2024"
+rust-version = "1.94"
 description = "A fast, driver-less TUI for browsing and editing PostgreSQL databases"
 license = "MIT"
 repository = "https://github.com/riii111/sabiql"
@@ -54,3 +55,44 @@ required-features = ["test-support"]
 [profile.release]
 lto = true
 codegen-units = 1
+
+[lints.clippy]
+# Groups
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Pedantic suppressions
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_lossless = "allow"
+items_after_statements = "allow"
+needless_pass_by_value = "allow"
+unused_self = "allow"
+implicit_hasher = "allow"
+wildcard_imports = "allow"
+match_wildcard_for_single_variants = "allow"
+struct_field_names = "allow"
+
+# Nursery suppressions
+missing_const_for_fn = "allow"
+significant_drop_tightening = "allow"
+option_if_let_else = "allow"
+future_not_send = "allow"
+branches_sharing_code = "allow"
+
+# Restriction lints (opt-in)
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+allow_attributes_without_reason = "deny"
