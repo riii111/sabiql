@@ -463,7 +463,13 @@ ssl_mode = "prefer"
             let tmp_files: Vec<_> = fs::read_dir(temp_dir.path())
                 .unwrap()
                 .flatten()
-                .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".tmp")))
+                .filter(|e| {
+                    e.file_name().to_str().is_some_and(|n| {
+                        std::path::Path::new(n)
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("tmp"))
+                    })
+                })
                 .collect();
             assert!(tmp_files.is_empty());
         }
