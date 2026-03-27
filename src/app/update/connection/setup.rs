@@ -246,7 +246,7 @@ mod tests {
             "db".to_string(),
             "user".to_string(),
             "pass".to_string(),
-            Default::default(),
+            SslMode::default(),
         )
         .unwrap()
     }

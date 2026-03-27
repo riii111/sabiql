@@ -4,6 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::Action;
+use crate::domain::connection::SslMode;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -109,7 +110,7 @@ mod tests {
             "db".to_string(),
             "user".to_string(),
             "pass".to_string(),
-            Default::default(),
+            SslMode::default(),
         )
         .unwrap()
     }

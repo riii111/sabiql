@@ -2,6 +2,8 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::policy::sql::statement_classifier;
 use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
@@ -103,7 +105,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                         .sql_modal
                         .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
                             query: content,
-                            input: Default::default(),
+                            input: TextInputState::default(),
                             target_name: Some(target),
                         });
                     state.sql_modal.active_tab = SqlModalTab::Plan;
@@ -275,7 +277,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 let query = right.full_query.clone();
                 state.sql_modal.editor.set_content(query);
                 state.sql_modal.set_status(SqlModalStatus::Editing);
-                state.sql_modal.completion = Default::default();
+                state.sql_modal.completion = CompletionState::default();
                 state.sql_modal.active_tab = SqlModalTab::Sql;
             }
             Some(vec![])
@@ -749,7 +751,7 @@ mod tests {
                 .sql_modal
                 .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DROP TABLE users".to_string(),
-                    input: Default::default(),
+                    input: TextInputState::default(),
                     target_name: Some("users".to_string()),
                 });
 

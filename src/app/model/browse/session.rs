@@ -164,7 +164,7 @@ impl BrowseSession {
         self.is_reloading = false;
         query.pagination.reset();
         query.clear_current_result();
-        query.restore_history(Default::default());
+        query.restore_history(ResultHistory::default());
         query.exit_history();
     }
 
