@@ -18,7 +18,7 @@ mod metadata_fetch {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn fetch_metadata_returns_schemas() {
         let adapter = PostgresAdapter::new();
         let dsn = test_dsn();
@@ -36,7 +36,7 @@ mod metadata_fetch {
     }
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn fetch_table_detail_returns_columns() {
         let adapter = PostgresAdapter::new();
         let dsn = test_dsn();
@@ -66,7 +66,7 @@ mod query_execution {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn execute_preview_returns_columns() {
         let adapter = PostgresAdapter::new();
         let dsn = test_dsn();
@@ -92,7 +92,7 @@ mod query_execution {
     }
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn execute_adhoc_select_returns_query_result() {
         let adapter = PostgresAdapter::new();
         let dsn = test_dsn();
@@ -112,7 +112,7 @@ mod error_paths {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn bad_dsn_returns_connection_or_query_error() {
         let adapter = PostgresAdapter::new();
         let bad_dsn = "postgres://nobody:wrong@127.0.0.1:59999/nonexistent";
@@ -123,7 +123,7 @@ mod error_paths {
     }
 
     #[tokio::test]
-    #[ignore] // tracked: #133 — requires PostgreSQL
+    #[ignore = "requires PostgreSQL, tracked: #133"]
     async fn timeout_with_pg_sleep_returns_timeout_error() {
         let adapter = PostgresAdapter::with_timeout(1);
         let dsn = test_dsn();

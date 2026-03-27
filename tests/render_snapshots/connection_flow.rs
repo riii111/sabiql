@@ -71,9 +71,9 @@ fn connection_setup_with_validation_errors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state.connection_setup.host = Default::default();
-    state.connection_setup.database = Default::default();
-    state.connection_setup.user = Default::default();
+    state.connection_setup.host = TextInputState::default();
+    state.connection_setup.database = TextInputState::default();
+    state.connection_setup.user = TextInputState::default();
     state
         .connection_setup
         .validation_errors
