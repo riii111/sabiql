@@ -53,7 +53,7 @@ impl Footer {
             state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
         let cached = total.saturating_sub(remaining + failed_count);
 
-        let text = format!("{} Preparing ER... ({}/{})", spinner, cached, total);
+        let text = format!("{spinner} Preparing ER... ({cached}/{total})");
         Line::from(Span::styled(text, Style::default().fg(Theme::TEXT_ACCENT)))
     }
 
@@ -95,24 +95,24 @@ impl Footer {
                         ]
                     }
                 } else if result_navigation && nav_mode == ResultNavMode::RowActive {
-                    if !state.result_interaction.staged_delete_rows().is_empty() {
-                        // Staged-delete mode: actions relevant to committing/undoing the staged delete
-                        // Actions → Navigation → Help → Close/Cancel → Quit
-                        vec![
-                            RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint(),
-                            CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
-                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
-                            RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
-                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
-                        ]
-                    } else {
+                    if state.result_interaction.staged_delete_rows().is_empty() {
                         // Normal RowActive mode
                         // Actions → Navigation → Help → Close/Cancel → Quit
                         vec![
                             RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint(),
                             RESULT_ACTIVE_KEYS[idx::result_active::ROW_YANK].as_hint(),
                             RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE].as_hint(),
+                            GLOBAL_KEYS[idx::global::HELP].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
+                            GLOBAL_KEYS[idx::global::QUIT].as_hint(),
+                        ]
+                    } else {
+                        // Staged-delete mode: actions relevant to committing/undoing the staged delete
+                        // Actions → Navigation → Help → Close/Cancel → Quit
+                        vec![
+                            RESULT_ACTIVE_KEYS[idx::result_active::STAGE_DELETE].as_hint(),
+                            RESULT_ACTIVE_KEYS[idx::result_active::UNSTAGE_DELETE].as_hint(),
+                            CELL_EDIT_KEYS[idx::cell_edit::WRITE].as_hint(),
                             GLOBAL_KEYS[idx::global::HELP].as_hint(),
                             RESULT_ACTIVE_KEYS[idx::result_active::ESC_BACK].as_hint(),
                             GLOBAL_KEYS[idx::global::QUIT].as_hint(),
@@ -303,7 +303,7 @@ impl Footer {
 
         if let Some(msg) = success_msg {
             spans.push(Span::styled(
-                format!("✓ {}  ", msg),
+                format!("✓ {msg}  "),
                 Style::default().fg(Theme::STATUS_SUCCESS),
             ));
         }
@@ -316,7 +316,7 @@ impl Footer {
                 (*key).to_string(),
                 Style::default().fg(Theme::TEXT_ACCENT),
             ));
-            spans.push(Span::raw(format!(":{}", desc)));
+            spans.push(Span::raw(format!(":{desc}")));
         }
 
         Line::from(spans)

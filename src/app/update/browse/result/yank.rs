@@ -25,29 +25,26 @@ pub fn reduce(
                     .and_then(|r| r.rows.get(row_idx))
                     .and_then(|row| row.get(col_idx))
                     .cloned();
-                match content {
-                    Some(value) => {
-                        state.result_interaction.yank_flash = Some(YankFlash {
-                            row: row_idx,
-                            col: Some(col_idx),
-                            until: now + Duration::from_millis(200),
-                        });
-                        Some(vec![Effect::CopyToClipboard {
-                            content: value,
-                            on_success: Some(Action::CellCopied),
-                            on_failure: Some(Action::CopyFailed(
-                                crate::app::ports::ClipboardError {
-                                    message: "Clipboard unavailable".into(),
-                                },
-                            )),
-                        }])
-                    }
-                    None => {
-                        state
-                            .messages
-                            .set_error_at("Cell index out of bounds".into(), now);
-                        Some(vec![])
-                    }
+                if let Some(value) = content {
+                    state.result_interaction.yank_flash = Some(YankFlash {
+                        row: row_idx,
+                        col: Some(col_idx),
+                        until: now + Duration::from_millis(200),
+                    });
+                    Some(vec![Effect::CopyToClipboard {
+                        content: value,
+                        on_success: Some(Action::CellCopied),
+                        on_failure: Some(Action::CopyFailed(
+                            crate::app::ports::ClipboardError {
+                                message: "Clipboard unavailable".into(),
+                            },
+                        )),
+                    }])
+                } else {
+                    state
+                        .messages
+                        .set_error_at("Cell index out of bounds".into(), now);
+                    Some(vec![])
                 }
             } else {
                 Some(vec![])
@@ -91,29 +88,26 @@ pub fn reduce(
                             .collect::<Vec<_>>()
                             .join("\t")
                     });
-                match content {
-                    Some(tsv) => {
-                        state.result_interaction.yank_flash = Some(YankFlash {
-                            row: row_idx,
-                            col: None,
-                            until: now + Duration::from_millis(200),
-                        });
-                        Some(vec![Effect::CopyToClipboard {
-                            content: tsv,
-                            on_success: Some(Action::CellCopied),
-                            on_failure: Some(Action::CopyFailed(
-                                crate::app::ports::ClipboardError {
-                                    message: "Clipboard unavailable".into(),
-                                },
-                            )),
-                        }])
-                    }
-                    None => {
-                        state
-                            .messages
-                            .set_error_at("Row index out of bounds".into(), now);
-                        Some(vec![])
-                    }
+                if let Some(tsv) = content {
+                    state.result_interaction.yank_flash = Some(YankFlash {
+                        row: row_idx,
+                        col: None,
+                        until: now + Duration::from_millis(200),
+                    });
+                    Some(vec![Effect::CopyToClipboard {
+                        content: tsv,
+                        on_success: Some(Action::CellCopied),
+                        on_failure: Some(Action::CopyFailed(
+                            crate::app::ports::ClipboardError {
+                                message: "Clipboard unavailable".into(),
+                            },
+                        )),
+                    }])
+                } else {
+                    state
+                        .messages
+                        .set_error_at("Row index out of bounds".into(), now);
+                    Some(vec![])
                 }
             } else {
                 Some(vec![])
@@ -140,9 +134,9 @@ mod tests {
 
         fn state_with_grid(rows: usize, cols: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
-            let columns: Vec<String> = (0..cols).map(|c| format!("col_{}", c)).collect();
+            let columns: Vec<String> = (0..cols).map(|c| format!("col_{c}")).collect();
             let result_rows: Vec<Vec<String>> = (0..rows)
-                .map(|r| (0..cols).map(|c| format!("r{}c{}", r, c)).collect())
+                .map(|r| (0..cols).map(|c| format!("r{r}c{c}")).collect())
                 .collect();
             let row_count = result_rows.len();
             state
@@ -216,7 +210,7 @@ mod tests {
                 Effect::CopyToClipboard { content, .. } => {
                     assert_eq!(content, "r1c2");
                 }
-                other => panic!("expected CopyToClipboard, got {:?}", other),
+                other => panic!("expected CopyToClipboard, got {other:?}"),
             }
         }
 
@@ -242,8 +236,8 @@ mod tests {
 
         fn state_with_row(values: Vec<&str>) -> AppState {
             let mut state = AppState::new("test".to_string());
-            let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{}", c)).collect();
-            let rows = vec![values.iter().map(|v| v.to_string()).collect()];
+            let columns: Vec<String> = (0..values.len()).map(|c| format!("col_{c}")).collect();
+            let rows = vec![values.iter().map(std::string::ToString::to_string).collect()];
             state
                 .query
                 .set_current_result(Arc::new(crate::domain::QueryResult {
@@ -278,7 +272,7 @@ mod tests {
                 Effect::CopyToClipboard { content, .. } => {
                     assert_eq!(content, "v0\tv1\tv2");
                 }
-                other => panic!("expected CopyToClipboard, got {:?}", other),
+                other => panic!("expected CopyToClipboard, got {other:?}"),
             }
         }
 
@@ -300,7 +294,7 @@ mod tests {
                 Effect::CopyToClipboard { content, .. } => {
                     assert_eq!(content, "a\\tb\tc\\nd");
                 }
-                other => panic!("expected CopyToClipboard, got {:?}", other),
+                other => panic!("expected CopyToClipboard, got {other:?}"),
             }
         }
 
@@ -322,7 +316,7 @@ mod tests {
                 Effect::CopyToClipboard { content, .. } => {
                     assert_eq!(content, "a\\\\b");
                 }
-                other => panic!("expected CopyToClipboard, got {:?}", other),
+                other => panic!("expected CopyToClipboard, got {other:?}"),
             }
         }
 

@@ -18,7 +18,7 @@ impl StatusMessage {
         };
 
         Line::from(vec![Span::styled(
-            format!("{}{}", prefix, message),
+            format!("{prefix}{message}"),
             Style::default().fg(color),
         )])
     }

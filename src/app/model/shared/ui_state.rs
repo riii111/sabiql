@@ -188,36 +188,30 @@ impl UiState {
     }
 
     pub fn set_explorer_selection(&mut self, index: Option<usize>) {
-        match index {
-            Some(i) => {
-                self.explorer_scroll_offset = clamp_scroll_offset(
-                    i,
-                    self.explorer_scroll_offset,
-                    self.explorer_visible_items(),
-                );
-                self.explorer_selected = i;
-            }
-            None => {
-                self.explorer_selected = 0;
-                self.explorer_scroll_offset = 0;
-            }
+        if let Some(i) = index {
+            self.explorer_scroll_offset = clamp_scroll_offset(
+                i,
+                self.explorer_scroll_offset,
+                self.explorer_visible_items(),
+            );
+            self.explorer_selected = i;
+        } else {
+            self.explorer_selected = 0;
+            self.explorer_scroll_offset = 0;
         }
     }
 
     pub fn set_connection_list_selection(&mut self, index: Option<usize>) {
-        match index {
-            Some(i) => {
-                self.connection_list_scroll_offset = clamp_scroll_offset(
-                    i,
-                    self.connection_list_scroll_offset,
-                    self.connection_list_visible_items(),
-                );
-                self.connection_list_selected = i;
-            }
-            None => {
-                self.connection_list_selected = 0;
-                self.connection_list_scroll_offset = 0;
-            }
+        if let Some(i) = index {
+            self.connection_list_scroll_offset = clamp_scroll_offset(
+                i,
+                self.connection_list_scroll_offset,
+                self.connection_list_visible_items(),
+            );
+            self.connection_list_selected = i;
+        } else {
+            self.connection_list_selected = 0;
+            self.connection_list_scroll_offset = 0;
         }
     }
 }
@@ -448,10 +442,7 @@ mod tests {
 
         assert!(
             max_scroll + visible >= total_rows,
-            "max_scroll={}, visible={}, total={}",
-            max_scroll,
-            visible,
-            total_rows
+            "max_scroll={max_scroll}, visible={visible}, total={total_rows}"
         );
     }
 

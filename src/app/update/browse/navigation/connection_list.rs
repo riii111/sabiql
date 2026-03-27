@@ -120,7 +120,7 @@ mod tests {
         use super::*;
 
         fn setup_profiles(state: &mut AppState, count: usize) {
-            let names: Vec<String> = (1..=count).map(|i| format!("conn{}", i)).collect();
+            let names: Vec<String> = (1..=count).map(|i| format!("conn{i}")).collect();
             let profiles = names.iter().map(|n| create_test_profile(n)).collect();
             state.set_connections(profiles);
         }
@@ -319,7 +319,7 @@ mod tests {
 
             state.set_connections(vec![
                 create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id.clone()),
+                create_test_profile_with_id("other", other_id),
             ]);
             state.session.active_connection_id = Some(active_id);
             state.ui.set_connection_list_selection(Some(1));
@@ -387,7 +387,7 @@ mod tests {
 
             state.set_connections(vec![
                 create_test_profile_with_id("active", active_id.clone()),
-                create_test_profile_with_id("other", other_id.clone()),
+                create_test_profile_with_id("other", other_id),
             ]);
             state.session.active_connection_id = Some(active_id);
             state.modal.set_mode(InputMode::ConnectionSelector);

@@ -24,7 +24,7 @@ impl ErTablePicker {
         } else if selected_count == total_count {
             (
                 "Full ER".to_string(),
-                format!("all {} tables", total_count),
+                format!("all {total_count} tables"),
                 Theme::TEXT_MUTED,
             )
         } else if selected_count == 1 {
@@ -33,7 +33,7 @@ impl ErTablePicker {
         } else {
             (
                 "Partial ER".to_string(),
-                format!("{} tables", selected_count),
+                format!("{selected_count} tables"),
                 Theme::SECTION_HEADER,
             )
         };
@@ -51,8 +51,7 @@ impl ErTablePicker {
             Constraint::Percentage(70),
             " ER Diagram ",
             &format!(
-                " {}/{} selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel ",
-                selected_count, total_count
+                " {selected_count}/{total_count} selected │ Space Select │ ^A All │ Enter Generate │ Esc Cancel "
             ),
         );
 
@@ -117,7 +116,7 @@ impl ErTablePicker {
                 } else {
                     Style::default().fg(Theme::TEXT_SECONDARY)
                 };
-                ListItem::new(format!("  {}{}", mark, qn)).style(style)
+                ListItem::new(format!("  {mark}{qn}")).style(style)
             })
             .collect();
 

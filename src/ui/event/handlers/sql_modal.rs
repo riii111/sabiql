@@ -259,9 +259,7 @@ pub fn handle_sql_modal_keys(
         (Key::Up, true) => Action::CompletionPrev,
         (Key::Down, true) => Action::CompletionNext,
         (Key::Tab | Key::Enter, true) => Action::CompletionAccept,
-        (Key::Esc, true) => Action::CompletionDismiss,
-        // Navigation: dismiss completion on horizontal movement
-        (Key::Left | Key::Right, true) => Action::CompletionDismiss,
+        (Key::Esc | Key::Left | Key::Right, true) => Action::CompletionDismiss,
 
         (Key::Esc, false) => Action::SqlModalEnterNormal,
         (Key::Left, false) => Action::TextMoveCursor {
@@ -380,19 +378,19 @@ mod tests {
             Expected::SqlModalInput(c) => {
                 assert!(
                     matches!(result, Action::TextInput { target: InputTarget::SqlModal, ch: x } if x == c)
-                )
+                );
             }
             Expected::SqlModalMoveCursor(m) => {
                 assert!(
                     matches!(result, Action::TextMoveCursor { target: InputTarget::SqlModal, direction: x } if x == m)
-                )
+                );
             }
             Expected::CloseSqlModal => assert!(matches!(result, Action::CloseSqlModal)),
             Expected::SqlModalEnterInsert => {
-                assert!(matches!(result, Action::SqlModalEnterInsert))
+                assert!(matches!(result, Action::SqlModalEnterInsert));
             }
             Expected::SqlModalEnterNormal => {
-                assert!(matches!(result, Action::SqlModalEnterNormal))
+                assert!(matches!(result, Action::SqlModalEnterNormal));
             }
             Expected::SqlModalYank => assert!(matches!(result, Action::SqlModalYank)),
             Expected::CompletionTrigger => assert!(matches!(result, Action::CompletionTrigger)),
@@ -401,18 +399,18 @@ mod tests {
             Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
             Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
             Expected::SqlModalConfirmExecute => {
-                assert!(matches!(result, Action::SqlModalConfirmExecute))
+                assert!(matches!(result, Action::SqlModalConfirmExecute));
             }
             Expected::SqlModalCancelConfirm => {
-                assert!(matches!(result, Action::SqlModalCancelConfirm))
+                assert!(matches!(result, Action::SqlModalCancelConfirm));
             }
             Expected::OpenQueryHistoryPicker => {
-                assert!(matches!(result, Action::OpenQueryHistoryPicker))
+                assert!(matches!(result, Action::OpenQueryHistoryPicker));
             }
             Expected::SqlModalClear => assert!(matches!(result, Action::SqlModalClear)),
             Expected::ExplainRequest => assert!(matches!(result, Action::ExplainRequest)),
             Expected::ExplainAnalyzeRequest => {
-                assert!(matches!(result, Action::ExplainAnalyzeRequest))
+                assert!(matches!(result, Action::ExplainAnalyzeRequest));
             }
             Expected::SqlModalNextTab => assert!(matches!(result, Action::SqlModalNextTab)),
             Expected::SqlModalPrevTab => assert!(matches!(result, Action::SqlModalPrevTab)),
@@ -424,7 +422,7 @@ mod tests {
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::Line
                     }
-                ))
+                ));
             }
             Expected::ExplainPlanScrollDown => {
                 assert!(matches!(
@@ -434,7 +432,7 @@ mod tests {
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::Line
                     }
-                ))
+                ));
             }
             Expected::ExplainCompareScrollUp => {
                 assert!(matches!(
@@ -444,7 +442,7 @@ mod tests {
                         direction: ScrollDirection::Up,
                         amount: ScrollAmount::Line
                     }
-                ))
+                ));
             }
             Expected::ExplainCompareScrollDown => {
                 assert!(matches!(
@@ -454,16 +452,16 @@ mod tests {
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::Line
                     }
-                ))
+                ));
             }
             Expected::CompareEditQuery => {
-                assert!(matches!(result, Action::CompareEditQuery))
+                assert!(matches!(result, Action::CompareEditQuery));
             }
             Expected::ExplainAnalyzeConfirm => {
-                assert!(matches!(result, Action::ExplainAnalyzeConfirm))
+                assert!(matches!(result, Action::ExplainAnalyzeConfirm));
             }
             Expected::ExplainAnalyzeCancel => {
-                assert!(matches!(result, Action::ExplainAnalyzeCancel))
+                assert!(matches!(result, Action::ExplainAnalyzeCancel));
             }
             Expected::None => assert!(matches!(result, Action::None)),
         }

@@ -19,7 +19,7 @@ impl TablePicker {
             Constraint::Percentage(60),
             Constraint::Percentage(70),
             " Table Picker ",
-            &format!(" {} tables │ ↑↓ Navigate │ Enter Select ", filtered_count),
+            &format!(" {filtered_count} tables │ ↑↓ Navigate │ Enter Select "),
         );
 
         let [filter_area, list_area] =

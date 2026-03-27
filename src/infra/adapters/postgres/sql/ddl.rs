@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use crate::app::ports::DdlGenerator;
 use crate::domain::Table;
 use crate::infra::utils::{quote_ident, quote_literal};
@@ -17,16 +19,17 @@ impl DdlGenerator for PostgresAdapter {
             let default = col
                 .default
                 .as_ref()
-                .map(|d| format!(" DEFAULT {}", d))
+                .map(|d| format!(" DEFAULT {d}"))
                 .unwrap_or_default();
 
-            ddl.push_str(&format!(
+            let _ = write!(
+                ddl,
                 "  {} {}{}{}",
                 quote_ident(&col.name),
                 col.data_type,
                 nullable,
                 default
-            ));
+            );
 
             if i + 1 < table.columns.len() {
                 ddl.push(',');
@@ -36,7 +39,7 @@ impl DdlGenerator for PostgresAdapter {
 
         if let Some(pk) = &table.primary_key {
             let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
-            ddl.push_str(&format!("  PRIMARY KEY ({})\n", quoted_cols.join(", ")));
+            let _ = writeln!(ddl, "  PRIMARY KEY ({})", quoted_cols.join(", "));
         }
 
         ddl.push_str(");");
@@ -48,21 +51,23 @@ impl DdlGenerator for PostgresAdapter {
         );
 
         if let Some(comment) = &table.comment {
-            ddl.push_str(&format!(
+            let _ = write!(
+                ddl,
                 "\n\nCOMMENT ON TABLE {} IS {};",
                 qualified,
                 quote_literal(comment)
-            ));
+            );
         }
 
         for col in &table.columns {
             if let Some(comment) = &col.comment {
-                ddl.push_str(&format!(
+                let _ = write!(
+                    ddl,
                     "\n\nCOMMENT ON COLUMN {}.{} IS {};",
                     qualified,
                     quote_ident(&col.name),
                     quote_literal(comment)
-                ));
+                );
             }
         }
 

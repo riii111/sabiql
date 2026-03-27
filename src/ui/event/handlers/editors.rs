@@ -215,7 +215,7 @@ mod tests {
                 Expected::Input(ch) => {
                     assert!(
                         matches!(result, Action::TextInput { target: InputTarget::CommandLine, ch: c } if c == ch)
-                    )
+                    );
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }

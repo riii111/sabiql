@@ -259,7 +259,7 @@ mod tests {
             yank_flash: Some(YankFlash {
                 row: 0,
                 col: None,
-                until: now - Duration::from_millis(1),
+                until: now.checked_sub(Duration::from_millis(1)).unwrap(),
             }),
             ..Default::default()
         };

@@ -16,17 +16,13 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.ui.table_picker.reset();
             Some(vec![])
         }
-        Action::CloseTablePicker => {
+        Action::CloseTablePicker | Action::CloseCommandPalette | Action::Escape => {
             state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::OpenCommandPalette => {
             state.modal.set_mode(InputMode::CommandPalette);
             state.ui.table_picker.reset();
-            Some(vec![])
-        }
-        Action::CloseCommandPalette => {
-            state.modal.set_mode(InputMode::Normal);
             Some(vec![])
         }
         Action::OpenHelp => {
@@ -197,7 +193,7 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             if state.session.active_connection_id.as_ref() != Some(conn_id) {
                 return Some(vec![]);
             }
-            state.query_history_picker.entries = entries.clone();
+            state.query_history_picker.entries.clone_from(entries);
             state.query_history_picker.selected = 0;
             state.query_history_picker.scroll_offset = 0;
             Some(vec![])
@@ -279,11 +275,6 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             Some(vec![])
         }
 
-        Action::Escape => {
-            state.modal.set_mode(InputMode::Normal);
-            Some(vec![])
-        }
-
         // Confirm Dialog
         Action::ConfirmDialogConfirm => {
             let intent = state.confirm_dialog.take_intent();
@@ -351,19 +342,16 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
 
-            match intent {
-                Some(ConfirmIntent::QuitNoConnection) => {
-                    state.connection_setup.reset();
-                    if !state.connections().is_empty() || state.session.dsn.is_some() {
-                        state.connection_setup.is_first_run = false;
-                    }
-                    state.modal.pop_mode_override(InputMode::ConnectionSetup);
-                    Some(vec![])
+            if matches!(intent, Some(ConfirmIntent::QuitNoConnection)) {
+                state.connection_setup.reset();
+                if !state.connections().is_empty() || state.session.dsn.is_some() {
+                    state.connection_setup.is_first_run = false;
                 }
-                _ => {
-                    state.modal.pop_mode();
-                    Some(vec![])
-                }
+                state.modal.pop_mode_override(InputMode::ConnectionSetup);
+                Some(vec![])
+            } else {
+                state.modal.pop_mode();
+                Some(vec![])
             }
         }
 
@@ -413,7 +401,7 @@ mod tests {
             let id = crate::domain::ConnectionId::new();
             state
                 .confirm_dialog
-                .open("", "", ConfirmIntent::DeleteConnection(id.clone()));
+                .open("", "", ConfirmIntent::DeleteConnection(id));
 
             let effects =
                 reduce_modal(&mut state, &Action::ConfirmDialogConfirm, Instant::now()).unwrap();
@@ -662,7 +650,7 @@ mod tests {
 
             let effects = reduce_modal(
                 &mut state,
-                &Action::QueryHistoryLoaded(conn_id, entries.clone()),
+                &Action::QueryHistoryLoaded(conn_id, entries),
                 Instant::now(),
             )
             .unwrap();

@@ -56,7 +56,7 @@ impl SqlDialect for PostgresAdapter {
                 .map(|pairs| sql_literal_or_null(&pairs[0].1))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{} IN ({})", col, values)
+            format!("{col} IN ({values})")
         } else {
             let cols = pk_pairs_per_row[0]
                 .iter()
@@ -71,11 +71,11 @@ impl SqlDialect for PostgresAdapter {
                         .map(|(_, val)| sql_literal_or_null(val))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!("({})", vals)
+                    format!("({vals})")
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("({}) IN ({})", cols, rows)
+            format!("({cols}) IN ({rows})")
         };
 
         format!(

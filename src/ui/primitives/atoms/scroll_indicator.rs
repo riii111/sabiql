@@ -48,7 +48,7 @@ pub fn render_horizontal_scroll_indicator(
     use ratatui::text::{Line, Span};
     let text_style = Style::default().fg(Theme::SCROLLBAR_ACTIVE);
 
-    let position_span = Span::styled(format!("{} ", position_text), text_style);
+    let position_span = Span::styled(format!("{position_text} "), text_style);
 
     let text_line = Line::from(vec![position_span]);
 

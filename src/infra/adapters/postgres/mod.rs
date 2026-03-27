@@ -143,8 +143,7 @@ impl QueryExecutor for PostgresAdapter {
             Ok(cols) => cols,
             Err(e) => {
                 eprintln!(
-                    "warn: failed to fetch PK columns for {}.{}: {}",
-                    schema, table, e
+                    "warn: failed to fetch PK columns for {schema}.{table}: {e}"
                 );
                 Vec::new()
             }

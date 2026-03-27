@@ -29,7 +29,7 @@ pub fn write_er_failure_log_blocking(
     writeln!(file, "Failed tables ({}):", failed_tables.len())?;
 
     for (table, error) in &failed_tables {
-        writeln!(file, "  - {}: {}", table, error)?;
+        writeln!(file, "  - {table}: {error}")?;
     }
 
     Ok(())

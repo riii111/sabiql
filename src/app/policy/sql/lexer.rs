@@ -207,18 +207,17 @@ impl SqlLexer {
                             dollar_tag = tag;
                             state = LexerState::InDollarQuote;
                             continue;
-                        } else {
-                            // Not a valid dollar quote, treat as operator
-                            tokens.push(Token {
-                                kind: TokenKind::Operator("$".to_string()),
-                                text: "$".to_string(),
-                                start: tag_start,
-                                end: tag_start + 1,
-                            });
-                            // Reprocess characters after $
-                            pos = tag_start + 1;
-                            continue;
                         }
+                        // Not a valid dollar quote, treat as operator
+                        tokens.push(Token {
+                            kind: TokenKind::Operator("$".to_string()),
+                            text: "$".to_string(),
+                            start: tag_start,
+                            end: tag_start + 1,
+                        });
+                        // Reprocess characters after $
+                        pos = tag_start + 1;
+                        continue;
                     }
 
                     // Single-quoted string: '...'
@@ -389,11 +388,10 @@ impl SqlLexer {
                             state = LexerState::Normal;
                             dollar_tag.clear();
                             continue;
-                        } else {
-                            // Not closing tag, continue in dollar quote
-                            pos = tag_start + 1;
-                            continue;
                         }
+                        // Not closing tag, continue in dollar quote
+                        pos = tag_start + 1;
+                        continue;
                     }
                     pos += 1;
                 }
@@ -893,7 +891,7 @@ impl SqlLexer {
             match &token.kind {
                 TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
                 TokenKind::Punctuation(p) if *p == ')' => {
-                    paren_depth = paren_depth.saturating_sub(1)
+                    paren_depth = paren_depth.saturating_sub(1);
                 }
                 // Reset state on statement terminator
                 TokenKind::Punctuation(p) if *p == ';' => {

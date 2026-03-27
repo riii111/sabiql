@@ -5,7 +5,7 @@ use crate::ui::theme::Theme;
 
 pub fn key_chip(key: &str) -> Span<'static> {
     Span::styled(
-        format!(" {} ", key),
+        format!(" {key} "),
         Style::default()
             .bg(Theme::KEY_CHIP_BG)
             .fg(Theme::KEY_CHIP_FG)

@@ -19,8 +19,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.sql_modal.invalidate_prefetch();
             state.set_success(format!(
-                "✓ Opened {} ({}/{} tables) — Stale? Press r to reload",
-                path, table_count, total_tables
+                "✓ Opened {path} ({table_count}/{total_tables} tables) — Stale? Press r to reload"
             ));
             Some(vec![])
         }
@@ -141,8 +140,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             state.er_preparation.total_tables = total_table_count;
             state.er_preparation.last_signatures.clear();
             state.set_error(format!(
-                "Smart refresh failed ({}), falling back to full refresh",
-                error
+                "Smart refresh failed ({error}), falling back to full refresh"
             ));
 
             if is_scoped {
@@ -173,8 +171,7 @@ pub fn reduce_er(state: &mut AppState, action: &Action, _now: Instant) -> Option
             let total_tables = state
                 .session
                 .metadata()
-                .map(|m| m.table_summaries.len())
-                .unwrap_or(0);
+                .map_or(0, |m| m.table_summaries.len());
 
             Some(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
@@ -206,7 +203,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -352,7 +349,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -563,7 +560,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),

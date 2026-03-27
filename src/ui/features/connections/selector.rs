@@ -55,7 +55,7 @@ impl ConnectionSelector {
 
         let hint_parts: Vec<String> = hints
             .iter()
-            .map(|(key, desc)| format!("{} {}", key, desc))
+            .map(|(key, desc)| format!("{key} {desc}"))
             .collect();
         format!(" {} ", hint_parts.join("  "))
     }
@@ -72,7 +72,7 @@ fn render_profile_item(
 ) -> ListItem<'static> {
     let is_active = active_id == Some(id);
     let prefix = active_prefix(is_active);
-    let text = format!("{}{}", prefix, display_name);
+    let text = format!("{prefix}{display_name}");
     let style = if is_active {
         Style::default().fg(Theme::ACTIVE_INDICATOR)
     } else {
@@ -99,7 +99,7 @@ fn render_service_item(
             .chars()
             .take(max_name_len.saturating_sub(1))
             .collect();
-        format!("{}…", truncated)
+        format!("{truncated}…")
     } else {
         display_name.to_owned()
     };
@@ -107,7 +107,7 @@ fn render_service_item(
     let label_col = content_width * SERVICE_LABEL_COL_PERCENT / 100;
     let name_display_width = PREFIX_DISPLAY_WIDTH + name.chars().count();
     let gap = label_col.saturating_sub(name_display_width).max(min_gap);
-    let name_part = format!("{}{}", prefix, name);
+    let name_part = format!("{prefix}{name}");
 
     let name_style = if is_active {
         Style::default().fg(Theme::ACTIVE_INDICATOR)

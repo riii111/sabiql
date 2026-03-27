@@ -32,7 +32,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 return Some(vec![]);
             }
 
-            let query = format!("EXPLAIN {}", content);
+            let query = format!("EXPLAIN {content}");
             state.sql_modal.set_status(SqlModalStatus::Running);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.explain.reset();
@@ -86,7 +86,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             match risk.map(|r| r.confirmation) {
                 Some(ConfirmationType::Immediate) => {
                     // SELECT/Transaction: no confirmation, execute immediately
-                    let explain_query = format!("EXPLAIN ANALYZE {}", content);
+                    let explain_query = format!("EXPLAIN ANALYZE {content}");
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                     state.explain.reset();
@@ -175,7 +175,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if let Some(query) = query
                 && let Some(dsn) = &state.session.dsn
             {
-                let explain_query = format!("EXPLAIN ANALYZE {}", query);
+                let explain_query = format!("EXPLAIN ANALYZE {query}");
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 state.explain.reset();
                 state.query.begin_running(now);
@@ -885,7 +885,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("line{}", i))
+                .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
@@ -908,7 +908,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("line{}", i))
+                .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
@@ -954,7 +954,7 @@ mod tests {
         fn compare_scroll_down_increments() {
             let mut state = sql_modal_state();
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
@@ -978,7 +978,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
@@ -1019,7 +1019,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");

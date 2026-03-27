@@ -135,7 +135,7 @@ mod tests {
                     assert_eq!(table_count, 0);
                     assert_eq!(total_tables, 5);
                 }
-                _ => panic!("expected ErDiagramOpened, got {:?}", action),
+                _ => panic!("expected ErDiagramOpened, got {action:?}"),
             }
         }
 
@@ -159,7 +159,7 @@ mod tests {
                 Action::ErDiagramFailed(e) => {
                     assert!(e.to_string().contains("export failed"));
                 }
-                _ => panic!("expected ErDiagramFailed, got {:?}", action),
+                _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }
         }
 
@@ -183,7 +183,7 @@ mod tests {
                 Action::ErDiagramFailed(e) => {
                     assert!(e.to_string().contains("Task panicked"));
                 }
-                _ => panic!("expected ErDiagramFailed, got {:?}", action),
+                _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }
         }
     }

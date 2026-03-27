@@ -243,7 +243,7 @@ mod tests {
 
         #[rstest]
         #[case(r#"FATAL: password authentication failed for user "user""#)]
-        #[case(r#"psql: error: FATAL:  password authentication failed"#)]
+        #[case(r"psql: error: FATAL:  password authentication failed")]
         fn classify_stderr_as_auth_failed(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),

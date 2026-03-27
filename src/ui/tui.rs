@@ -80,7 +80,7 @@ impl TuiRunner {
 
             loop {
                 let event = tokio::select! {
-                    _ = cancellation_token.cancelled() => break,
+                    () = cancellation_token.cancelled() => break,
                     crossterm_event = event_stream.next().fuse() => {
                         match crossterm_event {
                             Some(Ok(evt)) => match evt {
@@ -91,8 +91,7 @@ impl TuiRunner {
                                 CrosstermEvent::Paste(text) => Event::Paste(text),
                                 _ => continue,
                             },
-                            Some(Err(_)) => break,
-                            None => break,
+                            Some(Err(_)) | None => break,
                         }
                     }
                 };

@@ -137,7 +137,7 @@ impl ConfirmDialog {
                 for (key, value) in &preview.target_summary.key_values {
                     content_lines.push(Line::from(vec![
                         Span::styled(
-                            format!("  {}: ", key),
+                            format!("  {key}: "),
                             Style::default().fg(Theme::TEXT_SECONDARY),
                         ),
                         Span::styled(
@@ -156,7 +156,7 @@ impl ConfirmDialog {
             Style::default().fg(Theme::TEXT_SECONDARY),
         )]));
         for sql_line in preview.sql.lines() {
-            let indented = format!("  {}", sql_line);
+            let indented = format!("  {sql_line}");
             content_lines.push(Self::highlight_sql_line(&indented));
         }
 

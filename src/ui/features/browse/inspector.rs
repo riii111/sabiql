@@ -144,9 +144,7 @@ impl Inspector {
         let owner_value = table.owner.as_deref().unwrap_or("(none)");
         let comment_value = table.comment.as_deref().unwrap_or("(none)");
         let row_count_value = table
-            .row_count_estimate
-            .map(|n| format!("~{}", n))
-            .unwrap_or_else(|| "(none)".to_string());
+            .row_count_estimate.map_or_else(|| "(none)".to_string(), |n| format!("~{n}"));
 
         let owner_style = if table.owner.is_some() {
             Style::default()
@@ -322,7 +320,7 @@ impl Inspector {
 
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
-                        let text = row.get(col_idx).map(|s| s.as_str()).unwrap_or("");
+                        let text = row.get(col_idx).map_or("", std::string::String::as_str);
                         let display = truncate_cell(text, col_width as usize);
 
                         // Special styling for PK and Comment columns
@@ -575,7 +573,7 @@ impl Inspector {
                 let events_str = trigger
                     .events
                     .iter()
-                    .map(|e| e.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
                     .join("/");
                 vec![
@@ -668,6 +666,6 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }

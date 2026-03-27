@@ -16,14 +16,14 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::domain::{ConnectionId, DatabaseMetadata, ErTableInfo, QueryResult, QuerySource};
 
-pub(crate) struct NoopConfigWriter;
+pub struct NoopConfigWriter;
 impl ConfigWriter for NoopConfigWriter {
     fn get_cache_dir(&self, _project_name: &str) -> color_eyre::eyre::Result<PathBuf> {
         Ok(PathBuf::from("/tmp"))
     }
 }
 
-pub(crate) struct NoopErExporter;
+pub struct NoopErExporter;
 impl ErDiagramExporter for NoopErExporter {
     fn generate_and_export(
         &self,
@@ -35,7 +35,7 @@ impl ErDiagramExporter for NoopErExporter {
     }
 }
 
-pub(crate) struct NoopErLogWriter;
+pub struct NoopErLogWriter;
 impl ErLogWriter for NoopErLogWriter {
     fn write_er_failure_log(
         &self,
@@ -46,35 +46,35 @@ impl ErLogWriter for NoopErLogWriter {
     }
 }
 
-pub(crate) struct NoopDsnBuilder;
+pub struct NoopDsnBuilder;
 impl DsnBuilder for NoopDsnBuilder {
     fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
         String::new()
     }
 }
 
-pub(crate) struct NoopServiceFileReader;
+pub struct NoopServiceFileReader;
 impl ServiceFileReader for NoopServiceFileReader {
     fn read_services(&self) -> Result<(Vec<ServiceEntry>, PathBuf), ServiceFileError> {
         Ok((vec![], PathBuf::new()))
     }
 }
 
-pub(crate) struct NoopClipboardWriter;
+pub struct NoopClipboardWriter;
 impl ClipboardWriter for NoopClipboardWriter {
     fn copy_text(&self, _content: &str) -> Result<(), ClipboardError> {
         Ok(())
     }
 }
 
-pub(crate) struct NoopFolderOpener;
+pub struct NoopFolderOpener;
 impl FolderOpener for NoopFolderOpener {
     fn open(&self, _path: &Path) -> Result<(), FolderOpenError> {
         Ok(())
     }
 }
 
-pub(crate) struct NoopQueryHistoryStore;
+pub struct NoopQueryHistoryStore;
 #[async_trait::async_trait]
 impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn append(
@@ -95,7 +95,7 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     }
 }
 
-pub(crate) fn make_runner(
+pub fn make_runner(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
     connection_store: Arc<dyn ConnectionStore>,
@@ -119,7 +119,7 @@ pub(crate) fn make_runner(
         .build()
 }
 
-pub(crate) fn sample_metadata() -> DatabaseMetadata {
+pub fn sample_metadata() -> DatabaseMetadata {
     DatabaseMetadata {
         database_name: "testdb".to_string(),
         schemas: vec![],
@@ -128,7 +128,7 @@ pub(crate) fn sample_metadata() -> DatabaseMetadata {
     }
 }
 
-pub(crate) fn sample_query_result() -> QueryResult {
+pub fn sample_query_result() -> QueryResult {
     QueryResult {
         query: "SELECT 1".to_string(),
         columns: vec!["id".to_string()],

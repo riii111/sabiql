@@ -41,8 +41,7 @@ impl TomlConnectionStore {
             .map_err(|e| ConnectionStoreError::WriteError(e.to_string()))?;
 
         let content_with_header = format!(
-            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{}",
-            content
+            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
         );
 
         let path = self.config_file_path();

@@ -131,7 +131,7 @@ mod tests {
         });
 
         let cache = ConnectionCache {
-            metadata: Some(metadata.clone()),
+            metadata: Some(metadata),
             ..Default::default()
         };
         store.save(&id, cache);

@@ -12,7 +12,7 @@ use crate::app::ports::{DbOperationError, MetadataProvider};
 use crate::app::update::action::Action;
 use crate::domain::DatabaseMetadata;
 
-pub(crate) async fn run(
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
@@ -70,7 +70,7 @@ pub(crate) async fn run(
         }
 
         Effect::PrefetchTableDetail { dsn, schema, table } => {
-            let qualified_name = format!("{}.{}", schema, table);
+            let qualified_name = format!("{schema}.{table}");
 
             let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
             if already_cached {
@@ -226,8 +226,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::MetadataLoaded(_)),
-                "expected MetadataLoaded, got {:?}",
-                action
+                "expected MetadataLoaded, got {action:?}"
             );
         }
 
@@ -272,8 +271,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::MetadataLoaded(_)),
-                "expected MetadataLoaded, got {:?}",
-                action
+                "expected MetadataLoaded, got {action:?}"
             );
         }
 
@@ -318,8 +316,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::MetadataFailed(_)),
-                "expected MetadataFailed, got {:?}",
-                action
+                "expected MetadataFailed, got {action:?}"
             );
         }
     }
@@ -389,8 +386,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::TableDetailLoaded(_, 1)),
-                "expected TableDetailLoaded, got {:?}",
-                action
+                "expected TableDetailLoaded, got {action:?}"
             );
         }
 
@@ -438,8 +434,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::TableDetailCached { .. }),
-                "expected TableDetailCached, got {:?}",
-                action
+                "expected TableDetailCached, got {action:?}"
             );
         }
     }

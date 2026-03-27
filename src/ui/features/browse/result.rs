@@ -35,8 +35,7 @@ impl ResultPane {
         let should_highlight = state
             .query
             .result_highlight_until()
-            .map(|t| now < t)
-            .unwrap_or(false);
+            .is_some_and(|t| now < t);
 
         let result = state.query.visible_result();
         let title = Self::build_title(result, state);
@@ -106,7 +105,7 @@ impl ResultPane {
                 };
 
                 if r.is_error() {
-                    format!(" [3] {} ERROR{} ", name, history_hint)
+                    format!(" [3] {name} ERROR{history_hint} ")
                 } else {
                     format!(
                         " [3] {} ({}, {}ms){} ",
@@ -239,7 +238,7 @@ impl ResultPane {
             .collect();
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
-            let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
+            let col_name = result.columns.get(idx).map_or("", std::string::String::as_str);
             Cell::from(col_name.to_string())
         }))
         .style(
@@ -255,7 +254,7 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
-        let yank_flash_active = yank_flash.map(|f| now < f.until).unwrap_or(false);
+        let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
         let rows: Vec<Row> = result
             .rows
@@ -289,8 +288,7 @@ impl ResultPane {
                     .map(|(&orig_idx, &col_width)| {
                         let val = row
                             .get(orig_idx)
-                            .map(|s| s.as_str())
-                            .unwrap_or("")
+                            .map_or("", std::string::String::as_str)
                             .to_string();
                         let is_editing_cell = editing_cell
                             .is_some_and(|(er, ec, _, _, _)| er == abs_row_idx && ec == orig_idx);
@@ -463,7 +461,7 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
             .chars()
             .take(max_chars.saturating_sub(3))
             .collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 

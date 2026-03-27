@@ -44,7 +44,7 @@ pub fn reduce(
             };
 
             let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-            let count_query = format!("SELECT COUNT(*) FROM ({}) AS _export_count", stripped);
+            let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
 
             Some(vec![Effect::CountRowsForExport {
                 dsn,
@@ -69,7 +69,7 @@ pub fn reduce(
 
             if needs_confirm {
                 let msg = match row_count {
-                    Some(n) => format!("Export {} rows to CSV? This may take a while.", n),
+                    Some(n) => format!("Export {n} rows to CSV? This may take a while."),
                     None => "Row count unknown. Export to CSV?".to_string(),
                 };
                 state.confirm_dialog.open(
@@ -118,14 +118,12 @@ pub fn reduce(
 
         Action::CsvExportSucceeded { path, row_count } => {
             let msg = match row_count {
-                Some(n) => format!("Exported {} rows → {}", n, path),
-                None => format!("Exported → {}", path),
+                Some(n) => format!("Exported {n} rows → {path}"),
+                None => format!("Exported → {path}"),
             };
             state.messages.set_success_at(msg, now);
             let folder = std::path::Path::new(path)
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| std::path::PathBuf::from("."));
+                .parent().map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
             Some(vec![Effect::OpenFolder { path: folder }])
         }
 
@@ -137,7 +135,7 @@ pub fn reduce(
         Action::OpenFolderFailed(error) => {
             state
                 .messages
-                .set_error_at(format!("Failed to open folder: {}", error), now);
+                .set_error_at(format!("Failed to open folder: {error}"), now);
 
             Some(vec![])
         }
@@ -244,7 +242,7 @@ mod tests {
                     assert_eq!(*offset, PREVIEW_PAGE_SIZE);
                     assert_eq!(*target_page, 1);
                 }
-                other => panic!("expected ExecutePreview, got {:?}", other),
+                other => panic!("expected ExecutePreview, got {other:?}"),
             }
         }
 
@@ -386,7 +384,7 @@ mod tests {
                     assert_eq!(*offset, PREVIEW_PAGE_SIZE);
                     assert_eq!(*target_page, 1);
                 }
-                other => panic!("expected ExecutePreview, got {:?}", other),
+                other => panic!("expected ExecutePreview, got {other:?}"),
             }
         }
 
@@ -469,7 +467,7 @@ mod tests {
                     assert_eq!(export_query, "SELECT * FROM users");
                     assert_eq!(file_name, "users");
                 }
-                other => panic!("expected CountRowsForExport, got {:?}", other),
+                other => panic!("expected CountRowsForExport, got {other:?}"),
             }
         }
 
@@ -496,7 +494,7 @@ mod tests {
                     assert_eq!(export_query, "SELECT 1");
                     assert_eq!(file_name, "adhoc");
                 }
-                other => panic!("expected CountRowsForExport, got {:?}", other),
+                other => panic!("expected CountRowsForExport, got {other:?}"),
             }
         }
 

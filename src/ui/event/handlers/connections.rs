@@ -286,10 +286,10 @@ mod tests {
                 Expected::Close => assert!(matches!(result, Action::CloseConnectionError)),
                 Expected::Reenter => assert!(matches!(result, Action::ReenterConnectionSetup)),
                 Expected::OpenSelector => {
-                    assert!(matches!(result, Action::OpenConnectionSelector))
+                    assert!(matches!(result, Action::OpenConnectionSelector));
                 }
                 Expected::ToggleDetails => {
-                    assert!(matches!(result, Action::ToggleConnectionErrorDetails))
+                    assert!(matches!(result, Action::ToggleConnectionErrorDetails));
                 }
                 Expected::Copy => assert!(matches!(result, Action::CopyConnectionError)),
                 _ => unreachable!(),
@@ -321,7 +321,7 @@ mod tests {
                             direction: ScrollDirection::Down,
                             amount: ScrollAmount::Line
                         }
-                    ))
+                    ));
                 }
                 _ => unreachable!(),
             }

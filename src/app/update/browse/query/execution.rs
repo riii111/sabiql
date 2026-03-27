@@ -313,7 +313,7 @@ mod tests {
                 Effect::DispatchActions(actions) => {
                     assert!(matches!(actions[0], Action::OpenErTablePicker));
                 }
-                other => panic!("expected DispatchActions, got {:?}", other),
+                other => panic!("expected DispatchActions, got {other:?}"),
             }
         }
     }

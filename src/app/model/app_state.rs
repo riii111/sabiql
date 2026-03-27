@@ -287,7 +287,7 @@ mod tests {
             .ui
             .table_picker
             .filter_input
-            .set_content("".to_string());
+            .set_content(String::new());
 
         let filtered = state.filtered_tables();
 

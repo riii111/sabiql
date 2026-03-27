@@ -277,8 +277,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
-                "expected ConnectionDeleted, got {:?}",
-                action
+                "expected ConnectionDeleted, got {action:?}"
             );
         }
 
@@ -322,8 +321,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::ConnectionDeleteFailed(_)),
-                "expected ConnectionDeleteFailed, got {:?}",
-                action
+                "expected ConnectionDeleteFailed, got {action:?}"
             );
         }
     }
@@ -371,8 +369,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
-                "expected ConnectionsLoaded with empty profiles, got {:?}",
-                action
+                "expected ConnectionsLoaded with empty profiles, got {action:?}"
             );
         }
     }
@@ -451,7 +448,7 @@ mod tests {
                     assert_eq!(name, "My DB");
                     assert_eq!(id, state.connections()[0].id);
                 }
-                other => panic!("expected SwitchConnection, got {:?}", other),
+                other => panic!("expected SwitchConnection, got {other:?}"),
             }
         }
 

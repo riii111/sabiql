@@ -17,14 +17,14 @@ pub enum SslMode {
 }
 
 impl SslMode {
-    pub fn all_variants() -> &'static [SslMode] {
+    pub fn all_variants() -> &'static [Self] {
         &[
-            SslMode::Disable,
-            SslMode::Allow,
-            SslMode::Prefer,
-            SslMode::Require,
-            SslMode::VerifyCa,
-            SslMode::VerifyFull,
+            Self::Disable,
+            Self::Allow,
+            Self::Prefer,
+            Self::Require,
+            Self::VerifyCa,
+            Self::VerifyFull,
         ]
     }
 }
@@ -32,12 +32,12 @@ impl SslMode {
 impl fmt::Display for SslMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SslMode::Disable => write!(f, "disable"),
-            SslMode::Allow => write!(f, "allow"),
-            SslMode::Prefer => write!(f, "prefer"),
-            SslMode::Require => write!(f, "require"),
-            SslMode::VerifyCa => write!(f, "verify-ca"),
-            SslMode::VerifyFull => write!(f, "verify-full"),
+            Self::Disable => write!(f, "disable"),
+            Self::Allow => write!(f, "allow"),
+            Self::Prefer => write!(f, "prefer"),
+            Self::Require => write!(f, "require"),
+            Self::VerifyCa => write!(f, "verify-ca"),
+            Self::VerifyFull => write!(f, "verify-full"),
         }
     }
 }
@@ -47,13 +47,13 @@ impl FromStr for SslMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "disable" => Ok(SslMode::Disable),
-            "allow" => Ok(SslMode::Allow),
-            "prefer" => Ok(SslMode::Prefer),
-            "require" => Ok(SslMode::Require),
-            "verify-ca" => Ok(SslMode::VerifyCa),
-            "verify-full" => Ok(SslMode::VerifyFull),
-            _ => Err(format!("Unknown SSL mode: {}", s)),
+            "disable" => Ok(Self::Disable),
+            "allow" => Ok(Self::Allow),
+            "prefer" => Ok(Self::Prefer),
+            "require" => Ok(Self::Require),
+            "verify-ca" => Ok(Self::VerifyCa),
+            "verify-full" => Ok(Self::VerifyFull),
+            _ => Err(format!("Unknown SSL mode: {s}")),
         }
     }
 }

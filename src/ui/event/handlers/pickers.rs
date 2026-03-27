@@ -93,7 +93,7 @@ mod tests {
                             target: ListTarget::TablePicker,
                             motion: ListMotion::Previous,
                         }
-                    ))
+                    ));
                 }
                 Expected::SelectNext => {
                     assert!(matches!(
@@ -102,7 +102,7 @@ mod tests {
                             target: ListTarget::TablePicker,
                             motion: ListMotion::Next,
                         }
-                    ))
+                    ));
                 }
                 Expected::FilterBackspace => assert!(matches!(
                     result,
@@ -113,7 +113,7 @@ mod tests {
                 Expected::FilterInput(ch) => {
                     assert!(
                         matches!(result, Action::TextInput { target: InputTarget::Filter, ch: c } if c == ch)
-                    )
+                    );
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
@@ -150,7 +150,7 @@ mod tests {
                             target: ListTarget::CommandPalette,
                             motion: ListMotion::Previous,
                         }
-                    ))
+                    ));
                 }
                 Expected::SelectNext => {
                     assert!(matches!(
@@ -159,7 +159,7 @@ mod tests {
                             target: ListTarget::CommandPalette,
                             motion: ListMotion::Next,
                         }
-                    ))
+                    ));
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }

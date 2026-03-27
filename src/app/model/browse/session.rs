@@ -54,7 +54,7 @@ impl BrowseSession {
         table: &str,
         pagination: &mut PaginationState,
     ) -> u64 {
-        self.selected_table_key = Some(format!("{}.{}", schema, table));
+        self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
         pagination.reset();

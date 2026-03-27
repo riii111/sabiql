@@ -36,7 +36,7 @@ impl TargetSummary {
         let key_str = self
             .key_values
             .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join(", ");
         format!("{}.{} ({})", self.schema, self.table, key_str)

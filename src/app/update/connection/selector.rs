@@ -28,11 +28,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
                 let message = if is_active {
                     format!(
-                        "Delete \"{}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
-                        name
+                        "Delete \"{name}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone."
                     )
                 } else {
-                    format!("Delete \"{}\"?\n\nThis action cannot be undone.", name)
+                    format!("Delete \"{name}\"?\n\nThis action cannot be undone.")
                 };
                 state.confirm_dialog.open(
                     "Delete Connection",

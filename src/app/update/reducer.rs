@@ -64,7 +64,6 @@ fn reduce_inner(
     }
 
     match action {
-        Action::None => vec![],
         Action::BeginKeySequence(prefix) => {
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(prefix);
             vec![]
@@ -90,7 +89,7 @@ fn reduce_inner(
                 let table = state
                     .filtered_tables()
                     .get(state.ui.table_picker.selected())
-                    .cloned()
+                    .copied()
                     .cloned();
                 if let Some(table) = table {
                     state.modal.set_mode(InputMode::Normal);
@@ -107,7 +106,7 @@ fn reduce_inner(
                 let table = state
                     .tables()
                     .get(state.ui.explorer_selected)
-                    .cloned()
+                    .copied()
                     .cloned();
                 if let Some(table) = table {
                     return select_table(state, &table);
@@ -1186,6 +1185,7 @@ mod tests {
 
     mod connection_setup_validation {
         use crate::app::model::connection::setup::{ConnectionField, ConnectionSetupState};
+        use crate::app::model::shared::text_input::TextInputState;
         use crate::app::update::helpers::{validate_all, validate_field};
         use rstest::rstest;
 
@@ -1262,7 +1262,7 @@ mod tests {
         #[case(ConnectionField::SslMode)]
         fn optional_fields_never_error(#[case] field: ConnectionField) {
             let mut state = setup_state();
-            state.password = Default::default();
+            state.password = TextInputState::default();
 
             validate_field(&mut state, field);
 
@@ -1272,10 +1272,10 @@ mod tests {
         #[test]
         fn validate_all_checks_all_required_fields() {
             let mut state = setup_state();
-            state.host = Default::default();
+            state.host = TextInputState::default();
             state.port.set_content("invalid".to_string());
-            state.database = Default::default();
-            state.user = Default::default();
+            state.database = TextInputState::default();
+            state.user = TextInputState::default();
 
             validate_all(&mut state);
 
@@ -1887,7 +1887,7 @@ mod tests {
             let conn_a = ConnectionId::new();
             let conn_b = ConnectionId::new();
 
-            state.session.active_connection_id = Some(conn_a.clone());
+            state.session.active_connection_id = Some(conn_a);
             state
                 .session
                 .set_connection_state(ConnectionState::Connected);
@@ -2411,8 +2411,7 @@ mod tests {
 
             assert!(
                 effects.iter().any(|e| matches!(e, Effect::Sequence(_))),
-                "expected Sequence effect for ReloadMetadata, got {:?}",
-                effects
+                "expected Sequence effect for ReloadMetadata, got {effects:?}"
             );
         }
 

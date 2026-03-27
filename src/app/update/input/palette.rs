@@ -29,8 +29,7 @@ pub fn palette_command_count() -> usize {
 pub fn palette_action_for_index(index: usize) -> Action {
     palette_entries()
         .nth(index)
-        .map(|kb| kb.action.clone())
-        .unwrap_or(Action::None)
+        .map_or(Action::None, |kb| kb.action.clone())
 }
 
 pub fn palette_commands() -> impl Iterator<Item = &'static KeyBinding> {

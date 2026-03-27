@@ -183,7 +183,7 @@ mod tests {
                 .expect("channel closed");
             match action {
                 Action::CopyFailed(e) => assert_eq!(e.message, "clipboard error"),
-                other => panic!("expected CopyFailed, got {:?}", other),
+                other => panic!("expected CopyFailed, got {other:?}"),
             }
         }
     }
@@ -238,9 +238,9 @@ mod tests {
                 .expect("channel closed");
             match action {
                 Action::OpenFolderFailed(e) => {
-                    assert_eq!(e.message, "No such file or directory")
+                    assert_eq!(e.message, "No such file or directory");
                 }
-                other => panic!("expected OpenFolderFailed, got {:?}", other),
+                other => panic!("expected OpenFolderFailed, got {other:?}"),
             }
         }
     }

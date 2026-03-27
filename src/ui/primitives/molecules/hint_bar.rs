@@ -12,7 +12,7 @@ pub fn hint_line(hints: &[(&str, &str)]) -> Line<'static> {
             spans.push(Span::raw("  "));
         }
         spans.push(key_text(key));
-        spans.push(Span::raw(format!(":{}", desc)));
+        spans.push(Span::raw(format!(":{desc}")));
     }
 
     Line::from(spans)

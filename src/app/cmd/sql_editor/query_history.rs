@@ -7,7 +7,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::ports::QueryHistoryStore;
 use crate::app::update::action::Action;
 
-pub(crate) async fn run(
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
