@@ -323,7 +323,7 @@ impl EffectRunner {
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                cmd_query_history::run(e, &self.action_tx, &self.query_history_store).await?;
+                cmd_query_history::run(e, &self.action_tx, &self.query_history_store);
                 Ok(vec![])
             }
 
