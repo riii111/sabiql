@@ -18,62 +18,58 @@ pub enum ConnectionField {
 }
 
 impl ConnectionField {
-    pub fn all() -> &'static [ConnectionField] {
+    pub fn all() -> &'static [Self] {
         &[
-            ConnectionField::Name,
-            ConnectionField::Host,
-            ConnectionField::Port,
-            ConnectionField::Database,
-            ConnectionField::User,
-            ConnectionField::Password,
-            ConnectionField::SslMode,
+            Self::Name,
+            Self::Host,
+            Self::Port,
+            Self::Database,
+            Self::User,
+            Self::Password,
+            Self::SslMode,
         ]
     }
 
-    pub fn next(&self) -> Option<ConnectionField> {
+    pub fn next(&self) -> Option<Self> {
         match self {
-            ConnectionField::Name => Some(ConnectionField::Host),
-            ConnectionField::Host => Some(ConnectionField::Port),
-            ConnectionField::Port => Some(ConnectionField::Database),
-            ConnectionField::Database => Some(ConnectionField::User),
-            ConnectionField::User => Some(ConnectionField::Password),
-            ConnectionField::Password => Some(ConnectionField::SslMode),
-            ConnectionField::SslMode => None,
+            Self::Name => Some(Self::Host),
+            Self::Host => Some(Self::Port),
+            Self::Port => Some(Self::Database),
+            Self::Database => Some(Self::User),
+            Self::User => Some(Self::Password),
+            Self::Password => Some(Self::SslMode),
+            Self::SslMode => None,
         }
     }
 
-    pub fn prev(&self) -> Option<ConnectionField> {
+    pub fn prev(&self) -> Option<Self> {
         match self {
-            ConnectionField::Name => None,
-            ConnectionField::Host => Some(ConnectionField::Name),
-            ConnectionField::Port => Some(ConnectionField::Host),
-            ConnectionField::Database => Some(ConnectionField::Port),
-            ConnectionField::User => Some(ConnectionField::Database),
-            ConnectionField::Password => Some(ConnectionField::User),
-            ConnectionField::SslMode => Some(ConnectionField::Password),
+            Self::Name => None,
+            Self::Host => Some(Self::Name),
+            Self::Port => Some(Self::Host),
+            Self::Database => Some(Self::Port),
+            Self::User => Some(Self::Database),
+            Self::Password => Some(Self::User),
+            Self::SslMode => Some(Self::Password),
         }
     }
 
     pub fn is_required(&self) -> bool {
         matches!(
             self,
-            ConnectionField::Name
-                | ConnectionField::Host
-                | ConnectionField::Port
-                | ConnectionField::Database
-                | ConnectionField::User
+            Self::Name | Self::Host | Self::Port | Self::Database | Self::User
         )
     }
 
     pub fn label(&self) -> &'static str {
         match self {
-            ConnectionField::Name => "Name:",
-            ConnectionField::Host => "Host:",
-            ConnectionField::Port => "Port:",
-            ConnectionField::Database => "Database:",
-            ConnectionField::User => "User:",
-            ConnectionField::Password => "Password:",
-            ConnectionField::SslMode => "SSL Mode:",
+            Self::Name => "Name:",
+            Self::Host => "Host:",
+            Self::Port => "Port:",
+            Self::Database => "Database:",
+            Self::User => "User:",
+            Self::Password => "Password:",
+            Self::SslMode => "SSL Mode:",
         }
     }
 }

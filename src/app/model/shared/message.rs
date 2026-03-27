@@ -109,7 +109,7 @@ mod tests {
         let now = fixed_instant();
         let mut state = MessageState {
             last_error: Some("Error".to_string()),
-            expires_at: Some(now - Duration::from_secs(1)),
+            expires_at: Some(now.checked_sub(Duration::from_secs(1)).unwrap()),
             ..Default::default()
         };
 

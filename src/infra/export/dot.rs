@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -131,10 +132,10 @@ impl<G, V> DotExporter<G, V> {
             let table_name = Self::escape_dot_string(&table.name);
             let schema_name = Self::escape_dot_string(&table.schema);
 
-            dot.push_str(&format!(
-                "    \"{}\" [label=\"{}\\n({})\" style=filled fillcolor=lightblue];\n",
-                full_name, table_name, schema_name
-            ));
+            let _ = writeln!(
+                dot,
+                "    \"{full_name}\" [label=\"{table_name}\\n({schema_name})\" style=filled fillcolor=lightblue];"
+            );
         }
 
         dot.push('\n');
@@ -158,10 +159,10 @@ impl<G, V> DotExporter<G, V> {
             let to_escaped = Self::escape_dot_string(&to);
             let label_escaped = Self::escape_dot_string(&label);
 
-            dot.push_str(&format!(
-                "    \"{}\" -> \"{}\" [label=\"{}\"];\n",
-                from_escaped, to_escaped, label_escaped
-            ));
+            let _ = writeln!(
+                dot,
+                "    \"{from_escaped}\" -> \"{to_escaped}\" [label=\"{label_escaped}\"];"
+            );
         }
 
         dot.push_str("}\n");
@@ -199,7 +200,9 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
             }
             if let Some(name) = path.file_name().and_then(|n| n.to_str())
                 && name.starts_with("er_")
-                && (name.ends_with(".dot") || name.ends_with(".svg"))
+                && Path::new(name).extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("dot") || ext.eq_ignore_ascii_case("svg")
+                })
             {
                 let _ = std::fs::remove_file(&path);
             }

@@ -126,7 +126,7 @@ mod tests {
                 row_count: rows.len(),
                 rows: rows
                     .into_iter()
-                    .map(|r| r.into_iter().map(|v| v.to_string()).collect())
+                    .map(|r| r.into_iter().map(ToString::to_string).collect())
                     .collect(),
                 execution_time_ms: 1,
                 executed_at: Instant::now(),
@@ -148,7 +148,7 @@ mod tests {
                     comment: None,
                     ordinal_position: 1,
                 }],
-                primary_key: pk.map(|cols| cols.into_iter().map(|c| c.to_string()).collect()),
+                primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
                 foreign_keys: vec![],
                 indexes: vec![],
                 rls: None,

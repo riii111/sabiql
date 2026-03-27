@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::ports::connection_store::{ConnectionStore, ConnectionStoreError};
@@ -41,8 +41,7 @@ impl TomlConnectionStore {
             .map_err(|e| ConnectionStoreError::WriteError(e.to_string()))?;
 
         let content_with_header = format!(
-            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{}",
-            content
+            "# sabiql connection configuration\n# WARNING: Passwords are stored in plain text\n\n{content}"
         );
 
         let path = self.config_file_path();
@@ -161,7 +160,7 @@ fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
 }
 
 #[cfg(unix)]
-fn set_file_permissions(path: &std::path::Path) -> Result<(), ConnectionStoreError> {
+fn set_file_permissions(path: &Path) -> Result<(), ConnectionStoreError> {
     use std::os::unix::fs::PermissionsExt;
     let perms = fs::Permissions::from_mode(0o600);
     fs::set_permissions(path, perms).map_err(|e| ConnectionStoreError::IoError(e.to_string()))?;
@@ -169,7 +168,7 @@ fn set_file_permissions(path: &std::path::Path) -> Result<(), ConnectionStoreErr
 }
 
 #[cfg(not(unix))]
-fn set_file_permissions(_path: &std::path::Path) -> Result<(), ConnectionStoreError> {
+fn set_file_permissions(_path: &Path) -> Result<(), ConnectionStoreError> {
     Ok(())
 }
 
@@ -464,7 +463,13 @@ ssl_mode = "prefer"
             let tmp_files: Vec<_> = fs::read_dir(temp_dir.path())
                 .unwrap()
                 .flatten()
-                .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".tmp")))
+                .filter(|e| {
+                    e.file_name().to_str().is_some_and(|n| {
+                        Path::new(n)
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("tmp"))
+                    })
+                })
                 .collect();
             assert!(tmp_files.is_empty());
         }

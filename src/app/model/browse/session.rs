@@ -54,7 +54,7 @@ impl BrowseSession {
         table: &str,
         pagination: &mut PaginationState,
     ) -> u64 {
-        self.selected_table_key = Some(format!("{}.{}", schema, table));
+        self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
         pagination.reset();
@@ -134,9 +134,10 @@ impl BrowseSession {
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
-        self.metadata = cache.metadata.clone();
-        self.table_detail = cache.table_detail.clone();
-        self.selected_table_key = cache.selected_table_key.clone();
+        self.metadata.clone_from(&cache.metadata);
+        self.table_detail.clone_from(&cache.table_detail);
+        self.selected_table_key
+            .clone_from(&cache.selected_table_key);
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
@@ -164,7 +165,7 @@ impl BrowseSession {
         self.is_reloading = false;
         query.pagination.reset();
         query.clear_current_result();
-        query.restore_history(Default::default());
+        query.restore_history(ResultHistory::default());
         query.exit_history();
     }
 
@@ -226,7 +227,7 @@ impl BrowseSession {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "test-support helper")]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }

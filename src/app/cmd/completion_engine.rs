@@ -317,7 +317,8 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                let selected_qualified = table_detail.map(|t| t.qualified_name());
+                let selected_qualified =
+                    table_detail.map(crate::domain::table::Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
@@ -493,8 +494,7 @@ impl CompletionEngine {
             .rev()
             .take_while(|(_, c)| c.is_alphanumeric() || *c == '_')
             .last()
-            .map(|(i, _)| i)
-            .unwrap_or(before_cursor.len());
+            .map_or(before_cursor.len(), |(i, _)| i);
         before_cursor[start..].to_string()
     }
 
@@ -702,7 +702,7 @@ impl CompletionEngine {
         let fk_columns: Vec<&str> = table
             .foreign_keys
             .iter()
-            .flat_map(|fk| fk.from_columns.iter().map(|s| s.as_str()))
+            .flat_map(|fk| fk.from_columns.iter().map(String::as_str))
             .collect();
 
         let mut candidates: Vec<_> = table
@@ -820,8 +820,7 @@ impl CompletionEngine {
         let table_ref = sql_context.tables.iter().find(|t| {
             t.alias
                 .as_ref()
-                .map(|a| a.to_lowercase() == alias_lower)
-                .unwrap_or(false)
+                .is_some_and(|a| a.to_lowercase() == alias_lower)
                 || t.table.to_lowercase() == alias_lower
         });
 
@@ -902,8 +901,10 @@ impl CompletionEngine {
                 .table_summaries
                 .iter()
                 .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-                .map(|t| t.qualified_name())
-                .unwrap_or_else(|| table_ref.table.clone())
+                .map_or_else(
+                    || table_ref.table.clone(),
+                    crate::domain::table::TableSummary::qualified_name,
+                )
         } else {
             table_ref.table.clone()
         }
@@ -1144,7 +1145,7 @@ mod tests {
             for i in 0..35 {
                 tables.push(TableSummary::new(
                     "public".to_string(),
-                    format!("table_{:02}", i),
+                    format!("table_{i:02}"),
                     Some(100),
                     false,
                 ));
@@ -1168,7 +1169,7 @@ mod tests {
             for i in 0..5 {
                 tables.push(TableSummary::new(
                     "myschema".to_string(),
-                    format!("foo_{}", i),
+                    format!("foo_{i}"),
                     None,
                     false,
                 ));
@@ -1201,7 +1202,7 @@ mod tests {
             // Check that results are sorted
             let texts: Vec<_> = candidates.iter().map(|c| c.text.as_str()).collect();
             let mut sorted = texts.clone();
-            sorted.sort();
+            sorted.sort_unstable();
             assert_eq!(texts, sorted);
         }
 
@@ -2227,10 +2228,10 @@ mod tests {
             // Use schema-qualified tables to avoid metadata lookup issues
             // Build SQL with 15 JOINs to ensure parser recognizes all tables
             let joins = (1..15)
-                .map(|i| format!("JOIN public.table_{} t{} ON t0.id = t{}.id", i, i, i))
+                .map(|i| format!("JOIN public.table_{i} t{i} ON t0.id = t{i}.id"))
                 .collect::<Vec<_>>()
                 .join(" ");
-            let sql = format!("SELECT * FROM public.table_0 t0 {}", joins);
+            let sql = format!("SELECT * FROM public.table_0 t0 {joins}");
             let missing = e.missing_tables(&sql, None);
 
             // MAX_MISSING_TABLES = 10, so even with 15 tables, only 10 should be returned
@@ -2645,7 +2646,7 @@ mod tests {
 
             // Cache both tables
             e.cache_table_detail("public.users".to_string(), users.clone());
-            e.cache_table_detail("public.orders".to_string(), orders.clone());
+            e.cache_table_detail("public.orders".to_string(), orders);
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
             metadata.table_summaries = vec![

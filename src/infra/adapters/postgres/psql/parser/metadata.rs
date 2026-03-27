@@ -230,7 +230,6 @@ impl PostgresAdapter {
 
         fn parse_fk_action(code: &str) -> FkAction {
             match code {
-                "a" => FkAction::NoAction,
                 "r" => FkAction::Restrict,
                 "c" => FkAction::Cascade,
                 "n" => FkAction::SetNull,
@@ -293,7 +292,6 @@ impl PostgresAdapter {
                 permissive: p.permissive,
                 roles: p.roles.unwrap_or_default(),
                 cmd: match p.cmd.as_str() {
-                    "*" => RlsCommand::All,
                     "r" => RlsCommand::Select,
                     "a" => RlsCommand::Insert,
                     "w" => RlsCommand::Update,
@@ -560,9 +558,8 @@ mod tests {
             let json = format!(
                 r#"{{"enabled": true, "force": false, "policies": [{{
                     "name": "test", "permissive": true, "roles": null,
-                    "cmd": "{}", "qual": null, "with_check": null
-                }}]}}"#,
-                cmd
+                    "cmd": "{cmd}", "qual": null, "with_check": null
+                }}]}}"#
             );
 
             let result = PostgresAdapter::parse_rls(&json).unwrap();
@@ -747,10 +744,9 @@ mod tests {
         fn timing_mapping_returns_expected(#[case] timing: &str, #[case] expected: TriggerTiming) {
             let json = format!(
                 r#"[{{
-                    "name": "test", "timing": "{}", "events": ["INSERT"],
+                    "name": "test", "timing": "{timing}", "events": ["INSERT"],
                     "function_name": "func", "security_definer": false
-                }}]"#,
-                timing
+                }}]"#
             );
 
             let result = PostgresAdapter::parse_triggers(&json).unwrap();
@@ -787,7 +783,7 @@ mod tests {
 
         #[test]
         fn empty_array_returns_empty_vec() {
-            let json = r#"[]"#;
+            let json = r"[]";
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(result.is_empty());
         }
@@ -848,7 +844,7 @@ mod tests {
 
         #[test]
         fn missing_name_field_returns_error() {
-            let json = r#"[{}]"#;
+            let json = r"[{}]";
             let result = PostgresAdapter::parse_schemas(json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -862,7 +858,7 @@ mod tests {
 
         #[test]
         fn empty_array_returns_empty_vec() {
-            let json = r#"[]"#;
+            let json = r"[]";
             let result = PostgresAdapter::parse_schemas(json).unwrap();
             assert!(result.is_empty());
         }
@@ -931,10 +927,9 @@ mod tests {
                     "to_schema": "public",
                     "to_table": "t2",
                     "to_columns": ["id"],
-                    "on_delete": "{}",
+                    "on_delete": "{action_code}",
                     "on_update": "a"
-                }}]"#,
-                action_code
+                }}]"#
             );
 
             let result = PostgresAdapter::parse_foreign_keys(&json).unwrap();
@@ -1044,7 +1039,7 @@ mod tests {
 
         #[test]
         fn empty_array_returns_empty_vec() {
-            let json = r#"[]"#;
+            let json = r"[]";
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
         }
@@ -1123,7 +1118,7 @@ mod tests {
         #[test]
         fn unknown_key_returns_invalid_json_error() {
             let json = build_combined_json("null", "null", "null", "null", "null", "null")
-                .replace("}", r#","extra_key": null}"#);
+                .replace('}', r#","extra_key": null}"#);
             let result = PostgresAdapter::parse_table_detail_combined(&json);
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }

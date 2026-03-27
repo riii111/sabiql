@@ -139,15 +139,15 @@ impl QueryExecutor for PostgresAdapter {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
         // On failure, falls back to unordered preview (rows may shift after edits).
+        #[allow(
+            clippy::manual_unwrap_or_default,
+            reason = "match kept for Err comment; no logging framework yet"
+        )]
         let order_columns = match self.fetch_preview_order_columns(dsn, schema, table).await {
             Ok(cols) => cols,
-            Err(e) => {
-                eprintln!(
-                    "warn: failed to fetch PK columns for {}.{}: {}",
-                    schema, table, e
-                );
-                Vec::new()
-            }
+            // No logging framework yet; silently degrade to unordered preview.
+            // Rows may shift position after edits when PK columns are unavailable.
+            Err(_) => Vec::new(),
         };
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
         self.execute_query_raw(dsn, &query, QuerySource::Preview, read_only)

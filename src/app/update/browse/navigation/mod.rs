@@ -16,7 +16,7 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
     state
         .session
         .table_detail()
-        .map(|t| match state.ui.inspector_tab {
+        .map_or(0, |t| match state.ui.inspector_tab {
             InspectorTab::Info => 5,
             InspectorTab::Columns => t.columns.len(),
             InspectorTab::Indexes => t.indexes.len(),
@@ -37,7 +37,6 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
             InspectorTab::Triggers => t.triggers.len(),
             InspectorTab::Ddl => services.ddl_generator.ddl_line_count(t),
         })
-        .unwrap_or(0)
 }
 
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {

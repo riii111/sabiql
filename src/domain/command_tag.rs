@@ -63,9 +63,9 @@ impl CommandTag {
 
 fn row_count_label(n: u64, verb: &str) -> String {
     if n == 1 {
-        format!("1 row {}", verb)
+        format!("1 row {verb}")
     } else {
-        format!("{} rows {}", n, verb)
+        format!("{n} rows {verb}")
     }
 }
 

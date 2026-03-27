@@ -55,55 +55,52 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
             let mut effects = vec![];
 
-            if !state.query.pagination.table.is_empty() {
+            if state.query.pagination.table.is_empty() {
+                state
+                    .ui
+                    .set_explorer_selection(if has_tables { Some(0) } else { None });
+            } else {
                 let prev_schema = &state.query.pagination.schema;
                 let prev_table = &state.query.pagination.table;
                 let found_index = metadata
                     .table_summaries
                     .iter()
                     .position(|t| &t.schema == prev_schema && &t.name == prev_table);
-                match found_index {
-                    Some(idx) => {
-                        state.ui.set_explorer_selection(Some(idx));
-                        // Refresh preview and detail: DDL or reload may have changed
-                        // data/schema even though the table still exists.
-                        if let Some(dsn) = &state.session.dsn {
-                            let page = state.query.pagination.current_page;
-                            let generation = state.session.selection_generation();
-                            effects.push(Effect::ExecutePreview {
-                                dsn: dsn.clone(),
-                                schema: state.query.pagination.schema.clone(),
-                                table: state.query.pagination.table.clone(),
-                                generation,
-                                limit: PREVIEW_PAGE_SIZE,
-                                offset: page * PREVIEW_PAGE_SIZE,
-                                target_page: page,
-                                read_only: state.session.read_only,
-                            });
-                            effects.push(Effect::FetchTableDetail {
-                                dsn: dsn.clone(),
-                                schema: state.query.pagination.schema.clone(),
-                                table: state.query.pagination.table.clone(),
-                                generation,
-                            });
-                        }
+                if let Some(idx) = found_index {
+                    state.ui.set_explorer_selection(Some(idx));
+                    // Refresh preview and detail: DDL or reload may have changed
+                    // data/schema even though the table still exists.
+                    if let Some(dsn) = &state.session.dsn {
+                        let page = state.query.pagination.current_page;
+                        let generation = state.session.selection_generation();
+                        effects.push(Effect::ExecutePreview {
+                            dsn: dsn.clone(),
+                            schema: state.query.pagination.schema.clone(),
+                            table: state.query.pagination.table.clone(),
+                            generation,
+                            limit: PREVIEW_PAGE_SIZE,
+                            offset: page * PREVIEW_PAGE_SIZE,
+                            target_page: page,
+                            read_only: state.session.read_only,
+                        });
+                        effects.push(Effect::FetchTableDetail {
+                            dsn: dsn.clone(),
+                            schema: state.query.pagination.schema.clone(),
+                            table: state.query.pagination.table.clone(),
+                            generation,
+                        });
                     }
-                    None => {
-                        // The previously selected table was removed (e.g. via DROP TABLE).
-                        // Clear all selection state to avoid stale references.
-                        state
-                            .ui
-                            .set_explorer_selection(if has_tables { Some(0) } else { None });
-                        state
-                            .session
-                            .clear_table_selection(&mut state.query.pagination);
-                        state.query.clear_current_result();
-                    }
+                } else {
+                    // The previously selected table was removed (e.g. via DROP TABLE).
+                    // Clear all selection state to avoid stale references.
+                    state
+                        .ui
+                        .set_explorer_selection(if has_tables { Some(0) } else { None });
+                    state
+                        .session
+                        .clear_table_selection(&mut state.query.pagination);
+                    state.query.clear_current_result();
                 }
-            } else {
-                state
-                    .ui
-                    .set_explorer_selection(if has_tables { Some(0) } else { None });
             }
 
             state.connection_error.clear();
@@ -234,13 +231,15 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::StartPrefetchScoped { tables } => {
-            if !state.sql_modal.is_prefetch_started() {
+            if state.sql_modal.is_prefetch_started() {
+                Some(vec![])
+            } else {
                 state.sql_modal.begin_prefetch();
                 state.er_preparation.pending_tables.clear();
                 state.er_preparation.fetching_tables.clear();
                 state.er_preparation.failed_tables.clear();
                 state.er_preparation.fk_expanded = false;
-                state.er_preparation.seed_tables = tables.clone();
+                state.er_preparation.seed_tables.clone_from(tables);
                 state.er_preparation.total_tables = tables.len();
 
                 for qualified_name in tables {
@@ -254,8 +253,6 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
                         .insert(qualified_name.clone());
                 }
                 Some(vec![Effect::ProcessPrefetchQueue])
-            } else {
-                Some(vec![])
             }
         }
 
@@ -310,7 +307,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::PrefetchTableDetail { schema, table } => {
-            let qualified_name = format!("{}.{}", schema, table);
+            let qualified_name = format!("{schema}.{table}");
 
             if state.sql_modal.prefetching_tables.contains(&qualified_name) {
                 return Some(vec![]);
@@ -371,7 +368,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             table,
             detail,
         } => {
-            let qualified_name = format!("{}.{}", schema, table);
+            let qualified_name = format!("{schema}.{table}");
             state.sql_modal.prefetching_tables.remove(&qualified_name);
             state
                 .sql_modal
@@ -398,15 +395,14 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
             table,
             error,
         } => {
-            let qualified_name = format!("{}.{}", schema, table);
+            let qualified_name = format!("{schema}.{table}");
             state.sql_modal.prefetching_tables.remove(&qualified_name);
 
             let prev_count = state
                 .sql_modal
                 .failed_prefetch_tables
                 .get(&qualified_name)
-                .map(|e| e.retry_count)
-                .unwrap_or(0);
+                .map_or(0, |e| e.retry_count);
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified_name.clone(),
                 FailedPrefetchEntry {
@@ -431,7 +427,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
         }
 
         Action::TableDetailAlreadyCached { schema, table } => {
-            let qualified_name = format!("{}.{}", schema, table);
+            let qualified_name = format!("{schema}.{table}");
             state.sql_modal.prefetching_tables.remove(&qualified_name);
             state
                 .sql_modal
@@ -551,7 +547,7 @@ mod tests {
                 .pending_tables
                 .insert(qualified.clone());
             state.sql_modal.failed_prefetch_tables.insert(
-                qualified.clone(),
+                qualified,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
@@ -591,9 +587,9 @@ mod tests {
                 .er_preparation
                 .pending_tables
                 .insert(remaining.clone());
-            state.sql_modal.prefetch_queue.push_back(remaining.clone());
+            state.sql_modal.prefetch_queue.push_back(remaining);
             state.sql_modal.failed_prefetch_tables.insert(
-                failed.clone(),
+                failed,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),
@@ -628,7 +624,7 @@ mod tests {
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified.clone(),
                 FailedPrefetchEntry {
-                    failed_at: Instant::now() - Duration::from_secs(10),
+                    failed_at: Instant::now().checked_sub(Duration::from_secs(10)).unwrap(),
                     error: "timeout".to_string(),
                     retry_count: 1,
                 },
@@ -666,7 +662,7 @@ mod tests {
             state.sql_modal.failed_prefetch_tables.insert(
                 qualified.clone(),
                 FailedPrefetchEntry {
-                    failed_at: Instant::now() - Duration::from_secs(60),
+                    failed_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
                     error: "old error".to_string(),
                     retry_count: 1,
                 },
@@ -851,7 +847,7 @@ mod tests {
 
         fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
             let tables: Vec<TableSummary> = (0..table_count)
-                .map(|i| TableSummary::new(format!("t{}", i), "public".to_string(), None, false))
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
                 .collect();
             Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),
@@ -1055,7 +1051,7 @@ mod tests {
             let neighbor = "public.posts".to_string();
             state.er_preparation.pending_tables.insert(neighbor.clone());
             state.sql_modal.failed_prefetch_tables.insert(
-                neighbor.clone(),
+                neighbor,
                 FailedPrefetchEntry {
                     failed_at: Instant::now(),
                     error: "timeout".to_string(),

@@ -12,7 +12,7 @@ impl CellEditState {
     pub fn begin(&mut self, row: usize, col: usize, value: String) {
         self.row = Some(row);
         self.col = Some(col);
-        self.original_value = value.clone();
+        self.original_value.clone_from(&value);
         self.input.set_content(value);
     }
 

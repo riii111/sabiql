@@ -69,7 +69,7 @@ mod tests {
     fn create_switch_action(id: &ConnectionId, name: &str) -> Action {
         Action::SwitchConnection(ConnectionTarget {
             id: id.clone(),
-            dsn: format!("postgres://localhost/{}", name),
+            dsn: format!("postgres://localhost/{name}"),
             name: name.to_string(),
         })
     }

@@ -150,7 +150,7 @@ mod tests {
             state.ui.inspector_tab = InspectorTab::Columns;
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
-                    name: format!("col_{}", i),
+                    name: format!("col_{i}"),
                     data_type: "text".to_string(),
                     nullable: false,
                     default: None,

@@ -35,8 +35,7 @@ impl ResultPane {
         let should_highlight = state
             .query
             .result_highlight_until()
-            .map(|t| now < t)
-            .unwrap_or(false);
+            .is_some_and(|t| now < t);
 
         let result = state.query.visible_result();
         let title = Self::build_title(result, state);
@@ -106,7 +105,7 @@ impl ResultPane {
                 };
 
                 if r.is_error() {
-                    format!(" [3] {} ERROR{} ", name, history_hint)
+                    format!(" [3] {name} ERROR{history_hint} ")
                 } else {
                     format!(
                         " [3] {} ({}, {}ms){} ",
@@ -147,7 +146,10 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "render function requires full viewport context (16 params)"
+    )]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -239,7 +241,7 @@ impl ResultPane {
             .collect();
 
         let header = Row::new(viewport_indices.iter().map(|&idx| {
-            let col_name = result.columns.get(idx).map(|s| s.as_str()).unwrap_or("");
+            let col_name = result.columns.get(idx).map_or("", String::as_str);
             Cell::from(col_name.to_string())
         }))
         .style(
@@ -255,7 +257,7 @@ impl ResultPane {
         let active_row = selection.row();
         let active_cell = selection.cell();
 
-        let yank_flash_active = yank_flash.map(|f| now < f.until).unwrap_or(false);
+        let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
         let rows: Vec<Row> = result
             .rows
@@ -287,11 +289,7 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let val = row
-                            .get(orig_idx)
-                            .map(|s| s.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let val = row.get(orig_idx).map_or("", String::as_str).to_string();
                         let is_editing_cell = editing_cell
                             .is_some_and(|(er, ec, _, _, _)| er == abs_row_idx && ec == orig_idx);
                         let mut cell;
@@ -430,8 +428,7 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
 }
 
 fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Line<'static> {
-    let chars: Vec<char> = text.chars().collect();
-    let total = chars.len();
+    let total = text.chars().count();
 
     // For narrow columns, try to keep cursor visible
     if max_chars == 0 {
@@ -463,7 +460,7 @@ fn truncate_cell(s: &str, max_chars: usize) -> String {
             .chars()
             .take(max_chars.saturating_sub(3))
             .collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 
@@ -666,9 +663,9 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    // tracked: local-only dev benchmark, not tied to a CI issue
     #[test]
-    #[ignore]
+    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
+    #[allow(clippy::print_stderr, reason = "benchmark result output")]
     fn bench_ideal_widths_cache_speedup() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;
         use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;

@@ -123,7 +123,7 @@ fn render_verdict_section(
     push_content(
         lines,
         flash_mask,
-        Line::from(Span::styled(format!(" {}", verdict_label), verdict_style)),
+        Line::from(Span::styled(format!(" {verdict_label}"), verdict_style)),
     );
     push_empty(lines, flash_mask);
 
@@ -145,10 +145,7 @@ fn render_verdict_section(
     push_chrome(
         lines,
         flash_mask,
-        Line::styled(
-            format!(" {}", sep),
-            Style::default().fg(Theme::MODAL_BORDER),
-        ),
+        Line::styled(format!(" {sep}"), Style::default().fg(Theme::MODAL_BORDER)),
     );
     push_empty(lines, flash_mask);
 }
@@ -240,15 +237,9 @@ fn render_slot_columns(
         lines,
         flash_mask,
         Line::from(vec![
-            Span::styled(
-                format!(" {}", thin_sep),
-                Style::default().fg(Theme::TEXT_DIM),
-            ),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
             sep.clone(),
-            Span::styled(
-                format!(" {}", thin_sep),
-                Style::default().fg(Theme::TEXT_DIM),
-            ),
+            Span::styled(format!(" {thin_sep}"), Style::default().fg(Theme::TEXT_DIM)),
         ]),
     );
 
@@ -321,50 +312,47 @@ fn render_stacked_slot(
     active_style: Style,
     badge_style: Style,
 ) {
-    match slot {
-        Some(s) => {
-            push_chrome(
+    if let Some(s) = slot {
+        push_chrome(
+            lines,
+            flash_mask,
+            Line::from(Span::styled(format!(" {}", s.source.label()), active_style)),
+        );
+        let time_secs = s.plan.execution_secs();
+        push_chrome(
+            lines,
+            flash_mask,
+            Line::from(Span::styled(
+                format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
+                badge_style,
+            )),
+        );
+        for line in s.plan.raw_text.lines() {
+            push_content(
                 lines,
                 flash_mask,
-                Line::from(Span::styled(format!(" {}", s.source.label()), active_style)),
-            );
-            let time_secs = s.plan.execution_secs();
-            push_chrome(
-                lines,
-                flash_mask,
-                Line::from(Span::styled(
-                    format!("  {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs),
-                    badge_style,
-                )),
-            );
-            for line in s.plan.raw_text.lines() {
-                push_content(
-                    lines,
-                    flash_mask,
-                    super::plan_highlight::highlight_plan_line(line),
-                );
-            }
-        }
-        None => {
-            push_chrome(
-                lines,
-                flash_mask,
-                Line::from(Span::styled(
-                    empty_label.to_string(),
-                    Style::default()
-                        .fg(Theme::TEXT_DIM)
-                        .add_modifier(Modifier::BOLD),
-                )),
-            );
-            push_chrome(
-                lines,
-                flash_mask,
-                Line::from(Span::styled(
-                    "  Run EXPLAIN again to compare",
-                    Style::default().fg(Theme::PLACEHOLDER_TEXT),
-                )),
+                super::plan_highlight::highlight_plan_line(line),
             );
         }
+    } else {
+        push_chrome(
+            lines,
+            flash_mask,
+            Line::from(Span::styled(
+                empty_label.to_string(),
+                Style::default()
+                    .fg(Theme::TEXT_DIM)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        );
+        push_chrome(
+            lines,
+            flash_mask,
+            Line::from(Span::styled(
+                "  Run EXPLAIN again to compare",
+                Style::default().fg(Theme::PLACEHOLDER_TEXT),
+            )),
+        );
     }
 }
 
@@ -389,6 +377,6 @@ pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
     if char_count > width {
         s.chars().take(width.saturating_sub(1)).collect::<String>() + "\u{2026}"
     } else {
-        format!("{:<width$}", s, width = width)
+        format!("{s:<width$}")
     }
 }

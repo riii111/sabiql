@@ -30,11 +30,11 @@ impl ForeignKey {
 impl std::fmt::Display for FkAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FkAction::NoAction => write!(f, "NO ACTION"),
-            FkAction::Restrict => write!(f, "RESTRICT"),
-            FkAction::Cascade => write!(f, "CASCADE"),
-            FkAction::SetNull => write!(f, "SET NULL"),
-            FkAction::SetDefault => write!(f, "SET DEFAULT"),
+            Self::NoAction => write!(f, "NO ACTION"),
+            Self::Restrict => write!(f, "RESTRICT"),
+            Self::Cascade => write!(f, "CASCADE"),
+            Self::SetNull => write!(f, "SET NULL"),
+            Self::SetDefault => write!(f, "SET DEFAULT"),
         }
     }
 }

@@ -59,54 +59,67 @@ pub struct EffectRunnerBuilder {
 }
 
 impl EffectRunnerBuilder {
+    #[must_use]
     pub fn metadata_provider(mut self, v: Arc<dyn MetadataProvider>) -> Self {
         self.metadata_provider = Some(v);
         self
     }
+    #[must_use]
     pub fn query_executor(mut self, v: Arc<dyn QueryExecutor>) -> Self {
         self.query_executor = Some(v);
         self
     }
+    #[must_use]
     pub fn dsn_builder(mut self, v: Arc<dyn DsnBuilder>) -> Self {
         self.dsn_builder = Some(v);
         self
     }
+    #[must_use]
     pub fn er_exporter(mut self, v: Arc<dyn ErDiagramExporter>) -> Self {
         self.er_exporter = Some(v);
         self
     }
+    #[must_use]
     pub fn config_writer(mut self, v: Arc<dyn ConfigWriter>) -> Self {
         self.config_writer = Some(v);
         self
     }
+    #[must_use]
     pub fn er_log_writer(mut self, v: Arc<dyn ErLogWriter>) -> Self {
         self.er_log_writer = Some(v);
         self
     }
+    #[must_use]
     pub fn connection_store(mut self, v: Arc<dyn ConnectionStore>) -> Self {
         self.connection_store = Some(v);
         self
     }
+    #[must_use]
     pub fn service_file_reader(mut self, v: Arc<dyn ServiceFileReader>) -> Self {
         self.service_file_reader = Some(v);
         self
     }
+    #[must_use]
     pub fn clipboard(mut self, v: Arc<dyn ClipboardWriter>) -> Self {
         self.clipboard = Some(v);
         self
     }
+    #[must_use]
     pub fn folder_opener(mut self, v: Arc<dyn FolderOpener>) -> Self {
         self.folder_opener = Some(v);
         self
     }
+    #[must_use]
     pub fn query_history_store(mut self, v: Arc<dyn QueryHistoryStore>) -> Self {
         self.query_history_store = Some(v);
         self
     }
+    #[must_use]
     pub fn metadata_cache(mut self, v: TtlCache<String, Arc<DatabaseMetadata>>) -> Self {
         self.metadata_cache = Some(v);
         self
     }
+    #[must_use]
     pub fn action_tx(mut self, v: mpsc::Sender<Action>) -> Self {
         self.action_tx = Some(v);
         self
@@ -208,12 +221,12 @@ impl EffectRunner {
         tui: &mut T,
         state: &mut AppState,
         completion_engine: &RefCell<CompletionEngine>,
-        _services: &AppServices,
+        services: &AppServices,
     ) -> Result<Vec<Action>> {
         match effect {
             Effect::Render => {
                 let now = Instant::now();
-                let output = tui.draw(state, _services, now)?;
+                let output = tui.draw(state, services, now)?;
                 if !state.ui.focus_mode {
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                 }
@@ -310,7 +323,7 @@ impl EffectRunner {
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                cmd_query_history::run(e, &self.action_tx, &self.query_history_store).await?;
+                cmd_query_history::run(e, &self.action_tx, &self.query_history_store);
                 Ok(vec![])
             }
 

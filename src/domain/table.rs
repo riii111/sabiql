@@ -5,7 +5,7 @@ use super::rls::RlsInfo;
 use super::trigger::Trigger;
 
 fn make_qualified_name(schema: &str, name: &str) -> String {
-    format!("{}.{}", schema, name)
+    format!("{schema}.{name}")
 }
 
 fn make_display_name(schema: &str, name: &str, omit_public: bool) -> String {

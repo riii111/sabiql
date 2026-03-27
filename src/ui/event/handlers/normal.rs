@@ -156,9 +156,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             if state.ui.focus_mode {
                 Action::ToggleFocus
             } else {
-                FocusedPane::from_browse_key(c)
-                    .map(Action::SetFocusedPane)
-                    .unwrap_or(Action::None)
+                FocusedPane::from_browse_key(c).map_or(Action::None, Action::SetFocusedPane)
             }
         }
 
@@ -1262,9 +1260,7 @@ mod tests {
 
             assert!(
                 matches!(result, Action::None),
-                "{} should be no-op in history mode, got {:?}",
-                label,
-                result
+                "{label} should be no-op in history mode, got {result:?}"
             );
         }
 
@@ -1758,7 +1754,7 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            let key_label = format!("{:?}", key);
+            let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
         }
@@ -1789,7 +1785,7 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            let key_label = format!("{:?}", key);
+            let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
         }
@@ -1851,7 +1847,7 @@ mod tests {
                 "focus_mode" => focus_mode_ctx(),
                 _ => unreachable!(),
             };
-            let key_label = format!("{:?}", key);
+            let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
         }
@@ -1894,7 +1890,7 @@ mod tests {
                 _ => unreachable!(),
             };
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
-            let key_label = format!("{:?}", key);
+            let key_label = format!("{key:?}");
             let actual = handle_normal_mode(combo(key), &state);
             assert_action(actual, expected, ctx_name, &key_label);
         }

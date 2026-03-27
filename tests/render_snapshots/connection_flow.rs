@@ -71,9 +71,9 @@ fn connection_setup_with_validation_errors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::ConnectionSetup);
-    state.connection_setup.host = Default::default();
-    state.connection_setup.database = Default::default();
-    state.connection_setup.user = Default::default();
+    state.connection_setup.host = TextInputState::default();
+    state.connection_setup.database = TextInputState::default();
+    state.connection_setup.user = TextInputState::default();
     state
         .connection_setup
         .validation_errors
@@ -151,7 +151,7 @@ fn connection_error_expanded_long_details_capped() {
     let mut terminal = create_test_terminal();
 
     let long_details = (1..=25)
-        .map(|i| format!("ERROR line {}: something went wrong in module_{}", i, i))
+        .map(|i| format!("ERROR line {i}: something went wrong in module_{i}"))
         .collect::<Vec<_>>()
         .join("\n");
 

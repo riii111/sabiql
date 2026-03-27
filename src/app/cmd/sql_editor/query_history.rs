@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::ports::QueryHistoryStore;
 use crate::app::update::action::Action;
 
-pub(crate) async fn run(
+pub fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
-) -> Result<()> {
+) {
     match effect {
         Effect::LoadQueryHistory {
             project_name,
@@ -33,7 +32,6 @@ pub(crate) async fn run(
                     }
                 }
             });
-            Ok(())
         }
         _ => unreachable!("query_history::run called with non-query-history effect"),
     }

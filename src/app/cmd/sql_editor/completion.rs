@@ -8,10 +8,10 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::update::action::Action;
 
-pub(crate) async fn run(
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    state: &mut AppState,
+    state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
@@ -48,7 +48,7 @@ pub(crate) async fn run(
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare(content, cursor);
                 let missing = engine
-                    .missing_tables_prepared(&prep, state.session.metadata().map(|m| m.as_ref()));
+                    .missing_tables_prepared(&prep, state.session.metadata().map(AsRef::as_ref));
                 (prep, missing)
             };
 
@@ -76,7 +76,7 @@ pub(crate) async fn run(
                     content,
                     cursor,
                     &prep,
-                    state.session.metadata().map(|m| m.as_ref()),
+                    state.session.metadata().map(AsRef::as_ref),
                     state.session.table_detail(),
                     &recent_cols,
                 );

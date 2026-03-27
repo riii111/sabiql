@@ -243,7 +243,7 @@ mod tests {
             state.ui.focused_pane = FocusedPane::Explorer;
             let tables: Vec<TableSummary> = (0..count)
                 .map(|i| {
-                    TableSummary::new("public".to_string(), format!("table_{}", i), Some(0), false)
+                    TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false)
                 })
                 .collect();
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {

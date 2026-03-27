@@ -9,19 +9,11 @@ use crate::app::update::action::{
 };
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
-    state
-        .query
-        .visible_result()
-        .map(|r| r.rows.len())
-        .unwrap_or(0)
+    state.query.visible_result().map_or(0, |r| r.rows.len())
 }
 
 pub(super) fn result_col_count(state: &AppState) -> usize {
-    state
-        .query
-        .visible_result()
-        .map(|r| r.columns.len())
-        .unwrap_or(0)
+    state.query.visible_result().map_or(0, |r| r.columns.len())
 }
 
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
@@ -84,8 +76,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                 .result_interaction
                 .selection()
                 .row()
-                .map(|r| (r + 1).min(max_row))
-                .unwrap_or(0);
+                .map_or(0, |r| (r + 1).min(max_row));
             move_row_or_scroll(state, new_row, |s| {
                 let max_scroll = result_max_scroll(s);
                 if s.result_interaction.scroll_offset < max_scroll {
@@ -110,7 +101,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             let max_row = result_row_count(state).saturating_sub(1);
             let max_scroll = result_max_scroll(state);
             move_row_or_scroll(state, max_row, |s| {
-                s.result_interaction.scroll_offset = max_scroll
+                s.result_interaction.scroll_offset = max_scroll;
             });
             Some(vec![])
         }

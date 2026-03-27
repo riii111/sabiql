@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Column {
     pub name: String,
@@ -17,7 +19,7 @@ impl Column {
             display.push_str(" NOT NULL");
         }
         if let Some(default) = &self.default {
-            display.push_str(&format!(" DEFAULT {}", default));
+            let _ = write!(display, " DEFAULT {default}");
         }
         display
     }
@@ -33,7 +35,7 @@ mod tests {
             name: "col".to_string(),
             data_type: "integer".to_string(),
             nullable,
-            default: default.map(|s| s.to_string()),
+            default: default.map(ToString::to_string),
             is_primary_key: false,
             is_unique: false,
             comment: None,

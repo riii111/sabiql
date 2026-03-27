@@ -99,7 +99,7 @@ mod tests {
         fn empty_string_returns_unknown() {
             let result = parse_command("");
 
-            assert_eq!(result, Command::Unknown("".to_string()));
+            assert_eq!(result, Command::Unknown(String::new()));
         }
     }
 

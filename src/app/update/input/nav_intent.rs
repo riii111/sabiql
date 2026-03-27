@@ -96,8 +96,12 @@ pub fn map_nav_intent(combo: &KeyCombo) -> Option<NavIntent> {
 }
 
 pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
-    use NavIntent::*;
-    use NavigationContext::*;
+    use NavIntent::{
+        FullPageDown, FullPageUp, HalfPageDown, HalfPageUp, MoveDown, MoveLeft, MoveRight,
+        MoveToFirst, MoveToLast, MoveUp, ScrollCursorBottom, ScrollCursorCenter, ScrollCursorTop,
+        ViewportBottom, ViewportMiddle, ViewportTop,
+    };
+    use NavigationContext::{Explorer, Inspector, ResultCellActive, ResultRowActive, ResultScroll};
 
     match (intent, ctx) {
         // MoveDown
@@ -154,7 +158,6 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
 
         // ViewportTop
         (ViewportTop, Explorer) => Action::Select(SelectMotion::ViewportTop),
-        (ViewportTop, Inspector) => Action::None,
         (ViewportTop, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
             target: ScrollTarget::Result,
             direction: ScrollDirection::Up,
@@ -163,7 +166,6 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
 
         // ViewportMiddle
         (ViewportMiddle, Explorer) => Action::Select(SelectMotion::ViewportMiddle),
-        (ViewportMiddle, Inspector) => Action::None,
         (ViewportMiddle, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
             target: ScrollTarget::Result,
             direction: ScrollDirection::Up,
@@ -172,7 +174,6 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
 
         // ViewportBottom
         (ViewportBottom, Explorer) => Action::Select(SelectMotion::ViewportBottom),
-        (ViewportBottom, Inspector) => Action::None,
         (ViewportBottom, ResultScroll | ResultRowActive | ResultCellActive) => Action::Scroll {
             target: ScrollTarget::Result,
             direction: ScrollDirection::Down,
@@ -272,7 +273,6 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Center,
         },
-        (ScrollCursorCenter, Inspector) => Action::None,
         (ScrollCursorCenter, ResultScroll | ResultRowActive | ResultCellActive) => {
             Action::ScrollToCursor {
                 target: ScrollToCursorTarget::Result,
@@ -285,7 +285,6 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Top,
         },
-        (ScrollCursorTop, Inspector) => Action::None,
         (ScrollCursorTop, ResultScroll | ResultRowActive | ResultCellActive) => {
             Action::ScrollToCursor {
                 target: ScrollToCursorTarget::Result,
@@ -298,13 +297,18 @@ pub fn resolve(intent: NavIntent, ctx: NavigationContext) -> Action {
             target: ScrollToCursorTarget::Explorer,
             position: CursorPosition::Bottom,
         },
-        (ScrollCursorBottom, Inspector) => Action::None,
         (ScrollCursorBottom, ResultScroll | ResultRowActive | ResultCellActive) => {
             Action::ScrollToCursor {
                 target: ScrollToCursorTarget::Result,
                 position: CursorPosition::Bottom,
             }
         }
+
+        (
+            ViewportTop | ViewportMiddle | ViewportBottom | ScrollCursorCenter | ScrollCursorTop
+            | ScrollCursorBottom,
+            Inspector,
+        ) => Action::None,
     }
 }
 

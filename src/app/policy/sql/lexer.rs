@@ -14,7 +14,7 @@ pub enum TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    #[allow(dead_code)] // Used in tests for token verification
+    #[allow(dead_code, reason = "used in tests for token verification")]
     pub text: String,
     pub start: usize,
     pub end: usize,
@@ -207,18 +207,17 @@ impl SqlLexer {
                             dollar_tag = tag;
                             state = LexerState::InDollarQuote;
                             continue;
-                        } else {
-                            // Not a valid dollar quote, treat as operator
-                            tokens.push(Token {
-                                kind: TokenKind::Operator("$".to_string()),
-                                text: "$".to_string(),
-                                start: tag_start,
-                                end: tag_start + 1,
-                            });
-                            // Reprocess characters after $
-                            pos = tag_start + 1;
-                            continue;
                         }
+                        // Not a valid dollar quote, treat as operator
+                        tokens.push(Token {
+                            kind: TokenKind::Operator("$".to_string()),
+                            text: "$".to_string(),
+                            start: tag_start,
+                            end: tag_start + 1,
+                        });
+                        // Reprocess characters after $
+                        pos = tag_start + 1;
+                        continue;
                     }
 
                     // Single-quoted string: '...'
@@ -389,11 +388,10 @@ impl SqlLexer {
                             state = LexerState::Normal;
                             dollar_tag.clear();
                             continue;
-                        } else {
-                            // Not closing tag, continue in dollar quote
-                            pos = tag_start + 1;
-                            continue;
                         }
+                        // Not closing tag, continue in dollar quote
+                        pos = tag_start + 1;
+                        continue;
                     }
                     pos += 1;
                 }
@@ -893,7 +891,9 @@ impl SqlLexer {
             match &token.kind {
                 TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
                 TokenKind::Punctuation(p) if *p == ')' => {
-                    paren_depth = paren_depth.saturating_sub(1)
+                    if paren_depth > 0 {
+                        paren_depth -= 1;
+                    }
                 }
                 // Reset state on statement terminator
                 TokenKind::Punctuation(p) if *p == ';' => {
@@ -1131,14 +1131,16 @@ mod tests {
 
             let tokens = l.tokenize("SELECT $$SELECT$$", 17);
 
-            let keywords: Vec<_> = tokens
-                .iter()
-                .filter_map(|t| match &t.kind {
-                    TokenKind::Keyword(k) => Some(k.as_str()),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(keywords.len(), 1);
+            assert_eq!(
+                tokens
+                    .iter()
+                    .filter_map(|t| match &t.kind {
+                        TokenKind::Keyword(k) => Some(k.as_str()),
+                        _ => None,
+                    })
+                    .count(),
+                1
+            );
         }
 
         #[test]

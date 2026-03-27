@@ -21,7 +21,7 @@ fn bracketed_input(content: &str, border_style: Style) -> Line<'static> {
     Line::from(vec![
         Span::styled("[", border_style),
         Span::styled(
-            format!(" {} ", content),
+            format!(" {content} "),
             Style::default().fg(Theme::TEXT_PRIMARY),
         ),
         Span::styled("]", border_style),
@@ -190,7 +190,7 @@ impl ConnectionSetup {
 
         if let Some(err) = error {
             let err_para =
-                Paragraph::new(format!(" {}", err)).style(Style::default().fg(Theme::STATUS_ERROR));
+                Paragraph::new(format!(" {err}")).style(Style::default().fg(Theme::STATUS_ERROR));
             frame.render_widget(err_para, chunks[2]);
         }
     }

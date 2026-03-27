@@ -134,7 +134,7 @@ pub enum Effect {
 
     // Executes effects in order (each awaits before the next),
     // but spawned async tasks (e.g. FetchMetadata) may complete out of order.
-    Sequence(Vec<Effect>),
+    Sequence(Vec<Self>),
     DispatchActions(Vec<Action>),
     SwitchConnection {
         connection_index: usize,

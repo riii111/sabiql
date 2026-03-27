@@ -63,9 +63,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
         };
         let time_secs = state.explain.execution_time_ms as f64 / 1000.0;
         let header = Line::from(vec![
-            Span::styled(format!("{} ", label), label_style),
+            Span::styled(format!("{label} "), label_style),
             Span::styled(
-                format!("({:.2}s)", time_secs),
+                format!("({time_secs:.2}s)"),
                 Style::default().fg(Theme::TEXT_MUTED),
             ),
         ]);
@@ -142,7 +142,7 @@ fn build_analyze_confirm_lines<'a>(
 
     let sep = "\u{2500}".repeat(area.width.saturating_sub(2) as usize);
     lines.push(Line::styled(
-        format!(" {}", sep),
+        format!(" {sep}"),
         Style::default().fg(Theme::MODAL_BORDER),
     ));
     lines.push(Line::raw(""));
@@ -161,7 +161,7 @@ fn build_analyze_confirm_lines<'a>(
         let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
-                format!("  {}", line),
+                format!("  {line}"),
                 Style::default().fg(Theme::TEXT_DIM),
             )));
         }
@@ -170,7 +170,7 @@ fn build_analyze_confirm_lines<'a>(
         match target_name {
             Some(name) => {
                 let is_match = input.content() == name;
-                let prompt = format!(" Type \"{}\" to confirm: > ", name);
+                let prompt = format!(" Type \"{name}\" to confirm: > ");
                 let mut prompt_spans = vec![Span::styled(
                     prompt,
                     Style::default().fg(Theme::TEXT_SECONDARY),
@@ -210,7 +210,7 @@ fn build_analyze_confirm_lines<'a>(
         let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
-                format!("  {}", line),
+                format!("  {line}"),
                 Style::default().fg(Theme::TEXT_DIM),
             )));
         }
@@ -228,7 +228,7 @@ fn build_analyze_confirm_lines<'a>(
         let full_query = state.sql_modal.editor.content();
         for line in full_query.lines() {
             lines.push(Line::from(Span::styled(
-                format!("  {}", line),
+                format!("  {line}"),
                 Style::default().fg(Theme::TEXT_DIM),
             )));
         }

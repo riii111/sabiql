@@ -169,8 +169,7 @@ fn is_keyword(s: &str, keyword: &str) -> bool {
     s[keyword.len()..]
         .chars()
         .next()
-        .map(|c| !c.is_alphanumeric() && c != '_')
-        .unwrap_or(true)
+        .is_none_or(|c| !c.is_alphanumeric() && c != '_')
 }
 
 fn classify_inner(lower: &str, chars: &[(usize, char)]) -> StatementKind {
@@ -388,8 +387,7 @@ fn scan_for_where(lower: &str, chars: &[(usize, char)], start: usize) -> bool {
 fn has_non_whitespace_after(lower: &str, byte_pos: usize) -> bool {
     lower
         .get(byte_pos + 1..)
-        .map(|tail| !tail.trim().is_empty())
-        .unwrap_or(false)
+        .is_some_and(|tail| !tail.trim().is_empty())
 }
 
 fn collect_top_level_tokens(original: &str, chars: &[(usize, char)]) -> Vec<(usize, String)> {
@@ -555,8 +553,8 @@ fn extract_drop_table_name(original: &str, chars: &[(usize, char)]) -> Option<St
 
     let mut name_idx = table_idx + 1;
 
-    if lowers.get(name_idx).map(|t| t.as_str()) == Some("if")
-        && lowers.get(name_idx + 1).map(|t| t.as_str()) == Some("exists")
+    if lowers.get(name_idx).map(String::as_str) == Some("if")
+        && lowers.get(name_idx + 1).map(String::as_str) == Some("exists")
     {
         name_idx += 2;
     }
@@ -575,11 +573,11 @@ fn extract_truncate_table_name(original: &str, chars: &[(usize, char)]) -> Optio
     let trunc_idx = lowers.iter().position(|t| t == "truncate")?;
     let mut name_idx = trunc_idx + 1;
 
-    if lowers.get(name_idx).map(|t| t.as_str()) == Some("table") {
+    if lowers.get(name_idx).map(String::as_str) == Some("table") {
         name_idx += 1;
     }
 
-    if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -596,13 +594,13 @@ fn extract_delete_table_name(original: &str, chars: &[(usize, char)]) -> Option<
 
     let delete_idx = lowers.iter().position(|t| t == "delete")?;
 
-    if lowers.get(delete_idx + 1).map(|t| t.as_str()) != Some("from") {
+    if lowers.get(delete_idx + 1).map(String::as_str) != Some("from") {
         return None;
     }
 
     let mut name_idx = delete_idx + 2;
 
-    if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -618,7 +616,7 @@ fn extract_update_table_name(original: &str, chars: &[(usize, char)]) -> Option<
 
     let mut name_idx = update_idx + 1;
 
-    if lowers.get(name_idx).map(|t| t.as_str()) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -857,7 +855,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(|s| s.to_string())
+                expected.map(ToString::to_string)
             );
         }
 
@@ -872,7 +870,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(|s| s.to_string())
+                expected.map(ToString::to_string)
             );
         }
 
@@ -895,7 +893,7 @@ mod tests {
         fn delete(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(|s| s.to_string())
+                expected.map(ToString::to_string)
             );
         }
 
@@ -918,7 +916,7 @@ mod tests {
         fn update(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(|s| s.to_string())
+                expected.map(ToString::to_string)
             );
         }
 
@@ -964,7 +962,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(|s| s.to_string())
+                expected.map(ToString::to_string)
             );
         }
     }

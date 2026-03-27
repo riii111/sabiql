@@ -22,7 +22,7 @@ fn append_entry(path: &Path, dir: &Path, line: &str) -> Result<(), QueryHistoryE
         .append(true)
         .open(path)
         .map_err(|e| QueryHistoryError::IoError(e.to_string()))?;
-    writeln!(file, "{}", line).map_err(|e| QueryHistoryError::IoError(e.to_string()))
+    writeln!(file, "{line}").map_err(|e| QueryHistoryError::IoError(e.to_string()))
 }
 
 fn trim_if_exceeded(path: &Path, max: usize) -> Result<(), QueryHistoryError> {
@@ -81,7 +81,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{}.jsonl", connection_id));
+        let path = history_dir.join(format!("{connection_id}.jsonl"));
         let line = serde_json::to_string(entry)
             .map_err(|e| QueryHistoryError::SerializationError(e.to_string()))?;
 
@@ -101,7 +101,7 @@ impl QueryHistoryStore for FileQueryHistoryStore {
         connection_id: &ConnectionId,
     ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         let history_dir = self.resolve_history_dir(project_name)?;
-        let path = history_dir.join(format!("{}.jsonl", connection_id));
+        let path = history_dir.join(format!("{connection_id}.jsonl"));
 
         tokio::task::spawn_blocking(move || {
             if !path.exists() {
@@ -149,7 +149,7 @@ mod tests {
         store.append("test", &conn_id, &entry).await.unwrap();
 
         let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{}.jsonl", conn_id));
+        let path = history_dir.join(format!("{conn_id}.jsonl"));
         assert!(path.exists());
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -192,7 +192,7 @@ mod tests {
         // Write 1001 entries
         for i in 0..1001 {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
@@ -230,7 +230,7 @@ mod tests {
 
         // Manually append a malformed line
         let history_dir = tmp.path().join("history");
-        let path = history_dir.join(format!("{}.jsonl", conn_id));
+        let path = history_dir.join(format!("{conn_id}.jsonl"));
         use std::fs::OpenOptions;
         use std::io::Write;
         let mut file = OpenOptions::new().append(true).open(&path).unwrap();
@@ -257,7 +257,7 @@ mod tests {
 
         for i in 0..5 {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
@@ -276,7 +276,7 @@ mod tests {
 
         for i in 0..MAX_HISTORY_ENTRIES {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
@@ -299,7 +299,7 @@ mod tests {
         let total = MAX_HISTORY_ENTRIES + 5;
         for i in 0..total {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
@@ -323,14 +323,14 @@ mod tests {
         // Fill to just above the limit so trim fires on next append
         for i in 0..MAX_HISTORY_ENTRIES {
             store
-                .append("test", &conn_id, &make_entry(&format!("SELECT {}", i)))
+                .append("test", &conn_id, &make_entry(&format!("SELECT {i}")))
                 .await
                 .unwrap();
         }
 
         // Make the .tmp path a directory so fs::write in trim_if_exceeded fails
         let history_dir = tmp.path().join("history");
-        let tmp_path = history_dir.join(format!("{}.jsonl.tmp", conn_id));
+        let tmp_path = history_dir.join(format!("{conn_id}.jsonl.tmp"));
         std::fs::create_dir_all(&tmp_path).unwrap();
 
         // append should still succeed (trim failure is best-effort)
@@ -353,7 +353,7 @@ mod tests {
 
         let history_dir = tmp.path().join("history");
         std::fs::create_dir_all(&history_dir).unwrap();
-        let path = history_dir.join(format!("{}.jsonl", conn_id));
+        let path = history_dir.join(format!("{conn_id}.jsonl"));
 
         use std::io::Write;
         let mut file = std::fs::File::create(&path).unwrap();

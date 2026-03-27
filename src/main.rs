@@ -50,12 +50,16 @@ enum Command {
 }
 
 #[tokio::main]
+#[allow(
+    clippy::print_stderr,
+    reason = "CLI error output before TUI initialization"
+)]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     error::install_hooks()?;
 
     let args = Args::parse();
-    if let Some(Command::Update) = args.command {
+    if matches!(args.command, Some(Command::Update)) {
         #[cfg(feature = "self-update")]
         {
             return run_update();
@@ -179,7 +183,7 @@ async fn main() -> Result<()> {
                 process_action(action, &mut state, &mut tui, &effect_runner, &completion_engine, &services).await?;
             }
             // Animation deadline reached (spinner, cursor blink, message timeout)
-            _ = async {
+            () = async {
                 match deadline {
                     Some(d) => sleep_until(d.into()).await,
                     None => std::future::pending::<()>().await,
@@ -249,6 +253,10 @@ async fn process_action(
     .await
 }
 
+#[allow(
+    clippy::print_stderr,
+    reason = "last-resort fallback when effect dispatch exceeds recursion limit"
+)]
 async fn flush_effects(
     effects: Vec<Effect>,
     state: &mut AppState,
@@ -432,8 +440,7 @@ fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
             state.set_service_entries(services);
             state.runtime.service_file_path = Some(path);
         }
-        Ok(_) => {}
-        Err(ServiceFileError::NotFound(_)) => {}
+        Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
             state.messages.set_error(e.to_string());
         }
@@ -441,9 +448,10 @@ fn load_service_entries(state: &mut AppState, reader: &dyn ServiceFileReader) {
 }
 
 #[cfg(feature = "self-update")]
+#[allow(clippy::print_stdout, reason = "CLI subcommand output, TUI not active")]
 fn run_update() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
-    println!("Current version: v{}", current);
+    println!("Current version: v{current}");
     println!("Checking for updates...");
 
     let status = self_update::backends::github::Update::configure()
@@ -459,7 +467,7 @@ fn run_update() -> Result<()> {
     if status.updated() {
         println!("Updated successfully: v{} -> {}", current, status.version());
     } else {
-        println!("Already up to date (v{}).", current);
+        println!("Already up to date (v{current}).");
     }
 
     Ok(())

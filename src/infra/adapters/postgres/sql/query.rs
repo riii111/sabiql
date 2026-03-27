@@ -4,7 +4,7 @@ use super::super::PostgresAdapter;
 
 impl PostgresAdapter {
     pub(in crate::infra::adapters::postgres) fn tables_query() -> &'static str {
-        r#"
+        r"
         SELECT json_agg(row_to_json(t))
         FROM (
             SELECT
@@ -27,11 +27,11 @@ impl PostgresAdapter {
               )
             ORDER BY n.nspname, c.relname
         ) t
-        "#
+        "
     }
 
     pub(in crate::infra::adapters::postgres) fn table_signatures_query() -> &'static str {
-        r#"
+        r"
         SELECT json_agg(row_to_json(t))
         FROM (
             SELECT
@@ -77,11 +77,11 @@ impl PostgresAdapter {
               )
             ORDER BY n.nspname, c.relname
         ) t
-        "#
+        "
     }
 
     pub(in crate::infra::adapters::postgres) fn schemas_query() -> &'static str {
-        r#"
+        r"
         SELECT json_agg(row_to_json(s))
         FROM (
             SELECT nspname as name
@@ -91,12 +91,12 @@ impl PostgresAdapter {
               AND nspname NOT LIKE 'pg_toast_temp_%'
             ORDER BY nspname
         ) s
-        "#
+        "
     }
 
     pub(in crate::infra::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
         format!(
-            r#"
+            r"
             SELECT json_agg(row_to_json(c) ORDER BY c.ordinal_position)
             FROM (
                 SELECT
@@ -129,7 +129,7 @@ impl PostgresAdapter {
                   AND a.attnum > 0
                   AND NOT a.attisdropped
             ) c
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -140,7 +140,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT COALESCE(json_agg(a.attname ORDER BY array_position(i.indkey, a.attnum)), '[]'::json)
             FROM pg_index i
             JOIN pg_class c ON c.oid = i.indrelid
@@ -149,7 +149,7 @@ impl PostgresAdapter {
             WHERE i.indisprimary
               AND n.nspname = {}
               AND c.relname = {}
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -170,7 +170,7 @@ impl PostgresAdapter {
                 .map(|col| quote_ident(col))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!(" ORDER BY {}", cols)
+            format!(" ORDER BY {cols}")
         };
 
         format!(
@@ -185,7 +185,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn indexes_query(schema: &str, table: &str) -> String {
         format!(
-            r#"
+            r"
             SELECT json_agg(row_to_json(i))
             FROM (
                 SELECT
@@ -206,7 +206,7 @@ impl PostgresAdapter {
                 GROUP BY idx.relname, ix.indisunique, ix.indisprimary, am.amname, idx.oid
                 ORDER BY idx.relname
             ) i
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -217,7 +217,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT json_agg(row_to_json(fk))
             FROM (
                 SELECT
@@ -242,7 +242,7 @@ impl PostgresAdapter {
                   AND c1.relname = {}
                 GROUP BY con.conname, n1.nspname, c1.relname, n2.nspname, c2.relname, con.confdeltype, con.confupdtype
             ) fk
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -250,7 +250,7 @@ impl PostgresAdapter {
 
     pub(in crate::infra::adapters::postgres) fn rls_query(schema: &str, table: &str) -> String {
         format!(
-            r#"
+            r"
             SELECT json_build_object(
                 'enabled', c.relrowsecurity,
                 'force', c.relforcerowsecurity,
@@ -275,7 +275,7 @@ impl PostgresAdapter {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = {}
               AND c.relname = {}
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -286,7 +286,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT json_agg(row_to_json(t) ORDER BY t.name)
             FROM (
                 SELECT
@@ -312,7 +312,7 @@ impl PostgresAdapter {
                   AND n.nspname = {}
                   AND c.relname = {}
             ) t
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -323,7 +323,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT row_to_json(t)
             FROM (
                 SELECT
@@ -335,7 +335,7 @@ impl PostgresAdapter {
                 WHERE n.nspname = {}
                   AND c.relname = {}
             ) t
-            "#,
+            ",
             quote_literal(schema),
             quote_literal(table)
         )
@@ -346,12 +346,12 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT json_build_object(
                 'columns', ({columns}),
                 'foreign_keys', ({fks})
             )
-            "#,
+            ",
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
         )
@@ -362,7 +362,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> String {
         format!(
-            r#"
+            r"
             SELECT json_build_object(
                 'columns', ({columns}),
                 'indexes', ({indexes}),
@@ -371,7 +371,7 @@ impl PostgresAdapter {
                 'triggers', ({triggers}),
                 'table_info', ({table_info})
             )
-            "#,
+            ",
             columns = Self::columns_query(schema, table).trim(),
             indexes = Self::indexes_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),

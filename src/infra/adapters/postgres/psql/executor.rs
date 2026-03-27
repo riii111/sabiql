@@ -271,16 +271,16 @@ impl PostgresAdapter {
 
         let columns: Vec<String> = reader
             .headers()
-            .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {}", e)))?
+            .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?
             .iter()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .collect();
 
         let mut rows = Vec::new();
         for result in reader.records() {
             let record = result
-                .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {}", e)))?;
-            let row: Vec<String> = record.iter().map(|s| s.to_string()).collect();
+                .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?;
+            let row: Vec<String> = record.iter().map(ToString::to_string).collect();
             rows.push(row);
         }
 
@@ -332,7 +332,7 @@ impl PostgresAdapter {
             return Err(DbOperationError::QueryFailed(output.stderr));
         }
         output.stdout.trim().parse::<usize>().map_err(|e| {
-            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {}", e))
+            DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
         })
     }
 
@@ -367,7 +367,7 @@ impl PostgresAdapter {
 
         let file = tokio::fs::File::create(path)
             .await
-            .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {}", e)))?;
+            .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {e}")))?;
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
@@ -602,7 +602,7 @@ mod tests {
                 .headers()
                 .unwrap()
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect();
             let rows: Vec<_> = reader.records().collect();
 
@@ -623,7 +623,7 @@ mod tests {
                 .headers()
                 .unwrap()
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect();
             let first_row = reader.records().next().unwrap().unwrap();
 
@@ -694,7 +694,7 @@ mod tests {
                 .headers()
                 .unwrap()
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect();
 
             assert_eq!(headers[0], "id");
@@ -732,7 +732,7 @@ mod tests {
         fn delete_large_number_returns_correct_value() {
             assert_eq!(
                 PostgresAdapter::parse_affected_rows("DELETE 1000000"),
-                Some(1000000)
+                Some(1_000_000)
             );
         }
 
@@ -755,7 +755,10 @@ mod tests {
         ) {
             let tag = PostgresAdapter::extract_command_tag(stdout);
             assert_eq!(tag.as_ref(), Some(&expected_tag));
-            let rows = tag.as_ref().and_then(|t| t.affected_rows()).unwrap_or(0) as usize;
+            let rows = tag
+                .as_ref()
+                .and_then(crate::domain::command_tag::CommandTag::affected_rows)
+                .unwrap_or(0) as usize;
             assert_eq!(rows, expected_rows);
         }
 
@@ -787,7 +790,9 @@ mod tests {
             let csv = "id,name\n1,Alice\n2,Bob\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
             // Should be Other or None, never a DML/DDL variant
-            let is_dml = tag.as_ref().is_some_and(|t| t.is_data_modifying());
+            let is_dml = tag
+                .as_ref()
+                .is_some_and(crate::domain::command_tag::CommandTag::is_data_modifying);
             assert!(!is_dml, "CSV output should not be parsed as DML tag");
         }
 
@@ -806,8 +811,7 @@ mod tests {
             assert_eq!(tag, Some(CommandTag::Select(5)));
             let passes = tag
                 .as_ref()
-                .map(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
-                .unwrap_or(false);
+                .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
             assert!(passes);
         }
 
@@ -819,8 +823,7 @@ mod tests {
                 let tag = PostgresAdapter::parse_command_tag(input);
                 let passes = tag
                     .as_ref()
-                    .map(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)))
-                    .unwrap_or(false);
+                    .is_some_and(|t| t.is_data_modifying() || matches!(t, CommandTag::Select(_)));
                 assert!(
                     !passes,
                     "header '{input}' must not pass the command-tag filter"

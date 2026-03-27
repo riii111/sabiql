@@ -149,7 +149,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             Some(vec![])
         }
         Action::ListSelect {
-            target: ListTarget::TablePicker,
+            target: ListTarget::TablePicker | ListTarget::CommandPalette,
             motion: ListMotion::Previous,
         } => {
             state
@@ -192,16 +192,6 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
                     .table_picker
                     .set_selection(state.ui.table_picker.selected() + 1);
             }
-            Some(vec![])
-        }
-        Action::ListSelect {
-            target: ListTarget::CommandPalette,
-            motion: ListMotion::Previous,
-        } => {
-            state
-                .ui
-                .table_picker
-                .set_selection(state.ui.table_picker.selected().saturating_sub(1));
             Some(vec![])
         }
 
@@ -432,7 +422,7 @@ mod tests {
         fn state_with_tables(count: usize) -> AppState {
             let mut state = AppState::new("test".to_string());
             let tables: Vec<TableSummary> = (0..count)
-                .map(|i| TableSummary::new("public".to_string(), format!("t{}", i), Some(0), false))
+                .map(|i| TableSummary::new("public".to_string(), format!("t{i}"), Some(0), false))
                 .collect();
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
                 database_name: "test".to_string(),

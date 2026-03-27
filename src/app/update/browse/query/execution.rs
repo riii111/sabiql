@@ -195,8 +195,8 @@ pub fn reduce(
                 state.query.begin_running(now);
 
                 state.query.pagination.reset();
-                state.query.pagination.schema = schema.clone();
-                state.query.pagination.table = table.clone();
+                state.query.pagination.schema.clone_from(schema);
+                state.query.pagination.table.clone_from(table);
 
                 let row_estimate = state
                     .session
@@ -313,7 +313,7 @@ mod tests {
                 Effect::DispatchActions(actions) => {
                     assert!(matches!(actions[0], Action::OpenErTablePicker));
                 }
-                other => panic!("expected DispatchActions, got {:?}", other),
+                other => panic!("expected DispatchActions, got {other:?}"),
             }
         }
     }

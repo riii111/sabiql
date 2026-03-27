@@ -34,7 +34,7 @@ fn format_short_timestamp(iso: &str) -> String {
     } else {
         "???"
     };
-    format!("{} {} {} UTC", month_name, day, time)
+    format!("{month_name} {day} {time} UTC")
 }
 
 fn status_span(status: QueryResultStatus) -> Span<'static> {
@@ -96,10 +96,8 @@ impl QueryHistoryPicker {
         // border(2) + filter(1) + actual entries + preview — capped at 70%
         let desired_height = (2 + 1 + (grouped_count as u16).max(1) + preview_est).min(max_height);
 
-        let border_footer = format!(
-            " {} entries \u{2502} type to filter \u{2502} Enter Select ",
-            grouped_count,
-        );
+        let border_footer =
+            format!(" {grouped_count} entries \u{2502} type to filter \u{2502} Enter Select ",);
 
         let (_, inner) = render_modal(
             frame,
@@ -155,7 +153,7 @@ impl QueryHistoryPicker {
                 "No matches"
             };
             let empty_line = Line::from(Span::styled(
-                format!("  {}", msg),
+                format!("  {msg}"),
                 Style::default().fg(Theme::TEXT_SECONDARY),
             ));
             frame.render_widget(Paragraph::new(empty_line), list_area);
@@ -218,7 +216,7 @@ fn build_list_item(
     let char_len = query_display.chars().count();
     let truncated = if char_len > query_max && query_max > 3 {
         let s: String = query_display.chars().take(query_max - 1).collect();
-        format!("{}\u{2026}", s)
+        format!("{s}\u{2026}")
     } else {
         query_display
     };
@@ -310,7 +308,7 @@ fn render_preview(frame: &mut Frame, area: ratatui::layout::Rect, pd: &PreviewDa
     }
     if let Some(rows) = pd.affected_rows {
         meta_spans.push(Span::styled(
-            format!("  \u{2502} {} rows affected", rows),
+            format!("  \u{2502} {rows} rows affected"),
             Style::default().fg(Theme::TEXT_SECONDARY),
         ));
     }

@@ -500,11 +500,11 @@ pub enum Action {
 
 impl Action {
     pub fn is_none(&self) -> bool {
-        matches!(self, Action::None)
+        matches!(self, Self::None)
     }
 
     pub fn is_scroll(&self) -> bool {
-        matches!(self, Action::Scroll { .. })
+        matches!(self, Self::Scroll { .. })
     }
 }
 

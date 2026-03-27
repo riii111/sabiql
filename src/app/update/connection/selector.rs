@@ -28,11 +28,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
                 let message = if is_active {
                     format!(
-                        "Delete \"{}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone.",
-                        name
+                        "Delete \"{name}\"?\n\n\u{26A0} This is the active connection.\nYou will be disconnected.\n\nThis action cannot be undone."
                     )
                 } else {
-                    format!("Delete \"{}\"?\n\nThis action cannot be undone.", name)
+                    format!("Delete \"{name}\"?\n\nThis action cannot be undone.")
                 };
                 state.confirm_dialog.open(
                     "Delete Connection",
@@ -100,7 +99,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 mod tests {
     use super::*;
     use crate::app::model::connection::list::build_connection_list;
-    use crate::domain::connection::ConnectionProfile;
+    use crate::domain::connection::{ConnectionProfile, SslMode};
 
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new(
@@ -110,7 +109,7 @@ mod tests {
             "db".to_string(),
             "user".to_string(),
             "pass".to_string(),
-            Default::default(),
+            SslMode::default(),
         )
         .unwrap()
     }

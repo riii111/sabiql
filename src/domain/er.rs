@@ -33,7 +33,7 @@ pub fn er_output_filename(selected: &[String], total: usize) -> String {
                 }
             })
             .collect();
-        format!("er_partial_{}.dot", safe)
+        format!("er_partial_{safe}.dot")
     } else {
         let mut sorted: Vec<&String> = selected.iter().collect();
         sorted.sort();
@@ -137,14 +137,14 @@ pub fn fk_reachable_tables(
 #[cfg(test)]
 fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
     ErTableInfo {
-        qualified_name: format!("{}.{}", schema, name),
+        qualified_name: format!("{schema}.{name}"),
         name: name.to_string(),
         schema: schema.to_string(),
         foreign_keys: fks
             .into_iter()
             .enumerate()
             .map(|(i, (from, to))| ErFkInfo {
-                name: format!("fk_{}", i),
+                name: format!("fk_{i}"),
                 from_qualified: from.to_string(),
                 to_qualified: to.to_string(),
             })
@@ -397,7 +397,7 @@ mod tests {
         }
 
         fn cached_set(names: &[&str]) -> HashSet<String> {
-            names.iter().map(|s| s.to_string()).collect()
+            names.iter().map(ToString::to_string).collect()
         }
 
         #[test]

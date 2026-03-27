@@ -56,7 +56,6 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
     if guardrail.blocked {
         let reason = guardrail
             .reason
-            .clone()
             .unwrap_or_else(|| "Write blocked by guardrails".to_string());
         return Err(reason);
     }
@@ -189,8 +188,7 @@ pub fn reduce(
                     let n = state
                         .query
                         .pending_delete_refresh_target()
-                        .map(|(_, _, count)| count)
-                        .unwrap_or(1);
+                        .map_or(1, |(_, _, count)| count);
                     format!(
                         "Confirm DELETE: {} {} from {}",
                         n,
@@ -244,14 +242,13 @@ pub fn reduce(
             let operation = state
                 .result_interaction
                 .pending_write_preview()
-                .map(|p| p.operation)
-                .unwrap_or(WriteOperation::Update);
+                .map_or(WriteOperation::Update, |p| p.operation);
             state.result_interaction.clear_write_preview();
             match operation {
                 WriteOperation::Update => {
                     if *affected_rows != 1 {
                         state.messages.set_error_at(
-                            format!("UPDATE expected 1 row, but affected {} rows", affected_rows),
+                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
                             now,
                         );
                         state.modal.set_mode(InputMode::CellEdit);
@@ -288,7 +285,12 @@ pub fn reduce(
                         .unwrap_or((state.query.pagination.current_page, None, 1));
 
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
-                    if *affected_rows != expected {
+                    if *affected_rows == expected {
+                        state.messages.set_success_at(
+                            format!("Deleted {} {}", expected, row_word(expected)),
+                            now,
+                        );
+                    } else {
                         state.messages.set_error_at(
                             format!(
                                 "DELETE expected {} {}, but affected {} {}",
@@ -299,21 +301,15 @@ pub fn reduce(
                             ),
                             now,
                         );
-                    } else {
-                        state.messages.set_success_at(
-                            format!("Deleted {} {}", expected, row_word(expected)),
-                            now,
-                        );
                     }
                     state.result_interaction.clear_cell_edit();
                     state.result_interaction.clear_staged_deletes();
                     state.modal.set_mode(InputMode::Normal);
 
-                    state.query.set_post_delete_selection(
-                        target_row
-                            .map(PostDeleteRowSelection::Select)
-                            .unwrap_or(PostDeleteRowSelection::Clear),
-                    );
+                    state.query.set_post_delete_selection(target_row.map_or(
+                        PostDeleteRowSelection::Clear,
+                        PostDeleteRowSelection::Select,
+                    ));
 
                     if let Some(dsn) = &state.session.dsn {
                         state.query.begin_running(now);
@@ -340,8 +336,7 @@ pub fn reduce(
             let operation = state
                 .result_interaction
                 .pending_write_preview()
-                .map(|p| p.operation)
-                .unwrap_or(WriteOperation::Update);
+                .map_or(WriteOperation::Update, |p| p.operation);
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.to_string(), now);
@@ -380,10 +375,10 @@ mod tests {
                 new_value: &str,
                 pk_pairs: &[(String, String)],
             ) -> String {
-                let set_clause = format!("\"{}\" = '{}'", column, new_value);
+                let set_clause = format!("\"{column}\" = '{new_value}'");
                 let where_clause: Vec<String> = pk_pairs
                     .iter()
-                    .map(|(k, v)| format!("\"{}\" = '{}'", k, v))
+                    .map(|(k, v)| format!("\"{k}\" = '{v}'"))
                     .collect();
                 format!(
                     "UPDATE \"{}\".\"{}\" SET {} WHERE {}",
@@ -502,13 +497,13 @@ mod tests {
 
             let dispatched = match &effects[0] {
                 Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {:?}", other),
+                other => panic!("expected DispatchActions, got {other:?}"),
             };
             match dispatched {
                 Action::OpenWritePreviewConfirm(preview) => {
                     assert!(preview.sql.contains("UPDATE"));
                 }
-                other => panic!("expected OpenWritePreviewConfirm, got {:?}", other),
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }
         }
 
@@ -526,9 +521,9 @@ mod tests {
             let preview = match &effects[0] {
                 Effect::DispatchActions(actions) => match actions.first().expect("action") {
                     Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {:?}", other),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
                 },
-                other => panic!("expected DispatchActions, got {:?}", other),
+                other => panic!("expected DispatchActions, got {other:?}"),
             };
             let expected_sql = preview.sql.clone();
 
@@ -554,7 +549,7 @@ mod tests {
                     assert_eq!(sql, &expected_sql);
                     assert!(!blocked);
                 }
-                other => panic!("expected ExecuteWrite intent, got {:?}", other),
+                other => panic!("expected ExecuteWrite intent, got {other:?}"),
             }
         }
 
@@ -584,7 +579,7 @@ mod tests {
                     assert_eq!(*offset, 2 * PREVIEW_PAGE_SIZE);
                     assert_eq!(*target_page, 2);
                 }
-                other => panic!("expected ExecutePreview, got {:?}", other),
+                other => panic!("expected ExecutePreview, got {other:?}"),
             }
         }
 
@@ -690,7 +685,7 @@ mod tests {
                     assert_eq!(*offset, PREVIEW_PAGE_SIZE);
                     assert_eq!(*target_page, 1);
                 }
-                other => panic!("expected ExecutePreview, got {:?}", other),
+                other => panic!("expected ExecutePreview, got {other:?}"),
             }
         }
 

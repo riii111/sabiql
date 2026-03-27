@@ -72,9 +72,7 @@ impl ConnectionErrorState {
     }
 
     pub fn detail_line_count(&self) -> usize {
-        self.masked_details()
-            .map(|s| s.lines().count())
-            .unwrap_or(0)
+        self.masked_details().map_or(0, |s| s.lines().count())
     }
 }
 

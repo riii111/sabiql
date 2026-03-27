@@ -42,7 +42,7 @@ fn result_pane_history_mode() {
     for i in 1..=3 {
         state
             .query
-            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {i}"))));
     }
     state
         .query
@@ -58,8 +58,8 @@ fn result_pane_history_mode() {
 fn wide_adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryResult {
     sabiql::domain::QueryResult {
         query: query.to_string(),
-        columns: (1..=10).map(|i| format!("column_{}", i)).collect(),
-        rows: vec![(1..=10).map(|i| format!("value_{}", i)).collect()],
+        columns: (1..=10).map(|i| format!("column_{i}")).collect(),
+        rows: vec![(1..=10).map(|i| format!("value_{i}")).collect()],
         row_count: 1,
         execution_time_ms: 12,
         executed_at: now,
@@ -78,7 +78,7 @@ fn history_mode_with_horizontal_scroll() {
     for i in 1..=3 {
         state
             .query
-            .push_history(Arc::new(wide_adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(wide_adhoc_result(now, &format!("SELECT {i}"))));
     }
     state
         .query
@@ -100,7 +100,7 @@ fn result_query_with_history_hint() {
     for i in 1..=2 {
         state
             .query
-            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {i}"))));
     }
     state
         .query
@@ -120,7 +120,7 @@ fn focus_mode_history_mode() {
     for i in 1..=3 {
         state
             .query
-            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {}", i))));
+            .push_history(Arc::new(adhoc_result(now, &format!("SELECT {i}"))));
     }
     state
         .query

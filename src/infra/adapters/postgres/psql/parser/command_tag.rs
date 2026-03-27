@@ -228,7 +228,7 @@ impl ResolvedTags {
             return Some(tag.clone());
         }
 
-        if self.all.iter().any(|t| t.needs_refresh()) {
+        if self.all.iter().any(CommandTag::needs_refresh) {
             return Some(CommandTag::Rollback);
         }
 

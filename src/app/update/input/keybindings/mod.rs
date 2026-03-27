@@ -735,12 +735,11 @@ mod tests {
                 .filter(|kb| !matches!(kb.action, Action::None))
             {
                 for combo in kb.combos {
-                    if seen.contains(combo) {
-                        panic!(
-                            "{name}: duplicate combo {combo:?} in binding {:?}",
-                            kb.action
-                        );
-                    }
+                    assert!(
+                        !seen.contains(combo),
+                        "{name}: duplicate combo {combo:?} in binding {:?}",
+                        kb.action
+                    );
                     seen.push(*combo);
                 }
             }
@@ -751,12 +750,11 @@ mod tests {
             for row in rows {
                 for eb in row.bindings {
                     for combo in eb.combos {
-                        if seen.contains(combo) {
-                            panic!(
-                                "{name}: duplicate combo {combo:?} in binding {:?}",
-                                eb.action
-                            );
-                        }
+                        assert!(
+                            !seen.contains(combo),
+                            "{name}: duplicate combo {combo:?} in binding {:?}",
+                            eb.action
+                        );
                         seen.push(*combo);
                     }
                 }
@@ -921,12 +919,11 @@ mod tests {
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {
-                if matches!(kb.action, Action::None) && !kb.combos.is_empty() {
-                    panic!(
-                        "{name}[{i}] has action Action::None but non-empty combos: {:?}",
-                        kb.combos
-                    );
-                }
+                assert!(
+                    !matches!(kb.action, Action::None) || kb.combos.is_empty(),
+                    "{name}[{i}] has action Action::None but non-empty combos: {:?}",
+                    kb.combos
+                );
             }
         }
 

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::domain::explain_plan::{self, ExplainPlan};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotSource {
     AutoPrevious,
     AutoLatest,
@@ -11,8 +11,8 @@ pub enum SlotSource {
 impl SlotSource {
     pub fn label(&self) -> &'static str {
         match self {
-            SlotSource::AutoPrevious => "Previous",
-            SlotSource::AutoLatest => "Latest",
+            Self::AutoPrevious => "Previous",
+            Self::AutoLatest => "Latest",
         }
     }
 }
@@ -140,8 +140,7 @@ impl ExplainContext {
     pub fn compare_max_scroll(&self, terminal_height: u16) -> usize {
         let viewport = self
             .compare_viewport_height
-            .map(|h| h as usize)
-            .unwrap_or_else(|| Self::modal_inner_height(terminal_height));
+            .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
     }
 }
@@ -282,10 +281,10 @@ mod tests {
         let mut ctx = ExplainContext::default();
         for i in 0..15 {
             ctx.set_plan(
-                format!("Scan  (cost=0.00..{}.00 rows=1 width=32)", i),
+                format!("Scan  (cost=0.00..{i}.00 rows=1 width=32)"),
                 false,
                 0,
-                &format!("Q{}", i),
+                &format!("Q{i}"),
             );
         }
 

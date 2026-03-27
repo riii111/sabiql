@@ -16,7 +16,7 @@ pub struct ConnectionError;
 
 impl ConnectionError {
     pub fn render(frame: &mut Frame, state: &AppState, now: Instant) {
-        Self::render_at(frame, state, now)
+        Self::render_at(frame, state, now);
     }
 
     pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant) {
@@ -99,8 +99,7 @@ impl ConnectionError {
             .connection_error
             .error_info
             .as_ref()
-            .map(|e| e.kind.hint())
-            .unwrap_or("");
+            .map_or("", |e| e.kind.hint());
         let mut spans = vec![
             Span::styled("Hint: ", Style::default().fg(Theme::TEXT_ACCENT)),
             Span::styled(hint.to_string(), Style::default().fg(Theme::TEXT_SECONDARY)),

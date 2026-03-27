@@ -149,8 +149,7 @@ impl TextInputState {
 fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
-        .map(|(byte_idx, _)| byte_idx)
-        .unwrap_or(s.len())
+        .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
 #[cfg(test)]

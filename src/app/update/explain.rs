@@ -2,6 +2,8 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::policy::sql::statement_classifier;
 use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
@@ -32,7 +34,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 return Some(vec![]);
             }
 
-            let query = format!("EXPLAIN {}", content);
+            let query = format!("EXPLAIN {content}");
             state.sql_modal.set_status(SqlModalStatus::Running);
             state.sql_modal.active_tab = SqlModalTab::Plan;
             state.explain.reset();
@@ -86,7 +88,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             match risk.map(|r| r.confirmation) {
                 Some(ConfirmationType::Immediate) => {
                     // SELECT/Transaction: no confirmation, execute immediately
-                    let explain_query = format!("EXPLAIN ANALYZE {}", content);
+                    let explain_query = format!("EXPLAIN ANALYZE {content}");
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
                     state.explain.reset();
@@ -103,7 +105,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                         .sql_modal
                         .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
                             query: content,
-                            input: Default::default(),
+                            input: TextInputState::default(),
                             target_name: Some(target),
                         });
                     state.sql_modal.active_tab = SqlModalTab::Plan;
@@ -175,7 +177,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             if let Some(query) = query
                 && let Some(dsn) = &state.session.dsn
             {
-                let explain_query = format!("EXPLAIN ANALYZE {}", query);
+                let explain_query = format!("EXPLAIN ANALYZE {query}");
                 state.sql_modal.set_status(SqlModalStatus::Running);
                 state.explain.reset();
                 state.query.begin_running(now);
@@ -275,7 +277,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                 let query = right.full_query.clone();
                 state.sql_modal.editor.set_content(query);
                 state.sql_modal.set_status(SqlModalStatus::Editing);
-                state.sql_modal.completion = Default::default();
+                state.sql_modal.completion = CompletionState::default();
                 state.sql_modal.active_tab = SqlModalTab::Sql;
             }
             Some(vec![])
@@ -749,7 +751,7 @@ mod tests {
                 .sql_modal
                 .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
                     query: "DROP TABLE users".to_string(),
-                    input: Default::default(),
+                    input: TextInputState::default(),
                     target_name: Some("users".to_string()),
                 });
 
@@ -885,7 +887,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("line{}", i))
+                .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
@@ -908,7 +910,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("line{}", i))
+                .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");
@@ -954,7 +956,7 @@ mod tests {
         fn compare_scroll_down_increments() {
             let mut state = sql_modal_state();
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
@@ -978,7 +980,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
@@ -1019,7 +1021,7 @@ mod tests {
             let mut state = sql_modal_state();
             state.ui.terminal_height = 24;
             let long_plan = (0..20)
-                .map(|i| format!("  ->  Node{}  (cost=0.00..{}.00 rows=1 width=32)", i, i))
+                .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
             state.explain.set_plan(long_plan, false, 0, "Q1");

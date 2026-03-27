@@ -15,15 +15,14 @@ use crate::app::update::action::{
 };
 use crate::domain::ErTableInfo;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn run(
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
     er_log_writer: &Arc<dyn ErLogWriter>,
-    state: &mut AppState,
+    state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
@@ -86,7 +85,7 @@ pub(crate) async fn run(
         Effect::ExtractFkNeighbors { seed_tables } => {
             use crate::domain::er::fk_neighbors_of_seeds;
 
-            let seed_set: HashSet<&str> = seed_tables.iter().map(|s| s.as_str()).collect();
+            let seed_set: HashSet<&str> = seed_tables.iter().map(String::as_str).collect();
 
             let (cached_seeds, cached_names): (Vec<ErTableInfo>, HashSet<String>) = {
                 let engine = completion_engine.borrow();
@@ -183,16 +182,16 @@ pub(crate) async fn run(
                     .map(|s| (s.qualified_name(), s.signature.clone()))
                     .collect();
 
-                let old_names: HashSet<&str> = old_signatures.keys().map(|s| s.as_str()).collect();
-                let new_names: HashSet<&str> = new_signatures.keys().map(|s| s.as_str()).collect();
+                let old_names: HashSet<&str> = old_signatures.keys().map(String::as_str).collect();
+                let new_names: HashSet<&str> = new_signatures.keys().map(String::as_str).collect();
 
                 let added_tables: Vec<String> = new_names
                     .difference(&old_names)
-                    .map(|s| s.to_string())
+                    .map(ToString::to_string)
                     .collect();
                 let removed_tables: Vec<String> = old_names
                     .difference(&new_names)
-                    .map(|s| s.to_string())
+                    .map(ToString::to_string)
                     .collect();
 
                 let stale_tables: Vec<String> = new_signatures
@@ -208,7 +207,7 @@ pub(crate) async fn run(
                 let missing_in_cache: Vec<String> = new_names
                     .iter()
                     .filter(|name| !cached_tables.contains(**name))
-                    .map(|s| s.to_string())
+                    .map(ToString::to_string)
                     .collect();
 
                 tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {

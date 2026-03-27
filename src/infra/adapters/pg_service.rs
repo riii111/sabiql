@@ -29,8 +29,7 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
             return Ok(path);
         }
         return Err(ServiceFileError::NotFound(format!(
-            "PGSERVICEFILE={} does not exist",
-            val
+            "PGSERVICEFILE={val} does not exist"
         )));
     }
 
@@ -114,7 +113,7 @@ fn parse(content: &str) -> Vec<ServiceEntry> {
         seen.insert(entry.service_name.clone(), i);
     }
     let mut unique_indices: Vec<usize> = seen.into_values().collect();
-    unique_indices.sort();
+    unique_indices.sort_unstable();
     unique_indices
         .into_iter()
         .map(|i| entries[i].clone())
@@ -301,7 +300,9 @@ application_name=myapp
 
     #[test]
     fn find_service_file_uses_pgservicefile_env() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let tmpdir = std::env::temp_dir();
         let path = tmpdir.join("test_pg_service.conf");
@@ -326,7 +327,9 @@ application_name=myapp
 
     #[test]
     fn find_service_file_errors_when_pgservicefile_missing() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let original = std::env::var("PGSERVICEFILE").ok();
         // SAFETY: test-only, serialized by ENV_LOCK

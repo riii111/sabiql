@@ -62,6 +62,7 @@ impl QueryResult {
         }
     }
 
+    #[must_use]
     pub fn with_command_tag(mut self, tag: CommandTag) -> Self {
         self.command_tag = Some(tag);
         self

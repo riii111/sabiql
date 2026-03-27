@@ -38,11 +38,11 @@ impl RlsInfo {
 impl std::fmt::Display for RlsCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RlsCommand::All => write!(f, "ALL"),
-            RlsCommand::Select => write!(f, "SELECT"),
-            RlsCommand::Insert => write!(f, "INSERT"),
-            RlsCommand::Update => write!(f, "UPDATE"),
-            RlsCommand::Delete => write!(f, "DELETE"),
+            Self::All => write!(f, "ALL"),
+            Self::Select => write!(f, "SELECT"),
+            Self::Insert => write!(f, "INSERT"),
+            Self::Update => write!(f, "UPDATE"),
+            Self::Delete => write!(f, "DELETE"),
         }
     }
 }

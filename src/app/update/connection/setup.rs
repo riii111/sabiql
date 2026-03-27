@@ -48,7 +48,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     let remaining = 5usize.saturating_sub(current_len);
                     let digits: String = clean
                         .chars()
-                        .filter(|c| c.is_ascii_digit())
+                        .filter(char::is_ascii_digit)
                         .take(remaining)
                         .collect();
                     if !digits.is_empty() {
@@ -246,7 +246,7 @@ mod tests {
             "db".to_string(),
             "user".to_string(),
             "pass".to_string(),
-            Default::default(),
+            SslMode::default(),
         )
         .unwrap()
     }

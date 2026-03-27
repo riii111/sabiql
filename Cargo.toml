@@ -54,3 +54,49 @@ required-features = ["test-support"]
 [profile.release]
 lto = true
 codegen-units = 1
+
+[lints.clippy]
+# Groups
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Pedantic suppressions
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+doc_markdown = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_lossless = "allow"
+items_after_statements = "allow"
+needless_pass_by_value = "allow"  # Action/Command/PathBuf by-value in core APIs; refactor is out of scope
+unused_self = "allow"
+implicit_hasher = "allow"
+match_wildcard_for_single_variants = "allow"
+struct_field_names = "allow"
+
+# Nursery suppressions
+missing_const_for_fn = "allow"
+significant_drop_tightening = "allow"
+option_if_let_else = "allow"
+future_not_send = "allow"
+branches_sharing_code = "allow"
+iter_with_drain = "allow"  # drain(..) inside loops where Vec is reused between iterations
+collection_is_never_read = "allow"  # false positive: Vec used for sorting + hashing, not element-wise reads
+used_underscore_binding = "allow"  # rstest #[case] doc params use _prefix convention; macro uses bindings internally
+
+# Pedantic suppressions (continued)
+naive_bytecount = "allow"  # bytecount crate would be an unnecessary dependency
+
+# Restriction lints (opt-in)
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+allow_attributes_without_reason = "deny"

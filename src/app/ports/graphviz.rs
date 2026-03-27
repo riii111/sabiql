@@ -37,7 +37,7 @@ mod tests {
         fn not_installed_contains_installation_hint() {
             let error = GraphvizError::NotInstalled;
 
-            let message = format!("{}", error);
+            let message = format!("{error}");
 
             assert!(message.contains("brew install graphviz"));
         }
@@ -46,7 +46,7 @@ mod tests {
         fn command_failed_contains_exit_code() {
             let error = GraphvizError::CommandFailed(Some(1));
 
-            let message = format!("{}", error);
+            let message = format!("{error}");
 
             assert!(message.contains("exit code"));
         }
@@ -60,7 +60,7 @@ mod tests {
             let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "command not found");
             let error = ViewerError::LaunchFailed(io_error);
 
-            let message = format!("{}", error);
+            let message = format!("{error}");
 
             assert!(message.contains("command not found"));
         }

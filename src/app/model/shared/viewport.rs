@@ -208,7 +208,7 @@ fn select_dynamic_columns(
         .enumerate()
         .skip(horizontal_offset)
     {
-        let separator = if indices.is_empty() { 0 } else { 1 };
+        let separator = u16::from(!indices.is_empty());
         let needed = width + separator;
 
         if used_width + needed <= available_width {
@@ -819,13 +819,7 @@ mod tests {
             let (_, selected) = select_viewport_columns(&cfg, &ctx(0, 35, Some(3), 1));
 
             for (i, (w, min_w)) in selected.iter().zip(min.iter()).enumerate() {
-                assert!(
-                    *w >= *min_w,
-                    "Column {} width {} is below min {}",
-                    i,
-                    w,
-                    min_w
-                );
+                assert!(*w >= *min_w, "Column {i} width {w} is below min {min_w}");
             }
         }
 
@@ -858,14 +852,7 @@ mod tests {
                 for (i, &w) in widths.iter().enumerate() {
                     let col_idx = indices[i];
                     let min_w = min[col_idx];
-                    assert!(
-                        w >= min_w,
-                        "offset={}, col={}: {} < {}",
-                        offset,
-                        col_idx,
-                        w,
-                        min_w
-                    );
+                    assert!(w >= min_w, "offset={offset}, col={col_idx}: {w} < {min_w}");
                 }
             }
         }
@@ -1179,10 +1166,7 @@ mod tests {
                     widths.iter().sum::<u16>() + (widths.len().saturating_sub(1)) as u16;
                 assert!(
                     total <= available,
-                    "offset={}: total {} > available {}",
-                    offset,
-                    total,
-                    available
+                    "offset={offset}: total {total} > available {available}"
                 );
 
                 // All widths should be >= min
@@ -1326,8 +1310,7 @@ mod tests {
             let total = total_width_with_separators(&widths);
             assert!(
                 total <= 80,
-                "Total width {} should not exceed available 80",
-                total
+                "Total width {total} should not exceed available 80"
             );
         }
     }

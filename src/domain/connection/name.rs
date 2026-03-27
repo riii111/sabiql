@@ -65,7 +65,7 @@ impl<'de> Deserialize<'de> for ConnectionName {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        ConnectionName::new(s).map_err(serde::de::Error::custom)
+        Self::new(s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -133,7 +133,7 @@ mod tests {
         #[test]
         fn formats_as_inner_string() {
             let name = ConnectionName::new("Production").unwrap();
-            assert_eq!(format!("{}", name), "Production");
+            assert_eq!(format!("{name}"), "Production");
         }
     }
 

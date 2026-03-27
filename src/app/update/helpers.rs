@@ -22,7 +22,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
     let result = state
         .query
         .current_result()
-        .map(|r| r.as_ref())
+        .map(AsRef::as_ref)
         .ok_or_else(|| "No result to edit".to_string())?;
     if result.source != QuerySource::Preview || result.is_error() {
         return Err("Only Preview results are editable".to_string());
@@ -47,7 +47,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .primary_key
         .as_ref()
         .filter(|cols| !cols.is_empty())
-        .map(|cols| cols.as_slice())
+        .map(Vec::as_slice)
         .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
 
     Ok((result, pk_cols))
@@ -80,7 +80,7 @@ pub fn build_bulk_delete_preview(
         let row = result
             .rows
             .get(row_idx)
-            .ok_or_else(|| format!("Staged row index {} out of bounds", row_idx))?;
+            .ok_or_else(|| format!("Staged row index {row_idx} out of bounds"))?;
         let pairs = build_pk_pairs(&result.columns, row, pk_cols)
             .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
         pk_pairs_per_row.push(pairs);
@@ -148,8 +148,7 @@ pub fn deletion_refresh_target_bulk(
 pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
     s.char_indices()
         .nth(char_idx)
-        .map(|(byte_idx, _)| byte_idx)
-        .unwrap_or(s.len())
+        .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
@@ -244,7 +243,10 @@ mod tests {
         }
 
         #[test]
-        #[allow(clippy::field_reassign_with_default)]
+        #[allow(
+            clippy::field_reassign_with_default,
+            reason = "intentional partial override of Default for clarity"
+        )]
         fn whitespace_only_name_sets_error() {
             let mut state = ConnectionSetupState::default();
             state.name = TextInputState::new("   ", 3);

@@ -52,7 +52,7 @@ impl AppState {
     pub fn new(project_name: String) -> Self {
         Self {
             should_quit: false,
-            command_line_input: Default::default(),
+            command_line_input: crate::app::model::shared::text_input::TextInputState::default(),
             command_line_visible_width: 70,
             render_dirty: true,
             session: BrowseSession::default(),
@@ -287,7 +287,7 @@ mod tests {
             .ui
             .table_picker
             .filter_input
-            .set_content("".to_string());
+            .set_content(String::new());
 
         let filtered = state.filtered_tables();
 

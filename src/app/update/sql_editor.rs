@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
 use crate::app::cmd::effect::Effect;
@@ -354,7 +355,7 @@ pub fn reduce_sql_modal(
             trigger_position,
             visible,
         } => {
-            state.sql_modal.completion.candidates = candidates.clone();
+            state.sql_modal.completion.candidates.clone_from(candidates);
             state.sql_modal.completion.trigger_position = *trigger_position;
             state.sql_modal.completion.visible = *visible;
             state.sql_modal.completion.selected_index = 0;
@@ -385,7 +386,7 @@ pub fn reduce_sql_modal(
                         };
                         let mut verdict_section = verdict.to_string();
                         for reason in &result.reasons {
-                            verdict_section.push_str(&format!("\n  • {}", reason));
+                            let _ = write!(verdict_section, "\n  • {reason}");
                         }
 
                         let mut sections = vec![verdict_section];
@@ -613,7 +614,7 @@ mod tests {
                     label: "DROP",
                 },
                 input: TextInputState::default(),
-                target_name: target.map(|s| s.to_string()),
+                target_name: target.map(ToString::to_string),
             });
             state
         }
@@ -927,7 +928,7 @@ mod tests {
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
             let mut state =
-                confirming_high_state(&format!("DROP TABLE {}", full_name), Some(full_name));
+                confirming_high_state(&format!("DROP TABLE {full_name}"), Some(full_name));
             state.session.dsn = Some("postgres://test".to_string());
             for c in full_name.chars() {
                 reduce_sql_modal(

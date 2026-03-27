@@ -7,6 +7,10 @@ use crossterm::{
     terminal::{LeaveAlternateScreen, disable_raw_mode},
 };
 
+#[allow(
+    clippy::print_stderr,
+    reason = "panic hook must write to stderr after terminal restore"
+)]
 pub fn install_hooks() -> Result<()> {
     let hook_builder = color_eyre::config::HookBuilder::default().display_env_section(false);
     let (panic_hook, eyre_hook) = hook_builder.into_hooks();

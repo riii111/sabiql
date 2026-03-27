@@ -22,12 +22,12 @@ pub enum IndexType {
 impl std::fmt::Display for IndexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IndexType::BTree => write!(f, "btree"),
-            IndexType::Hash => write!(f, "hash"),
-            IndexType::Gist => write!(f, "gist"),
-            IndexType::Gin => write!(f, "gin"),
-            IndexType::Brin => write!(f, "brin"),
-            IndexType::Other(s) => write!(f, "{}", s),
+            Self::BTree => write!(f, "btree"),
+            Self::Hash => write!(f, "hash"),
+            Self::Gist => write!(f, "gist"),
+            Self::Gin => write!(f, "gin"),
+            Self::Brin => write!(f, "brin"),
+            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }

@@ -22,7 +22,7 @@ pub enum ComparisonVerdict {
     Unavailable,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComparisonResult {
     pub verdict: ComparisonVerdict,
     pub reasons: Vec<String>,
@@ -101,8 +101,7 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
 
             let direction = if pct < 0.0 { "" } else { "+" };
             reasons.push(format!(
-                "Total cost: {:.2} \u{2192} {:.2} ({}{:.1}%)",
-                b, c, direction, pct
+                "Total cost: {b:.2} \u{2192} {c:.2} ({direction}{pct:.1}%)"
             ));
 
             if c < b * IMPROVED_THRESHOLD {
@@ -127,13 +126,13 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         if baseline.top_node_type != current.top_node_type {
             let b_node = baseline.top_node_type.as_deref().unwrap_or("(unknown)");
             let c_node = current.top_node_type.as_deref().unwrap_or("(unknown)");
-            reasons.push(format!("{} \u{2192} {}", b_node, c_node));
+            reasons.push(format!("{b_node} \u{2192} {c_node}"));
         }
 
         if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
             && b_rows != c_rows
         {
-            reasons.push(format!("Estimated rows: {} \u{2192} {}", b_rows, c_rows));
+            reasons.push(format!("Estimated rows: {b_rows} \u{2192} {c_rows}"));
         }
     }
 
@@ -237,7 +236,7 @@ Execution Time: 0.600 ms";
         fn make_plan(cost: Option<f64>, rows: Option<u64>, node: Option<&str>) -> ExplainPlan {
             ExplainPlan {
                 raw_text: String::new(),
-                top_node_type: node.map(|s| s.to_string()),
+                top_node_type: node.map(ToString::to_string),
                 total_cost: cost,
                 estimated_rows: rows,
                 is_analyze: false,

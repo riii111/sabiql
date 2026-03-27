@@ -14,10 +14,10 @@ use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
-    let z = days + 719468;
-    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
-    let doe = (z - era * 146097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let z = days + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
@@ -38,10 +38,7 @@ fn utc_now_iso8601() -> String {
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
     let (y, m, d) = epoch_days_to_ymd(days as i64);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, hours, minutes, seconds
-    )
+    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 fn save_query_history(
@@ -83,23 +80,24 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
     let (y, m, d) = epoch_days_to_ymd(days as i64);
-    let timestamp = format!(
-        "{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}",
-        y, m, d, hours, minutes, seconds, millis
-    );
-    let file_stem = format!("sabiql_export_{}_{}.csv", file_name, timestamp);
+    let timestamp = format!("{y:04}{m:02}{d:02}_{hours:02}{minutes:02}{seconds:02}_{millis:03}");
+    let file_stem = format!("sabiql_export_{file_name}_{timestamp}.csv");
     let dir = dirs::download_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
     dir.join(file_stem)
 }
 
-pub(crate) async fn run(
+#[allow(
+    clippy::unused_async,
+    reason = "consistent async interface for effect runner dispatch"
+)]
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
-    _state: &mut AppState,
+    state: &AppState,
 ) -> Result<()> {
     match effect {
         Effect::ExecutePreview {
@@ -203,8 +201,8 @@ pub(crate) async fn run(
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
-            let project = _state.runtime.project_name.clone();
-            let conn_id = _state.session.active_connection_id.clone();
+            let project = state.runtime.project_name.clone();
+            let conn_id = state.session.active_connection_id.clone();
             let query_for_history = query.clone();
 
             tokio::spawn(async move {
@@ -214,8 +212,9 @@ pub(crate) async fn run(
                             let (status, rows) = if result.is_error() {
                                 (QueryResultStatus::Failed, None)
                             } else {
-                                let rows =
-                                    result.command_tag.as_ref().and_then(|t| t.affected_rows());
+                                let rows = result.command_tag.as_ref().and_then(
+                                    crate::domain::command_tag::CommandTag::affected_rows,
+                                );
                                 (QueryResultStatus::Success, rows)
                             };
                             save_query_history(
@@ -264,8 +263,8 @@ pub(crate) async fn run(
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
-            let project = _state.runtime.project_name.clone();
-            let conn_id = _state.session.active_connection_id.clone();
+            let project = state.runtime.project_name.clone();
+            let conn_id = state.session.active_connection_id.clone();
             let query_for_history = query.clone();
 
             tokio::spawn(async move {
@@ -371,6 +370,8 @@ mod tests {
     use super::{epoch_days_to_ymd, resolve_export_path};
 
     mod export_path {
+        use std::path::Path;
+
         use super::*;
 
         #[test]
@@ -408,7 +409,11 @@ mod tests {
             let path = resolve_export_path("users");
             let file_name = path.file_name().unwrap().to_str().unwrap();
             assert!(file_name.starts_with("sabiql_export_users_"));
-            assert!(file_name.ends_with(".csv"));
+            assert!(
+                Path::new(file_name)
+                    .extension()
+                    .is_some_and(|ext: &std::ffi::OsStr| ext.eq_ignore_ascii_case("csv"))
+            );
         }
     }
 
@@ -493,8 +498,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::QueryCompleted { .. }),
-                "expected QueryCompleted, got {:?}",
-                action
+                "expected QueryCompleted, got {action:?}"
             );
         }
 
@@ -548,8 +552,7 @@ mod tests {
                 .expect("channel closed");
             assert!(
                 matches!(action, Action::QueryFailed(_, _)),
-                "expected QueryFailed, got {:?}",
-                action
+                "expected QueryFailed, got {action:?}"
             );
         }
     }
