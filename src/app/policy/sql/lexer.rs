@@ -891,7 +891,9 @@ impl SqlLexer {
             match &token.kind {
                 TokenKind::Punctuation(p) if *p == '(' => paren_depth += 1,
                 TokenKind::Punctuation(p) if *p == ')' => {
-                    paren_depth = paren_depth.saturating_sub(1);
+                    if paren_depth > 0 {
+                        paren_depth -= 1;
+                    }
                 }
                 // Reset state on statement terminator
                 TokenKind::Punctuation(p) if *p == ';' => {
