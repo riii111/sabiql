@@ -4,6 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::inspector_tab::InspectorTab;
 use crate::app::model::shared::ui_state::YankFlash;
+use crate::app::ports::ClipboardError;
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 
@@ -34,9 +35,7 @@ pub fn reduce(
                     Some(vec![Effect::CopyToClipboard {
                         content: value,
                         on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
-                            message: "Clipboard unavailable".into(),
-                        })),
+                        on_failure: Some(clipboard_unavailable()),
                     }])
                 } else {
                     state
@@ -95,9 +94,7 @@ pub fn reduce(
                     Some(vec![Effect::CopyToClipboard {
                         content: tsv,
                         on_success: Some(Action::CellCopied),
-                        on_failure: Some(Action::CopyFailed(crate::app::ports::ClipboardError {
-                            message: "Clipboard unavailable".into(),
-                        })),
+                        on_failure: Some(clipboard_unavailable()),
                     }])
                 } else {
                     state
@@ -116,6 +113,12 @@ pub fn reduce(
         }
         _ => None,
     }
+}
+
+fn clipboard_unavailable() -> Action {
+    Action::CopyFailed(ClipboardError {
+        message: "Clipboard unavailable".into(),
+    })
 }
 
 #[cfg(test)]
