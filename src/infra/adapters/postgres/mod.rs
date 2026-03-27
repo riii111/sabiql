@@ -127,10 +127,6 @@ impl MetadataProvider for PostgresAdapter {
 
 #[async_trait]
 impl QueryExecutor for PostgresAdapter {
-    #[allow(
-        clippy::print_stderr,
-        reason = "fallback warning when PK column fetch fails; no logging framework"
-    )]
     async fn execute_preview(
         &self,
         dsn: &str,
@@ -143,13 +139,11 @@ impl QueryExecutor for PostgresAdapter {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
         // On failure, falls back to unordered preview (rows may shift after edits).
-        let order_columns = match self.fetch_preview_order_columns(dsn, schema, table).await {
-            Ok(cols) => cols,
-            Err(e) => {
-                eprintln!("warn: failed to fetch PK columns for {schema}.{table}: {e}");
-                Vec::new()
-            }
-        };
+        // PK fetch failed: fall back to unordered preview (rows may shift after edits)
+        let order_columns = self
+            .fetch_preview_order_columns(dsn, schema, table)
+            .await
+            .unwrap_or_default();
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
         self.execute_query_raw(dsn, &query, QuerySource::Preview, read_only)
             .await
