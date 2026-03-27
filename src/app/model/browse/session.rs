@@ -226,7 +226,7 @@ impl BrowseSession {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "test-support helper")]
     pub(crate) fn set_selection_generation(&mut self, value: u64) {
         self.selection_generation = value;
     }

@@ -15,7 +15,6 @@ use crate::app::update::action::{
 };
 use crate::domain::ErTableInfo;
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,

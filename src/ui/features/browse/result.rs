@@ -146,7 +146,7 @@ impl ResultPane {
         frame.render_widget(content, area);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, reason = "render function requires full viewport context (16 params)")]
     fn render_table(
         frame: &mut Frame,
         area: Rect,
@@ -667,6 +667,7 @@ mod tests {
     // tracked: local-only dev benchmark, not tied to a CI issue
     #[test]
     #[ignore]
+    #[allow(clippy::print_stderr, reason = "benchmark result output")]
     fn bench_ideal_widths_cache_speedup() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;
         use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;

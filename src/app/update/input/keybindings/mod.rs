@@ -917,7 +917,7 @@ mod tests {
 
         fn check_none_action_entries_have_no_combos(bindings: &[KeyBinding], name: &str) {
             for (i, kb) in bindings.iter().enumerate() {
-                assert!(!(matches!(kb.action, Action::None) && !kb.combos.is_empty()), 
+                assert!(!matches!(kb.action, Action::None) || kb.combos.is_empty(),
                     "{name}[{i}] has action Action::None but non-empty combos: {:?}",
                     kb.combos
                 );

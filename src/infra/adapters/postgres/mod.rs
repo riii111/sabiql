@@ -127,6 +127,7 @@ impl MetadataProvider for PostgresAdapter {
 
 #[async_trait]
 impl QueryExecutor for PostgresAdapter {
+    #[allow(clippy::print_stderr, reason = "fallback warning when PK column fetch fails; no logging framework")]
     async fn execute_preview(
         &self,
         dsn: &str,

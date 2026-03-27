@@ -38,7 +38,6 @@ impl ConnectionProfile {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn with_id(
         id: ConnectionId,
         name: impl Into<String>,

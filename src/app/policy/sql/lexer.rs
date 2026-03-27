@@ -14,7 +14,7 @@ pub enum TokenKind {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    #[allow(dead_code)] // Used in tests for token verification
+    #[allow(dead_code, reason = "used in tests for token verification")]
     pub text: String,
     pub start: usize,
     pub end: usize,

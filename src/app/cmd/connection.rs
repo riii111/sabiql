@@ -14,7 +14,6 @@ use crate::app::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayl
 use crate::domain::DatabaseMetadata;
 use crate::domain::connection::ConnectionProfile;
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
