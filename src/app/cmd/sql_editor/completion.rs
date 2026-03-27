@@ -11,7 +11,7 @@ use crate::app::update::action::Action;
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    state: &mut AppState,
+    state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {

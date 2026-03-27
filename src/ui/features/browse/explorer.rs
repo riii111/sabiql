@@ -28,7 +28,7 @@ impl Explorer {
     fn render_tables_section(
         frame: &mut Frame,
         area: Rect,
-        state: &mut AppState,
+        state: &AppState,
         has_cached_data: bool,
     ) {
         let highlight_symbol_width: u16 = 2; // "> "

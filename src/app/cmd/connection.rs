@@ -22,7 +22,7 @@ pub(crate) async fn run(
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     connection_store: &Arc<dyn ConnectionStore>,
     service_file_reader: &Arc<dyn ServiceFileReader>,
-    state: &mut AppState,
+    state: &AppState,
 ) -> Result<()> {
     match effect {
         Effect::SaveAndConnect {
