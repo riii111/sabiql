@@ -428,8 +428,7 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
 }
 
 fn cell_edit_line_with_cursor(text: &str, cursor: usize, max_chars: usize) -> Line<'static> {
-    let chars: Vec<char> = text.chars().collect();
-    let total = chars.len();
+    let total = text.chars().count();
 
     // For narrow columns, try to keep cursor visible
     if max_chars == 0 {
@@ -664,9 +663,8 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    // tracked: local-only dev benchmark, not tied to a CI issue
     #[test]
-    #[ignore]
+    #[ignore = "local-only dev benchmark, not tied to a CI issue"]
     #[allow(clippy::print_stderr, reason = "benchmark result output")]
     fn bench_ideal_widths_cache_speedup() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;

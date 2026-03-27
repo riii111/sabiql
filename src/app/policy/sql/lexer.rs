@@ -1129,14 +1129,16 @@ mod tests {
 
             let tokens = l.tokenize("SELECT $$SELECT$$", 17);
 
-            let keywords: Vec<_> = tokens
-                .iter()
-                .filter_map(|t| match &t.kind {
-                    TokenKind::Keyword(k) => Some(k.as_str()),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(keywords.len(), 1);
+            assert_eq!(
+                tokens
+                    .iter()
+                    .filter_map(|t| match &t.kind {
+                        TokenKind::Keyword(k) => Some(k.as_str()),
+                        _ => None,
+                    })
+                    .count(),
+                1
+            );
         }
 
         #[test]

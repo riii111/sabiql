@@ -523,8 +523,7 @@ mod tests {
             state.session.set_metadata(Some(make_metadata(0)));
 
             let new_sigs: HashMap<String, String> =
-                [("public.users".to_string(), "abc123".to_string())]
-                    .into_iter()
+                std::iter::once(("public.users".to_string(), "abc123".to_string()))
                     .collect();
 
             let action = Action::SmartErRefreshCompleted(SmartErRefreshResult {

@@ -138,8 +138,7 @@ mod tests {
         cache.insert("b", 2);
         cache.insert("c", 3);
 
-        let items: Vec<_> = cache.iter().collect();
-        assert_eq!(items.len(), 3);
+        assert_eq!(cache.iter().count(), 3);
     }
 
     #[test]
