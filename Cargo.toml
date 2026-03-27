@@ -89,6 +89,10 @@ significant_drop_tightening = "allow"
 option_if_let_else = "allow"
 future_not_send = "allow"
 branches_sharing_code = "allow"
+iter_with_drain = "allow"  # drain(..) inside loops where Vec is reused between iterations
+
+# Pedantic suppressions (continued)
+naive_bytecount = "allow"  # bytecount crate would be an unnecessary dependency
 
 # Restriction lints (opt-in)
 dbg_macro = "deny"

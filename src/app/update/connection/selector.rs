@@ -4,7 +4,6 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::Action;
-use crate::domain::connection::SslMode;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -100,7 +99,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 mod tests {
     use super::*;
     use crate::app::model::connection::list::build_connection_list;
-    use crate::domain::connection::ConnectionProfile;
+    use crate::domain::connection::{ConnectionProfile, SslMode};
 
     fn create_profile(name: &str) -> ConnectionProfile {
         ConnectionProfile::new(
