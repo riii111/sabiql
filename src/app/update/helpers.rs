@@ -22,7 +22,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
     let result = state
         .query
         .current_result()
-        .map(std::convert::AsRef::as_ref)
+        .map(AsRef::as_ref)
         .ok_or_else(|| "No result to edit".to_string())?;
     if result.source != QuerySource::Preview || result.is_error() {
         return Err("Only Preview results are editable".to_string());
@@ -47,7 +47,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .primary_key
         .as_ref()
         .filter(|cols| !cols.is_empty())
-        .map(std::vec::Vec::as_slice)
+        .map(Vec::as_slice)
         .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
 
     Ok((result, pk_cols))

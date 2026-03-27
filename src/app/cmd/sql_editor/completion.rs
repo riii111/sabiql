@@ -49,7 +49,7 @@ pub async fn run(
                 let prep = engine.prepare(content, cursor);
                 let missing = engine.missing_tables_prepared(
                     &prep,
-                    state.session.metadata().map(std::convert::AsRef::as_ref),
+                    state.session.metadata().map(AsRef::as_ref),
                 );
                 (prep, missing)
             };
@@ -78,7 +78,7 @@ pub async fn run(
                     content,
                     cursor,
                     &prep,
-                    state.session.metadata().map(std::convert::AsRef::as_ref),
+                    state.session.metadata().map(AsRef::as_ref),
                     state.session.table_detail(),
                     &recent_cols,
                 );

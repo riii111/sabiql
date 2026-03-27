@@ -35,7 +35,7 @@ mod tests {
             name: "col".to_string(),
             data_type: "integer".to_string(),
             nullable,
-            default: default.map(std::string::ToString::to_string),
+            default: default.map(ToString::to_string),
             is_primary_key: false,
             is_unique: false,
             comment: None,

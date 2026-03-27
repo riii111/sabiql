@@ -236,7 +236,7 @@ Execution Time: 0.600 ms";
         fn make_plan(cost: Option<f64>, rows: Option<u64>, node: Option<&str>) -> ExplainPlan {
             ExplainPlan {
                 raw_text: String::new(),
-                top_node_type: node.map(std::string::ToString::to_string),
+                top_node_type: node.map(ToString::to_string),
                 total_cost: cost,
                 estimated_rows: rows,
                 is_analyze: false,

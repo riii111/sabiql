@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
@@ -122,9 +123,9 @@ pub fn reduce(
                 None => format!("Exported → {path}"),
             };
             state.messages.set_success_at(msg, now);
-            let folder = std::path::Path::new(path).parent().map_or_else(
-                || std::path::PathBuf::from("."),
-                std::path::Path::to_path_buf,
+            let folder = Path::new(path).parent().map_or_else(
+                || PathBuf::from("."),
+                Path::to_path_buf,
             );
             Some(vec![Effect::OpenFolder { path: folder }])
         }

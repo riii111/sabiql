@@ -273,7 +273,7 @@ impl PostgresAdapter {
             .headers()
             .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?
             .iter()
-            .map(std::string::ToString::to_string)
+            .map(ToString::to_string)
             .collect();
 
         let mut rows = Vec::new();
@@ -282,7 +282,7 @@ impl PostgresAdapter {
                 .map_err(|e| DbOperationError::QueryFailed(format!("CSV parse error: {e}")))?;
             let row: Vec<String> = record
                 .iter()
-                .map(std::string::ToString::to_string)
+                .map(ToString::to_string)
                 .collect();
             rows.push(row);
         }
@@ -601,11 +601,15 @@ mod tests {
                 .has_headers(true)
                 .from_reader(csv_data.as_bytes());
 
+            #[allow(
+                clippy::redundant_closure_for_method_calls,
+                reason = "closure is more idiomatic for to_string()"
+            )]
             let headers: Vec<String> = reader
                 .headers()
                 .unwrap()
                 .iter()
-                .map(std::string::ToString::to_string)
+                .map(|h| h.to_string())
                 .collect();
             let rows: Vec<_> = reader.records().collect();
 
@@ -622,11 +626,15 @@ mod tests {
                 .has_headers(true)
                 .from_reader(csv_data.as_bytes());
 
+            #[allow(
+                clippy::redundant_closure_for_method_calls,
+                reason = "closure is more idiomatic for to_string()"
+            )]
             let headers: Vec<String> = reader
                 .headers()
                 .unwrap()
                 .iter()
-                .map(std::string::ToString::to_string)
+                .map(|h| h.to_string())
                 .collect();
             let first_row = reader.records().next().unwrap().unwrap();
 
@@ -693,11 +701,15 @@ mod tests {
                 .has_headers(true)
                 .from_reader(mixed.as_bytes());
 
+            #[allow(
+                clippy::redundant_closure_for_method_calls,
+                reason = "closure is more idiomatic for to_string()"
+            )]
             let headers: Vec<String> = reader
                 .headers()
                 .unwrap()
                 .iter()
-                .map(std::string::ToString::to_string)
+                .map(|h| h.to_string())
                 .collect();
 
             assert_eq!(headers[0], "id");

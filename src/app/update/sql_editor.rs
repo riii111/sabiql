@@ -614,7 +614,7 @@ mod tests {
                     label: "DROP",
                 },
                 input: TextInputState::default(),
-                target_name: target.map(std::string::ToString::to_string),
+                target_name: target.map(ToString::to_string),
             });
             state
         }

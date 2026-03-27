@@ -239,7 +239,7 @@ mod tests {
             let rows = vec![
                 values
                     .iter()
-                    .map(std::string::ToString::to_string)
+                    .map(ToString::to_string)
                     .collect(),
             ];
             state

@@ -397,7 +397,7 @@ mod tests {
         }
 
         fn cached_set(names: &[&str]) -> HashSet<String> {
-            names.iter().map(std::string::ToString::to_string).collect()
+            names.iter().map(ToString::to_string).collect()
         }
 
         #[test]

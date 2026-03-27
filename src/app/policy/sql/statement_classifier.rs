@@ -553,8 +553,8 @@ fn extract_drop_table_name(original: &str, chars: &[(usize, char)]) -> Option<St
 
     let mut name_idx = table_idx + 1;
 
-    if lowers.get(name_idx).map(std::string::String::as_str) == Some("if")
-        && lowers.get(name_idx + 1).map(std::string::String::as_str) == Some("exists")
+    if lowers.get(name_idx).map(String::as_str) == Some("if")
+        && lowers.get(name_idx + 1).map(String::as_str) == Some("exists")
     {
         name_idx += 2;
     }
@@ -573,11 +573,11 @@ fn extract_truncate_table_name(original: &str, chars: &[(usize, char)]) -> Optio
     let trunc_idx = lowers.iter().position(|t| t == "truncate")?;
     let mut name_idx = trunc_idx + 1;
 
-    if lowers.get(name_idx).map(std::string::String::as_str) == Some("table") {
+    if lowers.get(name_idx).map(String::as_str) == Some("table") {
         name_idx += 1;
     }
 
-    if lowers.get(name_idx).map(std::string::String::as_str) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -594,13 +594,13 @@ fn extract_delete_table_name(original: &str, chars: &[(usize, char)]) -> Option<
 
     let delete_idx = lowers.iter().position(|t| t == "delete")?;
 
-    if lowers.get(delete_idx + 1).map(std::string::String::as_str) != Some("from") {
+    if lowers.get(delete_idx + 1).map(String::as_str) != Some("from") {
         return None;
     }
 
     let mut name_idx = delete_idx + 2;
 
-    if lowers.get(name_idx).map(std::string::String::as_str) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -616,7 +616,7 @@ fn extract_update_table_name(original: &str, chars: &[(usize, char)]) -> Option<
 
     let mut name_idx = update_idx + 1;
 
-    if lowers.get(name_idx).map(std::string::String::as_str) == Some("only") {
+    if lowers.get(name_idx).map(String::as_str) == Some("only") {
         name_idx += 1;
     }
 
@@ -855,7 +855,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(std::string::ToString::to_string)
+                expected.map(ToString::to_string)
             );
         }
 
@@ -870,7 +870,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(std::string::ToString::to_string)
+                expected.map(ToString::to_string)
             );
         }
 
@@ -893,7 +893,7 @@ mod tests {
         fn delete(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(std::string::ToString::to_string)
+                expected.map(ToString::to_string)
             );
         }
 
@@ -916,7 +916,7 @@ mod tests {
         fn update(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(std::string::ToString::to_string)
+                expected.map(ToString::to_string)
             );
         }
 
@@ -962,7 +962,7 @@ mod tests {
         ) {
             assert_eq!(
                 extract_table_name(sql, &kind),
-                expected.map(std::string::ToString::to_string)
+                expected.map(ToString::to_string)
             );
         }
     }

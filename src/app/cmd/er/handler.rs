@@ -87,7 +87,7 @@ pub async fn run(
 
             let seed_set: HashSet<&str> = seed_tables
                 .iter()
-                .map(std::string::String::as_str)
+                .map(String::as_str)
                 .collect();
 
             let (cached_seeds, cached_names): (Vec<ErTableInfo>, HashSet<String>) = {
@@ -187,20 +187,20 @@ pub async fn run(
 
                 let old_names: HashSet<&str> = old_signatures
                     .keys()
-                    .map(std::string::String::as_str)
+                    .map(String::as_str)
                     .collect();
                 let new_names: HashSet<&str> = new_signatures
                     .keys()
-                    .map(std::string::String::as_str)
+                    .map(String::as_str)
                     .collect();
 
                 let added_tables: Vec<String> = new_names
                     .difference(&old_names)
-                    .map(std::string::ToString::to_string)
+                    .map(ToString::to_string)
                     .collect();
                 let removed_tables: Vec<String> = old_names
                     .difference(&new_names)
-                    .map(std::string::ToString::to_string)
+                    .map(ToString::to_string)
                     .collect();
 
                 let stale_tables: Vec<String> = new_signatures
@@ -216,7 +216,7 @@ pub async fn run(
                 let missing_in_cache: Vec<String> = new_names
                     .iter()
                     .filter(|name| !cached_tables.contains(**name))
-                    .map(std::string::ToString::to_string)
+                    .map(ToString::to_string)
                     .collect();
 
                 tx.send(Action::SmartErRefreshCompleted(SmartErRefreshResult {

@@ -200,7 +200,7 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
             }
             if let Some(name) = path.file_name().and_then(|n| n.to_str())
                 && name.starts_with("er_")
-                && std::path::Path::new(name).extension().is_some_and(|ext| {
+                && Path::new(name).extension().is_some_and(|ext| {
                     ext.eq_ignore_ascii_case("dot") || ext.eq_ignore_ascii_case("svg")
                 })
             {

@@ -321,7 +321,7 @@ impl Inspector {
 
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
-                        let text = row.get(col_idx).map_or("", std::string::String::as_str);
+                        let text = row.get(col_idx).map_or("", String::as_str);
                         let display = truncate_cell(text, col_width as usize);
 
                         // Special styling for PK and Comment columns
@@ -574,7 +574,7 @@ impl Inspector {
                 let events_str = trigger
                     .events
                     .iter()
-                    .map(std::string::ToString::to_string)
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join("/");
                 vec![

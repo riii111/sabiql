@@ -370,6 +370,8 @@ mod tests {
     use super::{epoch_days_to_ymd, resolve_export_path};
 
     mod export_path {
+        use std::path::Path;
+
         use super::*;
 
         #[test]
@@ -408,9 +410,9 @@ mod tests {
             let file_name = path.file_name().unwrap().to_str().unwrap();
             assert!(file_name.starts_with("sabiql_export_users_"));
             assert!(
-                std::path::Path::new(file_name)
+                Path::new(file_name)
                     .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("csv"))
+                    .is_some_and(|ext: &std::ffi::OsStr| ext.eq_ignore_ascii_case("csv"))
             );
         }
     }

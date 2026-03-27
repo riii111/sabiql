@@ -702,7 +702,7 @@ impl CompletionEngine {
         let fk_columns: Vec<&str> = table
             .foreign_keys
             .iter()
-            .flat_map(|fk| fk.from_columns.iter().map(std::string::String::as_str))
+            .flat_map(|fk| fk.from_columns.iter().map(String::as_str))
             .collect();
 
         let mut candidates: Vec<_> = table

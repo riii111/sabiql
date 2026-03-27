@@ -128,7 +128,7 @@ mod tests {
                     .into_iter()
                     .map(|r| {
                         r.into_iter()
-                            .map(std::string::ToString::to_string)
+                            .map(ToString::to_string)
                             .collect()
                     })
                     .collect(),
@@ -154,7 +154,7 @@ mod tests {
                 }],
                 primary_key: pk.map(|cols| {
                     cols.into_iter()
-                        .map(std::string::ToString::to_string)
+                        .map(ToString::to_string)
                         .collect()
                 }),
                 foreign_keys: vec![],
