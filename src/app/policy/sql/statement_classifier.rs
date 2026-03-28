@@ -26,6 +26,15 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
+pub fn drop_subtype(sql: &str) -> Option<String> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
+    let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
+    let drop_idx = lowers.iter().position(|t| t == "drop")?;
+    lowers.get(drop_idx + 1).cloned()
+}
+
 pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let original_trimmed = sql.trim();
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.

@@ -1,7 +1,8 @@
 use super::write_guardrails::RiskLevel;
 use crate::app::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, extract_target_name, skip_block_comment,
-    skip_dollar_quoted_string, skip_double_quoted_identifier, skip_line_comment,
+    StatementKind, advance_single_quote, classify, drop_subtype, extract_target_name,
+    skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
+    skip_line_comment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,8 +137,7 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
             confirmation: ConfirmationType::Immediate,
         },
         StatementKind::Drop => {
-            let lower = sql.trim().to_lowercase();
-            if lower.starts_with("drop table") || lower.starts_with("drop database") {
+            if matches!(drop_subtype(sql).as_deref(), Some("table" | "database")) {
                 match extract_target_name(sql, kind) {
                     Some(name) => SqlRiskDecision {
                         risk_level: RiskLevel::High,
@@ -348,12 +348,24 @@ mod tests {
             ));
         }
 
+        #[test]
+        fn drop_table_with_leading_comment_returns_high() {
+            let result =
+                evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { .. }
+            ));
+        }
+
         #[rstest]
         #[case::drop_index("DROP INDEX my_index")]
         #[case::drop_policy("DROP POLICY p ON t")]
         #[case::drop_view("DROP VIEW v")]
         #[case::drop_schema("DROP SCHEMA s")]
         #[case::drop_owned_by("DROP OWNED BY role")]
+        #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
         fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
             let result = evaluate_sql_risk(&StatementKind::Drop, sql);
             assert_eq!(result.risk_level, RiskLevel::Low);
