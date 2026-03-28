@@ -629,7 +629,7 @@ mod tests {
             state
                 .sql_modal
                 .editor
-                .set_content("GRANT ALL ON users TO role1".to_string());
+                .set_content("SELECT * INTO backup FROM users".to_string());
             state.session.dsn = Some("postgres://test".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());

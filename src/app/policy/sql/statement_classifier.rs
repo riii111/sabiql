@@ -571,18 +571,15 @@ fn extract_drop_object_name(original: &str, chars: &[(usize, char)]) -> Option<S
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
     let type_kw = lowers.get(drop_idx + 1)?;
 
-    let is_two_word_type = type_kw == "materialized" || type_kw == "foreign";
-    if !KNOWN_DROP_TYPES.contains(&type_kw.as_str()) && !is_two_word_type {
-        return None;
-    }
-
-    let mut name_idx = if (type_kw == "materialized"
-        && lowers.get(drop_idx + 2).map(String::as_str) == Some("view"))
-        || (type_kw == "foreign" && lowers.get(drop_idx + 2).map(String::as_str) == Some("table"))
-    {
+    let second_kw = lowers.get(drop_idx + 2).map(String::as_str);
+    let is_two_word_type = (type_kw == "materialized" && second_kw == Some("view"))
+        || (type_kw == "foreign" && second_kw == Some("table"));
+    let mut name_idx = if is_two_word_type {
         drop_idx + 3
-    } else {
+    } else if KNOWN_DROP_TYPES.contains(&type_kw.as_str()) {
         drop_idx + 2
+    } else {
+        return None;
     };
 
     // Skip CONCURRENTLY (DROP INDEX CONCURRENTLY)
@@ -1062,8 +1059,20 @@ mod tests {
             Some("remote_users")
         )]
         #[case::drop_aggregate("DROP AGGREGATE my_agg(int)", StatementKind::Drop, Some("my_agg"))]
+        #[case::drop_procedure("DROP PROCEDURE my_proc(int)", StatementKind::Drop, Some("my_proc"))]
+        #[case::drop_collation(
+            "DROP COLLATION my_collation",
+            StatementKind::Drop,
+            Some("my_collation")
+        )]
+        #[case::drop_conversion("DROP CONVERSION my_conv", StatementKind::Drop, Some("my_conv"))]
+        #[case::drop_server("DROP SERVER my_server", StatementKind::Drop, Some("my_server"))]
+        #[case::drop_subscription("DROP SUBSCRIPTION my_sub", StatementKind::Drop, Some("my_sub"))]
+        #[case::drop_statistics("DROP STATISTICS my_stats", StatementKind::Drop, Some("my_stats"))]
         #[case::drop_function_multiple("DROP FUNCTION f(int), g(text)", StatementKind::Drop, None)]
         #[case::drop_procedure_multiple("DROP PROCEDURE p(int), q(int)", StatementKind::Drop, None)]
+        #[case::drop_materialized_invalid("DROP MATERIALIZED foo", StatementKind::Drop, None)]
+        #[case::drop_foreign_invalid("DROP FOREIGN foo", StatementKind::Drop, None)]
         #[case::drop_owned_by("DROP OWNED BY my_role", StatementKind::Drop, None)]
         #[case::drop_cast("DROP CAST (int AS text)", StatementKind::Drop, None)]
         #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]

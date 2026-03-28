@@ -180,7 +180,7 @@ fn build_analyze_confirm_lines<'a>(
             }
             None => {
                 lines.push(Line::from(Span::styled(
-                    " Cannot execute: unable to identify target table.  Esc: Back",
+                    " Cannot identify target object name.  Esc: Back",
                     Style::default().fg(Theme::TEXT_MUTED),
                 )));
             }
