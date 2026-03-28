@@ -289,6 +289,12 @@ pub mod idx {
         pub const CLOSE: usize = 6;
     }
 
+    pub mod jsonb_search {
+        pub const TYPE_SEARCH: usize = 0;
+        pub const CONFIRM: usize = 1;
+        pub const CANCEL: usize = 2;
+    }
+
     pub mod jsonb_edit {
         pub const SAVE: usize = 0;
         pub const BACK: usize = 1;

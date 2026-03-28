@@ -17,6 +17,10 @@ const NULL_COLOR: ratatui::style::Color = Theme::TEXT_MUTED; // DarkGray
 const BRACKET_COLOR: ratatui::style::Color = Theme::TEXT_SECONDARY; // Gray
 const COUNT_COLOR: ratatui::style::Color = Theme::TEXT_DIM;
 
+fn json_escaped(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\""))
+}
+
 pub fn json_tree_line_spans(line: &TreeLine, is_selected: bool) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
 
@@ -42,7 +46,7 @@ pub fn json_tree_line_spans(line: &TreeLine, is_selected: bool) -> Line<'static>
             // Key prefix (if this object is a value of a key)
             if let Some(key) = &line.key {
                 spans.push(Span::styled(
-                    format!("\"{key}\""),
+                    json_escaped(key),
                     Style::default().fg(KEY_COLOR),
                 ));
                 spans.push(Span::styled(
@@ -90,7 +94,7 @@ pub fn json_tree_line_spans(line: &TreeLine, is_selected: bool) -> Line<'static>
 
             if let Some(key) = &line.key {
                 spans.push(Span::styled(
-                    format!("\"{key}\""),
+                    json_escaped(key),
                     Style::default().fg(KEY_COLOR),
                 ));
                 spans.push(Span::styled(
@@ -128,7 +132,7 @@ pub fn json_tree_line_spans(line: &TreeLine, is_selected: bool) -> Line<'static>
         LineType::KeyValue => {
             if let Some(key) = &line.key {
                 spans.push(Span::styled(
-                    format!("\"{key}\""),
+                    json_escaped(key),
                     Style::default().fg(KEY_COLOR),
                 ));
                 spans.push(Span::styled(
@@ -166,7 +170,7 @@ fn push_value_span(spans: &mut Vec<Span<'static>>, value: &TreeValue) {
         }
         TreeValue::String(s) => {
             spans.push(Span::styled(
-                format!("\"{s}\""),
+                json_escaped(s),
                 Style::default().fg(STRING_COLOR),
             ));
         }

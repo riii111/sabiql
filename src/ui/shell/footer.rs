@@ -12,7 +12,7 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
-    INSPECTOR_DDL_KEYS, JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, OVERLAY_KEYS,
+    INSPECTOR_DDL_KEYS, JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
     QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
     SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
@@ -269,7 +269,11 @@ impl Footer {
             ],
             InputMode::JsonbDetail => {
                 if state.jsonb_detail.search().active {
-                    vec![("type", "Search"), ("Enter", "Confirm"), ("Esc", "Cancel")]
+                    vec![
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::TYPE_SEARCH].as_hint(),
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::CONFIRM].as_hint(),
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::CANCEL].as_hint(),
+                    ]
                 } else {
                     vec![
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),

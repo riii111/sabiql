@@ -183,6 +183,27 @@ impl JsonbDetailState {
         }
     }
 
+    pub fn clamp_scroll(&mut self, visible_count: usize) {
+        if visible_count == 0 {
+            self.scroll_offset = 0;
+        } else if self.scroll_offset >= visible_count {
+            self.scroll_offset = visible_count.saturating_sub(1);
+        }
+    }
+
+    pub fn enter_search(&mut self) {
+        self.mode = JsonbDetailMode::Searching;
+        self.search.active = true;
+        self.search.input.set_content(String::new());
+        self.search.matches.clear();
+        self.search.current_match = 0;
+    }
+
+    pub fn exit_search(&mut self) {
+        self.search.active = false;
+        self.mode = JsonbDetailMode::Viewing;
+    }
+
     pub fn enter_edit(&mut self, pretty_json: String) {
         let cursor = pretty_json.len();
         self.editor = MultiLineInputState::new(pretty_json, cursor);

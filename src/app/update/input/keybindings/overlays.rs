@@ -541,6 +541,37 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
+// JSONB Search (active search input)
+// =============================================================================
+
+pub const JSONB_SEARCH_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "type",
+        key: "type",
+        desc_short: "Search",
+        description: "Type to search",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Confirm",
+        description: "Confirm search",
+        action: Action::JsonbSearchSubmit,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Cancel",
+        description: "Cancel search",
+        action: Action::JsonbExitSearch,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
+];
+
+// =============================================================================
 // JSONB Edit
 // =============================================================================
 

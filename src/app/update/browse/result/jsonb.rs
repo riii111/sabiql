@@ -117,21 +117,20 @@ pub fn reduce(
             let visible = visible_line_indices(state.jsonb_detail.tree());
             if let Some(&real_idx) = visible.get(state.jsonb_detail.selected_line()) {
                 state.jsonb_detail.tree_mut().toggle_fold(real_idx);
-                let new_visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-                state.jsonb_detail.clamp_cursor(new_visible_count);
+                post_fold_fixup(state);
             }
             Some(vec![])
         }
 
         Action::JsonbFoldAll => {
             state.jsonb_detail.tree_mut().fold_all();
-            let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-            state.jsonb_detail.clamp_cursor(visible_count);
+            post_fold_fixup(state);
             Some(vec![])
         }
 
         Action::JsonbUnfoldAll => {
             state.jsonb_detail.tree_mut().unfold_all();
+            post_fold_fixup(state);
             Some(vec![])
         }
 
@@ -230,33 +229,17 @@ pub fn reduce(
 
         // ── Search ──────────────────────────────────────────────────
         Action::JsonbEnterSearch => {
-            state
-                .jsonb_detail
-                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching);
-            state.jsonb_detail.search_mut().active = true;
-            state
-                .jsonb_detail
-                .search_mut()
-                .input
-                .set_content(String::new());
-            state.jsonb_detail.search_mut().matches.clear();
-            state.jsonb_detail.search_mut().current_match = 0;
+            state.jsonb_detail.enter_search();
             Some(vec![])
         }
 
         Action::JsonbExitSearch => {
-            state.jsonb_detail.search_mut().active = false;
-            state
-                .jsonb_detail
-                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Viewing);
+            state.jsonb_detail.exit_search();
             Some(vec![])
         }
 
         Action::JsonbSearchSubmit => {
-            state.jsonb_detail.search_mut().active = false;
-            state
-                .jsonb_detail
-                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Viewing);
+            state.jsonb_detail.exit_search();
             jump_to_current_match(state);
             Some(vec![])
         }
@@ -315,6 +298,15 @@ pub fn reduce(
         }
 
         _ => None,
+    }
+}
+
+fn post_fold_fixup(state: &mut AppState) {
+    let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
+    state.jsonb_detail.clamp_cursor(visible_count);
+    state.jsonb_detail.clamp_scroll(visible_count);
+    if state.jsonb_detail.search().active {
+        update_search_matches(state);
     }
 }
 
