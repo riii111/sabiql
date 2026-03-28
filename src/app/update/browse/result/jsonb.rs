@@ -228,7 +228,112 @@ pub fn reduce(
             Some(vec![])
         }
 
+        // ── Search ──────────────────────────────────────────────────
+        Action::JsonbEnterSearch => {
+            state
+                .jsonb_detail
+                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching);
+            state.jsonb_detail.search_mut().active = true;
+            state
+                .jsonb_detail
+                .search_mut()
+                .input
+                .set_content(String::new());
+            state.jsonb_detail.search_mut().matches.clear();
+            state.jsonb_detail.search_mut().current_match = 0;
+            Some(vec![])
+        }
+
+        Action::JsonbExitSearch => {
+            state.jsonb_detail.search_mut().active = false;
+            state
+                .jsonb_detail
+                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Viewing);
+            Some(vec![])
+        }
+
+        Action::JsonbSearchSubmit => {
+            state.jsonb_detail.search_mut().active = false;
+            state
+                .jsonb_detail
+                .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Viewing);
+            jump_to_current_match(state);
+            Some(vec![])
+        }
+
+        Action::JsonbSearchNext => {
+            let search = state.jsonb_detail.search();
+            if !search.matches.is_empty() {
+                let next = (search.current_match + 1) % search.matches.len();
+                state.jsonb_detail.search_mut().current_match = next;
+                jump_to_current_match(state);
+            }
+            Some(vec![])
+        }
+
+        Action::JsonbSearchPrev => {
+            let search = state.jsonb_detail.search();
+            if !search.matches.is_empty() {
+                let prev = if search.current_match == 0 {
+                    search.matches.len() - 1
+                } else {
+                    search.current_match - 1
+                };
+                state.jsonb_detail.search_mut().current_match = prev;
+                jump_to_current_match(state);
+            }
+            Some(vec![])
+        }
+
+        Action::TextInput {
+            target: InputTarget::JsonbSearch,
+            ch,
+        } => {
+            state.jsonb_detail.search_mut().input.insert_char(*ch);
+            update_search_matches(state);
+            Some(vec![])
+        }
+
+        Action::TextBackspace {
+            target: InputTarget::JsonbSearch,
+        } => {
+            state.jsonb_detail.search_mut().input.backspace();
+            update_search_matches(state);
+            Some(vec![])
+        }
+
+        Action::TextMoveCursor {
+            target: InputTarget::JsonbSearch,
+            direction,
+        } => {
+            state
+                .jsonb_detail
+                .search_mut()
+                .input
+                .move_cursor(*direction);
+            Some(vec![])
+        }
+
         _ => None,
+    }
+}
+
+fn update_search_matches(state: &mut AppState) {
+    let query = state.jsonb_detail.search().input.content().to_string();
+    let visible = visible_line_indices(state.jsonb_detail.tree());
+    let matches =
+        crate::app::policy::json::find_matches(state.jsonb_detail.tree(), &visible, &query);
+    state.jsonb_detail.search_mut().matches = matches;
+    state.jsonb_detail.search_mut().current_match = 0;
+}
+
+fn jump_to_current_match(state: &mut AppState) {
+    let search = state.jsonb_detail.search();
+    if let Some(&match_real_idx) = search.matches.get(search.current_match) {
+        let visible = visible_line_indices(state.jsonb_detail.tree());
+        if let Some(visible_pos) = visible.iter().position(|&i| i == match_real_idx) {
+            state.jsonb_detail.set_selected_line(visible_pos);
+        }
     }
 }
 

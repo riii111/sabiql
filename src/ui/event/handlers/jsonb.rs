@@ -2,7 +2,11 @@ use crate::app::update::action::{Action, CursorMove, InputTarget};
 use crate::app::update::input::keybindings::{JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, Key, KeyCombo};
 use crate::app::update::input::keymap;
 
-pub fn handle_jsonb_detail_keys(combo: KeyCombo) -> Action {
+pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
+    if is_searching {
+        return handle_search_input(combo);
+    }
+
     if let Some(action) = keymap::resolve(&combo, JSONB_DETAIL_KEYS) {
         return action;
     }
@@ -13,6 +17,39 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo) -> Action {
         Key::Char('h' | 'l') | Key::Left | Key::Right => Action::JsonbToggleFold,
         Key::Char('g') => Action::JsonbScrollToTop,
         Key::Char('G') => Action::JsonbScrollToEnd,
+        Key::Char('n') => Action::JsonbSearchNext,
+        Key::Char('N') => Action::JsonbSearchPrev,
+        _ => Action::None,
+    }
+}
+
+fn handle_search_input(combo: KeyCombo) -> Action {
+    match combo.key {
+        Key::Enter => Action::JsonbSearchSubmit,
+        Key::Esc => Action::JsonbExitSearch,
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::JsonbSearch,
+            ch: c,
+        },
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::JsonbSearch,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::JsonbSearch,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::JsonbSearch,
+            direction: CursorMove::Right,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::JsonbSearch,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::JsonbSearch,
+            direction: CursorMove::End,
+        },
         _ => Action::None,
     }
 }

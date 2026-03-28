@@ -150,6 +150,34 @@ pub fn visible_line_indices(tree: &JsonTree) -> Vec<usize> {
     result
 }
 
+pub fn find_matches(tree: &JsonTree, visible_indices: &[usize], query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let query_lower = query.to_lowercase();
+    let lines = tree.lines();
+
+    visible_indices
+        .iter()
+        .copied()
+        .filter(|&i| {
+            let line = &lines[i];
+            if let Some(key) = &line.key
+                && key.to_lowercase().contains(&query_lower)
+            {
+                return true;
+            }
+            match &line.value {
+                TreeValue::String(s) => s.to_lowercase().contains(&query_lower),
+                TreeValue::Number(n) => n.contains(&query_lower),
+                TreeValue::Bool(b) => b.to_string().contains(&query_lower),
+                TreeValue::Null => "null".contains(&query_lower),
+                _ => false,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +369,61 @@ mod tests {
             let visible = visible_line_indices(&tree);
 
             assert!(visible.is_empty());
+        }
+    }
+
+    mod find_matches_tests {
+        use super::*;
+
+        #[test]
+        fn matches_key_case_insensitive() {
+            let tree = parse_json_tree(r#"{"Email": "test@example.com"}"#).unwrap();
+            let visible = visible_line_indices(&tree);
+
+            let matches = find_matches(&tree, &visible, "email");
+
+            assert_eq!(matches.len(), 1);
+        }
+
+        #[test]
+        fn matches_string_value() {
+            let tree = parse_json_tree(r#"{"name": "Alice", "city": "Berlin"}"#).unwrap();
+            let visible = visible_line_indices(&tree);
+
+            let matches = find_matches(&tree, &visible, "alice");
+
+            assert_eq!(matches.len(), 1);
+        }
+
+        #[test]
+        fn empty_query_returns_no_matches() {
+            let tree = parse_json_tree(r#"{"a": 1}"#).unwrap();
+            let visible = visible_line_indices(&tree);
+
+            let matches = find_matches(&tree, &visible, "");
+
+            assert!(matches.is_empty());
+        }
+
+        #[test]
+        fn no_matches_in_collapsed_children() {
+            let mut tree = parse_json_tree(r#"{"a": {"hidden": "secret"}, "b": 1}"#).unwrap();
+            tree.toggle_fold(1);
+            let visible = visible_line_indices(&tree);
+
+            let matches = find_matches(&tree, &visible, "hidden");
+
+            assert!(matches.is_empty());
+        }
+
+        #[test]
+        fn matches_number_value() {
+            let tree = parse_json_tree(r#"{"count": 42}"#).unwrap();
+            let visible = visible_line_indices(&tree);
+
+            let matches = find_matches(&tree, &visible, "42");
+
+            assert_eq!(matches.len(), 1);
         }
     }
 }

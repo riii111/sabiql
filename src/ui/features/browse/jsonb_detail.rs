@@ -32,7 +32,12 @@ impl JsonbDetail {
             " JSONB Detail \u{2500}\u{2500} {} (jsonb) ",
             state.jsonb_detail.column_name()
         );
-        let hint = " y:Copy  i:Edit  /:Search  j/k:Nav  h/l:Fold  Esc:Close ";
+        let is_searching = state.jsonb_detail.search().active;
+        let hint = if is_searching {
+            " Enter:Confirm  Esc:Cancel "
+        } else {
+            " y:Copy  i:Edit  /:Search  j/k:Nav  h/l:Fold  Esc:Close "
+        };
 
         let (_area, inner) = render_modal(
             frame,
@@ -42,11 +47,19 @@ impl JsonbDetail {
             hint,
         );
 
+        let (tree_area, search_area) = if is_searching {
+            let [t, s] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            (t, Some(s))
+        } else {
+            (inner, None)
+        };
+
         let tree = state.jsonb_detail.tree();
         let visible = visible_line_indices(tree);
+        let search = state.jsonb_detail.search();
         let selected = state.jsonb_detail.selected_line();
         let scroll = state.jsonb_detail.scroll_offset();
-        let viewport_height = inner.height as usize;
+        let viewport_height = tree_area.height as usize;
 
         let lines: Vec<Line<'_>> = visible
             .iter()
@@ -60,7 +73,27 @@ impl JsonbDetail {
             .collect();
 
         let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, inner);
+        frame.render_widget(paragraph, tree_area);
+
+        if let Some(area) = search_area {
+            let query = search.input.content();
+            let match_info = if search.matches.is_empty() {
+                if query.is_empty() {
+                    String::new()
+                } else {
+                    " [no matches]".to_string()
+                }
+            } else {
+                format!(" [{}/{}]", search.current_match + 1, search.matches.len())
+            };
+
+            let line = Line::from(vec![
+                Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT)),
+                Span::raw(query.to_string()),
+                Span::styled(match_info, Style::default().fg(Theme::TEXT_DIM)),
+            ]);
+            frame.render_widget(Paragraph::new(line), area);
+        }
     }
 
     fn render_editing(frame: &mut Frame, state: &AppState) {

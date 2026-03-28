@@ -268,14 +268,18 @@ impl Footer {
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
             InputMode::JsonbDetail => {
-                vec![
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::NAVIGATE].as_hint(),
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
-                    JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
-                ]
+                if state.jsonb_detail.search().active {
+                    vec![("type", "Search"), ("Enter", "Confirm"), ("Esc", "Cancel")]
+                } else {
+                    vec![
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::NAVIGATE].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
+                    ]
+                }
             }
             InputMode::JsonbEdit => {
                 vec![

@@ -131,6 +131,10 @@ impl JsonbDetailState {
         self.mode = mode;
     }
 
+    pub fn set_selected_line(&mut self, line: usize) {
+        self.selected_line = line;
+    }
+
     pub fn cursor_up(&mut self, visible_count: usize) {
         if visible_count == 0 {
             return;
