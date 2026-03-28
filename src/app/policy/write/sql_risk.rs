@@ -330,8 +330,18 @@ mod tests {
         }
 
         #[test]
-        fn extraction_failure_returns_high_immediate() {
+        fn drop_index_returns_high_table_name_input() {
             let result = evaluate_sql_risk(&StatementKind::Drop, "DROP INDEX my_index");
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { .. }
+            ));
+        }
+
+        #[test]
+        fn extraction_failure_returns_high_immediate() {
+            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP OWNED BY role");
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
@@ -479,8 +489,23 @@ mod tests {
         }
 
         #[test]
-        fn extraction_failure_returns_allow_immediate() {
+        fn drop_index_returns_allow_table_name_input() {
             let result = evaluate_multi_statement("DROP INDEX my_index");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { .. }
+                    ));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn extraction_failure_returns_allow_immediate() {
+            let result = evaluate_multi_statement("DROP OWNED BY role");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::High);

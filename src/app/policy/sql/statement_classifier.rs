@@ -32,7 +32,7 @@ pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
 
     match kind {
-        StatementKind::Drop => extract_drop_table_name(original_trimmed, &chars),
+        StatementKind::Drop => extract_drop_object_name(original_trimmed, &chars),
         StatementKind::Truncate => extract_truncate_table_name(original_trimmed, &chars),
         StatementKind::Delete { .. } => extract_delete_table_name(original_trimmed, &chars),
         StatementKind::Update { .. } => extract_update_table_name(original_trimmed, &chars),
@@ -538,21 +538,49 @@ fn unquote_single_ident(s: &str) -> String {
     }
 }
 
-fn extract_drop_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+const KNOWN_DROP_TYPES: &[&str] = &[
+    "table",
+    "index",
+    "policy",
+    "schema",
+    "view",
+    "type",
+    "sequence",
+    "trigger",
+    "extension",
+    "rule",
+    "domain",
+    "function",
+    "procedure",
+];
+
+fn extract_drop_object_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
     let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
-    let table_idx = lowers.get(drop_idx + 1).and_then(|t| {
-        if t == "table" {
-            Some(drop_idx + 1)
-        } else {
-            None
-        }
-    })?;
+    let type_kw = lowers.get(drop_idx + 1)?;
 
-    let mut name_idx = table_idx + 1;
+    // Require the object type keyword to be in the whitelist
+    if !KNOWN_DROP_TYPES.contains(&type_kw.as_str()) && type_kw != "materialized" {
+        return None;
+    }
 
+    // MATERIALIZED VIEW is a two-word object type
+    let mut name_idx = if type_kw == "materialized"
+        && lowers.get(drop_idx + 2).map(String::as_str) == Some("view")
+    {
+        drop_idx + 3
+    } else {
+        drop_idx + 2
+    };
+
+    // Skip CONCURRENTLY (DROP INDEX CONCURRENTLY)
+    if lowers.get(name_idx).map(String::as_str) == Some("concurrently") {
+        name_idx += 1;
+    }
+
+    // Skip IF EXISTS
     if lowers.get(name_idx).map(String::as_str) == Some("if")
         && lowers.get(name_idx + 1).map(String::as_str) == Some("exists")
     {
@@ -952,8 +980,66 @@ mod tests {
             StatementKind::Update { has_where: false },
             Some("public.MyTable")
         )]
-        #[case::drop_no_table_keyword("DROP INDEX my_index", StatementKind::Drop, None)]
+        #[case::drop_index("DROP INDEX my_index", StatementKind::Drop, Some("my_index"))]
+        #[case::drop_index_if_exists(
+            "DROP INDEX IF EXISTS my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_index_concurrently(
+            "DROP INDEX CONCURRENTLY my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_index_concurrently_if_exists(
+            "DROP INDEX CONCURRENTLY IF EXISTS my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_policy(
+            "DROP POLICY tenant_isolation ON projects",
+            StatementKind::Drop,
+            Some("tenant_isolation")
+        )]
+        #[case::drop_policy_if_exists(
+            "DROP POLICY IF EXISTS tenant_isolation ON projects",
+            StatementKind::Drop,
+            Some("tenant_isolation")
+        )]
+        #[case::drop_schema("DROP SCHEMA my_schema", StatementKind::Drop, Some("my_schema"))]
+        #[case::drop_view("DROP VIEW my_view", StatementKind::Drop, Some("my_view"))]
+        #[case::drop_materialized_view(
+            "DROP MATERIALIZED VIEW my_mv",
+            StatementKind::Drop,
+            Some("my_mv")
+        )]
+        #[case::drop_type("DROP TYPE my_type", StatementKind::Drop, Some("my_type"))]
+        #[case::drop_function(
+            "DROP FUNCTION my_func(int, text)",
+            StatementKind::Drop,
+            Some("my_func")
+        )]
+        #[case::drop_sequence("DROP SEQUENCE my_seq", StatementKind::Drop, Some("my_seq"))]
+        #[case::drop_trigger(
+            "DROP TRIGGER my_trigger ON my_table",
+            StatementKind::Drop,
+            Some("my_trigger")
+        )]
+        #[case::drop_extension(
+            "DROP EXTENSION IF EXISTS pgcrypto",
+            StatementKind::Drop,
+            Some("pgcrypto")
+        )]
+        #[case::drop_rule("DROP RULE my_rule ON my_table", StatementKind::Drop, Some("my_rule"))]
+        #[case::drop_domain("DROP DOMAIN my_domain", StatementKind::Drop, Some("my_domain"))]
+        #[case::drop_schema_qualified(
+            "DROP INDEX public.my_index",
+            StatementKind::Drop,
+            Some("public.my_index")
+        )]
+        #[case::drop_owned_by("DROP OWNED BY my_role", StatementKind::Drop, None)]
         #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]
+        #[case::drop_multiple_index("DROP INDEX a, b", StatementKind::Drop, None)]
         #[case::truncate_multiple("TRUNCATE a, b, c", StatementKind::Truncate, None)]
         fn additional_extraction(
             #[case] sql: &str,
