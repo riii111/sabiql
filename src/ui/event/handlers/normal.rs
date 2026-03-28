@@ -205,7 +205,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
                 match result_nav_mode {
                     ResultNavMode::Scroll => Action::ResultEnterRowActive,
                     ResultNavMode::RowActive => Action::ResultEnterCellActive,
-                    ResultNavMode::CellActive => Action::OpenJsonbDetail,
+                    ResultNavMode::CellActive => Action::None,
                 }
             } else if state.ui.focused_pane == FocusedPane::Explorer {
                 Action::ConfirmSelection

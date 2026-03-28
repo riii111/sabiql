@@ -8,6 +8,18 @@ use crate::app::update::action::{Action, InputTarget};
 
 use crate::app::update::helpers::editable_preview_base;
 
+fn is_jsonb_cell(state: &AppState) -> bool {
+    let Some(col_idx) = state.result_interaction.selection().cell() else {
+        return false;
+    };
+    let Some(td) = state.session.table_detail() else {
+        return false;
+    };
+    td.columns
+        .get(col_idx)
+        .is_some_and(|c| c.data_type == "jsonb")
+}
+
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
     let row_idx = state
         .result_interaction
@@ -55,6 +67,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
                 return Some(vec![]);
             }
+
+            // JSONB columns open the dedicated detail modal instead of inline edit
+            if is_jsonb_cell(state) {
+                return Some(vec![Effect::DispatchActions(vec![Action::OpenJsonbDetail])]);
+            }
+
             match editable_cell_context(state) {
                 Ok((row_idx, col_idx, value)) => {
                     if state.result_interaction.cell_edit().row != Some(row_idx)
