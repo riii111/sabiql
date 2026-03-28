@@ -1,6 +1,5 @@
 use crate::app::model::browse::json_tree::{JsonTree, LineType, TreeLine, TreeValue};
 
-/// Parse a JSON string into a flat tree model for rendering.
 pub fn parse_json_tree(json_str: &str) -> Result<JsonTree, String> {
     let value: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| format!("Invalid JSON: {e}"))?;
@@ -118,8 +117,6 @@ fn build_lines(
     }
 }
 
-/// Return indices of visible lines in the tree, respecting collapse state.
-/// When a node is collapsed, its children (up to the matching close brace) are hidden.
 pub fn visible_line_indices(tree: &JsonTree) -> Vec<usize> {
     let lines = tree.lines();
     let mut result = Vec::with_capacity(lines.len());

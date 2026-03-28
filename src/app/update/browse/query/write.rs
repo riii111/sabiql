@@ -246,19 +246,29 @@ pub fn reduce(
             state.result_interaction.clear_write_preview();
             match operation {
                 WriteOperation::Update => {
+                    let was_jsonb_edit = state.jsonb_detail.is_active();
+
                     if *affected_rows != 1 {
                         state.messages.set_error_at(
                             format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
                             now,
                         );
-                        state.modal.set_mode(InputMode::CellEdit);
+                        if was_jsonb_edit {
+                            state.modal.set_mode(InputMode::JsonbEdit);
+                        } else {
+                            state.modal.set_mode(InputMode::CellEdit);
+                        }
                         return Some(vec![]);
                     }
 
                     state
                         .messages
                         .set_success_at("Updated 1 row".to_string(), now);
-                    state.result_interaction.clear_cell_edit();
+                    if was_jsonb_edit {
+                        state.jsonb_detail.close();
+                    } else {
+                        state.result_interaction.clear_cell_edit();
+                    }
                     state.modal.set_mode(InputMode::Normal);
 
                     if let Some(dsn) = &state.session.dsn {
@@ -341,7 +351,13 @@ pub fn reduce(
             state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.to_string(), now);
             state.modal.set_mode(match operation {
-                WriteOperation::Update => InputMode::CellEdit,
+                WriteOperation::Update => {
+                    if state.jsonb_detail.is_active() {
+                        InputMode::JsonbEdit
+                    } else {
+                        InputMode::CellEdit
+                    }
+                }
                 WriteOperation::Delete => InputMode::Normal,
             });
             Some(vec![])

@@ -5,10 +5,21 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::policy::json::{parse_json_tree, visible_line_indices};
-use crate::app::update::action::Action;
+use crate::app::policy::write::write_guardrails::{
+    ColumnDiff, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
+};
+use crate::app::policy::write::write_update::build_pk_pairs;
+use crate::app::services::AppServices;
+use crate::app::update::action::{Action, InputTarget};
+use crate::app::update::helpers::editable_preview_base;
 use crate::domain::QuerySource;
 
-pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
+pub fn reduce(
+    state: &mut AppState,
+    action: &Action,
+    now: Instant,
+    services: &AppServices,
+) -> Option<Vec<Effect>> {
     match action {
         Action::OpenJsonbDetail => {
             // Entry guard 1: must be LivePreview
@@ -135,16 +146,170 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             }])
         }
 
+        // ── Edit lifecycle ──────────────────────────────────────────
+        Action::JsonbEnterEdit => {
+            if state.session.read_only {
+                state
+                    .messages
+                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                return Some(vec![]);
+            }
+            let pretty = pretty_print_json(state.jsonb_detail.original_json());
+            state.jsonb_detail.enter_edit(pretty);
+            state.modal.replace_mode(InputMode::JsonbEdit);
+            Some(vec![])
+        }
+
+        Action::JsonbExitEdit => {
+            state.jsonb_detail.exit_edit();
+            state.modal.replace_mode(InputMode::JsonbDetail);
+            Some(vec![])
+        }
+
+        Action::JsonbSubmitEdit => match state.jsonb_detail.validate_editor_content() {
+            Ok(json_content) => match build_jsonb_update_preview(state, &json_content, services) {
+                Ok(preview) => Some(vec![Effect::DispatchActions(vec![
+                    Action::OpenWritePreviewConfirm(Box::new(preview)),
+                ])]),
+                Err(msg) => {
+                    state.messages.set_error_at(msg, now);
+                    Some(vec![])
+                }
+            },
+            Err(msg) => {
+                state.messages.set_error_at(msg, now);
+                Some(vec![])
+            }
+        },
+
+        // ── Text input for JsonbEdit ────────────────────────────────
+        Action::TextInput {
+            target: InputTarget::JsonbEdit,
+            ch,
+        } => {
+            if *ch == '\n' {
+                state.jsonb_detail.editor_mut().insert_newline();
+            } else if *ch == '\t' {
+                state.jsonb_detail.editor_mut().insert_tab();
+            } else {
+                state.jsonb_detail.editor_mut().insert_char(*ch);
+            }
+            validate_editor_inline(state);
+            Some(vec![])
+        }
+
+        Action::TextBackspace {
+            target: InputTarget::JsonbEdit,
+        } => {
+            state.jsonb_detail.editor_mut().backspace();
+            validate_editor_inline(state);
+            Some(vec![])
+        }
+
+        Action::TextDelete {
+            target: InputTarget::JsonbEdit,
+        } => {
+            state.jsonb_detail.editor_mut().delete();
+            validate_editor_inline(state);
+            Some(vec![])
+        }
+
+        Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction,
+        } => {
+            state.jsonb_detail.editor_mut().move_cursor(*direction);
+            Some(vec![])
+        }
+
+        Action::Paste(text) if state.input_mode() == InputMode::JsonbEdit => {
+            state.jsonb_detail.editor_mut().insert_str(text);
+            validate_editor_inline(state);
+            Some(vec![])
+        }
+
         _ => None,
     }
+}
+
+fn pretty_print_json(json_str: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(json_str)
+        .ok()
+        .and_then(|v| serde_json::to_string_pretty(&v).ok())
+        .unwrap_or_else(|| json_str.to_string())
+}
+
+fn validate_editor_inline(state: &mut AppState) {
+    let content = state.jsonb_detail.editor().content().to_string();
+    match serde_json::from_str::<serde_json::Value>(&content) {
+        Ok(_) => state.jsonb_detail.set_validation_error(None),
+        Err(e) => state
+            .jsonb_detail
+            .set_validation_error(Some(format!("Invalid JSON: {e}"))),
+    }
+}
+
+fn build_jsonb_update_preview(
+    state: &AppState,
+    new_json: &str,
+    services: &AppServices,
+) -> Result<WritePreview, String> {
+    let (result, pk_cols) = editable_preview_base(state)?;
+    let row_idx = state.jsonb_detail.row();
+
+    let row = result
+        .rows
+        .get(row_idx)
+        .ok_or_else(|| "Row index out of bounds".to_string())?;
+    let column_name = state.jsonb_detail.column_name().to_string();
+
+    let pk_pairs = build_pk_pairs(&result.columns, row, pk_cols);
+    let target = TargetSummary {
+        schema: state.query.pagination.schema.clone(),
+        table: state.query.pagination.table.clone(),
+        key_values: pk_pairs.clone().unwrap_or_default(),
+    };
+    let has_where = pk_pairs.as_ref().is_some_and(|p| !p.is_empty());
+    let has_stable_row_identity = pk_pairs.is_some();
+    let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
+    if guardrail.blocked {
+        return Err(guardrail
+            .reason
+            .unwrap_or_else(|| "Write blocked by guardrails".to_string()));
+    }
+
+    let sql = services.sql_dialect.build_update_sql(
+        &target.schema,
+        &target.table,
+        &column_name,
+        new_json,
+        &target.key_values,
+    );
+
+    Ok(WritePreview {
+        operation: WriteOperation::Update,
+        sql,
+        target_summary: target,
+        diff: vec![ColumnDiff {
+            column: column_name,
+            before: state.jsonb_detail.original_json().to_string(),
+            after: new_json.to_string(),
+        }],
+        guardrail,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::services::AppServices;
     use crate::domain::column::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
     use std::sync::Arc;
+
+    fn stub() -> AppServices {
+        AppServices::stub()
+    }
 
     fn jsonb_table() -> Table {
         Table {
@@ -214,7 +379,12 @@ mod tests {
         fn opens_on_valid_jsonb_cell() {
             let mut state = state_with_jsonb_cell();
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
@@ -225,7 +395,12 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.result_interaction.enter_cell(0); // id (integer)
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -247,7 +422,12 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -267,7 +447,12 @@ mod tests {
                 command_tag: None,
             }));
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -277,7 +462,12 @@ mod tests {
             let mut state = state_with_jsonb_cell();
             state.session.set_table_detail_raw(None);
 
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
         }
@@ -289,10 +479,20 @@ mod tests {
         #[test]
         fn close_clears_state() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
             assert!(state.jsonb_detail.is_active());
 
-            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::CloseJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
             assert!(!state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::Normal);
@@ -301,10 +501,20 @@ mod tests {
         #[test]
         fn cursor_down_increments() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
             assert_eq!(state.jsonb_detail.selected_line(), 0);
 
-            reduce(&mut state, &Action::JsonbCursorDown, Instant::now());
+            reduce(
+                &mut state,
+                &Action::JsonbCursorDown,
+                Instant::now(),
+                &stub(),
+            );
 
             assert_eq!(state.jsonb_detail.selected_line(), 1);
         }
@@ -312,11 +522,26 @@ mod tests {
         #[test]
         fn cursor_up_decrements() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
-            reduce(&mut state, &Action::JsonbCursorDown, Instant::now());
-            reduce(&mut state, &Action::JsonbCursorDown, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
+            reduce(
+                &mut state,
+                &Action::JsonbCursorDown,
+                Instant::now(),
+                &stub(),
+            );
+            reduce(
+                &mut state,
+                &Action::JsonbCursorDown,
+                Instant::now(),
+                &stub(),
+            );
 
-            reduce(&mut state, &Action::JsonbCursorUp, Instant::now());
+            reduce(&mut state, &Action::JsonbCursorUp, Instant::now(), &stub());
 
             assert_eq!(state.jsonb_detail.selected_line(), 1);
         }
@@ -324,10 +549,20 @@ mod tests {
         #[test]
         fn toggle_fold_collapses_object() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
             // Cursor at line 0 (root object open)
 
-            reduce(&mut state, &Action::JsonbToggleFold, Instant::now());
+            reduce(
+                &mut state,
+                &Action::JsonbToggleFold,
+                Instant::now(),
+                &stub(),
+            );
 
             // After collapsing root, only 1 visible line
             let visible = visible_line_indices(state.jsonb_detail.tree());
@@ -337,9 +572,14 @@ mod tests {
         #[test]
         fn fold_all_collapses_everything() {
             let mut state = state_with_jsonb_cell();
-            reduce(&mut state, &Action::OpenJsonbDetail, Instant::now());
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
 
-            reduce(&mut state, &Action::JsonbFoldAll, Instant::now());
+            reduce(&mut state, &Action::JsonbFoldAll, Instant::now(), &stub());
 
             let visible = visible_line_indices(state.jsonb_detail.tree());
             assert_eq!(visible.len(), 1);

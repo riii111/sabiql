@@ -1,6 +1,3 @@
-/// Flat-list tree model for JSON rendering.
-/// Each line represents one visual row in the tree view.
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct JsonTree {
     lines: Vec<TreeLine>,
@@ -57,9 +54,6 @@ impl JsonTree {
         self.lines.is_empty()
     }
 
-    /// Toggle collapsed state at the given line index.
-    /// Only works on ObjectOpen/ArrayOpen lines.
-    /// Returns true if toggled.
     pub fn toggle_fold(&mut self, line_idx: usize) -> bool {
         if let Some(line) = self.lines.get_mut(line_idx)
             && matches!(line.line_type, LineType::ObjectOpen | LineType::ArrayOpen)
@@ -70,7 +64,6 @@ impl JsonTree {
         false
     }
 
-    /// Set all ObjectOpen/ArrayOpen lines to collapsed.
     pub fn fold_all(&mut self) {
         for line in &mut self.lines {
             if matches!(line.line_type, LineType::ObjectOpen | LineType::ArrayOpen) {
@@ -79,7 +72,6 @@ impl JsonTree {
         }
     }
 
-    /// Set all ObjectOpen/ArrayOpen lines to expanded.
     pub fn unfold_all(&mut self) {
         for line in &mut self.lines {
             if matches!(line.line_type, LineType::ObjectOpen | LineType::ArrayOpen) {

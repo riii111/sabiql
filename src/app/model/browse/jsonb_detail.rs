@@ -131,7 +131,6 @@ impl JsonbDetailState {
         self.mode = mode;
     }
 
-    /// Move cursor up in visible lines, clamping at 0.
     pub fn cursor_up(&mut self, visible_count: usize) {
         if visible_count == 0 {
             return;
@@ -139,7 +138,6 @@ impl JsonbDetailState {
         self.selected_line = self.selected_line.saturating_sub(1);
     }
 
-    /// Move cursor down in visible lines, clamping at last visible line.
     pub fn cursor_down(&mut self, visible_count: usize) {
         if visible_count == 0 {
             return;
@@ -150,13 +148,11 @@ impl JsonbDetailState {
         }
     }
 
-    /// Jump to first visible line.
     pub fn cursor_to_top(&mut self) {
         self.selected_line = 0;
         self.scroll_offset = 0;
     }
 
-    /// Jump to last visible line.
     pub fn cursor_to_end(&mut self, visible_count: usize) {
         if visible_count == 0 {
             return;
@@ -164,7 +160,6 @@ impl JsonbDetailState {
         self.selected_line = visible_count.saturating_sub(1);
     }
 
-    /// Ensure the selected line is visible within the viewport.
     pub fn adjust_scroll(&mut self, viewport_height: usize) {
         if viewport_height == 0 {
             return;
@@ -176,12 +171,37 @@ impl JsonbDetailState {
         }
     }
 
-    /// Clamp selected_line after fold/unfold changes the visible line count.
     pub fn clamp_cursor(&mut self, visible_count: usize) {
         if visible_count == 0 {
             self.selected_line = 0;
         } else if self.selected_line >= visible_count {
             self.selected_line = visible_count - 1;
+        }
+    }
+
+    pub fn enter_edit(&mut self, pretty_json: String) {
+        let cursor = pretty_json.len();
+        self.editor = MultiLineInputState::new(pretty_json, cursor);
+        self.validation_error = None;
+        self.mode = JsonbDetailMode::Editing;
+    }
+
+    pub fn exit_edit(&mut self) {
+        self.mode = JsonbDetailMode::Viewing;
+    }
+
+    pub fn validate_editor_content(&mut self) -> Result<String, String> {
+        let content = self.editor.content().to_string();
+        match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(_) => {
+                self.validation_error = None;
+                Ok(content)
+            }
+            Err(e) => {
+                let msg = format!("Invalid JSON: {e}");
+                self.validation_error = Some(msg.clone());
+                Err(msg)
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
-use crate::app::update::action::Action;
-use crate::app::update::input::keybindings::{JSONB_DETAIL_KEYS, Key, KeyCombo};
+use crate::app::update::action::{Action, CursorMove, InputTarget};
+use crate::app::update::input::keybindings::{JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, Key, KeyCombo};
 use crate::app::update::input::keymap;
 
 pub fn handle_jsonb_detail_keys(combo: KeyCombo) -> Action {
@@ -13,6 +13,58 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo) -> Action {
         Key::Char('h' | 'l') | Key::Left | Key::Right => Action::JsonbToggleFold,
         Key::Char('g') => Action::JsonbScrollToTop,
         Key::Char('G') => Action::JsonbScrollToEnd,
+        _ => Action::None,
+    }
+}
+
+pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve(&combo, JSONB_EDIT_KEYS) {
+        return action;
+    }
+
+    match combo.key {
+        Key::Char(c) => Action::TextInput {
+            target: InputTarget::JsonbEdit,
+            ch: c,
+        },
+        Key::Backspace => Action::TextBackspace {
+            target: InputTarget::JsonbEdit,
+        },
+        Key::Delete => Action::TextDelete {
+            target: InputTarget::JsonbEdit,
+        },
+        Key::Left => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Left,
+        },
+        Key::Right => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Right,
+        },
+        Key::Up => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Up,
+        },
+        Key::Down => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Down,
+        },
+        Key::Home => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::Home,
+        },
+        Key::End => Action::TextMoveCursor {
+            target: InputTarget::JsonbEdit,
+            direction: CursorMove::End,
+        },
+        Key::Enter => Action::TextInput {
+            target: InputTarget::JsonbEdit,
+            ch: '\n',
+        },
+        Key::Tab => Action::TextInput {
+            target: InputTarget::JsonbEdit,
+            ch: '\t',
+        },
         _ => Action::None,
     }
 }

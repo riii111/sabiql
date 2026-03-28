@@ -61,7 +61,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
         InputMode::JsonbDetail => jsonb::handle_jsonb_detail_keys(combo),
-        InputMode::JsonbEdit => Action::None, // Phase 1b
+        InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
     }
 }
 
