@@ -119,16 +119,43 @@ impl JsonbDetail {
     }
 
     fn render_editor_content(frame: &mut Frame, area: Rect, state: &AppState) {
-        let content = state.jsonb_detail.editor().content();
-        let scroll_row = state.jsonb_detail.editor().scroll_row();
+        let editor = state.jsonb_detail.editor();
+        let content = editor.content();
+        let scroll_row = editor.scroll_row();
         let viewport_height = area.height as usize;
+        let (cursor_row, cursor_col) = editor.cursor_to_position();
+        let current_line_style = Style::default().bg(Theme::EDITOR_CURRENT_LINE_BG);
 
-        let lines: Vec<Line<'_>> = content
+        let mut lines: Vec<Line<'_>> = content
             .lines()
+            .enumerate()
             .skip(scroll_row)
             .take(viewport_height)
-            .map(|line_str| Line::from(Span::raw(line_str.to_string())))
+            .map(|(row, line_str)| {
+                if row == cursor_row {
+                    Line::from(crate::ui::primitives::atoms::text_cursor_spans(
+                        line_str,
+                        cursor_col,
+                        0,
+                        usize::MAX,
+                    ))
+                    .style(current_line_style)
+                } else {
+                    Line::from(Span::raw(line_str.to_string()))
+                }
+            })
             .collect();
+
+        // Cursor on empty trailing line after final newline
+        if content.ends_with('\n') && cursor_row == content.lines().count() {
+            lines.push(
+                Line::from(vec![Span::styled(
+                    "\u{258F}",
+                    Style::default().fg(Theme::CURSOR_FG),
+                )])
+                .style(current_line_style),
+            );
+        }
 
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, area);

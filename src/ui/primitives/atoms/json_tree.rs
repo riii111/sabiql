@@ -1,4 +1,4 @@
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use crate::app::model::browse::json_tree::{LineType, TreeLine, TreeValue};
@@ -144,10 +144,11 @@ pub fn json_tree_line_spans(line: &TreeLine, is_selected: bool) -> Line<'static>
         }
     }
 
-    let mut line_style = Style::default();
-    if is_selected {
-        line_style = line_style.add_modifier(Modifier::REVERSED);
-    }
+    let line_style = if is_selected {
+        Style::default().bg(Theme::RESULT_ROW_ACTIVE_BG)
+    } else {
+        Style::default()
+    };
 
     Line::from(spans).style(line_style)
 }
