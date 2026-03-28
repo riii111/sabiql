@@ -270,7 +270,7 @@ mod tests {
                 .collect();
             assert_eq!(kv_lines.len(), 2);
             let mut keys: Vec<_> = kv_lines.iter().filter_map(|l| l.key.as_deref()).collect();
-            keys.sort();
+            keys.sort_unstable();
             assert_eq!(keys, vec!["count", "name"]);
         }
 
@@ -353,7 +353,7 @@ mod tests {
 
         #[test]
         fn collapsed_array_hides_items() {
-            let mut tree = parse_json_tree(r#"[1, 2, 3]"#).unwrap();
+            let mut tree = parse_json_tree(r"[1, 2, 3]").unwrap();
             tree.toggle_fold(0);
 
             let visible = visible_line_indices(&tree);
