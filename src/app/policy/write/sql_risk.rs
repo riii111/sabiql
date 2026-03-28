@@ -187,20 +187,10 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         decisions.push((stmt.clone(), decision));
     }
 
-    let high_count = decisions
-        .iter()
-        .filter(|(_, d)| d.risk_level == RiskLevel::High)
-        .count();
-    if high_count >= 2 {
-        return MultiStatementDecision::Block {
-            reason: "Multiple high-risk statements: execute one at a time".to_string(),
-        };
-    }
-
     // Aggregate: carry the highest risk level and the strongest confirmation type.
+    // When multiple HIGH statements exist, use the first one's target for name-input.
     let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
     let confirmation = if max_risk == RiskLevel::High {
-        // Exactly one HIGH statement (2+ were blocked above); carry its target.
         decisions
             .iter()
             .find(|(_, d)| d.risk_level == RiskLevel::High)
@@ -425,13 +415,17 @@ mod tests {
         }
 
         #[test]
-        fn multiple_high_blocked() {
+        fn multiple_high_uses_first_target() {
             let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
             match result {
-                MultiStatementDecision::Block { reason } => {
-                    assert!(reason.contains("Multiple high-risk"));
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "a"
+                    ));
                 }
-                _ => panic!("expected Block"),
+                _ => panic!("expected Allow"),
             }
         }
 
