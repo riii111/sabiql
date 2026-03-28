@@ -278,25 +278,15 @@ pub const SQL_MODAL_KEYS: &[KeyBinding] = &[
     },
 ];
 
-// Keys active only while SqlModalStatus::Confirming — mutually exclusive with SQL_MODAL_KEYS.
-pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "Enter",
-        key: "Enter",
-        desc_short: "Execute",
-        description: "Confirm and execute",
-        action: Action::SqlModalConfirmExecute,
-        combos: &[KeyCombo::plain(Key::Enter)],
-    },
-    KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Back",
-        description: "Cancel and return to editor",
-        action: Action::SqlModalCancelConfirm,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-];
+// Keys active only while SqlModalStatus::ConfirmingHigh — mutually exclusive with SQL_MODAL_KEYS.
+pub const SQL_MODAL_CONFIRMING_KEYS: &[KeyBinding] = &[KeyBinding {
+    key_short: "Esc",
+    key: "Esc",
+    desc_short: "Back",
+    description: "Cancel and return to editor",
+    action: Action::SqlModalCancelConfirm,
+    combos: &[KeyCombo::plain(Key::Esc)],
+}];
 
 // =============================================================================
 // Command Line

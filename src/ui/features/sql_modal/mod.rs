@@ -31,25 +31,11 @@ impl SqlModal {
     pub fn render(frame: &mut Frame, state: &mut AppState, now: Instant) {
         let is_confirming = matches!(
             state.sql_modal.status(),
-            SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+            SqlModalStatus::ConfirmingHigh { .. }
         );
 
         let (area, inner) = if is_confirming {
             match state.sql_modal.status() {
-                SqlModalStatus::Confirming(decision) => {
-                    let title = format!(
-                        " SQL \u{2500}\u{2500} \u{26a0} {} ",
-                        decision.risk_level.as_str()
-                    );
-                    render_modal_with_border_color(
-                        frame,
-                        Constraint::Percentage(80),
-                        Constraint::Percentage(60),
-                        &title,
-                        " Enter: Execute \u{2502} Esc: Back ",
-                        Theme::risk_color(decision.risk_level),
-                    )
-                }
                 SqlModalStatus::ConfirmingHigh {
                     decision,
                     input,
@@ -82,7 +68,6 @@ impl SqlModal {
             let hint: &str = match state.sql_modal.status() {
                 SqlModalStatus::Editing => Self::editing_hint(),
                 SqlModalStatus::Running => " Running\u{2026} ",
-                SqlModalStatus::ConfirmingAnalyze { .. } => " Enter: Confirm \u{2502} Esc: Cancel ",
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     input, target_name, ..
                 } => {

@@ -189,12 +189,6 @@ pub fn reduce_sql_modal(
                             state.sql_modal.set_status(SqlModalStatus::Running);
                             Some(adhoc_effects(state, query))
                         }
-                        ConfirmationType::Enter => {
-                            state
-                                .sql_modal
-                                .set_status(SqlModalStatus::Confirming(decision));
-                            Some(vec![])
-                        }
                         ConfirmationType::TableNameInput { target } => {
                             state.sql_modal.set_status(SqlModalStatus::ConfirmingHigh {
                                 decision,
@@ -207,19 +201,10 @@ pub fn reduce_sql_modal(
                 }
             }
         }
-        Action::SqlModalConfirmExecute => {
-            if matches!(state.sql_modal.status(), SqlModalStatus::Confirming(_)) {
-                let query = state.sql_modal.editor.content().trim().to_string();
-                state.sql_modal.set_status(SqlModalStatus::Running);
-                Some(adhoc_effects(state, query))
-            } else {
-                None
-            }
-        }
         Action::SqlModalCancelConfirm => {
             if matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::Confirming(_) | SqlModalStatus::ConfirmingHigh { .. }
+                SqlModalStatus::ConfirmingHigh { .. }
             ) {
                 state.sql_modal.set_status(SqlModalStatus::Normal);
                 Some(vec![])
@@ -639,51 +624,45 @@ mod tests {
         }
 
         #[test]
-        fn submit_other_falls_back_to_confirming_high() {
+        fn submit_other_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
                 .editor
-                .set_content("GRANT ALL ON users TO role1".to_string());
+                .set_content("SELECT * INTO backup FROM users".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
-            ));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
         }
 
         #[test]
-        fn submit_unsupported_falls_back_to_confirming_high() {
+        fn submit_unsupported_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
                 .editor
                 .set_content("COPY users FROM '/tmp/data.csv'".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::High
-            ));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
         }
 
         #[test]
-        fn submit_medium_risk_stays_confirming() {
+        fn submit_medium_risk_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
+            state.session.dsn = Some("postgres://test".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::Medium
-            ));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Running));
         }
 
         #[test]
@@ -1053,17 +1032,18 @@ mod tests {
         }
 
         #[test]
-        fn submit_insert_enters_confirming_low_risk() {
+        fn submit_insert_executes_immediately() {
             let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
 
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now()).unwrap();
 
-            assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::Confirming(d) if d.risk_level == RiskLevel::Low
-            ));
-            assert!(effects.is_empty());
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
+            );
         }
 
         #[test]
@@ -1077,43 +1057,6 @@ mod tests {
                 SqlModalStatus::ConfirmingHigh { decision, .. }
                     if decision.risk_level == RiskLevel::High
             ));
-        }
-
-        #[test]
-        fn confirm_execute_transitions_to_running_and_emits_effect() {
-            let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
-
-            let effects =
-                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
-                    .unwrap();
-
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ExecuteAdhoc { .. }))
-            );
-        }
-
-        #[test]
-        fn cancel_confirm_returns_to_normal() {
-            let mut state = modal_state_with_query("INSERT INTO t VALUES (1)");
-            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
-
-            reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
-
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
-        }
-
-        #[test]
-        fn confirm_execute_in_editing_state_is_noop() {
-            let mut state = modal_state_with_query("SELECT 1");
-
-            let result =
-                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
-
-            assert!(result.is_none());
         }
     }
 

@@ -5,7 +5,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-use crate::app::policy::sql::statement_classifier;
+use crate::app::policy::sql::statement_classifier::{self, StatementKind};
 use crate::app::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk, split_statements};
 use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 
@@ -70,10 +70,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
             let kind = statement_classifier::classify(&content);
             let risk = evaluate_sql_risk(&kind, &content);
 
-            let is_dml = !matches!(
-                risk.as_ref().map(|r| &r.confirmation),
-                Some(ConfirmationType::Immediate) | None
-            );
+            let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
 
             if state.session.read_only && is_dml {
                 state.explain.set_error(
@@ -85,9 +82,18 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 
             state.explain.confirm_scroll_offset = 0;
 
-            match risk.map(|r| r.confirmation) {
-                Some(ConfirmationType::Immediate) => {
-                    // SELECT/Transaction: no confirmation, execute immediately
+            match risk.confirmation {
+                ConfirmationType::TableNameInput { target } => {
+                    state
+                        .sql_modal
+                        .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
+                            query: content,
+                            input: TextInputState::default(),
+                            target_name: Some(target),
+                        });
+                    state.sql_modal.active_tab = SqlModalTab::Plan;
+                }
+                ConfirmationType::Immediate => {
                     let explain_query = format!("EXPLAIN ANALYZE {content}");
                     state.sql_modal.set_status(SqlModalStatus::Running);
                     state.sql_modal.active_tab = SqlModalTab::Plan;
@@ -99,32 +105,6 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
                         is_analyze: true,
                         read_only: state.session.read_only,
                     }]);
-                }
-                Some(ConfirmationType::TableNameInput { target }) => {
-                    state
-                        .sql_modal
-                        .set_status(SqlModalStatus::ConfirmingAnalyzeHigh {
-                            query: content,
-                            input: TextInputState::default(),
-                            target_name: Some(target),
-                        });
-                    state.sql_modal.active_tab = SqlModalTab::Plan;
-                }
-                Some(ConfirmationType::Enter) => {
-                    state
-                        .sql_modal
-                        .set_status(SqlModalStatus::ConfirmingAnalyze {
-                            query: content,
-                            is_dml: true,
-                        });
-                    state.sql_modal.active_tab = SqlModalTab::Plan;
-                }
-                None => {
-                    // Unknown statement type: block
-                    state
-                        .explain
-                        .set_error("Cannot determine risk level for this statement.".into());
-                    state.sql_modal.active_tab = SqlModalTab::Plan;
                 }
             }
 
@@ -163,7 +143,6 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
 
         Action::ExplainAnalyzeConfirm => {
             let query = match state.sql_modal.status() {
-                SqlModalStatus::ConfirmingAnalyze { query, .. } => Some(query.clone()),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     query,
                     input,
@@ -194,8 +173,7 @@ pub fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Op
         Action::ExplainAnalyzeCancel => {
             if matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyze { .. }
-                    | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ) {
                 state.sql_modal.set_status(SqlModalStatus::Normal);
             }
@@ -468,7 +446,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_shows_enter_confirm() {
+        fn insert_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -476,16 +454,22 @@ mod tests {
                 .set_content("INSERT INTO users VALUES (1)".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
-            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+            assert_eq!(effects.len(), 1);
             assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyze { is_dml: true, .. }
+                &effects[0],
+                Effect::ExecuteExplain {
+                    is_analyze: true,
+                    ..
+                }
             ));
         }
 
         #[test]
-        fn update_with_where_shows_enter_confirm() {
+        fn update_with_where_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -493,11 +477,17 @@ mod tests {
                 .set_content("UPDATE users SET name='x' WHERE id=1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
-            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+            assert_eq!(effects.len(), 1);
             assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyze { is_dml: true, .. }
+                &effects[0],
+                Effect::ExecuteExplain {
+                    is_analyze: true,
+                    ..
+                }
             ));
         }
 
@@ -522,7 +512,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_with_where_shows_enter_confirm() {
+        fn delete_with_where_executes_immediately() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -530,11 +520,17 @@ mod tests {
                 .set_content("DELETE FROM users WHERE id=1".to_string());
             state.session.dsn = Some("dsn://test".to_string());
 
-            reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now());
+            let effects =
+                reduce_explain(&mut state, &Action::ExplainAnalyzeRequest, Instant::now()).unwrap();
 
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+            assert_eq!(effects.len(), 1);
             assert!(matches!(
-                state.sql_modal.status(),
-                SqlModalStatus::ConfirmingAnalyze { is_dml: true, .. }
+                &effects[0],
+                Effect::ExecuteExplain {
+                    is_analyze: true,
+                    ..
+                }
             ));
         }
 
@@ -658,31 +654,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn confirm_from_confirming_analyze_emits_effect() {
-            let mut state = sql_modal_state();
-            state.session.dsn = Some("dsn://test".to_string());
-            state
-                .sql_modal
-                .set_status(SqlModalStatus::ConfirmingAnalyze {
-                    query: "INSERT INTO users VALUES (1)".to_string(),
-                    is_dml: true,
-                });
-
-            let effects =
-                reduce_explain(&mut state, &Action::ExplainAnalyzeConfirm, Instant::now()).unwrap();
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(
-                &effects[0],
-                Effect::ExecuteExplain {
-                    is_analyze: true,
-                    ..
-                }
-            ));
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
-        }
-
-        #[test]
         fn confirm_from_high_with_matching_table_emits_effect() {
             let mut state = sql_modal_state();
             state.session.dsn = Some("dsn://test".to_string());
@@ -727,21 +698,6 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
             ));
-        }
-
-        #[test]
-        fn cancel_resets_to_normal() {
-            let mut state = sql_modal_state();
-            state
-                .sql_modal
-                .set_status(SqlModalStatus::ConfirmingAnalyze {
-                    query: "UPDATE users SET x=1".to_string(),
-                    is_dml: true,
-                });
-
-            reduce_explain(&mut state, &Action::ExplainAnalyzeCancel, Instant::now());
-
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Normal);
         }
 
         #[test]

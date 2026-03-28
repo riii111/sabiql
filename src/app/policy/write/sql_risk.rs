@@ -1,13 +1,13 @@
 use super::write_guardrails::RiskLevel;
 use crate::app::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, extract_table_name, skip_block_comment,
-    skip_dollar_quoted_string, skip_double_quoted_identifier, skip_line_comment,
+    StatementKind, advance_single_quote, classify, drop_subtype, extract_target_name,
+    skip_block_comment, skip_dollar_quoted_string, skip_double_quoted_identifier,
+    skip_line_comment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmationType {
     Immediate,
-    Enter,
     TableNameInput { target: String },
 }
 
@@ -119,38 +119,54 @@ fn is_comment_only(sql: &str) -> bool {
     true
 }
 
-pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> Option<SqlRiskDecision> {
+pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
     match kind {
-        StatementKind::Select | StatementKind::Transaction => Some(SqlRiskDecision {
+        StatementKind::Select
+        | StatementKind::Transaction
+        | StatementKind::Insert
+        | StatementKind::Create
+        | StatementKind::Unsupported
+        | StatementKind::Other => SqlRiskDecision {
             risk_level: RiskLevel::Low,
             confirmation: ConfirmationType::Immediate,
-        }),
-        StatementKind::Insert | StatementKind::Create => Some(SqlRiskDecision {
-            risk_level: RiskLevel::Low,
-            confirmation: ConfirmationType::Enter,
-        }),
+        },
         StatementKind::Update { has_where: true }
         | StatementKind::Delete { has_where: true }
-        | StatementKind::Alter => Some(SqlRiskDecision {
+        | StatementKind::Alter => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
-            confirmation: ConfirmationType::Enter,
-        }),
-        StatementKind::Unsupported => Some(SqlRiskDecision {
-            risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::Enter,
-        }),
+            confirmation: ConfirmationType::Immediate,
+        },
+        StatementKind::Drop => {
+            if matches!(drop_subtype(sql).as_deref(), Some("table" | "database")) {
+                match extract_target_name(sql, kind) {
+                    Some(name) => SqlRiskDecision {
+                        risk_level: RiskLevel::High,
+                        confirmation: ConfirmationType::TableNameInput { target: name },
+                    },
+                    None => SqlRiskDecision {
+                        risk_level: RiskLevel::High,
+                        confirmation: ConfirmationType::Immediate,
+                    },
+                }
+            } else {
+                SqlRiskDecision {
+                    risk_level: RiskLevel::Low,
+                    confirmation: ConfirmationType::Immediate,
+                }
+            }
+        }
         StatementKind::Update { has_where: false }
         | StatementKind::Delete { has_where: false }
-        | StatementKind::Drop
-        | StatementKind::Truncate => {
-            let table = extract_table_name(sql, kind)?;
-            Some(SqlRiskDecision {
+        | StatementKind::Truncate => match extract_target_name(sql, kind) {
+            Some(name) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
-                confirmation: ConfirmationType::TableNameInput { target: table },
-            })
-        }
-        // None signals unconditional block; no table name can be extracted for Other.
-        StatementKind::Other => None,
+                confirmation: ConfirmationType::TableNameInput { target: name },
+            },
+            None => SqlRiskDecision {
+                risk_level: RiskLevel::High,
+                confirmation: ConfirmationType::Immediate,
+            },
+        },
     }
 }
 
@@ -167,45 +183,19 @@ pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
 
     for stmt in &statements {
         let kind = classify(stmt);
-        match evaluate_sql_risk(&kind, stmt) {
-            Some(decision) => decisions.push((stmt.clone(), decision)),
-            None => {
-                return MultiStatementDecision::Block {
-                    reason: "Cannot determine table name for high-risk statement".to_string(),
-                };
-            }
-        }
+        let decision = evaluate_sql_risk(&kind, stmt);
+        decisions.push((stmt.clone(), decision));
     }
 
-    let high_count = decisions
-        .iter()
-        .filter(|(_, d)| d.risk_level == RiskLevel::High)
-        .count();
-    if high_count >= 2 {
-        return MultiStatementDecision::Block {
-            reason: "Multiple high-risk statements: execute one at a time".to_string(),
-        };
-    }
-
-    // Aggregate risk_level and confirmation independently so that a mix like
-    // INSERT+SELECT (both Low) yields Enter, not Immediate.
+    // Aggregate: carry the highest risk level and the strongest confirmation type.
+    // When multiple HIGH statements exist, use the first one's target for name-input.
     let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
     let confirmation = if max_risk == RiskLevel::High {
-        // Exactly one HIGH statement (2+ were blocked above); carry its target.
         decisions
             .iter()
             .find(|(_, d)| d.risk_level == RiskLevel::High)
             .map(|(_, d)| d.confirmation.clone())
             .unwrap()
-    } else if decisions
-        .iter()
-        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::Enter))
-    {
-        ConfirmationType::Enter
-    } else if statements.len() >= 2 {
-        // Multi-statement: require explicit confirmation even for read-only batches,
-        // because the executor produces a single merged result set.
-        ConfirmationType::Enter
     } else {
         ConfirmationType::Immediate
     };
@@ -304,50 +294,34 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case::select(StatementKind::Select, "SELECT 1", RiskLevel::Low, true)]
-        #[case::transaction(StatementKind::Transaction, "BEGIN", RiskLevel::Low, true)]
-        fn immediate(
+        #[case::select(StatementKind::Select, "SELECT 1", RiskLevel::Low)]
+        #[case::transaction(StatementKind::Transaction, "BEGIN", RiskLevel::Low)]
+        #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)", RiskLevel::Low)]
+        #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)", RiskLevel::Low)]
+        #[case::unsupported(
+            StatementKind::Unsupported,
+            "GRANT SELECT ON users TO role1",
+            RiskLevel::Low
+        )]
+        #[case::other(StatementKind::Other, "??? invalid", RiskLevel::Low)]
+        fn low_risk_returns_immediate(
             #[case] kind: StatementKind,
             #[case] sql: &str,
             #[case] expected_risk: RiskLevel,
-            #[case] is_immediate: bool,
         ) {
-            let result = evaluate_sql_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, expected_risk);
-            assert_eq!(
-                matches!(result.confirmation, ConfirmationType::Immediate),
-                is_immediate
-            );
-        }
-
-        #[rstest]
-        #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)")]
-        #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)")]
-        fn low_enter(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_sql_risk(&kind, sql).unwrap();
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(matches!(result.confirmation, ConfirmationType::Enter));
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
 
         #[rstest]
         #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
         #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
         #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
-        fn medium_enter(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_sql_risk(&kind, sql).unwrap();
+        fn medium_risk_returns_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
+            let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, RiskLevel::Medium);
-            assert!(matches!(result.confirmation, ConfirmationType::Enter));
-        }
-
-        #[test]
-        fn unsupported_is_high_enter() {
-            let result = evaluate_sql_risk(
-                &StatementKind::Unsupported,
-                "GRANT SELECT ON users TO role1",
-            )
-            .unwrap();
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(matches!(result.confirmation, ConfirmationType::Enter));
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
 
         #[rstest]
@@ -356,7 +330,7 @@ mod tests {
         #[case::drop(StatementKind::Drop, "DROP TABLE users")]
         #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
         fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_sql_risk(&kind, sql).unwrap();
+            let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
                 result.confirmation,
@@ -365,9 +339,37 @@ mod tests {
         }
 
         #[test]
-        fn other_returns_none() {
-            let result = evaluate_sql_risk(&StatementKind::Other, "??? invalid");
-            assert!(result.is_none());
+        fn drop_database_returns_high_table_name_input() {
+            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { .. }
+            ));
+        }
+
+        #[test]
+        fn drop_table_with_leading_comment_returns_high() {
+            let result =
+                evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
+            assert_eq!(result.risk_level, RiskLevel::High);
+            assert!(matches!(
+                result.confirmation,
+                ConfirmationType::TableNameInput { .. }
+            ));
+        }
+
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index")]
+        #[case::drop_policy("DROP POLICY p ON t")]
+        #[case::drop_view("DROP VIEW v")]
+        #[case::drop_schema("DROP SCHEMA s")]
+        #[case::drop_owned_by("DROP OWNED BY role")]
+        #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
+        fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
+            let result = evaluate_sql_risk(&StatementKind::Drop, sql);
+            assert_eq!(result.risk_level, RiskLevel::Low);
+            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
     }
 
@@ -392,7 +394,7 @@ mod tests {
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }
@@ -414,35 +416,40 @@ mod tests {
         }
 
         #[test]
-        fn tcl_only_multi_requires_enter() {
+        fn tcl_only_multi_returns_immediate() {
             let result = evaluate_multi_statement("BEGIN; COMMIT");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.confirmation, ConfirmationType::Enter);
+                    assert_eq!(risk.confirmation, ConfirmationType::Immediate);
                 }
                 _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn multiple_high_blocked() {
+        fn multiple_high_uses_first_target() {
             let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
             match result {
-                MultiStatementDecision::Block { reason } => {
-                    assert!(reason.contains("Multiple high-risk"));
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::TableNameInput { ref target } if target == "a"
+                    ));
                 }
-                _ => panic!("expected Block"),
+                _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn table_name_extraction_failure_blocked() {
+        fn select_into_returns_low_immediate() {
             let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
             match result {
-                MultiStatementDecision::Block { reason } => {
-                    assert!(reason.contains("table name"));
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
-                _ => panic!("expected Block"),
+                _ => panic!("expected Allow"),
             }
         }
 
@@ -452,7 +459,7 @@ mod tests {
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }
@@ -476,38 +483,60 @@ mod tests {
         }
 
         #[test]
-        fn do_block_unsupported_high() {
+        fn do_block_unsupported_low_immediate() {
             let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn copy_unsupported_high() {
+        fn copy_unsupported_low_immediate() {
             let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn insert_then_select_requires_enter_not_immediate() {
-            // Both are Low risk, but INSERT needs Enter. The confirmation must be
-            // aggregated independently of risk_level to avoid a guard bypass.
+        fn insert_then_select_returns_immediate() {
             let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
                     assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Enter));
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn drop_index_returns_low_immediate() {
+            let result = evaluate_multi_statement("DROP INDEX my_index");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn drop_owned_by_returns_low_immediate() {
+            let result = evaluate_multi_statement("DROP OWNED BY role");
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }

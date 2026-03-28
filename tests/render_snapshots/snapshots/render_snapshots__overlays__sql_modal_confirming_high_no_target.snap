@@ -18,7 +18,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │       │                                                              │       │
 │       │ ──────────────────────────────────────────────────────────── │       │
 │       │ ⚠ HIGH RISK  DROP                                            │       │
-│       │ Cannot execute: unable to identify target table.  Esc: Back  │       │
+│       │ Cannot identify target object name.  Esc: Back               │       │
 │       │                                                              │       │
 │       ╰ Esc: Back ───────────────────────────────────────────────────╯       │
 │                  ││                                                          │

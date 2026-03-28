@@ -196,37 +196,6 @@ pub fn handle_sql_modal_keys(
         };
     }
 
-    if matches!(status, SqlModalStatus::ConfirmingAnalyze { .. }) {
-        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
-        return match combo.key {
-            Key::Char('j') | Key::Down if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Down,
-                amount: ScrollAmount::Line,
-            },
-            Key::Char('k') | Key::Up if plain => Action::Scroll {
-                target: ScrollTarget::ExplainConfirm,
-                direction: ScrollDirection::Up,
-                amount: ScrollAmount::Line,
-            },
-            Key::Enter if plain => Action::ExplainAnalyzeConfirm,
-            Key::Esc => Action::ExplainAnalyzeCancel,
-            _ => Action::None,
-        };
-    }
-
-    // In Confirming state only plain Enter/Esc are meaningful; all other keys are ignored
-    // to prevent accidental edits while the risk warning is displayed.
-    // Alt+Enter (submit shortcut) is intentionally excluded — only explicit plain Enter confirms.
-    if matches!(status, SqlModalStatus::Confirming(_)) {
-        let plain = !combo.modifiers.ctrl && !combo.modifiers.alt;
-        return match combo.key {
-            Key::Enter if plain => Action::SqlModalConfirmExecute,
-            Key::Esc => Action::SqlModalCancelConfirm,
-            _ => Action::None,
-        };
-    }
-
     let ctrl = combo.modifiers.ctrl;
     let alt = combo.modifiers.alt;
 
@@ -340,8 +309,6 @@ mod tests {
         CompletionDismiss,
         CompletionPrev,
         CompletionNext,
-        SqlModalConfirmExecute,
-        SqlModalCancelConfirm,
         OpenQueryHistoryPicker,
         SqlModalClear,
         ExplainRequest,
@@ -353,8 +320,6 @@ mod tests {
         ExplainCompareScrollUp,
         ExplainCompareScrollDown,
         CompareEditQuery,
-        ExplainAnalyzeConfirm,
-        ExplainAnalyzeCancel,
         None,
     }
 
@@ -398,12 +363,6 @@ mod tests {
             Expected::CompletionDismiss => assert!(matches!(result, Action::CompletionDismiss)),
             Expected::CompletionPrev => assert!(matches!(result, Action::CompletionPrev)),
             Expected::CompletionNext => assert!(matches!(result, Action::CompletionNext)),
-            Expected::SqlModalConfirmExecute => {
-                assert!(matches!(result, Action::SqlModalConfirmExecute));
-            }
-            Expected::SqlModalCancelConfirm => {
-                assert!(matches!(result, Action::SqlModalCancelConfirm));
-            }
             Expected::OpenQueryHistoryPicker => {
                 assert!(matches!(result, Action::OpenQueryHistoryPicker));
             }
@@ -457,51 +416,8 @@ mod tests {
             Expected::CompareEditQuery => {
                 assert!(matches!(result, Action::CompareEditQuery));
             }
-            Expected::ExplainAnalyzeConfirm => {
-                assert!(matches!(result, Action::ExplainAnalyzeConfirm));
-            }
-            Expected::ExplainAnalyzeCancel => {
-                assert!(matches!(result, Action::ExplainAnalyzeCancel));
-            }
             Expected::None => assert!(matches!(result, Action::None)),
         }
-    }
-
-    fn confirming_status() -> SqlModalStatus {
-        use crate::app::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
-        SqlModalStatus::Confirming(AdhocRiskDecision {
-            risk_level: RiskLevel::High,
-            label: "DROP",
-        })
-    }
-
-    #[rstest]
-    #[case(Key::Enter, Expected::SqlModalConfirmExecute)]
-    #[case(Key::Esc, Expected::SqlModalCancelConfirm)]
-    fn confirming_state_routes_enter_and_esc(#[case] code: Key, #[case] expected: Expected) {
-        let status = confirming_status();
-        let result = handle_sql_modal_keys(combo(code), false, &status, SqlModalTab::Sql);
-
-        assert_action(result, expected);
-    }
-
-    #[rstest]
-    #[case(Key::Char('a'))]
-    #[case(Key::Tab)]
-    #[case(Key::Backspace)]
-    fn confirming_state_ignores_editing_keys(#[case] code: Key) {
-        let status = confirming_status();
-        let result = handle_sql_modal_keys(combo(code), false, &status, SqlModalTab::Sql);
-
-        assert_action(result, Expected::None);
-    }
-
-    #[test]
-    fn confirming_state_ignores_alt_enter() {
-        let status = confirming_status();
-        let result = handle_sql_modal_keys(combo_alt(Key::Enter), false, &status, SqlModalTab::Sql);
-
-        assert_action(result, Expected::None);
     }
 
     // Completion-aware keys: behavior when completion is hidden
@@ -993,40 +909,6 @@ mod tests {
         );
 
         assert_action(result, Expected::CompareEditQuery);
-    }
-
-    #[test]
-    fn confirming_analyze_enter_confirms() {
-        let status = SqlModalStatus::ConfirmingAnalyze {
-            query: "INSERT INTO users VALUES (1)".to_string(),
-            is_dml: true,
-        };
-        let result = handle_sql_modal_keys(combo(Key::Enter), false, &status, SqlModalTab::Plan);
-
-        assert_action(result, Expected::ExplainAnalyzeConfirm);
-    }
-
-    #[test]
-    fn confirming_analyze_esc_cancels() {
-        let status = SqlModalStatus::ConfirmingAnalyze {
-            query: "INSERT INTO users VALUES (1)".to_string(),
-            is_dml: true,
-        };
-        let result = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
-
-        assert_action(result, Expected::ExplainAnalyzeCancel);
-    }
-
-    #[test]
-    fn confirming_analyze_other_keys_ignored() {
-        let status = SqlModalStatus::ConfirmingAnalyze {
-            query: "INSERT INTO users VALUES (1)".to_string(),
-            is_dml: true,
-        };
-        let result =
-            handle_sql_modal_keys(combo(Key::Char('x')), false, &status, SqlModalTab::Plan);
-
-        assert_action(result, Expected::None);
     }
 
     #[test]

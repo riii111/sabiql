@@ -359,7 +359,6 @@ pub enum Action {
     SqlModalTab,
     SqlModalSubmit,
     SqlModalClear,
-    SqlModalConfirmExecute,
     SqlModalCancelConfirm,
     SqlModalHighRiskConfirmExecute,
 

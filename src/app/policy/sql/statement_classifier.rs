@@ -1,7 +1,7 @@
 // - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
-//   (e.g. GRANT, COPY, DO). Treated as High risk in the confirmation flow.
-// - `Other`: no statement keyword was found (e.g. empty input, comment-only, multi-statement).
-//   Treated as High risk in the confirmation flow; hard-blocking per statement is SAB-102 scope.
+//   (e.g. GRANT, COPY, DO, MERGE). Treated as Low risk / immediate execution.
+// - `Other`: no statement keyword was found (e.g. empty input, comment-only, SELECT INTO).
+//   Treated as Low risk / immediate execution. Invalid SQL is rejected by the database.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -26,13 +26,22 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
-pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
+pub fn drop_subtype(sql: &str) -> Option<String> {
+    let trimmed = sql.trim();
+    let chars: Vec<(usize, char)> = trimmed.char_indices().collect();
+    let tokens = collect_top_level_tokens(trimmed, &chars);
+    let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
+    let drop_idx = lowers.iter().position(|t| t == "drop")?;
+    lowers.get(drop_idx + 1).cloned()
+}
+
+pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let original_trimmed = sql.trim();
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
     let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
 
     match kind {
-        StatementKind::Drop => extract_drop_table_name(original_trimmed, &chars),
+        StatementKind::Drop => extract_drop_object_name(original_trimmed, &chars),
         StatementKind::Truncate => extract_truncate_table_name(original_trimmed, &chars),
         StatementKind::Delete { .. } => extract_delete_table_name(original_trimmed, &chars),
         StatementKind::Update { .. } => extract_update_table_name(original_trimmed, &chars),
@@ -538,21 +547,56 @@ fn unquote_single_ident(s: &str) -> String {
     }
 }
 
-fn extract_drop_table_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
+const KNOWN_DROP_TYPES: &[&str] = &[
+    "table",
+    "index",
+    "policy",
+    "schema",
+    "view",
+    "type",
+    "sequence",
+    "trigger",
+    "extension",
+    "rule",
+    "domain",
+    "function",
+    "procedure",
+    "database",
+    "role",
+    "tablespace",
+    "collation",
+    "conversion",
+    "server",
+    "publication",
+    "subscription",
+    "statistics",
+    "aggregate",
+];
+
+fn extract_drop_object_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
     let tokens = collect_top_level_tokens(original, chars);
     let lowers: Vec<String> = tokens.iter().map(|(_, t)| t.to_lowercase()).collect();
 
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
-    let table_idx = lowers.get(drop_idx + 1).and_then(|t| {
-        if t == "table" {
-            Some(drop_idx + 1)
-        } else {
-            None
-        }
-    })?;
+    let type_kw = lowers.get(drop_idx + 1)?;
 
-    let mut name_idx = table_idx + 1;
+    let second_kw = lowers.get(drop_idx + 2).map(String::as_str);
+    let is_two_word_type = (type_kw == "materialized" && second_kw == Some("view"))
+        || (type_kw == "foreign" && second_kw == Some("table"));
+    let mut name_idx = if is_two_word_type {
+        drop_idx + 3
+    } else if KNOWN_DROP_TYPES.contains(&type_kw.as_str()) {
+        drop_idx + 2
+    } else {
+        return None;
+    };
 
+    // Skip CONCURRENTLY (DROP INDEX CONCURRENTLY)
+    if lowers.get(name_idx).map(String::as_str) == Some("concurrently") {
+        name_idx += 1;
+    }
+
+    // Skip IF EXISTS
     if lowers.get(name_idx).map(String::as_str) == Some("if")
         && lowers.get(name_idx + 1).map(String::as_str) == Some("exists")
     {
@@ -831,7 +875,7 @@ mod tests {
         }
     }
 
-    mod extract_table_name_tests {
+    mod extract_target_name_tests {
         use super::*;
 
         #[rstest]
@@ -854,7 +898,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -869,7 +913,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -892,7 +936,7 @@ mod tests {
         )]
         fn delete(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -915,7 +959,7 @@ mod tests {
         )]
         fn update(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -928,7 +972,7 @@ mod tests {
         #[case::transaction("BEGIN", StatementKind::Transaction)]
         #[case::other("GRANT SELECT ON users TO role1", StatementKind::Other)]
         fn not_applicable(#[case] sql: &str, #[case] kind: StatementKind) {
-            assert_eq!(extract_table_name(sql, &kind), None);
+            assert_eq!(extract_target_name(sql, &kind), None);
         }
 
         #[rstest]
@@ -952,8 +996,96 @@ mod tests {
             StatementKind::Update { has_where: false },
             Some("public.MyTable")
         )]
-        #[case::drop_no_table_keyword("DROP INDEX my_index", StatementKind::Drop, None)]
+        #[case::drop_index("DROP INDEX my_index", StatementKind::Drop, Some("my_index"))]
+        #[case::drop_index_if_exists(
+            "DROP INDEX IF EXISTS my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_index_concurrently(
+            "DROP INDEX CONCURRENTLY my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_index_concurrently_if_exists(
+            "DROP INDEX CONCURRENTLY IF EXISTS my_index",
+            StatementKind::Drop,
+            Some("my_index")
+        )]
+        #[case::drop_policy(
+            "DROP POLICY tenant_isolation ON projects",
+            StatementKind::Drop,
+            Some("tenant_isolation")
+        )]
+        #[case::drop_policy_if_exists(
+            "DROP POLICY IF EXISTS tenant_isolation ON projects",
+            StatementKind::Drop,
+            Some("tenant_isolation")
+        )]
+        #[case::drop_schema("DROP SCHEMA my_schema", StatementKind::Drop, Some("my_schema"))]
+        #[case::drop_view("DROP VIEW my_view", StatementKind::Drop, Some("my_view"))]
+        #[case::drop_materialized_view(
+            "DROP MATERIALIZED VIEW my_mv",
+            StatementKind::Drop,
+            Some("my_mv")
+        )]
+        #[case::drop_type("DROP TYPE my_type", StatementKind::Drop, Some("my_type"))]
+        #[case::drop_function(
+            "DROP FUNCTION my_func(int, text)",
+            StatementKind::Drop,
+            Some("my_func")
+        )]
+        #[case::drop_sequence("DROP SEQUENCE my_seq", StatementKind::Drop, Some("my_seq"))]
+        #[case::drop_trigger(
+            "DROP TRIGGER my_trigger ON my_table",
+            StatementKind::Drop,
+            Some("my_trigger")
+        )]
+        #[case::drop_extension(
+            "DROP EXTENSION IF EXISTS pgcrypto",
+            StatementKind::Drop,
+            Some("pgcrypto")
+        )]
+        #[case::drop_rule("DROP RULE my_rule ON my_table", StatementKind::Drop, Some("my_rule"))]
+        #[case::drop_domain("DROP DOMAIN my_domain", StatementKind::Drop, Some("my_domain"))]
+        #[case::drop_schema_qualified(
+            "DROP INDEX public.my_index",
+            StatementKind::Drop,
+            Some("public.my_index")
+        )]
+        #[case::drop_database("DROP DATABASE production", StatementKind::Drop, Some("production"))]
+        #[case::drop_role("DROP ROLE app_user", StatementKind::Drop, Some("app_user"))]
+        #[case::drop_tablespace("DROP TABLESPACE fastdisk", StatementKind::Drop, Some("fastdisk"))]
+        #[case::drop_publication("DROP PUBLICATION my_pub", StatementKind::Drop, Some("my_pub"))]
+        #[case::drop_foreign_table(
+            "DROP FOREIGN TABLE remote_users",
+            StatementKind::Drop,
+            Some("remote_users")
+        )]
+        #[case::drop_foreign_table_if_exists(
+            "DROP FOREIGN TABLE IF EXISTS remote_users",
+            StatementKind::Drop,
+            Some("remote_users")
+        )]
+        #[case::drop_aggregate("DROP AGGREGATE my_agg(int)", StatementKind::Drop, Some("my_agg"))]
+        #[case::drop_procedure("DROP PROCEDURE my_proc(int)", StatementKind::Drop, Some("my_proc"))]
+        #[case::drop_collation(
+            "DROP COLLATION my_collation",
+            StatementKind::Drop,
+            Some("my_collation")
+        )]
+        #[case::drop_conversion("DROP CONVERSION my_conv", StatementKind::Drop, Some("my_conv"))]
+        #[case::drop_server("DROP SERVER my_server", StatementKind::Drop, Some("my_server"))]
+        #[case::drop_subscription("DROP SUBSCRIPTION my_sub", StatementKind::Drop, Some("my_sub"))]
+        #[case::drop_statistics("DROP STATISTICS my_stats", StatementKind::Drop, Some("my_stats"))]
+        #[case::drop_function_multiple("DROP FUNCTION f(int), g(text)", StatementKind::Drop, None)]
+        #[case::drop_procedure_multiple("DROP PROCEDURE p(int), q(int)", StatementKind::Drop, None)]
+        #[case::drop_materialized_invalid("DROP MATERIALIZED foo", StatementKind::Drop, None)]
+        #[case::drop_foreign_invalid("DROP FOREIGN foo", StatementKind::Drop, None)]
+        #[case::drop_owned_by("DROP OWNED BY my_role", StatementKind::Drop, None)]
+        #[case::drop_cast("DROP CAST (int AS text)", StatementKind::Drop, None)]
         #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]
+        #[case::drop_multiple_index("DROP INDEX a, b", StatementKind::Drop, None)]
         #[case::truncate_multiple("TRUNCATE a, b, c", StatementKind::Truncate, None)]
         fn additional_extraction(
             #[case] sql: &str,
@@ -961,7 +1093,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }

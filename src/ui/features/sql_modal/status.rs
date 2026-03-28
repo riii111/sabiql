@@ -46,15 +46,6 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
             "Ready".to_string(),
             Style::default().fg(Theme::TEXT_DIM),
         ),
-        SqlModalStatus::Confirming(decision) => {
-            let text = format!(
-                "\u{26a0} {} RISK  {}",
-                decision.risk_level.as_str(),
-                decision.label
-            );
-            let color = Style::default().fg(Theme::risk_color(decision.risk_level));
-            ("[CONFIRM]", color, text, color)
-        }
         SqlModalStatus::Running => {
             let elapsed = state
                 .query
@@ -91,19 +82,6 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState) {
                 Style::default()
                     .fg(Theme::STATUS_ERROR)
                     .add_modifier(Modifier::BOLD),
-            )
-        }
-        SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
-            let color = if *is_dml {
-                Theme::STATUS_ERROR
-            } else {
-                Theme::STATUS_WARNING
-            };
-            (
-                "[CONFIRM]",
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-                "Confirm ANALYZE".to_string(),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
             )
         }
         SqlModalStatus::ConfirmingAnalyzeHigh { .. } => (
@@ -205,7 +183,7 @@ fn render_confirming_high_status(
             error_style,
         ));
         let line2 = Line::from(Span::styled(
-            "Cannot execute: unable to identify target table.  Esc: Back",
+            "Cannot identify target object name.  Esc: Back",
             Style::default().fg(Theme::TEXT_MUTED),
         ));
         let paragraph = Paragraph::new(vec![line1, line2]);

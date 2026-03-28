@@ -12,26 +12,16 @@ use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
-    // Inline EXPLAIN ANALYZE confirmation
-    match state.sql_modal.status() {
-        SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
-            let lines = build_analyze_confirm_lines(area, state, *is_dml, None);
-            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
-            return;
-        }
-        SqlModalStatus::ConfirmingAnalyzeHigh {
-            input, target_name, ..
-        } => {
-            let lines = build_analyze_confirm_lines(
-                area,
-                state,
-                true,
-                Some((input, target_name.as_deref())),
-            );
-            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
-            return;
-        }
-        _ => {}
+    // Inline EXPLAIN ANALYZE confirmation for destructive DML
+    if let SqlModalStatus::ConfirmingAnalyzeHigh {
+        query,
+        input,
+        target_name,
+    } = state.sql_modal.status()
+    {
+        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref());
+        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
+        return;
     }
 
     if let Some(ref error) = state.explain.error {
@@ -114,24 +104,15 @@ fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offse
 
 fn build_analyze_confirm_lines<'a>(
     area: Rect,
-    state: &'a AppState,
-    is_dml: bool,
-    high_risk: Option<(
-        &'a crate::app::model::shared::text_input::TextInputState,
-        Option<&'a str>,
-    )>,
+    query: &'a str,
+    input: &'a crate::app::model::shared::text_input::TextInputState,
+    target_name: Option<&'a str>,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 
-    let header_style = if is_dml {
-        Style::default()
-            .fg(Theme::STATUS_ERROR)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(Theme::STATUS_WARNING)
-            .add_modifier(Modifier::BOLD)
-    };
+    let header_style = Style::default()
+        .fg(Theme::STATUS_ERROR)
+        .add_modifier(Modifier::BOLD);
 
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
@@ -147,89 +128,51 @@ fn build_analyze_confirm_lines<'a>(
     ));
     lines.push(Line::raw(""));
 
-    if let Some((input, target_name)) = high_risk {
-        lines.push(Line::from(Span::styled(
-            " This is a destructive statement. EXPLAIN ANALYZE will",
-            header_style,
-        )));
-        lines.push(Line::from(Span::styled(
-            " execute it and data loss may occur.",
-            header_style,
-        )));
-        lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        " This is a destructive statement. EXPLAIN ANALYZE will",
+        header_style,
+    )));
+    lines.push(Line::from(Span::styled(
+        " execute it and data loss may occur.",
+        header_style,
+    )));
+    lines.push(Line::raw(""));
 
-        let full_query = state.sql_modal.editor.content();
-        for line in full_query.lines() {
-            lines.push(Line::from(Span::styled(
-                format!("  {line}"),
-                Style::default().fg(Theme::TEXT_DIM),
-            )));
-        }
-        lines.push(Line::raw(""));
+    let full_query = query;
+    for line in full_query.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(Theme::TEXT_DIM),
+        )));
+    }
+    lines.push(Line::raw(""));
 
-        match target_name {
-            Some(name) => {
-                let is_match = input.content() == name;
-                let prompt = format!(" Type \"{name}\" to confirm: > ");
-                let mut prompt_spans = vec![Span::styled(
-                    prompt,
-                    Style::default().fg(Theme::TEXT_SECONDARY),
-                )];
-                prompt_spans.extend(text_cursor_spans(
-                    input.content(),
-                    input.cursor(),
-                    input.viewport_offset(),
-                    HIGH_RISK_INPUT_VISIBLE_WIDTH,
+    match target_name {
+        Some(name) => {
+            let is_match = input.content() == name;
+            let prompt = format!(" Type \"{name}\" to confirm: > ");
+            let mut prompt_spans = vec![Span::styled(
+                prompt,
+                Style::default().fg(Theme::TEXT_SECONDARY),
+            )];
+            prompt_spans.extend(text_cursor_spans(
+                input.content(),
+                input.cursor(),
+                input.viewport_offset(),
+                HIGH_RISK_INPUT_VISIBLE_WIDTH,
+            ));
+            if is_match {
+                prompt_spans.push(Span::styled(
+                    " \u{2713}",
+                    Style::default().fg(Theme::STATUS_SUCCESS),
                 ));
-                if is_match {
-                    prompt_spans.push(Span::styled(
-                        " \u{2713}",
-                        Style::default().fg(Theme::STATUS_SUCCESS),
-                    ));
-                }
-                lines.push(Line::from(prompt_spans));
             }
-            None => {
-                lines.push(Line::from(Span::styled(
-                    " Cannot execute: unable to identify target table.  Esc: Back",
-                    Style::default().fg(Theme::TEXT_MUTED),
-                )));
-            }
+            lines.push(Line::from(prompt_spans));
         }
-    } else if is_dml {
-        lines.push(Line::from(Span::styled(
-            " This is a DML statement. EXPLAIN ANALYZE will execute it",
-            header_style,
-        )));
-        lines.push(Line::from(Span::styled(
-            " and side effects (INSERT/UPDATE/DELETE) will occur.",
-            header_style,
-        )));
-        lines.push(Line::raw(""));
-
-        let full_query = state.sql_modal.editor.content();
-        for line in full_query.lines() {
+        None => {
             lines.push(Line::from(Span::styled(
-                format!("  {line}"),
-                Style::default().fg(Theme::TEXT_DIM),
-            )));
-        }
-    } else {
-        lines.push(Line::from(Span::styled(
-            " EXPLAIN ANALYZE will execute the query to collect actual",
-            Style::default().fg(Theme::TEXT_PRIMARY),
-        )));
-        lines.push(Line::from(Span::styled(
-            " runtime statistics.",
-            Style::default().fg(Theme::TEXT_PRIMARY),
-        )));
-        lines.push(Line::raw(""));
-
-        let full_query = state.sql_modal.editor.content();
-        for line in full_query.lines() {
-            lines.push(Line::from(Span::styled(
-                format!("  {line}"),
-                Style::default().fg(Theme::TEXT_DIM),
+                " Cannot identify target object name.  Esc: Back",
+                Style::default().fg(Theme::TEXT_MUTED),
             )));
         }
     }

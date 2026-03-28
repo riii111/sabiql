@@ -38,17 +38,11 @@ pub enum SqlModalStatus {
     #[default]
     Normal,
     Editing,
-    Confirming(AdhocRiskDecision),
-    // HIGH risk confirmation requiring the user to type the target table name.
-    // `target_name: None` means extraction failed — execution is permanently blocked.
+    // HIGH risk confirmation requiring the user to type the target object name.
     ConfirmingHigh {
         decision: AdhocRiskDecision,
         input: TextInputState,
         target_name: Option<String>,
-    },
-    ConfirmingAnalyze {
-        query: String,
-        is_dml: bool,
     },
     ConfirmingAnalyzeHigh {
         query: String,
