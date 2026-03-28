@@ -552,6 +552,16 @@ const KNOWN_DROP_TYPES: &[&str] = &[
     "domain",
     "function",
     "procedure",
+    "database",
+    "role",
+    "tablespace",
+    "collation",
+    "conversion",
+    "server",
+    "publication",
+    "subscription",
+    "statistics",
+    "aggregate",
 ];
 
 fn extract_drop_object_name(original: &str, chars: &[(usize, char)]) -> Option<String> {
@@ -1037,7 +1047,15 @@ mod tests {
             StatementKind::Drop,
             Some("public.my_index")
         )]
+        #[case::drop_database("DROP DATABASE production", StatementKind::Drop, Some("production"))]
+        #[case::drop_role("DROP ROLE app_user", StatementKind::Drop, Some("app_user"))]
+        #[case::drop_tablespace("DROP TABLESPACE fastdisk", StatementKind::Drop, Some("fastdisk"))]
+        #[case::drop_publication("DROP PUBLICATION my_pub", StatementKind::Drop, Some("my_pub"))]
+        #[case::drop_aggregate("DROP AGGREGATE my_agg(int)", StatementKind::Drop, Some("my_agg"))]
+        #[case::drop_function_multiple("DROP FUNCTION f(int), g(text)", StatementKind::Drop, None)]
+        #[case::drop_procedure_multiple("DROP PROCEDURE p(int), q(int)", StatementKind::Drop, None)]
         #[case::drop_owned_by("DROP OWNED BY my_role", StatementKind::Drop, None)]
+        #[case::drop_cast("DROP CAST (int AS text)", StatementKind::Drop, None)]
         #[case::drop_multiple("DROP TABLE a, b", StatementKind::Drop, None)]
         #[case::drop_multiple_index("DROP INDEX a, b", StatementKind::Drop, None)]
         #[case::truncate_multiple("TRUNCATE a, b, c", StatementKind::Truncate, None)]
