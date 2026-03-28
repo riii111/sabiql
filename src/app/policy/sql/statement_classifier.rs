@@ -1,7 +1,7 @@
 // - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
-//   (e.g. GRANT, COPY, DO). Treated as High risk in the confirmation flow.
-// - `Other`: no statement keyword was found (e.g. empty input, comment-only, multi-statement).
-//   Treated as High risk in the confirmation flow; hard-blocking per statement is SAB-102 scope.
+//   (e.g. GRANT, COPY, DO, MERGE). Treated as Low risk / immediate execution.
+// - `Other`: no statement keyword was found (e.g. empty input, comment-only, SELECT INTO).
+//   Treated as Low risk / immediate execution. Invalid SQL is rejected by the database.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Select,
@@ -26,7 +26,7 @@ pub fn classify(sql: &str) -> StatementKind {
     classify_inner(&lower, &chars)
 }
 
-pub fn extract_table_name(sql: &str, kind: &StatementKind) -> Option<String> {
+pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
     let original_trimmed = sql.trim();
     // Avoids byte-length mismatch when Unicode identifiers change size under case folding.
     let chars: Vec<(usize, char)> = original_trimmed.char_indices().collect();
@@ -571,14 +571,14 @@ fn extract_drop_object_name(original: &str, chars: &[(usize, char)]) -> Option<S
     let drop_idx = lowers.iter().position(|t| t == "drop")?;
     let type_kw = lowers.get(drop_idx + 1)?;
 
-    // Require the object type keyword to be in the whitelist
-    if !KNOWN_DROP_TYPES.contains(&type_kw.as_str()) && type_kw != "materialized" {
+    let is_two_word_type = type_kw == "materialized" || type_kw == "foreign";
+    if !KNOWN_DROP_TYPES.contains(&type_kw.as_str()) && !is_two_word_type {
         return None;
     }
 
-    // MATERIALIZED VIEW is a two-word object type
-    let mut name_idx = if type_kw == "materialized"
-        && lowers.get(drop_idx + 2).map(String::as_str) == Some("view")
+    let mut name_idx = if (type_kw == "materialized"
+        && lowers.get(drop_idx + 2).map(String::as_str) == Some("view"))
+        || (type_kw == "foreign" && lowers.get(drop_idx + 2).map(String::as_str) == Some("table"))
     {
         drop_idx + 3
     } else {
@@ -869,7 +869,7 @@ mod tests {
         }
     }
 
-    mod extract_table_name_tests {
+    mod extract_target_name_tests {
         use super::*;
 
         #[rstest]
@@ -892,7 +892,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -907,7 +907,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -930,7 +930,7 @@ mod tests {
         )]
         fn delete(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -953,7 +953,7 @@ mod tests {
         )]
         fn update(#[case] sql: &str, #[case] kind: StatementKind, #[case] expected: Option<&str>) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }
@@ -966,7 +966,7 @@ mod tests {
         #[case::transaction("BEGIN", StatementKind::Transaction)]
         #[case::other("GRANT SELECT ON users TO role1", StatementKind::Other)]
         fn not_applicable(#[case] sql: &str, #[case] kind: StatementKind) {
-            assert_eq!(extract_table_name(sql, &kind), None);
+            assert_eq!(extract_target_name(sql, &kind), None);
         }
 
         #[rstest]
@@ -1051,6 +1051,16 @@ mod tests {
         #[case::drop_role("DROP ROLE app_user", StatementKind::Drop, Some("app_user"))]
         #[case::drop_tablespace("DROP TABLESPACE fastdisk", StatementKind::Drop, Some("fastdisk"))]
         #[case::drop_publication("DROP PUBLICATION my_pub", StatementKind::Drop, Some("my_pub"))]
+        #[case::drop_foreign_table(
+            "DROP FOREIGN TABLE remote_users",
+            StatementKind::Drop,
+            Some("remote_users")
+        )]
+        #[case::drop_foreign_table_if_exists(
+            "DROP FOREIGN TABLE IF EXISTS remote_users",
+            StatementKind::Drop,
+            Some("remote_users")
+        )]
         #[case::drop_aggregate("DROP AGGREGATE my_agg(int)", StatementKind::Drop, Some("my_agg"))]
         #[case::drop_function_multiple("DROP FUNCTION f(int), g(text)", StatementKind::Drop, None)]
         #[case::drop_procedure_multiple("DROP PROCEDURE p(int), q(int)", StatementKind::Drop, None)]
@@ -1065,7 +1075,7 @@ mod tests {
             #[case] expected: Option<&str>,
         ) {
             assert_eq!(
-                extract_table_name(sql, &kind),
+                extract_target_name(sql, &kind),
                 expected.map(ToString::to_string)
             );
         }

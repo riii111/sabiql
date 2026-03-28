@@ -1,6 +1,6 @@
 use super::write_guardrails::RiskLevel;
 use crate::app::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, extract_table_name, skip_block_comment,
+    StatementKind, advance_single_quote, classify, extract_target_name, skip_block_comment,
     skip_dollar_quoted_string, skip_double_quoted_identifier, skip_line_comment,
 };
 
@@ -138,7 +138,7 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
         StatementKind::Update { has_where: false }
         | StatementKind::Delete { has_where: false }
         | StatementKind::Drop
-        | StatementKind::Truncate => match extract_table_name(sql, kind) {
+        | StatementKind::Truncate => match extract_target_name(sql, kind) {
             Some(table) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
                 confirmation: ConfirmationType::TableNameInput { target: table },
