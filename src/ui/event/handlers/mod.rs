@@ -1,5 +1,6 @@
 mod connections;
 mod editors;
+mod jsonb;
 mod normal;
 mod overlays;
 mod pickers;
@@ -29,7 +30,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::CellEdit
         | InputMode::ConnectionSetup
         | InputMode::SqlModal
-        | InputMode::QueryHistoryPicker => Action::Paste(text),
+        | InputMode::QueryHistoryPicker
+        | InputMode::JsonbEdit => Action::Paste(text),
         _ => Action::None,
     }
 }
@@ -58,6 +60,8 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
+        InputMode::JsonbDetail => jsonb::handle_jsonb_detail_keys(combo),
+        InputMode::JsonbEdit => Action::None, // Phase 1b
     }
 }
 

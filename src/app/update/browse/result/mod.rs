@@ -1,5 +1,6 @@
 mod edit;
 mod history;
+mod jsonb;
 mod scroll;
 mod selection;
 mod yank;
@@ -22,4 +23,5 @@ pub fn reduce_result(
         .or_else(|| edit::reduce(state, action, now))
         .or_else(|| yank::reduce(state, action, services, now))
         .or_else(|| history::reduce(state, action))
+        .or_else(|| jsonb::reduce(state, action, now))
 }

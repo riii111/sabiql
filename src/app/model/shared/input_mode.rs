@@ -14,4 +14,6 @@ pub enum InputMode {
     ConnectionSelector,
     ErTablePicker,
     QueryHistoryPicker,
+    JsonbDetail,
+    JsonbEdit,
 }

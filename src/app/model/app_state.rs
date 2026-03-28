@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
+use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::browse::query_execution::QueryExecution;
 use crate::app::model::browse::result_interaction::ResultInteraction;
 use crate::app::model::browse::session::BrowseSession;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub connection_error: ConnectionErrorState,
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
+    pub jsonb_detail: JsonbDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub explain: ExplainContext,
     pub modal: ModalState,
@@ -66,6 +68,7 @@ impl AppState {
             connection_error: ConnectionErrorState::default(),
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
+            jsonb_detail: JsonbDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             explain: ExplainContext::default(),
             modal: ModalState::default(),

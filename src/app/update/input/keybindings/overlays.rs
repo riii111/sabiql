@@ -473,3 +473,92 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
+
+// =============================================================================
+// JSONB Detail (Viewing)
+// =============================================================================
+
+pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
+    // Actions
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Copy",
+        description: "Copy full JSON",
+        action: Action::JsonbYankAll,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
+    },
+    KeyBinding {
+        key_short: "i",
+        key: "i",
+        desc_short: "Edit",
+        description: "Enter JSON editor",
+        action: Action::JsonbEnterEdit,
+        combos: &[KeyCombo::plain(Key::Char('i'))],
+    },
+    KeyBinding {
+        key_short: "/",
+        key: "/",
+        desc_short: "Search",
+        description: "Search within JSON",
+        action: Action::JsonbEnterSearch,
+        combos: &[KeyCombo::plain(Key::Char('/'))],
+    },
+    // Navigation
+    KeyBinding {
+        key_short: "j/k",
+        key: "j / k / ↑ / ↓",
+        desc_short: "Navigate",
+        description: "Move cursor up / down",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "h/l",
+        key: "h / l",
+        desc_short: "Fold",
+        description: "Collapse / Expand",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter / Space",
+        desc_short: "Toggle",
+        description: "Toggle fold",
+        action: Action::JsonbToggleFold,
+        combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char(' '))],
+    },
+    // Close
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc / q",
+        desc_short: "Close",
+        description: "Close JSONB detail",
+        action: Action::CloseJsonbDetail,
+        combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
+    },
+];
+
+// =============================================================================
+// JSONB Edit
+// =============================================================================
+
+pub const JSONB_EDIT_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "^Enter",
+        key: "Ctrl+Enter",
+        desc_short: "Save",
+        description: "Validate and save",
+        action: Action::JsonbSubmitEdit,
+        combos: &[KeyCombo::ctrl(Key::Enter)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Back",
+        description: "Return to viewer",
+        action: Action::JsonbExitEdit,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
+];
