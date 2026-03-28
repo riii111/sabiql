@@ -12,26 +12,15 @@ use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
-    // Inline EXPLAIN ANALYZE confirmation
-    match state.sql_modal.status() {
-        SqlModalStatus::ConfirmingAnalyze { is_dml, .. } => {
-            let lines = build_analyze_confirm_lines(area, state, *is_dml, None);
-            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
-            return;
-        }
-        SqlModalStatus::ConfirmingAnalyzeHigh {
-            input, target_name, ..
-        } => {
-            let lines = build_analyze_confirm_lines(
-                area,
-                state,
-                true,
-                Some((input, target_name.as_deref())),
-            );
-            render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
-            return;
-        }
-        _ => {}
+    // Inline EXPLAIN ANALYZE confirmation for destructive DML
+    if let SqlModalStatus::ConfirmingAnalyzeHigh {
+        input, target_name, ..
+    } = state.sql_modal.status()
+    {
+        let lines =
+            build_analyze_confirm_lines(area, state, true, Some((input, target_name.as_deref())));
+        render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
+        return;
     }
 
     if let Some(ref error) = state.explain.error {

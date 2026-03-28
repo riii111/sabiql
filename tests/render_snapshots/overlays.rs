@@ -261,28 +261,6 @@ fn sql_modal_error_with_message() {
 }
 
 #[test]
-fn sql_modal_confirming_medium() {
-    let mut state = create_test_state();
-    let mut terminal = create_test_terminal();
-
-    state.modal.set_mode(InputMode::SqlModal);
-    state
-        .sql_modal
-        .editor
-        .set_content("DELETE FROM users WHERE id = 1".to_string());
-    state
-        .sql_modal
-        .set_status(SqlModalStatus::Confirming(AdhocRiskDecision {
-            risk_level: RiskLevel::Medium,
-            label: "DELETE",
-        }));
-
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn sql_modal_confirming_high_matched() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

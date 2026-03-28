@@ -85,11 +85,10 @@ pub fn evaluate_sql_risk(kind: &StatementKind) -> AdhocRiskDecision {
         StatementKind::Delete { has_where: false } => (RiskLevel::High, "DELETE (no WHERE)"),
         StatementKind::Drop => (RiskLevel::High, "DROP"),
         StatementKind::Truncate => (RiskLevel::High, "TRUNCATE"),
-        // Other/Unsupported may contain compound statements or unknown syntax — fail safe to High.
-        StatementKind::Unsupported => (RiskLevel::High, "UNSUPPORTED SQL"),
-        StatementKind::Other => (RiskLevel::High, "UNKNOWN SQL"),
-        // Select/Transaction are immediate; callers should not route them here.
-        StatementKind::Select | StatementKind::Transaction => (RiskLevel::Low, "SQL"),
+        StatementKind::Unsupported
+        | StatementKind::Other
+        | StatementKind::Select
+        | StatementKind::Transaction => (RiskLevel::Low, "SQL"),
     };
     AdhocRiskDecision { risk_level, label }
 }
@@ -183,8 +182,8 @@ mod tests {
         #[case(StatementKind::Delete { has_where: false }, RiskLevel::High, "DELETE (no WHERE)")]
         #[case(StatementKind::Drop, RiskLevel::High, "DROP")]
         #[case(StatementKind::Truncate, RiskLevel::High, "TRUNCATE")]
-        #[case(StatementKind::Other, RiskLevel::High, "UNKNOWN SQL")]
-        #[case(StatementKind::Unsupported, RiskLevel::High, "UNSUPPORTED SQL")]
+        #[case(StatementKind::Other, RiskLevel::Low, "SQL")]
+        #[case(StatementKind::Unsupported, RiskLevel::Low, "SQL")]
         fn risk_level_and_label(
             #[case] kind: StatementKind,
             #[case] expected_risk: RiskLevel,
