@@ -304,7 +304,7 @@ mod tests {
             RiskLevel::Low
         )]
         #[case::other(StatementKind::Other, "??? invalid", RiskLevel::Low)]
-        fn immediate(
+        fn low_risk_returns_immediate(
             #[case] kind: StatementKind,
             #[case] sql: &str,
             #[case] expected_risk: RiskLevel,
@@ -318,7 +318,7 @@ mod tests {
         #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
         #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
         #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
-        fn medium_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
+        fn medium_risk_returns_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
             let result = evaluate_sql_risk(&kind, sql);
             assert_eq!(result.risk_level, RiskLevel::Medium);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));

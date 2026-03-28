@@ -14,10 +14,12 @@ use crate::ui::theme::Theme;
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
     // Inline EXPLAIN ANALYZE confirmation for destructive DML
     if let SqlModalStatus::ConfirmingAnalyzeHigh {
-        input, target_name, ..
+        query,
+        input,
+        target_name,
     } = state.sql_modal.status()
     {
-        let lines = build_analyze_confirm_lines(area, state, input, target_name.as_deref());
+        let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref());
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
         return;
     }
@@ -102,7 +104,7 @@ fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offse
 
 fn build_analyze_confirm_lines<'a>(
     area: Rect,
-    state: &'a AppState,
+    query: &'a str,
     input: &'a crate::app::model::shared::text_input::TextInputState,
     target_name: Option<&'a str>,
 ) -> Vec<Line<'a>> {
@@ -136,7 +138,7 @@ fn build_analyze_confirm_lines<'a>(
     )));
     lines.push(Line::raw(""));
 
-    let full_query = state.sql_modal.editor.content();
+    let full_query = query;
     for line in full_query.lines() {
         lines.push(Line::from(Span::styled(
             format!("  {line}"),
