@@ -4,7 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::policy::json::{parse_json_tree, visible_line_indices};
+use crate::app::policy::json::parse_json_tree;
 use crate::app::policy::write::write_guardrails::{
     ColumnDiff, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -91,14 +91,14 @@ pub fn reduce(
         }
 
         Action::JsonbCursorUp => {
-            let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-            state.jsonb_detail.cursor_up(visible_count);
+            let vc = state.jsonb_detail.visible_count();
+            state.jsonb_detail.cursor_up(vc);
             Some(vec![])
         }
 
         Action::JsonbCursorDown => {
-            let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-            state.jsonb_detail.cursor_down(visible_count);
+            let vc = state.jsonb_detail.visible_count();
+            state.jsonb_detail.cursor_down(vc);
             Some(vec![])
         }
 
@@ -108,14 +108,14 @@ pub fn reduce(
         }
 
         Action::JsonbScrollToEnd => {
-            let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-            state.jsonb_detail.cursor_to_end(visible_count);
+            let vc = state.jsonb_detail.visible_count();
+            state.jsonb_detail.cursor_to_end(vc);
             Some(vec![])
         }
 
         Action::JsonbToggleFold => {
-            let visible = visible_line_indices(state.jsonb_detail.tree());
-            if let Some(&real_idx) = visible.get(state.jsonb_detail.selected_line()) {
+            let selected = state.jsonb_detail.selected_line();
+            if let Some(&real_idx) = state.jsonb_detail.visible_indices().get(selected) {
                 state.jsonb_detail.tree_mut().toggle_fold(real_idx);
                 post_fold_fixup(state);
             }
@@ -302,9 +302,10 @@ pub fn reduce(
 }
 
 fn post_fold_fixup(state: &mut AppState) {
-    let visible_count = visible_line_indices(state.jsonb_detail.tree()).len();
-    state.jsonb_detail.clamp_cursor(visible_count);
-    state.jsonb_detail.clamp_scroll(visible_count);
+    state.jsonb_detail.rebuild_visible_indices();
+    let vc = state.jsonb_detail.visible_count();
+    state.jsonb_detail.clamp_cursor(vc);
+    state.jsonb_detail.clamp_scroll(vc);
     if state.jsonb_detail.search().active {
         update_search_matches(state);
     }
@@ -312,9 +313,9 @@ fn post_fold_fixup(state: &mut AppState) {
 
 fn update_search_matches(state: &mut AppState) {
     let query = state.jsonb_detail.search().input.content().to_string();
-    let visible = visible_line_indices(state.jsonb_detail.tree());
+    let indices = state.jsonb_detail.visible_indices();
     let matches =
-        crate::app::policy::json::find_matches(state.jsonb_detail.tree(), &visible, &query);
+        crate::app::policy::json::find_matches(state.jsonb_detail.tree(), indices, &query);
     state.jsonb_detail.search_mut().matches = matches;
     state.jsonb_detail.search_mut().current_match = 0;
 }
@@ -322,8 +323,8 @@ fn update_search_matches(state: &mut AppState) {
 fn jump_to_current_match(state: &mut AppState) {
     let search = state.jsonb_detail.search();
     if let Some(&match_real_idx) = search.matches.get(search.current_match) {
-        let visible = visible_line_indices(state.jsonb_detail.tree());
-        if let Some(visible_pos) = visible.iter().position(|&i| i == match_real_idx) {
+        let indices = state.jsonb_detail.visible_indices();
+        if let Ok(visible_pos) = indices.binary_search(&match_real_idx) {
             state.jsonb_detail.set_selected_line(visible_pos);
         }
     }
@@ -662,8 +663,7 @@ mod tests {
             );
 
             // After collapsing root, only 1 visible line
-            let visible = visible_line_indices(state.jsonb_detail.tree());
-            assert_eq!(visible.len(), 1);
+            assert_eq!(state.jsonb_detail.visible_count(), 1);
         }
 
         #[test]
@@ -678,8 +678,7 @@ mod tests {
 
             reduce(&mut state, &Action::JsonbFoldAll, Instant::now(), &stub());
 
-            let visible = visible_line_indices(state.jsonb_detail.tree());
-            assert_eq!(visible.len(), 1);
+            assert_eq!(state.jsonb_detail.visible_count(), 1);
         }
     }
 }

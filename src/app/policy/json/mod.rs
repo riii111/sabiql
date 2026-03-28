@@ -157,6 +157,9 @@ pub fn find_matches(tree: &JsonTree, visible_indices: &[usize], query: &str) -> 
     let query_lower = query.to_lowercase();
     let lines = tree.lines();
 
+    let matches_bool = query_lower == "true" || query_lower == "false";
+    let matches_null = "null".contains(&query_lower);
+
     visible_indices
         .iter()
         .copied()
@@ -170,8 +173,10 @@ pub fn find_matches(tree: &JsonTree, visible_indices: &[usize], query: &str) -> 
             match &line.value {
                 TreeValue::String(s) => s.to_lowercase().contains(&query_lower),
                 TreeValue::Number(n) => n.contains(&query_lower),
-                TreeValue::Bool(b) => b.to_string().contains(&query_lower),
-                TreeValue::Null => "null".contains(&query_lower),
+                TreeValue::Bool(b) => {
+                    matches_bool && (if *b { "true" } else { "false" }).contains(&query_lower)
+                }
+                TreeValue::Null => matches_null,
                 _ => false,
             }
         })

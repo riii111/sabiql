@@ -283,10 +283,15 @@ pub mod idx {
         pub const YANK: usize = 0;
         pub const EDIT: usize = 1;
         pub const SEARCH: usize = 2;
-        pub const NAVIGATE: usize = 3;
-        pub const FOLD: usize = 4;
-        pub const TOGGLE: usize = 5;
-        pub const CLOSE: usize = 6;
+        pub const DOWN: usize = 3;
+        pub const UP: usize = 4;
+        pub const FOLD: usize = 5;
+        pub const TOGGLE: usize = 6;
+        pub const TOP: usize = 7;
+        pub const BOTTOM: usize = 8;
+        pub const NEXT_MATCH: usize = 9;
+        pub const PREV_MATCH: usize = 10;
+        pub const CLOSE: usize = 11;
     }
 
     pub mod jsonb_search {
@@ -581,9 +586,14 @@ mod tests {
         assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::EDIT < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_KEYS.len());
-        assert!(idx::jsonb_detail::NAVIGATE < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::DOWN < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::UP < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::FOLD < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::TOGGLE < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::TOP < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::BOTTOM < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::NEXT_MATCH < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::PREV_MATCH < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_KEYS.len());
 
         // JSONB_EDIT_KEYS

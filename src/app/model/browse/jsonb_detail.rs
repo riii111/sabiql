@@ -1,5 +1,6 @@
 use crate::app::model::shared::multi_line_input::MultiLineInputState;
 use crate::app::model::shared::text_input::TextInputState;
+use crate::app::policy::json::visible_line_indices;
 
 use super::json_tree::JsonTree;
 
@@ -27,6 +28,7 @@ pub struct JsonbDetailState {
     original_json: String,
     mode: JsonbDetailMode,
     tree: JsonTree,
+    visible_indices: Vec<usize>,
     scroll_offset: usize,
     selected_line: usize,
     editor: MultiLineInputState,
@@ -43,6 +45,7 @@ impl JsonbDetailState {
         original_json: String,
         tree: JsonTree,
     ) -> Self {
+        let visible_indices = visible_line_indices(&tree);
         Self {
             row,
             col,
@@ -50,6 +53,7 @@ impl JsonbDetailState {
             original_json,
             mode: JsonbDetailMode::Viewing,
             tree,
+            visible_indices,
             scroll_offset: 0,
             selected_line: 0,
             editor: MultiLineInputState::default(),
@@ -89,6 +93,18 @@ impl JsonbDetailState {
 
     pub fn tree(&self) -> &JsonTree {
         &self.tree
+    }
+
+    pub fn visible_indices(&self) -> &[usize] {
+        &self.visible_indices
+    }
+
+    pub fn visible_count(&self) -> usize {
+        self.visible_indices.len()
+    }
+
+    pub fn rebuild_visible_indices(&mut self) {
+        self.visible_indices = visible_line_indices(&self.tree);
     }
 
     pub fn tree_mut(&mut self) -> &mut JsonTree {

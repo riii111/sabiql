@@ -279,7 +279,7 @@ impl Footer {
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
-                        JSONB_DETAIL_KEYS[idx::jsonb_detail::NAVIGATE].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::DOWN].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
                         JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
                     ]

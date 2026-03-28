@@ -7,7 +7,6 @@ use ratatui::widgets::Paragraph;
 use super::json_tree::json_tree_line_spans;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
-use crate::app::policy::json::visible_line_indices;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 
@@ -47,7 +46,7 @@ impl JsonbDetail {
             hint,
         );
 
-        let (tree_area, search_area) = if is_searching {
+        let (tree_area, search_area) = if is_searching && inner.height >= 2 {
             let [t, s] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
             (t, Some(s))
         } else {
@@ -55,7 +54,7 @@ impl JsonbDetail {
         };
 
         let tree = state.jsonb_detail.tree();
-        let visible = visible_line_indices(tree);
+        let visible = state.jsonb_detail.visible_indices();
         let search = state.jsonb_detail.search();
         let selected = state.jsonb_detail.selected_line();
         let scroll = state.jsonb_detail.scroll_offset();
@@ -77,20 +76,23 @@ impl JsonbDetail {
 
         if let Some(area) = search_area {
             let query = search.input.content();
-            let match_info = if search.matches.is_empty() {
+            let match_info: Span<'_> = if search.matches.is_empty() {
                 if query.is_empty() {
-                    String::new()
+                    Span::raw("")
                 } else {
-                    " [no matches]".to_string()
+                    Span::styled(" [no matches]", Style::default().fg(Theme::TEXT_DIM))
                 }
             } else {
-                format!(" [{}/{}]", search.current_match + 1, search.matches.len())
+                Span::styled(
+                    format!(" [{}/{}]", search.current_match + 1, search.matches.len()),
+                    Style::default().fg(Theme::TEXT_DIM),
+                )
             };
 
             let line = Line::from(vec![
                 Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT)),
-                Span::raw(query.to_string()),
-                Span::styled(match_info, Style::default().fg(Theme::TEXT_DIM)),
+                Span::raw(query.to_owned()),
+                match_info,
             ]);
             frame.render_widget(Paragraph::new(line), area);
         }
@@ -141,7 +143,7 @@ impl JsonbDetail {
                     ))
                     .style(current_line_style)
                 } else {
-                    Line::from(Span::raw(line_str.to_string()))
+                    Line::from(Span::raw(line_str.to_owned()))
                 }
             })
             .collect();
@@ -169,7 +171,7 @@ impl JsonbDetail {
             ))
         } else {
             Line::from(Span::styled(
-                "\u{2713} Valid JSON".to_string(),
+                "\u{2713} Valid JSON",
                 Style::default().fg(Theme::STATUS_SUCCESS),
             ))
         };
