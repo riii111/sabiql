@@ -63,7 +63,7 @@ impl ViewerLauncher for SystemViewerLauncher {
                 .spawn()
                 .map_err(ViewerError::LaunchFailed)?;
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "freebsd", target_os = "linux"))]
         {
             Command::new("xdg-open")
                 .arg(path)
