@@ -135,13 +135,32 @@ pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Immediate,
         },
+        StatementKind::Drop => {
+            let lower = sql.trim().to_lowercase();
+            if lower.starts_with("drop table") || lower.starts_with("drop database") {
+                match extract_target_name(sql, kind) {
+                    Some(name) => SqlRiskDecision {
+                        risk_level: RiskLevel::High,
+                        confirmation: ConfirmationType::TableNameInput { target: name },
+                    },
+                    None => SqlRiskDecision {
+                        risk_level: RiskLevel::High,
+                        confirmation: ConfirmationType::Immediate,
+                    },
+                }
+            } else {
+                SqlRiskDecision {
+                    risk_level: RiskLevel::Low,
+                    confirmation: ConfirmationType::Immediate,
+                }
+            }
+        }
         StatementKind::Update { has_where: false }
         | StatementKind::Delete { has_where: false }
-        | StatementKind::Drop
         | StatementKind::Truncate => match extract_target_name(sql, kind) {
-            Some(table) => SqlRiskDecision {
+            Some(name) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
-                confirmation: ConfirmationType::TableNameInput { target: table },
+                confirmation: ConfirmationType::TableNameInput { target: name },
             },
             None => SqlRiskDecision {
                 risk_level: RiskLevel::High,
@@ -330,8 +349,8 @@ mod tests {
         }
 
         #[test]
-        fn drop_index_returns_high_table_name_input() {
-            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP INDEX my_index");
+        fn drop_database_returns_high_table_name_input() {
+            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
                 result.confirmation,
@@ -339,10 +358,15 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn extraction_failure_returns_high_immediate() {
-            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP OWNED BY role");
-            assert_eq!(result.risk_level, RiskLevel::High);
+        #[rstest]
+        #[case::drop_index("DROP INDEX my_index")]
+        #[case::drop_policy("DROP POLICY p ON t")]
+        #[case::drop_view("DROP VIEW v")]
+        #[case::drop_schema("DROP SCHEMA s")]
+        #[case::drop_owned_by("DROP OWNED BY role")]
+        fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
+            let result = evaluate_sql_risk(&StatementKind::Drop, sql);
+            assert_eq!(result.risk_level, RiskLevel::Low);
             assert!(matches!(result.confirmation, ConfirmationType::Immediate));
         }
     }
@@ -489,26 +513,23 @@ mod tests {
         }
 
         #[test]
-        fn drop_index_returns_allow_table_name_input() {
+        fn drop_index_returns_low_immediate() {
             let result = evaluate_multi_statement("DROP INDEX my_index");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { .. }
-                    ));
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
+                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
             }
         }
 
         #[test]
-        fn extraction_failure_returns_allow_immediate() {
+        fn drop_owned_by_returns_low_immediate() {
             let result = evaluate_multi_statement("DROP OWNED BY role");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
+                    assert_eq!(risk.risk_level, RiskLevel::Low);
                     assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
                 }
                 _ => panic!("expected Allow"),
