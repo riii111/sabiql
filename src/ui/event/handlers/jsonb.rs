@@ -27,6 +27,9 @@ fn handle_search_input(combo: KeyCombo) -> Action {
         Key::Backspace => Action::TextBackspace {
             target: InputTarget::JsonbSearch,
         },
+        Key::Delete => Action::TextDelete {
+            target: InputTarget::JsonbSearch,
+        },
         Key::Left => Action::TextMoveCursor {
             target: InputTarget::JsonbSearch,
             direction: CursorMove::Left,

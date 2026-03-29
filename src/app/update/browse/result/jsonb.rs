@@ -281,6 +281,24 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             Some(vec![])
         }
 
+        Action::TextDelete {
+            target: InputTarget::JsonbSearch,
+        } => {
+            state.jsonb_detail.search_mut().input.delete();
+            update_search_matches(state);
+            Some(vec![])
+        }
+
+        Action::Paste(text)
+            if state.input_mode() == InputMode::JsonbDetail
+                && state.jsonb_detail.search().active =>
+        {
+            let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+            state.jsonb_detail.search_mut().input.insert_str(&clean);
+            update_search_matches(state);
+            Some(vec![])
+        }
+
         Action::TextMoveCursor {
             target: InputTarget::JsonbSearch,
             direction,

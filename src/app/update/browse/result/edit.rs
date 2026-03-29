@@ -15,6 +15,10 @@ fn is_jsonb_cell(state: &AppState) -> bool {
     let Some(td) = state.session.table_detail() else {
         return false;
     };
+    // Ensure table_detail matches current preview target
+    if td.schema != state.query.pagination.schema || td.name != state.query.pagination.table {
+        return false;
+    }
     td.columns
         .get(col_idx)
         .is_some_and(|c| c.data_type == "jsonb")
@@ -254,6 +258,53 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Table metadata does not match current preview target")
             );
+        }
+    }
+
+    mod jsonb_dispatch {
+        use super::*;
+        use crate::domain::column::Column;
+
+        fn state_with_jsonb_column() -> AppState {
+            let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            let mut table = cell_edit_entry_guardrails::minimal_users_table();
+            table.columns = vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "integer".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_unique: true,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "name".to_string(),
+                    data_type: "jsonb".to_string(),
+                    nullable: true,
+                    default: None,
+                    is_primary_key: false,
+                    is_unique: false,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ];
+            state.session.set_table_detail_raw(Some(table));
+            state
+        }
+
+        #[test]
+        fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
+            let mut state = state_with_jsonb_column();
+
+            let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenJsonbDetail])
+            ));
         }
     }
 

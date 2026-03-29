@@ -241,7 +241,7 @@ mod tests {
         }
 
         #[test]
-        fn nested_object_has_correct_depth() {
+        fn nested_object_returns_correct_depth() {
             let tree = parse_json_tree(r#"{"a": {"b": 1}}"#).unwrap();
 
             // { (depth 0), "a": { (depth 1), "b": 1 (depth 2), } (depth 1), } (depth 0)
@@ -254,7 +254,7 @@ mod tests {
         }
 
         #[test]
-        fn array_items_are_array_item_type() {
+        fn array_items_returns_array_item_type() {
             let tree = parse_json_tree("[1, 2, 3]").unwrap();
 
             // [ (depth 0), 1 (depth 1), 2 (depth 1), 3 (depth 1), ] (depth 0)
@@ -265,7 +265,7 @@ mod tests {
         }
 
         #[test]
-        fn key_value_pairs_have_keys() {
+        fn key_value_pairs_returns_keys() {
             let tree = parse_json_tree(r#"{"name": "test", "count": 5}"#).unwrap();
 
             let kv_lines: Vec<_> = tree
@@ -280,7 +280,7 @@ mod tests {
         }
 
         #[test]
-        fn child_count_is_correct() {
+        fn object_open_returns_correct_child_count() {
             let tree = parse_json_tree(r#"{"a": 1, "b": 2, "c": 3}"#).unwrap();
 
             assert!(matches!(
@@ -304,7 +304,7 @@ mod tests {
         }
 
         #[test]
-        fn deeply_nested_json_parses_correctly() {
+        fn deeply_nested_json_returns_correct_depth() {
             let json = r#"{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":{"j":{"k":{"l":{"m":{"n":{"o":{"p":{"q":{"r":{"s":{"t":1}}}}}}}}}}}}}}}}}}}}"#;
             let tree = parse_json_tree(json).unwrap();
 
@@ -320,7 +320,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn all_lines_visible_when_nothing_collapsed() {
+        fn uncollapsed_tree_returns_all_lines() {
             let tree = parse_json_tree(r#"{"a": 1, "b": 2}"#).unwrap();
 
             let visible = visible_line_indices(&tree);
@@ -330,7 +330,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_object_hides_children() {
+        fn collapsed_object_returns_visible_lines_without_children() {
             let mut tree = parse_json_tree(r#"{"a": {"b": 1}, "c": 2}"#).unwrap();
             // Collapse the inner object {"b": 1} at index 1
             tree.toggle_fold(1);
@@ -345,7 +345,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_root_hides_all_children() {
+        fn collapsed_root_returns_only_root_line() {
             let mut tree = parse_json_tree(r#"{"a": 1, "b": 2}"#).unwrap();
             tree.toggle_fold(0);
 
@@ -357,7 +357,7 @@ mod tests {
         }
 
         #[test]
-        fn collapsed_array_hides_items() {
+        fn collapsed_array_returns_only_opener() {
             let mut tree = parse_json_tree(r"[1, 2, 3]").unwrap();
             tree.toggle_fold(0);
 
@@ -381,7 +381,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn matches_key_case_insensitive() {
+        fn key_search_returns_case_insensitive_match() {
             let tree = parse_json_tree(r#"{"Email": "test@example.com"}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
@@ -391,7 +391,7 @@ mod tests {
         }
 
         #[test]
-        fn matches_string_value() {
+        fn string_value_search_returns_match() {
             let tree = parse_json_tree(r#"{"name": "Alice", "city": "Berlin"}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
@@ -411,7 +411,7 @@ mod tests {
         }
 
         #[test]
-        fn no_matches_in_collapsed_children() {
+        fn collapsed_children_returns_no_matches() {
             let mut tree = parse_json_tree(r#"{"a": {"hidden": "secret"}, "b": 1}"#).unwrap();
             tree.toggle_fold(1);
             let visible = visible_line_indices(&tree);
@@ -422,7 +422,7 @@ mod tests {
         }
 
         #[test]
-        fn matches_number_value() {
+        fn number_value_search_returns_match() {
             let tree = parse_json_tree(r#"{"count": 42}"#).unwrap();
             let visible = visible_line_indices(&tree);
 
