@@ -147,15 +147,20 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .set_error_at("Read-only mode: editing is disabled".to_string(), now);
                 return Some(vec![]);
             }
-            let pretty = pretty_print_json(state.jsonb_detail.original_json());
-            // Map visible selection to a line in the pretty-printed JSON.
-            // Tree lines and pretty-printed lines have 1:1 correspondence.
-            let visible = visible_line_indices(state.jsonb_detail.tree());
-            let target_line = visible
-                .get(state.jsonb_detail.selected_line())
-                .copied()
-                .unwrap_or(0);
-            state.jsonb_detail.enter_edit(pretty, target_line);
+            if state.jsonb_detail.has_pending_changes() {
+                // Re-enter with existing draft content intact
+                state
+                    .jsonb_detail
+                    .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Editing);
+            } else {
+                let pretty = pretty_print_json(state.jsonb_detail.original_json());
+                let visible = visible_line_indices(state.jsonb_detail.tree());
+                let target_line = visible
+                    .get(state.jsonb_detail.selected_line())
+                    .copied()
+                    .unwrap_or(0);
+                state.jsonb_detail.enter_edit(pretty, target_line);
+            }
             state.modal.replace_mode(InputMode::JsonbEdit);
             Some(vec![])
         }
