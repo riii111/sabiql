@@ -286,10 +286,7 @@ impl Footer {
                 }
             }
             InputMode::JsonbEdit => {
-                vec![
-                    JSONB_EDIT_KEYS[idx::jsonb_edit::SAVE].as_hint(),
-                    JSONB_EDIT_KEYS[idx::jsonb_edit::BACK].as_hint(),
-                ]
+                vec![JSONB_EDIT_KEYS[idx::jsonb_edit::BACK].as_hint()]
             }
             InputMode::ConnectionSelector => {
                 let r = CONNECTION_SELECTOR_ROWS;

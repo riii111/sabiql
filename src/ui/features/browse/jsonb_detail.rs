@@ -103,7 +103,7 @@ impl JsonbDetail {
             " JSONB Edit \u{2500}\u{2500} {} (jsonb) ",
             state.jsonb_detail.column_name()
         );
-        let hint = " Ctrl+Enter:Save  Esc:Back ";
+        let hint = " Esc:Back (applies valid changes) ";
 
         let (_area, inner) = render_modal(
             frame,

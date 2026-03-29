@@ -620,21 +620,11 @@ pub const JSONB_SEARCH_KEYS: &[KeyBinding] = &[
 // JSONB Edit
 // =============================================================================
 
-pub const JSONB_EDIT_KEYS: &[KeyBinding] = &[
-    KeyBinding {
-        key_short: "^Enter",
-        key: "Ctrl+Enter",
-        desc_short: "Save",
-        description: "Validate and save",
-        action: Action::JsonbSubmitEdit,
-        combos: &[KeyCombo::ctrl(Key::Enter)],
-    },
-    KeyBinding {
-        key_short: "Esc",
-        key: "Esc",
-        desc_short: "Back",
-        description: "Return to viewer",
-        action: Action::JsonbExitEdit,
-        combos: &[KeyCombo::plain(Key::Esc)],
-    },
-];
+pub const JSONB_EDIT_KEYS: &[KeyBinding] = &[KeyBinding {
+    key_short: "Esc",
+    key: "Esc",
+    desc_short: "Back",
+    description: "Return to viewer / apply changes",
+    action: Action::JsonbExitEdit,
+    combos: &[KeyCombo::plain(Key::Esc)],
+}];

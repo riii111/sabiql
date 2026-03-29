@@ -301,8 +301,7 @@ pub mod idx {
     }
 
     pub mod jsonb_edit {
-        pub const SAVE: usize = 0;
-        pub const BACK: usize = 1;
+        pub const BACK: usize = 0;
     }
 
     pub mod history {
@@ -602,7 +601,6 @@ mod tests {
         assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
 
         // JSONB_EDIT_KEYS
-        assert!(idx::jsonb_edit::SAVE < JSONB_EDIT_KEYS.len());
         assert!(idx::jsonb_edit::BACK < JSONB_EDIT_KEYS.len());
     }
 

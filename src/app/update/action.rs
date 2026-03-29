@@ -503,7 +503,6 @@ pub enum Action {
     JsonbYankAll,
     JsonbEnterEdit,
     JsonbExitEdit,
-    JsonbSubmitEdit,
     JsonbEnterSearch,
     JsonbExitSearch,
     JsonbSearchNext,
