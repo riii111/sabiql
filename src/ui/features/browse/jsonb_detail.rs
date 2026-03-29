@@ -98,6 +98,7 @@ impl JsonbDetail {
 
             if is_searching {
                 let query = search.input.content();
+                let cursor_pos = search.input.cursor();
                 let match_info: Span<'_> = if search.matches.is_empty() {
                     if query.is_empty() {
                         Span::raw("")
@@ -110,11 +111,17 @@ impl JsonbDetail {
                         Style::default().fg(Theme::TEXT_DIM),
                     )
                 };
-                bottom_lines.push(Line::from(vec![
-                    Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT)),
-                    Span::raw(query.to_owned()),
-                    match_info,
-                ]));
+                let prefix = Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT));
+                let cursor_spans = crate::ui::primitives::atoms::text_cursor_spans(
+                    query,
+                    cursor_pos,
+                    search.input.viewport_offset(),
+                    bottom.width.saturating_sub(1) as usize,
+                );
+                let mut spans = vec![prefix];
+                spans.extend(cursor_spans);
+                spans.push(match_info);
+                bottom_lines.push(Line::from(spans));
             }
 
             frame.render_widget(Paragraph::new(bottom_lines), bottom);
