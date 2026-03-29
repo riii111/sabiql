@@ -28,7 +28,7 @@ impl JsonbDetail {
 
     fn render_viewing(frame: &mut Frame, state: &AppState) {
         let title = format!(
-            " JSONB Detail \u{2500}\u{2500} {} (jsonb) ",
+            " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
         );
         let is_searching = state.jsonb_detail.search().active;
@@ -46,9 +46,13 @@ impl JsonbDetail {
             hint,
         );
 
-        let (tree_area, search_area) = if is_searching && inner.height >= 2 {
-            let [t, s] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-            (t, Some(s))
+        let has_changes = state.jsonb_detail.has_pending_changes();
+        let bottom_rows = usize::from(has_changes) + usize::from(is_searching);
+        let (tree_area, bottom_area) = if bottom_rows > 0 && inner.height >= 2 {
+            let [t, b] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(bottom_rows as u16)])
+                    .areas(inner);
+            (t, Some(b))
         } else {
             (inner, None)
         };
@@ -74,27 +78,38 @@ impl JsonbDetail {
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, tree_area);
 
-        if let Some(area) = search_area {
-            let query = search.input.content();
-            let match_info: Span<'_> = if search.matches.is_empty() {
-                if query.is_empty() {
-                    Span::raw("")
-                } else {
-                    Span::styled(" [no matches]", Style::default().fg(Theme::TEXT_DIM))
-                }
-            } else {
-                Span::styled(
-                    format!(" [{}/{}]", search.current_match + 1, search.matches.len()),
-                    Style::default().fg(Theme::TEXT_DIM),
-                )
-            };
+        if let Some(bottom) = bottom_area {
+            let mut bottom_lines: Vec<Line<'_>> = Vec::new();
 
-            let line = Line::from(vec![
-                Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT)),
-                Span::raw(query.to_owned()),
-                match_info,
-            ]);
-            frame.render_widget(Paragraph::new(line), area);
+            if has_changes {
+                bottom_lines.push(Line::from(Span::styled(
+                    "\u{25cf} Modified",
+                    Style::default().fg(Theme::CELL_DRAFT_PENDING_FG),
+                )));
+            }
+
+            if is_searching {
+                let query = search.input.content();
+                let match_info: Span<'_> = if search.matches.is_empty() {
+                    if query.is_empty() {
+                        Span::raw("")
+                    } else {
+                        Span::styled(" [no matches]", Style::default().fg(Theme::TEXT_DIM))
+                    }
+                } else {
+                    Span::styled(
+                        format!(" [{}/{}]", search.current_match + 1, search.matches.len()),
+                        Style::default().fg(Theme::TEXT_DIM),
+                    )
+                };
+                bottom_lines.push(Line::from(vec![
+                    Span::styled("/", Style::default().fg(Theme::TEXT_ACCENT)),
+                    Span::raw(query.to_owned()),
+                    match_info,
+                ]));
+            }
+
+            frame.render_widget(Paragraph::new(bottom_lines), bottom);
         }
     }
 

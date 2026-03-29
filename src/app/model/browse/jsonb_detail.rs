@@ -231,6 +231,18 @@ impl JsonbDetailState {
         self.mode = JsonbDetailMode::Viewing;
     }
 
+    pub fn has_pending_changes(&self) -> bool {
+        let content = self.editor.content();
+        if content.is_empty() {
+            return false;
+        }
+        content.trim() != self.original_json.trim()
+            && serde_json::to_string_pretty(
+                &serde_json::from_str::<serde_json::Value>(&self.original_json).unwrap_or_default(),
+            )
+            .map_or(true, |pretty| pretty.trim() != content.trim())
+    }
+
     pub fn validate_editor_content(&mut self) -> Result<String, String> {
         let content = self.editor.content().to_string();
         match serde_json::from_str::<serde_json::Value>(&content) {
