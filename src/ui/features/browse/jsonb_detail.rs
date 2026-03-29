@@ -13,20 +13,20 @@ use crate::ui::theme::Theme;
 pub struct JsonbDetail;
 
 impl JsonbDetail {
-    pub fn render(frame: &mut Frame, state: &AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
         if !state.jsonb_detail.is_active() {
             return;
         }
 
         match state.jsonb_detail.mode() {
             JsonbDetailMode::Viewing | JsonbDetailMode::Searching => {
-                Self::render_viewing(frame, state);
+                Self::render_viewing(frame, state, now);
             }
             JsonbDetailMode::Editing => Self::render_editing(frame, state),
         }
     }
 
-    fn render_viewing(frame: &mut Frame, state: &AppState) {
+    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
         let title = format!(
             " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
@@ -64,7 +64,7 @@ impl JsonbDetail {
         let scroll = state.jsonb_detail.scroll_offset();
         let viewport_height = tree_area.height as usize;
 
-        let lines: Vec<Line<'_>> = visible
+        let mut lines: Vec<Line<'_>> = visible
             .iter()
             .skip(scroll)
             .take(viewport_height)
@@ -74,6 +74,12 @@ impl JsonbDetail {
                 json_tree_line_spans(&tree.lines()[real_idx], is_selected)
             })
             .collect();
+
+        let flash_active = state.flash_timers.is_active(
+            crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
+            now,
+        );
+        crate::ui::primitives::atoms::apply_yank_flash(&mut lines, flash_active);
 
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, tree_area);

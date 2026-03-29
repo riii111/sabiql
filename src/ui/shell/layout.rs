@@ -63,7 +63,9 @@ impl MainLayout {
             InputMode::ConnectionError => ConnectionError::render(frame, state, now),
             InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
             InputMode::ConnectionSelector => ConnectionSelector::render(frame, state),
-            InputMode::JsonbDetail | InputMode::JsonbEdit => JsonbDetail::render(frame, state),
+            InputMode::JsonbDetail | InputMode::JsonbEdit => {
+                JsonbDetail::render(frame, state, now);
+            }
             _ => {}
         }
 

@@ -126,6 +126,10 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
         Action::JsonbYankAll => {
             let json = state.jsonb_detail.original_json().to_string();
+            state.flash_timers.set(
+                crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
+                now,
+            );
             Some(vec![Effect::CopyToClipboard {
                 content: json,
                 on_success: Some(Action::CellCopied),
