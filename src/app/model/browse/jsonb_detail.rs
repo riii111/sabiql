@@ -26,6 +26,7 @@ pub struct JsonbDetailState {
     col: usize,
     column_name: String,
     original_json: String,
+    pretty_original: String,
     mode: JsonbDetailMode,
     tree: JsonTree,
     visible_indices: Vec<usize>,
@@ -46,11 +47,16 @@ impl JsonbDetailState {
         tree: JsonTree,
     ) -> Self {
         let visible_indices = visible_line_indices(&tree);
+        let pretty_original = serde_json::from_str::<serde_json::Value>(&original_json)
+            .ok()
+            .and_then(|v| serde_json::to_string_pretty(&v).ok())
+            .unwrap_or_else(|| original_json.clone());
         Self {
             row,
             col,
             column_name,
             original_json,
+            pretty_original,
             mode: JsonbDetailMode::Viewing,
             tree,
             visible_indices,
@@ -91,6 +97,10 @@ impl JsonbDetailState {
         &self.original_json
     }
 
+    pub fn pretty_original(&self) -> &str {
+        &self.pretty_original
+    }
+
     pub fn tree(&self) -> &JsonTree {
         &self.tree
     }
@@ -103,12 +113,28 @@ impl JsonbDetailState {
         self.visible_indices.len()
     }
 
-    pub fn rebuild_visible_indices(&mut self) {
+    fn rebuild_visible_indices(&mut self) {
         self.visible_indices = visible_line_indices(&self.tree);
     }
 
-    pub fn tree_mut(&mut self) -> &mut JsonTree {
-        &mut self.tree
+    pub fn toggle_fold(&mut self, visible_line_idx: usize) {
+        if let Some(&real_idx) = self.visible_indices.get(visible_line_idx) {
+            self.tree.toggle_fold(real_idx);
+            self.rebuild_visible_indices();
+        }
+    }
+
+    pub fn fold_all(&mut self) {
+        self.tree.fold_all();
+        self.rebuild_visible_indices();
+        let vc = self.visible_count();
+        self.clamp_cursor(vc);
+        self.clamp_scroll(vc);
+    }
+
+    pub fn unfold_all(&mut self) {
+        self.tree.unfold_all();
+        self.rebuild_visible_indices();
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -255,11 +281,8 @@ impl JsonbDetailState {
         if content.is_empty() {
             return false;
         }
-        content.trim() != self.original_json.trim()
-            && serde_json::to_string_pretty(
-                &serde_json::from_str::<serde_json::Value>(&self.original_json).unwrap_or_default(),
-            )
-            .map_or(true, |pretty| pretty.trim() != content.trim())
+        let trimmed = content.trim();
+        trimmed != self.original_json.trim() && trimmed != self.pretty_original.trim()
     }
 
     pub fn validate_editor_content(&mut self) -> Result<String, String> {

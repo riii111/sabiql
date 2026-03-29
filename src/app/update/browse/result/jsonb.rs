@@ -105,22 +105,29 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
 
         Action::JsonbToggleFold => {
             let selected = state.jsonb_detail.selected_line();
-            if let Some(&real_idx) = state.jsonb_detail.visible_indices().get(selected) {
-                state.jsonb_detail.tree_mut().toggle_fold(real_idx);
-                post_fold_fixup(state);
+            state.jsonb_detail.toggle_fold(selected);
+            let vc = state.jsonb_detail.visible_count();
+            state.jsonb_detail.clamp_cursor(vc);
+            state.jsonb_detail.clamp_scroll(vc);
+            if state.jsonb_detail.search().active {
+                update_search_matches(state);
             }
             Some(vec![])
         }
 
         Action::JsonbFoldAll => {
-            state.jsonb_detail.tree_mut().fold_all();
-            post_fold_fixup(state);
+            state.jsonb_detail.fold_all();
+            if state.jsonb_detail.search().active {
+                update_search_matches(state);
+            }
             Some(vec![])
         }
 
         Action::JsonbUnfoldAll => {
-            state.jsonb_detail.tree_mut().unfold_all();
-            post_fold_fixup(state);
+            state.jsonb_detail.unfold_all();
+            if state.jsonb_detail.search().active {
+                update_search_matches(state);
+            }
             Some(vec![])
         }
 
@@ -153,7 +160,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     .jsonb_detail
                     .set_mode(crate::app::model::browse::jsonb_detail::JsonbDetailMode::Editing);
             } else {
-                let pretty = pretty_print_json(state.jsonb_detail.original_json());
+                let pretty = state.jsonb_detail.pretty_original().to_string();
                 let visible = visible_line_indices(state.jsonb_detail.tree());
                 let target_line = visible
                     .get(state.jsonb_detail.selected_line())
@@ -315,16 +322,6 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
     }
 }
 
-fn post_fold_fixup(state: &mut AppState) {
-    state.jsonb_detail.rebuild_visible_indices();
-    let vc = state.jsonb_detail.visible_count();
-    state.jsonb_detail.clamp_cursor(vc);
-    state.jsonb_detail.clamp_scroll(vc);
-    if state.jsonb_detail.search().active {
-        update_search_matches(state);
-    }
-}
-
 fn update_search_matches(state: &mut AppState) {
     let query = state.jsonb_detail.search().input.content().to_string();
     let indices = state.jsonb_detail.visible_indices();
@@ -345,16 +342,11 @@ fn jump_to_current_match(state: &mut AppState) {
 }
 
 fn apply_pending_edit_as_draft(state: &mut AppState) {
+    if !state.jsonb_detail.has_pending_changes() {
+        return;
+    }
+
     let content = state.jsonb_detail.editor().content().to_string();
-    if content.is_empty() {
-        return;
-    }
-    let original = state.jsonb_detail.original_json();
-    let is_changed =
-        content.trim() != original.trim() && pretty_print_json(original).trim() != content.trim();
-    if !is_changed {
-        return;
-    }
 
     // Only apply valid JSON as draft
     if let Ok(compact) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -369,18 +361,12 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         state
             .result_interaction
             .begin_cell_edit(row, col, original_cell);
+        state.result_interaction.clear_write_preview();
         state
             .result_interaction
             .cell_edit_input_mut()
             .set_content(compact_str);
     }
-}
-
-fn pretty_print_json(json_str: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(json_str)
-        .ok()
-        .and_then(|v| serde_json::to_string_pretty(&v).ok())
-        .unwrap_or_else(|| json_str.to_string())
 }
 
 fn validate_editor_inline(state: &mut AppState) {
@@ -459,6 +445,10 @@ mod tests {
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(1); // settings (jsonb)
         state
+    }
+
+    fn open_detail(state: &mut AppState) {
+        reduce(state, &Action::OpenJsonbDetail, Instant::now());
     }
 
     mod entry_guards {
@@ -602,10 +592,6 @@ mod tests {
         use super::*;
         use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 
-        fn open_detail(state: &mut AppState) {
-            reduce(state, &Action::OpenJsonbDetail, Instant::now());
-        }
-
         #[test]
         fn enter_edit_switches_to_jsonb_edit_mode() {
             let mut state = state_with_jsonb_cell();
@@ -697,10 +683,6 @@ mod tests {
         use super::*;
         use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 
-        fn open_detail(state: &mut AppState) {
-            reduce(state, &Action::OpenJsonbDetail, Instant::now());
-        }
-
         #[test]
         fn enter_search_activates_search_mode() {
             let mut state = state_with_jsonb_cell();
@@ -782,8 +764,8 @@ mod tests {
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            // Type a broad search
-            for ch in "\"".chars() {
+            // Search for "t" — matches lines containing "count" and "theme"
+            for ch in "t".chars() {
                 reduce(
                     &mut state,
                     &Action::TextInput {
@@ -794,13 +776,15 @@ mod tests {
                 );
             }
             let match_count = state.jsonb_detail.search().matches.len();
-            if match_count > 1 {
-                assert_eq!(state.jsonb_detail.search().current_match, 0);
+            assert!(
+                match_count > 1,
+                "test precondition: need 2+ matches for cycling test, got {match_count}"
+            );
+            assert_eq!(state.jsonb_detail.search().current_match, 0);
 
-                reduce(&mut state, &Action::JsonbSearchNext, Instant::now());
+            reduce(&mut state, &Action::JsonbSearchNext, Instant::now());
 
-                assert_eq!(state.jsonb_detail.search().current_match, 1);
-            }
+            assert_eq!(state.jsonb_detail.search().current_match, 1);
         }
 
         #[test]
@@ -809,7 +793,8 @@ mod tests {
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            for ch in "\"".chars() {
+            // Search for "t" — matches lines containing "count" and "theme"
+            for ch in "t".chars() {
                 reduce(
                     &mut state,
                     &Action::TextInput {
@@ -820,12 +805,14 @@ mod tests {
                 );
             }
             let match_count = state.jsonb_detail.search().matches.len();
-            if match_count > 1 {
-                // current_match is 0, prev should wrap to last
-                reduce(&mut state, &Action::JsonbSearchPrev, Instant::now());
+            assert!(
+                match_count > 1,
+                "test precondition: need 2+ matches for wrap test, got {match_count}"
+            );
+            // current_match is 0, prev should wrap to last
+            reduce(&mut state, &Action::JsonbSearchPrev, Instant::now());
 
-                assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
-            }
+            assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
         }
     }
 }

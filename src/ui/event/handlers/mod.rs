@@ -31,7 +31,8 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::ConnectionSetup
         | InputMode::SqlModal
         | InputMode::QueryHistoryPicker
-        | InputMode::JsonbEdit => Action::Paste(text),
+        | InputMode::JsonbEdit
+        | InputMode::JsonbDetail => Action::Paste(text),
         _ => Action::None,
     }
 }

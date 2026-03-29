@@ -543,6 +543,22 @@ pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char(' '))],
     },
     KeyBinding {
+        key_short: "H",
+        key: "H",
+        desc_short: "FoldAll",
+        description: "Fold all nodes",
+        action: Action::JsonbFoldAll,
+        combos: &[KeyCombo::plain(Key::Char('H'))],
+    },
+    KeyBinding {
+        key_short: "L",
+        key: "L",
+        desc_short: "UnfoldAll",
+        description: "Unfold all nodes",
+        action: Action::JsonbUnfoldAll,
+        combos: &[KeyCombo::plain(Key::Char('L'))],
+    },
+    KeyBinding {
         key_short: "g",
         key: "g",
         desc_short: "Top",
