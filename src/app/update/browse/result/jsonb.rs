@@ -4,7 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::policy::json::parse_json_tree;
+use crate::app::policy::json::{parse_json_tree, visible_line_indices};
 use crate::app::policy::write::write_guardrails::{
     ColumnDiff, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -154,7 +154,14 @@ pub fn reduce(
                 return Some(vec![]);
             }
             let pretty = pretty_print_json(state.jsonb_detail.original_json());
-            state.jsonb_detail.enter_edit(pretty);
+            // Map visible selection to a line in the pretty-printed JSON.
+            // Tree lines and pretty-printed lines have 1:1 correspondence.
+            let visible = visible_line_indices(state.jsonb_detail.tree());
+            let target_line = visible
+                .get(state.jsonb_detail.selected_line())
+                .copied()
+                .unwrap_or(0);
+            state.jsonb_detail.enter_edit(pretty, target_line);
             state.modal.replace_mode(InputMode::JsonbEdit);
             Some(vec![])
         }

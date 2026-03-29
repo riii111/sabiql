@@ -220,8 +220,8 @@ impl JsonbDetailState {
         self.mode = JsonbDetailMode::Viewing;
     }
 
-    pub fn enter_edit(&mut self, pretty_json: String) {
-        let cursor = pretty_json.len();
+    pub fn enter_edit(&mut self, pretty_json: String, target_line: usize) {
+        let cursor = char_offset_of_line(&pretty_json, target_line);
         self.editor = MultiLineInputState::new(pretty_json, cursor);
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
@@ -245,4 +245,17 @@ impl JsonbDetailState {
             }
         }
     }
+}
+
+fn char_offset_of_line(s: &str, target_line: usize) -> usize {
+    let mut line = 0;
+    for (i, ch) in s.chars().enumerate() {
+        if line == target_line {
+            return i;
+        }
+        if ch == '\n' {
+            line += 1;
+        }
+    }
+    s.chars().count()
 }
