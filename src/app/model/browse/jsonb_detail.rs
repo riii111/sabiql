@@ -231,6 +231,24 @@ impl JsonbDetailState {
         self.mode = JsonbDetailMode::Viewing;
     }
 
+    pub fn replace_tree(&mut self, tree: JsonTree) {
+        self.tree = tree;
+        self.selected_line = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn current_json_for_yank(&self) -> String {
+        if self.has_pending_changes() {
+            // Return compact JSON from editor content
+            serde_json::from_str::<serde_json::Value>(self.editor.content())
+                .ok()
+                .and_then(|v| serde_json::to_string(&v).ok())
+                .unwrap_or_else(|| self.original_json.clone())
+        } else {
+            self.original_json.clone()
+        }
+    }
+
     pub fn has_pending_changes(&self) -> bool {
         let content = self.editor.content();
         if content.is_empty() {

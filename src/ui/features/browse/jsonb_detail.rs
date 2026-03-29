@@ -13,7 +13,7 @@ use crate::ui::theme::Theme;
 pub struct JsonbDetail;
 
 impl JsonbDetail {
-    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
+    pub fn render(frame: &mut Frame, state: &mut AppState, now: std::time::Instant) {
         if !state.jsonb_detail.is_active() {
             return;
         }
@@ -26,7 +26,7 @@ impl JsonbDetail {
         }
     }
 
-    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
+    fn render_viewing(frame: &mut Frame, state: &mut AppState, now: std::time::Instant) {
         let title = format!(
             " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
@@ -57,12 +57,14 @@ impl JsonbDetail {
             (inner, None)
         };
 
+        let viewport_height = tree_area.height as usize;
+        state.jsonb_detail.adjust_scroll(viewport_height);
+
         let tree = state.jsonb_detail.tree();
         let visible = state.jsonb_detail.visible_indices();
         let search = state.jsonb_detail.search();
         let selected = state.jsonb_detail.selected_line();
         let scroll = state.jsonb_detail.scroll_offset();
-        let viewport_height = tree_area.height as usize;
 
         let mut lines: Vec<Line<'_>> = visible
             .iter()

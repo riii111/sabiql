@@ -125,7 +125,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbYankAll => {
-            let json = state.jsonb_detail.original_json().to_string();
+            let json = state.jsonb_detail.current_json_for_yank();
             state.flash_timers.set(
                 crate::app::model::shared::flash_timer::FlashId::JsonbDetail,
                 now,
@@ -161,6 +161,12 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbExitEdit => {
+            // Rebuild tree from editor content if valid, so viewing/search/yank
+            // reflect the draft rather than the original
+            let content = state.jsonb_detail.editor().content().to_string();
+            if let Ok(tree) = parse_json_tree(&content) {
+                state.jsonb_detail.replace_tree(tree);
+            }
             state.jsonb_detail.exit_edit();
             state.modal.replace_mode(InputMode::JsonbDetail);
             Some(vec![])
