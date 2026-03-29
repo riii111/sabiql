@@ -74,6 +74,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::CloseJsonbDetail => {
+            apply_pending_edit_as_draft(state);
             state.jsonb_detail.close();
             state.modal.pop_mode();
             Some(vec![])
@@ -156,49 +157,9 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
 
         Action::JsonbExitEdit => {
-            let content = state.jsonb_detail.editor().content().to_string();
-            let original = state.jsonb_detail.original_json();
-            let is_changed = content.trim() != original.trim()
-                && pretty_print_json(original).trim() != content.trim();
-
-            if !is_changed {
-                state.jsonb_detail.close();
-                state.modal.pop_mode();
-                return Some(vec![]);
-            }
-
-            // Validate before accepting
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(compact) => {
-                    let compact_str =
-                        serde_json::to_string(&compact).unwrap_or_else(|_| content.clone());
-                    let row = state.jsonb_detail.row();
-                    let col = state.jsonb_detail.col();
-                    state.jsonb_detail.close();
-                    state.modal.pop_mode();
-                    // Store as cell edit draft so :w picks it up
-                    state.result_interaction.begin_cell_edit(
-                        row,
-                        col,
-                        state
-                            .query
-                            .current_result()
-                            .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
-                            .unwrap_or_default(),
-                    );
-                    state
-                        .result_interaction
-                        .cell_edit_input_mut()
-                        .set_content(compact_str);
-                    Some(vec![])
-                }
-                Err(e) => {
-                    state
-                        .messages
-                        .set_error_at(format!("Invalid JSON: {e}"), now);
-                    Some(vec![])
-                }
-            }
+            state.jsonb_detail.exit_edit();
+            state.modal.replace_mode(InputMode::JsonbDetail);
+            Some(vec![])
         }
 
         // ── Text input for JsonbEdit ────────────────────────────────
@@ -347,6 +308,38 @@ fn jump_to_current_match(state: &mut AppState) {
         if let Ok(visible_pos) = indices.binary_search(&match_real_idx) {
             state.jsonb_detail.set_selected_line(visible_pos);
         }
+    }
+}
+
+fn apply_pending_edit_as_draft(state: &mut AppState) {
+    let content = state.jsonb_detail.editor().content().to_string();
+    if content.is_empty() {
+        return;
+    }
+    let original = state.jsonb_detail.original_json();
+    let is_changed =
+        content.trim() != original.trim() && pretty_print_json(original).trim() != content.trim();
+    if !is_changed {
+        return;
+    }
+
+    // Only apply valid JSON as draft
+    if let Ok(compact) = serde_json::from_str::<serde_json::Value>(&content) {
+        let compact_str = serde_json::to_string(&compact).unwrap_or_else(|_| content.clone());
+        let row = state.jsonb_detail.row();
+        let col = state.jsonb_detail.col();
+        let original_cell = state
+            .query
+            .current_result()
+            .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
+            .unwrap_or_default();
+        state
+            .result_interaction
+            .begin_cell_edit(row, col, original_cell);
+        state
+            .result_interaction
+            .cell_edit_input_mut()
+            .set_content(compact_str);
     }
 }
 
@@ -604,34 +597,30 @@ mod tests {
         }
 
         #[test]
-        fn exit_edit_with_invalid_json_stays_in_editor() {
+        fn exit_edit_returns_to_viewing_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
-
-            state
-                .jsonb_detail
-                .editor_mut()
-                .set_content("{invalid".to_string());
 
             reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
 
-            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
-            assert!(state.messages.last_error.is_some());
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+            assert!(state.jsonb_detail.is_active());
         }
 
         #[test]
-        fn exit_edit_with_valid_changes_stores_draft() {
+        fn close_after_edit_with_valid_changes_stores_draft() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
-
             state
                 .jsonb_detail
                 .editor_mut()
                 .set_content(r#"{"theme":"light","count":5}"#.to_string());
-
             reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
+
+            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.jsonb_detail.is_active());
@@ -639,16 +628,15 @@ mod tests {
         }
 
         #[test]
-        fn exit_edit_without_changes_closes_modal() {
+        fn close_after_edit_without_changes_no_draft() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());
-
-            // Content is pretty-printed original — no change
             reduce(&mut state, &Action::JsonbExitEdit, Instant::now());
 
+            reduce(&mut state, &Action::CloseJsonbDetail, Instant::now());
+
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(!state.jsonb_detail.is_active());
             assert!(!state.result_interaction.cell_edit().has_pending_draft());
         }
     }
