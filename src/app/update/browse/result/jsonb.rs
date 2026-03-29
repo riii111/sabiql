@@ -688,4 +688,284 @@ mod tests {
             assert_eq!(state.jsonb_detail.visible_count(), 1);
         }
     }
+
+    mod edit_lifecycle {
+        use super::*;
+        use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+
+        fn open_detail(state: &mut AppState) {
+            reduce(state, &Action::OpenJsonbDetail, Instant::now(), &stub());
+        }
+
+        #[test]
+        fn enter_edit_switches_to_jsonb_edit_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+
+            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now(), &stub());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        }
+
+        #[test]
+        fn exit_edit_returns_to_jsonb_detail_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now(), &stub());
+
+            reduce(&mut state, &Action::JsonbExitEdit, Instant::now(), &stub());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+        }
+
+        #[test]
+        fn enter_edit_blocked_in_read_only_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            state.session.read_only = true;
+
+            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now(), &stub());
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert!(state.messages.last_error.is_some());
+        }
+
+        #[test]
+        fn submit_edit_with_invalid_json_sets_error() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(&mut state, &Action::JsonbEnterEdit, Instant::now(), &stub());
+
+            // Replace editor content with invalid JSON
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content("{invalid".to_string());
+
+            reduce(
+                &mut state,
+                &Action::JsonbSubmitEdit,
+                Instant::now(),
+                &stub(),
+            );
+
+            assert!(state.messages.last_error.is_some());
+        }
+    }
+
+    mod yank {
+        use super::*;
+        use crate::app::cmd::effect::Effect;
+
+        #[test]
+        fn yank_all_produces_clipboard_effect() {
+            let mut state = state_with_jsonb_cell();
+            reduce(
+                &mut state,
+                &Action::OpenJsonbDetail,
+                Instant::now(),
+                &stub(),
+            );
+
+            let effects = reduce(&mut state, &Action::JsonbYankAll, Instant::now(), &stub());
+
+            let effects = effects.expect("should return effects");
+            assert_eq!(effects.len(), 1);
+            assert!(
+                matches!(&effects[0], Effect::CopyToClipboard { content, .. } if content.contains("theme"))
+            );
+        }
+    }
+
+    mod search {
+        use super::*;
+        use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+
+        fn open_detail(state: &mut AppState) {
+            reduce(state, &Action::OpenJsonbDetail, Instant::now(), &stub());
+        }
+
+        #[test]
+        fn enter_search_activates_search_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            assert!(state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Searching);
+        }
+
+        #[test]
+        fn exit_search_deactivates_search_mode() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            reduce(
+                &mut state,
+                &Action::JsonbExitSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            assert!(!state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+        }
+
+        #[test]
+        fn search_submit_deactivates_and_preserves_matches() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            // Type "theme" to get matches
+            for ch in "theme".chars() {
+                reduce(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                    &stub(),
+                );
+            }
+            let match_count = state.jsonb_detail.search().matches.len();
+            assert!(match_count > 0, "should find at least one match");
+
+            reduce(
+                &mut state,
+                &Action::JsonbSearchSubmit,
+                Instant::now(),
+                &stub(),
+            );
+
+            assert!(!state.jsonb_detail.search().active);
+        }
+
+        #[test]
+        fn text_input_updates_search_matches() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            // No matches initially
+            assert!(state.jsonb_detail.search().matches.is_empty());
+
+            // Type a search term that exists in the JSON
+            for ch in "dark".chars() {
+                reduce(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                    &stub(),
+                );
+            }
+
+            assert!(
+                !state.jsonb_detail.search().matches.is_empty(),
+                "should find matches for 'dark'"
+            );
+        }
+
+        #[test]
+        fn search_next_cycles_through_matches() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            // Type a broad search
+            for ch in "\"".chars() {
+                reduce(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                    &stub(),
+                );
+            }
+            let match_count = state.jsonb_detail.search().matches.len();
+            if match_count > 1 {
+                assert_eq!(state.jsonb_detail.search().current_match, 0);
+
+                reduce(
+                    &mut state,
+                    &Action::JsonbSearchNext,
+                    Instant::now(),
+                    &stub(),
+                );
+
+                assert_eq!(state.jsonb_detail.search().current_match, 1);
+            }
+        }
+
+        #[test]
+        fn search_prev_wraps_to_last_match() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce(
+                &mut state,
+                &Action::JsonbEnterSearch,
+                Instant::now(),
+                &stub(),
+            );
+
+            for ch in "\"".chars() {
+                reduce(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                    &stub(),
+                );
+            }
+            let match_count = state.jsonb_detail.search().matches.len();
+            if match_count > 1 {
+                // current_match is 0, prev should wrap to last
+                reduce(
+                    &mut state,
+                    &Action::JsonbSearchPrev,
+                    Instant::now(),
+                    &stub(),
+                );
+
+                assert_eq!(state.jsonb_detail.search().current_match, match_count - 1);
+            }
+        }
+    }
 }

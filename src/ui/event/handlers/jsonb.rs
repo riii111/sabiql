@@ -1,5 +1,7 @@
 use crate::app::update::action::{Action, CursorMove, InputTarget};
-use crate::app::update::input::keybindings::{JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, Key, KeyCombo};
+use crate::app::update::input::keybindings::{
+    JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, JSONB_SEARCH_KEYS, Key, KeyCombo,
+};
 use crate::app::update::input::keymap;
 
 pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
@@ -11,9 +13,13 @@ pub fn handle_jsonb_detail_keys(combo: KeyCombo, is_searching: bool) -> Action {
 }
 
 fn handle_search_input(combo: KeyCombo) -> Action {
+    // Command keys (Enter/Esc) resolved from SSOT keybindings
+    if let Some(action) = keymap::resolve(&combo, JSONB_SEARCH_KEYS) {
+        return action;
+    }
+
+    // Text input fallthrough
     match combo.key {
-        Key::Enter => Action::JsonbSearchSubmit,
-        Key::Esc => Action::JsonbExitSearch,
         Key::Char(c) => Action::TextInput {
             target: InputTarget::JsonbSearch,
             ch: c,

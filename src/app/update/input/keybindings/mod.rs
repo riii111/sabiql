@@ -596,6 +596,11 @@ mod tests {
         assert!(idx::jsonb_detail::PREV_MATCH < JSONB_DETAIL_KEYS.len());
         assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_KEYS.len());
 
+        // JSONB_SEARCH_KEYS
+        assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
+        assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
+        assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+
         // JSONB_EDIT_KEYS
         assert!(idx::jsonb_edit::SAVE < JSONB_EDIT_KEYS.len());
         assert!(idx::jsonb_edit::BACK < JSONB_EDIT_KEYS.len());
@@ -742,6 +747,7 @@ mod tests {
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
             check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
             check_non_none_have_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             check_non_none_have_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
@@ -815,6 +821,7 @@ mod tests {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_no_duplicate_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             check_no_duplicate_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_no_duplicate_combos_rows(mb.rows, name);
@@ -869,6 +876,7 @@ mod tests {
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_keymap_roundtrip(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             check_keymap_roundtrip(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_resolve_mode_roundtrip(mb.rows, name);
@@ -1006,6 +1014,7 @@ mod tests {
             check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
             check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
             check_none_action_entries_have_no_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
             check_none_action_entries_have_no_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
