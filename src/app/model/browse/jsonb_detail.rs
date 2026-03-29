@@ -233,6 +233,7 @@ impl JsonbDetailState {
 
     pub fn replace_tree(&mut self, tree: JsonTree) {
         self.tree = tree;
+        self.rebuild_visible_indices();
         self.selected_line = 0;
         self.scroll_offset = 0;
     }

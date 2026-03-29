@@ -321,7 +321,7 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    const SECTION_COUNT: usize = 24;
+    const SECTION_COUNT: usize = 25;
     const SECTION_HEADERS: usize = SECTION_COUNT;
     const BLANK_SEPARATORS: usize = SECTION_COUNT - 1;
     SECTION_HEADERS
@@ -351,6 +351,7 @@ pub const fn help_content_line_count() -> usize {
         + CONFIRM_DIALOG_KEYS.len()
         + JSONB_DETAIL_KEYS.len()
         + JSONB_EDIT_KEYS.len()
+        + JSONB_SEARCH_KEYS.len()
 }
 
 // =============================================================================
@@ -631,6 +632,7 @@ mod tests {
             CONFIRM_DIALOG_KEYS.len(),
             JSONB_DETAIL_KEYS.len(),
             JSONB_EDIT_KEYS.len(),
+            JSONB_SEARCH_KEYS.len(),
         ];
         let section_count = sections.len();
         let dedup_pairs = 3; // Focus, ReadOnly, History
