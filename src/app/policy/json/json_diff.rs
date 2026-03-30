@@ -8,8 +8,9 @@ pub enum JsonDiffLine {
 
 /// Compute a structured diff between two JSON strings.
 ///
-/// Returns `None` if either value is not valid JSON, or if both are
-/// identical after pretty-printing. `context_lines` controls how many
+/// Returns `None` if either value is not valid JSON, if both are identical
+/// after pretty-printing, or if the diff would exceed the safe LCS table size
+/// used by this small-input implementation. `context_lines` controls how many
 /// unchanged lines surround each change hunk.
 pub fn compute_json_diff(
     before: &str,
@@ -29,9 +30,14 @@ pub fn compute_json_diff(
     let before_lines: Vec<&str> = before_pretty.lines().collect();
     let after_lines: Vec<&str> = after_pretty.lines().collect();
 
-    // Guard against O(n*m) blowup on very large JSON values.
-    const MAX_LINES: usize = 500;
-    if before_lines.len() > MAX_LINES || after_lines.len() > MAX_LINES {
+    // Guard against O(n*m) blowup on very large JSON values while still
+    // allowing asymmetric diffs that are cheap in practice.
+    const MAX_LCS_CELLS: usize = (500 + 1) * (500 + 1);
+    let lcs_cells = before_lines
+        .len()
+        .saturating_add(1)
+        .saturating_mul(after_lines.len().saturating_add(1));
+    if lcs_cells > MAX_LCS_CELLS {
         return None;
     }
 
@@ -302,5 +308,40 @@ mod tests {
             !matches!(result.last(), Some(JsonDiffLine::Ellipsis)),
             "last line should not be Ellipsis when change is at end"
         );
+    }
+
+    #[test]
+    fn asymmetric_large_diff_still_returns_structured_diff() {
+        let after_items = (0..600)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let before = r#"{"items":[0]}"#;
+        let after = format!(r#"{{"items":[{after_items}]}}"#);
+
+        let result = compute_json_diff(before, &after, 1);
+
+        assert!(
+            result.is_some(),
+            "asymmetric JSON sizes should still use structured diff when LCS table stays small"
+        );
+    }
+
+    #[test]
+    fn oversized_lcs_table_returns_none() {
+        let before_items = (0..550)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let after_items = (550..1100)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let before = format!(r#"{{"items":[{before_items}]}}"#);
+        let after = format!(r#"{{"items":[{after_items}]}}"#);
+
+        let result = compute_json_diff(&before, &after, 1);
+
+        assert_eq!(result, None, "oversized LCS inputs should fall back safely");
     }
 }
