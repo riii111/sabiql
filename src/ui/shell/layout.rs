@@ -107,16 +107,10 @@ impl MainLayout {
         };
 
         match state.input_mode() {
-            InputMode::TablePicker => {}
-            InputMode::ErTablePicker => {}
-            InputMode::QueryHistoryPicker => {}
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
-            InputMode::SqlModal => {}
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now),
-            InputMode::ConfirmDialog => {}
-            InputMode::ConnectionSelector => {}
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
                 JsonbDetail::render(frame, state, now);
             }
@@ -143,7 +137,7 @@ impl MainLayout {
     fn render_browse_mode(
         frame: &mut Frame,
         main_area: Rect,
-        state: &mut AppState,
+        state: &AppState,
         services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
