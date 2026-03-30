@@ -57,6 +57,26 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
             Some(vec![])
         }
+        Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.confirm_dialog.preview_scroll =
+                state.confirm_dialog.preview_scroll.saturating_sub(1);
+            Some(vec![])
+        }
+        Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            let max_scroll = state.confirm_dialog.max_scroll();
+            if state.confirm_dialog.preview_scroll < max_scroll {
+                state.confirm_dialog.preview_scroll += 1;
+            }
+            Some(vec![])
+        }
         Action::CloseSqlModal => {
             state.modal.set_mode(InputMode::Normal);
             state.sql_modal.completion.visible = false;

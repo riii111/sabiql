@@ -61,6 +61,17 @@ mod tests {
         }
 
         #[rstest]
+        #[case(Key::Char('j'))]
+        #[case(Key::Down)]
+        #[case(Key::Char('k'))]
+        #[case(Key::Up)]
+        fn scroll_keys_return_scroll_action(#[case] code: Key) {
+            let result = handle_confirm_dialog_keys(combo(code));
+
+            assert!(matches!(result, Action::Scroll { .. }));
+        }
+
+        #[rstest]
         #[case(Key::Char('y'))]
         #[case(Key::Char('Y'))]
         #[case(Key::Char('n'))]
