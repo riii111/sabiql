@@ -243,9 +243,59 @@ fn confirm_dialog_update_preview_scrollable() {
     let output = render_to_string(&mut terminal, &mut state);
 
     assert!(
-        output.contains("j/k: Scroll"),
+        output.contains("Scroll"),
         "Scrollable preview should show scroll hint"
     );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview_narrow_terminal() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal_sized(40, 12);
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    let long_before = r#"{"industries": ["tech", "finance"], "company_size": "enterprise"}"#;
+    let long_after = r#"{"industries": ["tech"], "company_size": "startup"}"#;
+
+    let sql = format!(
+        "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
+    );
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "1".to_string())],
+        },
+        diff: vec![ColumnDiff {
+            column: "metadata".to_string(),
+            before: long_before.to_string(),
+            after: long_after.to_string(),
+        }],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        "Confirm UPDATE: users",
+        "",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql,
+            blocked: false,
+        },
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
     insta::assert_snapshot!(output);
 }
 

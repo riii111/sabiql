@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │ "retail"], "company_size": "startup", "preferences": │           │
 │           │ {"notifications": false, "theme": "light",           │           │
 └───────────│                                                      │───────────┘
-            ╰ Enter: Confirm │ j/k: Scroll │ Esc: Cancel ──────────╯
+            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯

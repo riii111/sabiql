@@ -1,0 +1,15 @@
+---
+source: tests/render_snapshots/confirm_dialogs.rs
+expression: output
+---
+test_project | test_db | - | no dsn | lo
+┌╭ Confirm UPDATE: users ─────────────╮]
+││                                    │┐
+││ ✓ LOW RISK                         ││
+││                                    ││
+││ Diff                               │┘
+││   metadata:                        │┐
+││     - "{\"industries\": [\"tech\", ││
+││ \"finance\"], \"company_size\":    ││
+││                                    ││
+└╰ Enter: Confirm │ j/k/↑↓: Scroll │ E╯┘

@@ -24,4 +24,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │     - "old_d"                                        │           │
 │           │     + "new_d"                                        │           │
 └───────────│                                                      │───────────┘
-            ╰ Enter: Confirm │ j/k: Scroll │ Esc: Cancel ──────────╯
+            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯
