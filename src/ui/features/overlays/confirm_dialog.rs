@@ -170,7 +170,8 @@ impl ConfirmDialog {
         content_lines.push(Line::from(""));
 
         let full_area = frame.area();
-        let max_modal_width = (full_area.width * 70 / 100).max(44);
+        let terminal_cap = full_area.width.saturating_sub(2).max(20);
+        let max_modal_width = (full_area.width * 70 / 100).max(44).min(terminal_cap);
         let hint_width_estimate: u16 = 50; // generous estimate for longest hint variant
         let title_width = title.chars().count() as u16;
         let content_max_width = content_lines

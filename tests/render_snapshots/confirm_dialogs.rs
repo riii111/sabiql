@@ -179,6 +179,77 @@ fn confirm_dialog_update_preview_long_jsonb() {
 }
 
 #[test]
+fn confirm_dialog_update_preview_scrollable() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    let sql = "UPDATE \"public\".\"users\"\nSET \"a\" = '1', \"b\" = '2', \"c\" = '3', \"d\" = '4', \"e\" = '5'\nWHERE \"id\" = '1';".to_string();
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "1".to_string())],
+        },
+        diff: vec![
+            ColumnDiff {
+                column: "a".to_string(),
+                before: "old_a".to_string(),
+                after: "new_a".to_string(),
+            },
+            ColumnDiff {
+                column: "b".to_string(),
+                before: "old_b".to_string(),
+                after: "new_b".to_string(),
+            },
+            ColumnDiff {
+                column: "c".to_string(),
+                before: "old_c".to_string(),
+                after: "new_c".to_string(),
+            },
+            ColumnDiff {
+                column: "d".to_string(),
+                before: "old_d".to_string(),
+                after: "new_d".to_string(),
+            },
+            ColumnDiff {
+                column: "e".to_string(),
+                before: "old_e".to_string(),
+                after: "new_e".to_string(),
+            },
+        ],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        "Confirm UPDATE: users",
+        "",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql,
+            blocked: false,
+        },
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(
+        output.contains("j/k: Scroll"),
+        "Scrollable preview should show scroll hint"
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn confirm_dialog_update_preview_multi_column() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
