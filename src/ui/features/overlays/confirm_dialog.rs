@@ -200,10 +200,12 @@ impl ConfirmDialog {
             .join("\n");
         let wrapped_height = wrapped_line_count(&content_text, inner_width);
         let max_modal_height = full_area.height.saturating_sub(2).max(6);
-        let modal_height = (wrapped_height + 2).clamp(8, max_modal_height);
+        // +4 = border top/bottom (2) + vertical padding (2)
+        let modal_height = (wrapped_height + 4).clamp(8, max_modal_height);
 
         // Determine scrollability and build hint string
-        let inner_height = modal_height.saturating_sub(2);
+        // inner_height = modal - border(2) - vertical padding(2)
+        let inner_height = modal_height.saturating_sub(4);
         let scrollable = wrapped_height > inner_height;
         let hint: &str = match (scrollable, blocked) {
             (true, false) => " j/k: Scroll │ Enter: Confirm │ Esc: Cancel ",
@@ -221,7 +223,7 @@ impl ConfirmDialog {
             border_color,
         );
 
-        let inner = modal_inner.inner(Margin::new(1, 0));
+        let inner = modal_inner.inner(Margin::new(1, 1));
 
         // Record viewport/content for scroll clamp in reducer
         state.confirm_dialog.preview_viewport_height = Some(inner.height);

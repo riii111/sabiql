@@ -7,8 +7,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
 │  public.posts    ││Owner:   postgres                                         │
 │  public.comments ││Comment: User accounts                                    │
-│                  ││Rows:    ~100                                             │
 │           ╭ Confirm UPDATE: users ───────────────────────────────╮           │
+│           │                                                      │           │
 │           │ ✓ LOW RISK                                           │           │
 │           │                                                      │           │
 │           │ Diff                                                 │           │
@@ -20,7 +20,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │           │   UPDATE "public"."users"                            │           │
 │           │   SET "email" = 'new@example.com'                    │           │
 │           │   WHERE "id" = '2';                                  │           │
+│           │                                                      │           │
 │           ╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯           │
-│                  ││                                                          │
 │                  ││                                                          │
 └──────────────────┘└──────────────────────────────────────────────────────────┘
