@@ -61,6 +61,7 @@ pub enum ScrollTarget {
     Inspector,
     Help,
     ConnectionError,
+    ConfirmDialog,
     ExplainPlan,
     ExplainCompare,
     ExplainConfirm,

@@ -30,6 +30,11 @@ pub fn create_test_terminal() -> Terminal<TestBackend> {
     Terminal::new(backend).unwrap()
 }
 
+pub fn create_test_terminal_sized(width: u16, height: u16) -> Terminal<TestBackend> {
+    let backend = TestBackend::new(width, height);
+    Terminal::new(backend).unwrap()
+}
+
 const FIXED_TIME_MS: u128 = 0;
 
 pub fn render_and_get_buffer(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> Buffer {

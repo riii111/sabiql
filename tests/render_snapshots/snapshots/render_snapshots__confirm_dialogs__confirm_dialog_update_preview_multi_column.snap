@@ -1,0 +1,26 @@
+---
+source: tests/render_snapshots/confirm_dialogs.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                       
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│> public.us╭ Confirm UPDATE: users ───────────────────────────────╮───────────┐
+│  public.po│                                                      │           │
+│  public.co│ ✓ LOW RISK                                           │           │
+│           │                                                      │           │
+│           │ Diff                                                 │           │
+│           │   email:                                             │           │
+│           │     - "bob@example.com"                              │           │
+│           │     + "new@example.com"                              │           │
+│           │                                                      │           │
+│           │   name:                                              │───────────┘
+│           │     - "Bob"                                          │───────────┐
+│           │     + "New Name"                                     │           │
+│           │                                                      │           │
+│           │ SQL Preview                                          │           │
+│           │   UPDATE "public"."users"                            │           │
+│           │   SET "email" = 'new@example.com', "name" = 'New     │           │
+│           │ Name'                                                │           │
+│           │   WHERE "id" = '2';                                  │           │
+│           │                                                      │           │
+└───────────╰ Enter: Confirm │ Esc: Cancel ────────────────────────╯───────────┘

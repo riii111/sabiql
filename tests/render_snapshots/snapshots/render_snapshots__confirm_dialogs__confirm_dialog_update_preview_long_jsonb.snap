@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/confirm_dialogs.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                       
+┌ [1] Explor╭ Confirm UPDATE: users ───────────────────────────────╮            
+│> public.us│                                                      │───────────┐
+│  public.po│ ✓ LOW RISK                                           │           │
+│  public.co│                                                      │           │
+│           │ Diff                                                 │           │
+│           │   metadata:                                          │           │
+│           │     - "{\"industries\": [\"tech\", \"finance\",      │           │
+│           │ \"healthcare\"], \"company_size\": \"enterprise\",   │           │
+│           │ \"preferences\": {\"notifications\": true,           │           │
+│           │ \"theme\": \"dark\"}}"                               │           │
+│           │     + "{\"industries\": [\"tech\", \"retail\"],      │───────────┘
+│           │ \"company_size\": \"startup\", \"preferences\":      │───────────┐
+│           │ {\"notifications\": false, \"theme\": \"light\",     │           │
+│           │ \"language\": \"ja\"}}"                              │           │
+│           │                                                      │           │
+│           │ SQL Preview                                          │           │
+│           │   UPDATE "public"."users"                            │           │
+│           │   SET "metadata" = '{"industries": ["tech",          │           │
+│           │ "retail"], "company_size": "startup", "preferences": │           │
+│           │ {"notifications": false, "theme": "light",           │           │
+└───────────│                                                      │───────────┘
+            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯

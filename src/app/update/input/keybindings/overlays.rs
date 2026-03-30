@@ -465,6 +465,30 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Enter)],
     },
     KeyBinding {
+        key_short: "j/↓",
+        key: "j / ↓",
+        desc_short: "Down",
+        description: "Scroll down",
+        action: Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        },
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "k/↑",
+        key: "k / ↑",
+        desc_short: "Up",
+        description: "Scroll up",
+        action: Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        },
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+    },
+    KeyBinding {
         key_short: "Esc",
         key: "Esc",
         desc_short: "Cancel",

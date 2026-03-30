@@ -352,6 +352,8 @@ mod tests {
             ScrollAmount::Line
         )]
         #[case(ScrollTarget::ExplainConfirm, ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(ScrollTarget::ConfirmDialog, ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(ScrollTarget::ConfirmDialog, ScrollDirection::Up, ScrollAmount::Line)]
         #[case(ScrollTarget::Explorer, ScrollDirection::Left, ScrollAmount::Line)]
         #[case(ScrollTarget::Explorer, ScrollDirection::Right, ScrollAmount::Line)]
         fn scroll_reduce_never_returns_effects(
