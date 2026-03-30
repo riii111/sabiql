@@ -206,7 +206,9 @@ pub mod idx {
 
     pub mod confirm {
         pub const YES: usize = 0;
-        pub const NO: usize = 1;
+        pub const SCROLL_DOWN: usize = 1;
+        pub const SCROLL_UP: usize = 2;
+        pub const NO: usize = 3;
     }
 
     pub mod table_picker {
@@ -417,6 +419,7 @@ pub fn is_query_history(combo: &KeyCombo) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
 
     #[test]
     fn idx_constants_are_within_bounds() {
@@ -516,6 +519,8 @@ mod tests {
 
         // CONFIRM_DIALOG_KEYS
         assert!(idx::confirm::YES < CONFIRM_DIALOG_KEYS.len());
+        assert!(idx::confirm::SCROLL_DOWN < CONFIRM_DIALOG_KEYS.len());
+        assert!(idx::confirm::SCROLL_UP < CONFIRM_DIALOG_KEYS.len());
         assert!(idx::confirm::NO < CONFIRM_DIALOG_KEYS.len());
 
         // TABLE_PICKER_ROWS
@@ -677,16 +682,44 @@ mod tests {
             );
         }
 
-        #[rstest]
-        #[case(idx::confirm::YES, Action::ConfirmDialogConfirm)]
-        #[case(idx::confirm::NO, Action::ConfirmDialogCancel)]
-        fn confirm_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&CONFIRM_DIALOG_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "CONFIRM_DIALOG_KEYS[{i}] has action {:?}, expected {expected:?}",
-                CONFIRM_DIALOG_KEYS[i].action
-            );
+        #[test]
+        fn confirm_yes_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
+                Action::ConfirmDialogConfirm
+            ));
+        }
+
+        #[test]
+        fn confirm_scroll_down_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
+                Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                }
+            ));
+        }
+
+        #[test]
+        fn confirm_scroll_up_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
+                Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                }
+            ));
+        }
+
+        #[test]
+        fn confirm_no_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
+                Action::ConfirmDialogCancel
+            ));
         }
 
         #[rstest]

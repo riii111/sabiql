@@ -21,6 +21,9 @@ pub struct ConfirmDialogState {
     title: String,
     message: String,
     intent: Option<ConfirmIntent>,
+    pub preview_scroll: u16,
+    pub preview_viewport_height: Option<u16>,
+    pub preview_content_height: Option<u16>,
 }
 
 impl ConfirmDialogState {
@@ -33,6 +36,20 @@ impl ConfirmDialogState {
         self.title = title.into();
         self.message = message.into();
         self.intent = Some(intent);
+        self.preview_scroll = 0;
+        self.preview_viewport_height = None;
+        self.preview_content_height = None;
+    }
+
+    pub fn max_scroll(&self) -> u16 {
+        match (self.preview_content_height, self.preview_viewport_height) {
+            (Some(content), Some(viewport)) => content.saturating_sub(viewport),
+            _ => 0,
+        }
+    }
+
+    pub fn is_scrollable(&self) -> bool {
+        self.max_scroll() > 0
     }
 
     pub fn title(&self) -> &str {
@@ -58,6 +75,9 @@ impl Default for ConfirmDialogState {
             title: "Confirm".to_string(),
             message: String::new(),
             intent: None,
+            preview_scroll: 0,
+            preview_viewport_height: None,
+            preview_content_height: None,
         }
     }
 }

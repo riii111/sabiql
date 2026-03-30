@@ -57,6 +57,28 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             }
             Some(vec![])
         }
+        Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.confirm_dialog.preview_scroll =
+                state.confirm_dialog.preview_scroll.saturating_sub(1);
+            Some(vec![])
+        }
+        Action::Scroll {
+            target: ScrollTarget::ConfirmDialog,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            let max_scroll = state.confirm_dialog.max_scroll();
+            state.confirm_dialog.preview_scroll =
+                state.confirm_dialog.preview_scroll.min(max_scroll);
+            if state.confirm_dialog.preview_scroll < max_scroll {
+                state.confirm_dialog.preview_scroll += 1;
+            }
+            Some(vec![])
+        }
         Action::CloseSqlModal => {
             state.modal.set_mode(InputMode::Normal);
             state.sql_modal.completion.visible = false;
@@ -910,6 +932,118 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.query_history_picker.selected, 0);
+        }
+    }
+
+    mod confirm_dialog_scroll {
+        use super::*;
+
+        fn state_with_scrollable_preview() -> AppState {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::ConfirmDialog);
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: "UPDATE t SET x=1".to_string(),
+                    blocked: false,
+                },
+            );
+            // Simulate render having recorded viewport < content
+            state.confirm_dialog.preview_viewport_height = Some(10);
+            state.confirm_dialog.preview_content_height = Some(25);
+            state
+        }
+
+        #[test]
+        fn scroll_down_increments_offset() {
+            let mut state = state_with_scrollable_preview();
+
+            reduce_modal(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.confirm_dialog.preview_scroll, 1);
+        }
+
+        #[test]
+        fn scroll_up_decrements_offset() {
+            let mut state = state_with_scrollable_preview();
+            state.confirm_dialog.preview_scroll = 5;
+
+            reduce_modal(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.confirm_dialog.preview_scroll, 4);
+        }
+
+        #[test]
+        fn scroll_up_clamps_at_zero() {
+            let mut state = state_with_scrollable_preview();
+            state.confirm_dialog.preview_scroll = 0;
+
+            reduce_modal(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+        }
+
+        #[test]
+        fn scroll_down_clamps_at_max() {
+            let mut state = state_with_scrollable_preview();
+            // max_scroll = 25 - 10 = 15
+            state.confirm_dialog.preview_scroll = 15;
+
+            reduce_modal(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.confirm_dialog.preview_scroll, 15);
+        }
+
+        #[test]
+        fn open_resets_scroll_to_zero() {
+            let mut state = create_test_state();
+            state.confirm_dialog.preview_scroll = 10;
+
+            state.confirm_dialog.open(
+                "",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: "test".to_string(),
+                    blocked: false,
+                },
+            );
+
+            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+            assert!(state.confirm_dialog.preview_viewport_height.is_none());
+            assert!(state.confirm_dialog.preview_content_height.is_none());
         }
     }
 
