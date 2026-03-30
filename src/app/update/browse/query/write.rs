@@ -4,6 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::policy::json::json_diff::compute_json_diff;
 use crate::app::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -73,11 +74,17 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         operation: WriteOperation::Update,
         sql,
         target_summary: target,
-        diff: vec![ColumnDiff {
-            column: column_name,
-            before: normalize_for_diff(&state.result_interaction.cell_edit().original_value),
-            after: normalize_for_diff(state.result_interaction.cell_edit().draft_value()),
-        }],
+        diff: {
+            let before = normalize_for_diff(&state.result_interaction.cell_edit().original_value);
+            let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
+            let json_diff = compute_json_diff(&before, &after, 1);
+            vec![ColumnDiff {
+                column: column_name,
+                before,
+                after,
+                json_diff,
+            }]
+        },
         guardrail,
     };
     Ok(preview)

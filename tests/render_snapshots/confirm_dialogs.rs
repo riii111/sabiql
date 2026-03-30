@@ -94,6 +94,7 @@ fn confirm_dialog_update_preview_rich() {
                 column: "email".to_string(),
                 before: "bob@example.com".to_string(),
                 after: "new@example.com".to_string(),
+                json_diff: None,
             }],
             sql.clone(),
             "2",
@@ -161,6 +162,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
+    let json_diff = compute_json_diff(long_before, long_after, 1);
     state
         .result_interaction
         .set_write_preview(make_update_preview(
@@ -168,6 +170,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
                 column: "metadata".to_string(),
                 before: long_before.to_string(),
                 after: long_after.to_string(),
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -199,13 +202,17 @@ fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
         "UPDATE \"public\".\"users\"\nSET \"target_audience\" = '{serde_after}'\nWHERE \"id\" = '1';"
     );
     // Apply normalize_for_diff to mirror the real build_update_preview path
+    let before = normalize_for_diff(pg_before);
+    let after = normalize_for_diff(serde_after);
+    let json_diff = compute_json_diff(&before, &after, 1);
     state
         .result_interaction
         .set_write_preview(make_update_preview(
             vec![ColumnDiff {
                 column: "target_audience".to_string(),
-                before: normalize_for_diff(pg_before),
-                after: normalize_for_diff(serde_after),
+                before,
+                after,
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -236,26 +243,31 @@ fn confirm_dialog_update_preview_scrollable() {
                     column: "a".to_string(),
                     before: "old_a".to_string(),
                     after: "new_a".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "b".to_string(),
                     before: "old_b".to_string(),
                     after: "new_b".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "c".to_string(),
                     before: "old_c".to_string(),
                     after: "new_c".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "d".to_string(),
                     before: "old_d".to_string(),
                     after: "new_d".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "e".to_string(),
                     before: "old_e".to_string(),
                     after: "new_e".to_string(),
+                    json_diff: None,
                 },
             ],
             sql.clone(),
@@ -286,6 +298,7 @@ fn confirm_dialog_update_preview_narrow_terminal() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
+    let json_diff = compute_json_diff(long_before, long_after, 1);
     state
         .result_interaction
         .set_write_preview(make_update_preview(
@@ -293,6 +306,7 @@ fn confirm_dialog_update_preview_narrow_terminal() {
                 column: "metadata".to_string(),
                 before: long_before.to_string(),
                 after: long_after.to_string(),
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -321,11 +335,13 @@ fn confirm_dialog_update_preview_multi_column() {
                     column: "email".to_string(),
                     before: "bob@example.com".to_string(),
                     after: "new@example.com".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "name".to_string(),
                     before: "Bob".to_string(),
                     after: "New Name".to_string(),
+                    json_diff: None,
                 },
             ],
             sql.clone(),
