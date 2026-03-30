@@ -22,6 +22,7 @@ use sabiql::app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,
 };
+use sabiql::app::policy::write::write_update::normalize_for_diff;
 use sabiql::domain::{CommandTag, QuerySource};
 
 mod confirm_dialogs;

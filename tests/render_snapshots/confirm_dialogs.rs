@@ -179,6 +179,46 @@ fn confirm_dialog_update_preview_long_jsonb() {
 }
 
 #[test]
+fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    // before: PostgreSQL key order (industries first, spaces)
+    // after: serde_json key order (alphabetical, compact)
+    // Only actual change is company_size value: "500+" → "600+"
+    let pg_before =
+        r#"{"industries": ["technology", "finance"], "company_size": ["100-500", "500+"]}"#;
+    let serde_after =
+        r#"{"company_size":["100-500","600+"],"industries":["technology","finance"]}"#;
+
+    let sql = format!(
+        "UPDATE \"public\".\"users\"\nSET \"target_audience\" = '{serde_after}'\nWHERE \"id\" = '1';"
+    );
+    // Apply normalize_for_diff to mirror the real build_update_preview path
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![ColumnDiff {
+                column: "target_audience".to_string(),
+                before: normalize_for_diff(pg_before),
+                after: normalize_for_diff(serde_after),
+            }],
+            sql.clone(),
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    // Both before and after should show the same key order after normalization
+    // (serde_json alphabetical: company_size before industries)
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn confirm_dialog_update_preview_scrollable() {
     let (mut state, _now) = connected_state();
     let mut terminal = create_test_terminal();
