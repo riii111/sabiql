@@ -115,18 +115,24 @@ impl ConfirmDialog {
                     "Diff",
                     Style::default().fg(Theme::TEXT_SECONDARY),
                 )]));
-                for diff in &preview.diff {
+                for (i, diff) in preview.diff.iter().enumerate() {
                     let before = format!("\"{}\"", escape_preview_value(&diff.before));
                     let after = format!("\"{}\"", escape_preview_value(&diff.after));
-                    content_lines.push(Line::from(vec![
-                        Span::styled(
-                            format!("  {}: ", diff.column),
-                            Style::default().fg(Theme::TEXT_SECONDARY),
-                        ),
-                        Span::styled(before, Style::default().fg(Theme::TEXT_PRIMARY)),
-                        Span::styled("  →  ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                        Span::styled(after, Style::default().fg(Theme::TEXT_PRIMARY)),
-                    ]));
+                    content_lines.push(Line::from(Span::styled(
+                        format!("  {}:", diff.column),
+                        Style::default().fg(Theme::TEXT_SECONDARY),
+                    )));
+                    content_lines.push(Line::from(Span::styled(
+                        format!("    - {before}"),
+                        Style::default().fg(Theme::STATUS_ERROR),
+                    )));
+                    content_lines.push(Line::from(Span::styled(
+                        format!("    + {after}"),
+                        Style::default().fg(Theme::STATUS_SUCCESS),
+                    )));
+                    if i + 1 < preview.diff.len() {
+                        content_lines.push(Line::from(""));
+                    }
                 }
             }
             WriteOperation::Delete => {
@@ -163,7 +169,7 @@ impl ConfirmDialog {
         content_lines.push(Line::from(""));
 
         let full_area = frame.area();
-        let max_modal_width = full_area.width.saturating_sub(2).max(20);
+        let max_modal_width = (full_area.width * 70 / 100).max(44);
         let hint_width = hint.chars().count() as u16;
         let title_width = title.chars().count() as u16;
         let content_max_width = content_lines
@@ -180,9 +186,20 @@ impl ConfirmDialog {
         let preferred_width = content_width.saturating_add(6).max(44);
         let modal_width = preferred_width.min(max_modal_width);
 
-        let content_height = content_lines.len() as u16;
+        let inner_width = modal_width.saturating_sub(4).max(1);
+        let content_text: String = content_lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let wrapped_height = wrapped_line_count(&content_text, inner_width);
         let max_modal_height = full_area.height.saturating_sub(2).max(6);
-        let modal_height = (content_height + 2).clamp(8, max_modal_height);
+        let modal_height = (wrapped_height + 2).clamp(8, max_modal_height);
 
         let (_, modal_inner) = render_modal_with_border_color(
             frame,
@@ -194,7 +211,9 @@ impl ConfirmDialog {
         );
 
         let inner = modal_inner.inner(Margin::new(1, 0));
-        let para = Paragraph::new(content_lines).alignment(Alignment::Left);
+        let para = Paragraph::new(content_lines)
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: false });
         frame.render_widget(para, inner);
     }
 

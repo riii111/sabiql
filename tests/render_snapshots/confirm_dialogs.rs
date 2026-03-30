@@ -127,3 +127,105 @@ fn confirm_dialog_delete_preview_low_risk() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn confirm_dialog_update_preview_long_jsonb() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    let long_before = r#"{"industries": ["tech", "finance", "healthcare"], "company_size": "enterprise", "preferences": {"notifications": true, "theme": "dark"}}"#;
+    let long_after = r#"{"industries": ["tech", "retail"], "company_size": "startup", "preferences": {"notifications": false, "theme": "light", "language": "ja"}}"#;
+
+    let sql = format!(
+        "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
+    );
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "1".to_string())],
+        },
+        diff: vec![ColumnDiff {
+            column: "metadata".to_string(),
+            before: long_before.to_string(),
+            after: long_after.to_string(),
+        }],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        "Confirm UPDATE: users",
+        "",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql,
+            blocked: false,
+        },
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview_multi_column() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com', \"name\" = 'New Name'\nWHERE \"id\" = '2';".to_string();
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), "2".to_string())],
+        },
+        diff: vec![
+            ColumnDiff {
+                column: "email".to_string(),
+                before: "bob@example.com".to_string(),
+                after: "new@example.com".to_string(),
+            },
+            ColumnDiff {
+                column: "name".to_string(),
+                before: "Bob".to_string(),
+                after: "New Name".to_string(),
+            },
+        ],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        "Confirm UPDATE: users",
+        "",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql,
+            blocked: false,
+        },
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
