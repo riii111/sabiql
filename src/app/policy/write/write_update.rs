@@ -1,3 +1,12 @@
+/// Normalize a cell value for diff display.
+/// If the value is valid JSON, re-serialize it so both before/after
+/// share the same key ordering and formatting.
+pub fn normalize_for_diff(value: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(value)
+        .and_then(|v| serde_json::to_string(&v))
+        .unwrap_or_else(|_| value.to_string())
+}
+
 pub fn escape_preview_value(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -50,6 +59,22 @@ mod tests {
         #[test]
         fn value_with_control_chars_returns_escaped_preview_value() {
             assert_eq!(escape_preview_value("a\\b\"c\nd"), "a\\\\b\\\"c\\nd");
+        }
+
+        #[test]
+        fn json_normalized_to_consistent_key_order() {
+            let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
+            let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
+            assert_eq!(
+                normalize_for_diff(pg_style),
+                normalize_for_diff(serde_style)
+            );
+        }
+
+        #[test]
+        fn non_json_value_returned_unchanged() {
+            assert_eq!(normalize_for_diff("plain text"), "plain text");
+            assert_eq!(normalize_for_diff("42"), "42");
         }
     }
 

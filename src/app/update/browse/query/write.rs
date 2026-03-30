@@ -7,7 +7,9 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::app::policy::write::write_update::{build_pk_pairs, escape_preview_value};
+use crate::app::policy::write::write_update::{
+    build_pk_pairs, escape_preview_value, normalize_for_diff,
+};
 use crate::app::services::AppServices;
 use crate::app::update::action::Action;
 use crate::app::update::helpers::{build_bulk_delete_preview, editable_preview_base};
@@ -73,12 +75,8 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         target_summary: target,
         diff: vec![ColumnDiff {
             column: column_name,
-            before: state.result_interaction.cell_edit().original_value.clone(),
-            after: state
-                .result_interaction
-                .cell_edit()
-                .draft_value()
-                .to_string(),
+            before: normalize_for_diff(&state.result_interaction.cell_edit().original_value),
+            after: normalize_for_diff(state.result_interaction.cell_edit().draft_value()),
         }],
         guardrail,
     };
