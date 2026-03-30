@@ -13,7 +13,7 @@ use crate::ui::theme::Theme;
 pub struct JsonbDetail;
 
 impl JsonbDetail {
-    pub fn render(frame: &mut Frame, state: &mut AppState, now: std::time::Instant) {
+    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
         if !state.jsonb_detail.is_active() {
             return;
         }
@@ -26,7 +26,7 @@ impl JsonbDetail {
         }
     }
 
-    fn render_viewing(frame: &mut Frame, state: &mut AppState, now: std::time::Instant) {
+    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
         let title = format!(
             " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
