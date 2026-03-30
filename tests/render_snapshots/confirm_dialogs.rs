@@ -1,6 +1,41 @@
 use super::*;
 use harness::connected_state;
 
+fn make_update_preview(diff: Vec<ColumnDiff>, sql: String) -> WritePreview {
+    make_update_preview_with_key(diff, sql, "1")
+}
+
+fn make_update_preview_with_key(diff: Vec<ColumnDiff>, sql: String, id: &str) -> WritePreview {
+    WritePreview {
+        operation: WriteOperation::Update,
+        sql,
+        target_summary: TargetSummary {
+            schema: "public".to_string(),
+            table: "users".to_string(),
+            key_values: vec![("id".to_string(), id.to_string())],
+        },
+        diff,
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    }
+}
+
+fn open_write_confirm(state: &mut sabiql::app::model::app_state::AppState, title: &str, sql: &str) {
+    state.modal.set_mode(InputMode::ConfirmDialog);
+    state.confirm_dialog.open(
+        title,
+        "",
+        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
+            sql: sql.to_string(),
+            blocked: false,
+        },
+    );
+}
+
 #[test]
 fn confirm_dialog() {
     let mut state = create_test_state();
@@ -52,26 +87,17 @@ fn confirm_dialog_update_preview_rich() {
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com'\nWHERE \"id\" = '2';"
         .to_string();
-    state.result_interaction.set_write_preview(WritePreview {
-        operation: WriteOperation::Update,
-        sql: sql.clone(),
-        target_summary: TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "2".to_string())],
-        },
-        diff: vec![ColumnDiff {
-            column: "email".to_string(),
-            before: "bob@example.com".to_string(),
-            after: "new@example.com".to_string(),
-        }],
-        guardrail: GuardrailDecision {
-            risk_level: RiskLevel::Low,
-            blocked: false,
-            reason: None,
-            target_summary: None,
-        },
-    });
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview_with_key(
+            vec![ColumnDiff {
+                column: "email".to_string(),
+                before: "bob@example.com".to_string(),
+                after: "new@example.com".to_string(),
+            }],
+            sql.clone(),
+            "2",
+        ));
     state.modal.set_mode(InputMode::ConfirmDialog);
     state.confirm_dialog.open(
         "Confirm UPDATE: users",
@@ -113,15 +139,7 @@ fn confirm_dialog_delete_preview_low_risk() {
             target_summary: None,
         },
     });
-    state.modal.set_mode(InputMode::ConfirmDialog);
-    state.confirm_dialog.open(
-        "Confirm DELETE: users",
-        "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-            sql,
-            blocked: false,
-        },
-    );
+    open_write_confirm(&mut state, "Confirm DELETE: users", &sql);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -143,35 +161,17 @@ fn confirm_dialog_update_preview_long_jsonb() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
-    state.result_interaction.set_write_preview(WritePreview {
-        operation: WriteOperation::Update,
-        sql: sql.clone(),
-        target_summary: TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "1".to_string())],
-        },
-        diff: vec![ColumnDiff {
-            column: "metadata".to_string(),
-            before: long_before.to_string(),
-            after: long_after.to_string(),
-        }],
-        guardrail: GuardrailDecision {
-            risk_level: RiskLevel::Low,
-            blocked: false,
-            reason: None,
-            target_summary: None,
-        },
-    });
-    state.modal.set_mode(InputMode::ConfirmDialog);
-    state.confirm_dialog.open(
-        "Confirm UPDATE: users",
-        "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-            sql,
-            blocked: false,
-        },
-    );
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![ColumnDiff {
+                column: "metadata".to_string(),
+                before: long_before.to_string(),
+                after: long_after.to_string(),
+            }],
+            sql.clone(),
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -188,57 +188,39 @@ fn confirm_dialog_update_preview_scrollable() {
         .set_table_detail(fixtures::sample_table_detail(), 0);
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"a\" = '1', \"b\" = '2', \"c\" = '3', \"d\" = '4', \"e\" = '5'\nWHERE \"id\" = '1';".to_string();
-    state.result_interaction.set_write_preview(WritePreview {
-        operation: WriteOperation::Update,
-        sql: sql.clone(),
-        target_summary: TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "1".to_string())],
-        },
-        diff: vec![
-            ColumnDiff {
-                column: "a".to_string(),
-                before: "old_a".to_string(),
-                after: "new_a".to_string(),
-            },
-            ColumnDiff {
-                column: "b".to_string(),
-                before: "old_b".to_string(),
-                after: "new_b".to_string(),
-            },
-            ColumnDiff {
-                column: "c".to_string(),
-                before: "old_c".to_string(),
-                after: "new_c".to_string(),
-            },
-            ColumnDiff {
-                column: "d".to_string(),
-                before: "old_d".to_string(),
-                after: "new_d".to_string(),
-            },
-            ColumnDiff {
-                column: "e".to_string(),
-                before: "old_e".to_string(),
-                after: "new_e".to_string(),
-            },
-        ],
-        guardrail: GuardrailDecision {
-            risk_level: RiskLevel::Low,
-            blocked: false,
-            reason: None,
-            target_summary: None,
-        },
-    });
-    state.modal.set_mode(InputMode::ConfirmDialog);
-    state.confirm_dialog.open(
-        "Confirm UPDATE: users",
-        "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-            sql,
-            blocked: false,
-        },
-    );
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![
+                ColumnDiff {
+                    column: "a".to_string(),
+                    before: "old_a".to_string(),
+                    after: "new_a".to_string(),
+                },
+                ColumnDiff {
+                    column: "b".to_string(),
+                    before: "old_b".to_string(),
+                    after: "new_b".to_string(),
+                },
+                ColumnDiff {
+                    column: "c".to_string(),
+                    before: "old_c".to_string(),
+                    after: "new_c".to_string(),
+                },
+                ColumnDiff {
+                    column: "d".to_string(),
+                    before: "old_d".to_string(),
+                    after: "new_d".to_string(),
+                },
+                ColumnDiff {
+                    column: "e".to_string(),
+                    before: "old_e".to_string(),
+                    after: "new_e".to_string(),
+                },
+            ],
+            sql.clone(),
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -264,35 +246,17 @@ fn confirm_dialog_update_preview_narrow_terminal() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
-    state.result_interaction.set_write_preview(WritePreview {
-        operation: WriteOperation::Update,
-        sql: sql.clone(),
-        target_summary: TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "1".to_string())],
-        },
-        diff: vec![ColumnDiff {
-            column: "metadata".to_string(),
-            before: long_before.to_string(),
-            after: long_after.to_string(),
-        }],
-        guardrail: GuardrailDecision {
-            risk_level: RiskLevel::Low,
-            blocked: false,
-            reason: None,
-            target_summary: None,
-        },
-    });
-    state.modal.set_mode(InputMode::ConfirmDialog);
-    state.confirm_dialog.open(
-        "Confirm UPDATE: users",
-        "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-            sql,
-            blocked: false,
-        },
-    );
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![ColumnDiff {
+                column: "metadata".to_string(),
+                before: long_before.to_string(),
+                after: long_after.to_string(),
+            }],
+            sql.clone(),
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -309,42 +273,25 @@ fn confirm_dialog_update_preview_multi_column() {
         .set_table_detail(fixtures::sample_table_detail(), 0);
 
     let sql = "UPDATE \"public\".\"users\"\nSET \"email\" = 'new@example.com', \"name\" = 'New Name'\nWHERE \"id\" = '2';".to_string();
-    state.result_interaction.set_write_preview(WritePreview {
-        operation: WriteOperation::Update,
-        sql: sql.clone(),
-        target_summary: TargetSummary {
-            schema: "public".to_string(),
-            table: "users".to_string(),
-            key_values: vec![("id".to_string(), "2".to_string())],
-        },
-        diff: vec![
-            ColumnDiff {
-                column: "email".to_string(),
-                before: "bob@example.com".to_string(),
-                after: "new@example.com".to_string(),
-            },
-            ColumnDiff {
-                column: "name".to_string(),
-                before: "Bob".to_string(),
-                after: "New Name".to_string(),
-            },
-        ],
-        guardrail: GuardrailDecision {
-            risk_level: RiskLevel::Low,
-            blocked: false,
-            reason: None,
-            target_summary: None,
-        },
-    });
-    state.modal.set_mode(InputMode::ConfirmDialog);
-    state.confirm_dialog.open(
-        "Confirm UPDATE: users",
-        "",
-        sabiql::app::model::shared::confirm_dialog::ConfirmIntent::ExecuteWrite {
-            sql,
-            blocked: false,
-        },
-    );
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview_with_key(
+            vec![
+                ColumnDiff {
+                    column: "email".to_string(),
+                    before: "bob@example.com".to_string(),
+                    after: "new@example.com".to_string(),
+                },
+                ColumnDiff {
+                    column: "name".to_string(),
+                    before: "Bob".to_string(),
+                    after: "New Name".to_string(),
+                },
+            ],
+            sql.clone(),
+            "2",
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 
     let output = render_to_string(&mut terminal, &mut state);
 
