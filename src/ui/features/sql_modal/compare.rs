@@ -11,9 +11,7 @@ use crate::app::model::explain_context::CompareSlot;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, now: Instant) {
-    state.explain.compare_viewport_height = Some(area.height);
-
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> u16 {
     let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
     let left = state.explain.left.as_ref();
     let right = state.explain.right.as_ref();
@@ -62,6 +60,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState, now: Instant)
     }
 
     frame.render_widget(Paragraph::new(visible).wrap(Wrap { trim: false }), area);
+    area.height
 }
 
 fn push_empty(lines: &mut Vec<Line>, flash_mask: &mut Vec<bool>) {

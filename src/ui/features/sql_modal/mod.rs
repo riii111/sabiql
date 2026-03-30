@@ -28,7 +28,7 @@ mod status;
 pub struct SqlModal;
 
 impl SqlModal {
-    pub fn render(frame: &mut Frame, state: &mut AppState, now: Instant) {
+    pub fn render(frame: &mut Frame, state: &AppState, now: Instant) -> Option<u16> {
         let is_confirming = matches!(
             state.sql_modal.status(),
             SqlModalStatus::ConfirmingHigh { .. }
@@ -133,12 +133,16 @@ impl SqlModal {
                 completion::render_completion_popup(frame, area, main_area, state);
             }
         } else if state.sql_modal.active_tab == SqlModalTab::Plan {
-            explain::render(frame, main_area, state, now);
+            let compare_viewport_height = explain::render(frame, main_area, state, now);
             status::render_status(frame, status_area, state);
+            return Some(compare_viewport_height);
         } else {
-            compare::render(frame, main_area, state, now);
+            let compare_viewport_height = compare::render(frame, main_area, state, now);
             status::render_status(frame, status_area, state);
+            return Some(compare_viewport_height);
         }
+
+        None
     }
 
     fn render_modal_with_tabs(

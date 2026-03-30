@@ -241,6 +241,18 @@ impl EffectRunner {
                 if let Some(height) = output.connection_list_pane_height {
                     state.ui.connection_list_pane_height = height;
                 }
+                if let Some(height) = output.confirm_preview_viewport_height {
+                    state.confirm_dialog.preview_viewport_height = Some(height);
+                }
+                if let Some(height) = output.confirm_preview_content_height {
+                    state.confirm_dialog.preview_content_height = Some(height);
+                }
+                if let Some(scroll) = output.confirm_preview_scroll {
+                    state.confirm_dialog.preview_scroll = scroll;
+                }
+                if let Some(height) = output.explain_compare_viewport_height {
+                    state.explain.compare_viewport_height = Some(height);
+                }
                 Ok(vec![])
             }
 

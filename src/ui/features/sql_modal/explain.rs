@@ -11,7 +11,7 @@ use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlMod
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
+pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) -> u16 {
     // Inline EXPLAIN ANALYZE confirmation for destructive DML
     if let SqlModalStatus::ConfirmingAnalyzeHigh {
         query,
@@ -21,7 +21,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
     {
         let lines = build_analyze_confirm_lines(area, query, input, target_name.as_deref());
         render_scrolled(frame, area, lines, state.explain.confirm_scroll_offset);
-        return;
+        return area.height;
     }
 
     if let Some(ref error) = state.explain.error {
@@ -35,6 +35,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
             })
             .collect();
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+        area.height
     } else if let Some(ref plan_text) = state.explain.plan_text {
         let (label, label_style) = if state.explain.is_analyze {
             (
@@ -86,12 +87,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState, now: Instant) {
         crate::ui::primitives::atoms::apply_yank_flash(&mut lines[content_start..], flash_active);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+        area.height
     } else {
         let placeholder = Line::from(Span::styled(
             " Press Ctrl+E to run EXPLAIN",
             Style::default().fg(Theme::PLACEHOLDER_TEXT),
         ));
         frame.render_widget(Paragraph::new(vec![placeholder]), area);
+        area.height
     }
 }
 

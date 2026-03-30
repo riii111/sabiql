@@ -56,16 +56,31 @@ impl MainLayout {
             _ => None,
         };
 
+        let (
+            confirm_preview_viewport_height,
+            confirm_preview_content_height,
+            confirm_preview_scroll,
+        ) = match state.input_mode() {
+            InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
+            _ => (None, None, None),
+        };
+
+        let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
+            SqlModal::render(frame, state, now)
+        } else {
+            None
+        };
+
         match state.input_mode() {
             InputMode::TablePicker => TablePicker::render(frame, state),
             InputMode::ErTablePicker => ErTablePicker::render(frame, state),
             InputMode::QueryHistoryPicker => QueryHistoryPicker::render(frame, state),
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
-            InputMode::SqlModal => SqlModal::render(frame, state, now),
+            InputMode::SqlModal => {}
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now),
-            InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
+            InputMode::ConfirmDialog => {}
             InputMode::ConnectionSelector => {}
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
                 JsonbDetail::render(frame, state, now);
@@ -76,6 +91,10 @@ impl MainLayout {
         RenderOutput {
             command_line_visible_width: Some(command_line_visible_width),
             connection_list_pane_height,
+            confirm_preview_viewport_height,
+            confirm_preview_content_height,
+            confirm_preview_scroll,
+            explain_compare_viewport_height,
             ..output
         }
     }
@@ -99,6 +118,10 @@ impl MainLayout {
                 result_pane_height: main_area.height,
                 command_line_visible_width: None,
                 connection_list_pane_height: None,
+                confirm_preview_viewport_height: None,
+                confirm_preview_content_height: None,
+                confirm_preview_scroll: None,
+                explain_compare_viewport_height: None,
             }
         } else {
             let [left_area, right_area] =
@@ -124,6 +147,10 @@ impl MainLayout {
                 result_pane_height: result_area.height,
                 command_line_visible_width: None,
                 connection_list_pane_height: None,
+                confirm_preview_viewport_height: None,
+                confirm_preview_content_height: None,
+                confirm_preview_scroll: None,
+                explain_compare_viewport_height: None,
             }
         }
     }

@@ -16,6 +16,10 @@ pub struct RenderOutput {
     pub result_pane_height: u16,
     pub command_line_visible_width: Option<usize>,
     pub connection_list_pane_height: Option<u16>,
+    pub confirm_preview_viewport_height: Option<u16>,
+    pub confirm_preview_content_height: Option<u16>,
+    pub confirm_preview_scroll: Option<u16>,
+    pub explain_compare_viewport_height: Option<u16>,
 }
 
 pub trait Renderer {

@@ -14,11 +14,11 @@ use crate::ui::theme::Theme;
 pub struct ConfirmDialog;
 
 impl ConfirmDialog {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> (Option<u16>, Option<u16>, Option<u16>) {
         if state.result_interaction.pending_write_preview().is_some() {
-            Self::render_write_preview(frame, state);
+            Self::render_write_preview(frame, state)
         } else {
-            Self::render_plain(frame, state);
+            Self::render_plain(frame, state)
         }
     }
 
@@ -30,7 +30,10 @@ impl ConfirmDialog {
         }
     }
 
-    fn render_plain(frame: &mut Frame, state: &AppState) {
+    fn render_plain(
+        frame: &mut Frame,
+        state: &AppState,
+    ) -> (Option<u16>, Option<u16>, Option<u16>) {
         let dialog = &state.confirm_dialog;
         let hint = " Enter: Confirm │ Esc: Cancel ";
 
@@ -79,9 +82,17 @@ impl ConfirmDialog {
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
+        (
+            Some(inner.height),
+            Some(wrapped_line_count(dialog.message(), message_width)),
+            None,
+        )
     }
 
-    fn render_write_preview(frame: &mut Frame, state: &mut AppState) {
+    fn render_write_preview(
+        frame: &mut Frame,
+        state: &AppState,
+    ) -> (Option<u16>, Option<u16>, Option<u16>) {
         let preview = state
             .result_interaction
             .pending_write_preview()
@@ -233,21 +244,17 @@ impl ConfirmDialog {
 
         let inner = modal_inner.inner(Margin::new(1, 1));
 
-        // Record viewport/content for scroll clamp in reducer
-        state.confirm_dialog.preview_viewport_height = Some(inner.height);
-        state.confirm_dialog.preview_content_height = Some(wrapped_height);
-
         let scroll = state
             .confirm_dialog
             .preview_scroll
-            .min(state.confirm_dialog.max_scroll());
-        state.confirm_dialog.preview_scroll = scroll;
+            .min(wrapped_height.saturating_sub(inner.height));
 
         let para = Paragraph::new(content_lines)
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
         frame.render_widget(para, inner);
+        (Some(inner.height), Some(wrapped_height), Some(scroll))
     }
 
     fn render_json_diff_lines(lines: &[JsonDiffLine], output: &mut Vec<Line<'static>>) {
