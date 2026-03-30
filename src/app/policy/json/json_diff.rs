@@ -29,6 +29,12 @@ pub fn compute_json_diff(
     let before_lines: Vec<&str> = before_pretty.lines().collect();
     let after_lines: Vec<&str> = after_pretty.lines().collect();
 
+    // Guard against O(n*m) blowup on very large JSON values.
+    const MAX_LINES: usize = 500;
+    if before_lines.len() > MAX_LINES || after_lines.len() > MAX_LINES {
+        return None;
+    }
+
     let tagged = lcs_diff(&before_lines, &after_lines);
     Some(collapse_context(&tagged, context_lines))
 }
