@@ -56,6 +56,28 @@ impl MainLayout {
             _ => None,
         };
 
+        let (table_picker_pane_height, table_picker_filter_visible_width) = match state.input_mode()
+        {
+            InputMode::TablePicker => {
+                let (pane_height, filter_visible_width) = TablePicker::render(frame, state);
+                (Some(pane_height), Some(filter_visible_width))
+            }
+            _ => (None, None),
+        };
+
+        let (er_picker_pane_height, er_picker_filter_visible_width) = match state.input_mode() {
+            InputMode::ErTablePicker => {
+                let (pane_height, filter_visible_width) = ErTablePicker::render(frame, state);
+                (Some(pane_height), Some(filter_visible_width))
+            }
+            _ => (None, None),
+        };
+
+        let query_history_picker_pane_height = match state.input_mode() {
+            InputMode::QueryHistoryPicker => Some(QueryHistoryPicker::render(frame, state)),
+            _ => None,
+        };
+
         let (
             confirm_preview_viewport_height,
             confirm_preview_content_height,
@@ -71,10 +93,23 @@ impl MainLayout {
             None
         };
 
+        let jsonb_detail_scroll_offset = if matches!(
+            state.input_mode(),
+            InputMode::JsonbDetail | InputMode::JsonbEdit
+        ) {
+            Some(
+                state
+                    .jsonb_detail
+                    .adjusted_scroll(state.jsonb_detail.visible_count()),
+            )
+        } else {
+            None
+        };
+
         match state.input_mode() {
-            InputMode::TablePicker => TablePicker::render(frame, state),
-            InputMode::ErTablePicker => ErTablePicker::render(frame, state),
-            InputMode::QueryHistoryPicker => QueryHistoryPicker::render(frame, state),
+            InputMode::TablePicker => {}
+            InputMode::ErTablePicker => {}
+            InputMode::QueryHistoryPicker => {}
             InputMode::CommandPalette => CommandPalette::render(frame, state),
             InputMode::Help => HelpOverlay::render(frame, state),
             InputMode::SqlModal => {}
@@ -91,6 +126,12 @@ impl MainLayout {
         RenderOutput {
             command_line_visible_width: Some(command_line_visible_width),
             connection_list_pane_height,
+            table_picker_pane_height,
+            table_picker_filter_visible_width,
+            er_picker_pane_height,
+            er_picker_filter_visible_width,
+            query_history_picker_pane_height,
+            jsonb_detail_scroll_offset,
             confirm_preview_viewport_height,
             confirm_preview_content_height,
             confirm_preview_scroll,
@@ -118,6 +159,12 @@ impl MainLayout {
                 result_pane_height: main_area.height,
                 command_line_visible_width: None,
                 connection_list_pane_height: None,
+                table_picker_pane_height: None,
+                table_picker_filter_visible_width: None,
+                er_picker_pane_height: None,
+                er_picker_filter_visible_width: None,
+                query_history_picker_pane_height: None,
+                jsonb_detail_scroll_offset: None,
                 confirm_preview_viewport_height: None,
                 confirm_preview_content_height: None,
                 confirm_preview_scroll: None,
@@ -147,6 +194,12 @@ impl MainLayout {
                 result_pane_height: result_area.height,
                 command_line_visible_width: None,
                 connection_list_pane_height: None,
+                table_picker_pane_height: None,
+                table_picker_filter_visible_width: None,
+                er_picker_pane_height: None,
+                er_picker_filter_visible_width: None,
+                query_history_picker_pane_height: None,
+                jsonb_detail_scroll_offset: None,
                 confirm_preview_viewport_height: None,
                 confirm_preview_content_height: None,
                 confirm_preview_scroll: None,

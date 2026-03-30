@@ -241,6 +241,24 @@ impl EffectRunner {
                 if let Some(height) = output.connection_list_pane_height {
                     state.ui.connection_list_pane_height = height;
                 }
+                if let Some(height) = output.table_picker_pane_height {
+                    state.ui.table_picker.pane_height = height;
+                }
+                if let Some(width) = output.table_picker_filter_visible_width {
+                    state.ui.table_picker.filter_visible_width = width;
+                }
+                if let Some(height) = output.er_picker_pane_height {
+                    state.ui.er_picker.pane_height = height;
+                }
+                if let Some(width) = output.er_picker_filter_visible_width {
+                    state.ui.er_picker.filter_visible_width = width;
+                }
+                if let Some(height) = output.query_history_picker_pane_height {
+                    state.query_history_picker.pane_height = height;
+                }
+                if let Some(scroll_offset) = output.jsonb_detail_scroll_offset {
+                    state.jsonb_detail.set_scroll_offset(scroll_offset);
+                }
                 if let Some(height) = output.confirm_preview_viewport_height {
                     state.confirm_dialog.preview_viewport_height = Some(height);
                 }

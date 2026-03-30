@@ -141,6 +141,23 @@ impl JsonbDetailState {
         self.scroll_offset
     }
 
+    pub fn set_scroll_offset(&mut self, scroll_offset: usize) {
+        self.scroll_offset = scroll_offset;
+    }
+
+    pub fn adjusted_scroll(&self, viewport_height: usize) -> usize {
+        if viewport_height == 0 {
+            return self.scroll_offset;
+        }
+        if self.selected_line < self.scroll_offset {
+            self.selected_line
+        } else if self.selected_line >= self.scroll_offset + viewport_height {
+            self.selected_line - viewport_height + 1
+        } else {
+            self.scroll_offset
+        }
+    }
+
     pub fn selected_line(&self) -> usize {
         self.selected_line
     }
