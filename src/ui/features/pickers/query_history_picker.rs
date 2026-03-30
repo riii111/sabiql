@@ -69,7 +69,7 @@ struct PreviewData {
 pub struct QueryHistoryPicker;
 
 impl QueryHistoryPicker {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> u16 {
         let filter_is_empty = state.query_history_picker.filter_input.content().is_empty();
         let filter_content = state
             .query_history_picker
@@ -146,7 +146,6 @@ impl QueryHistoryPicker {
 
         if grouped_count == 0 {
             drop(grouped);
-            state.query_history_picker.pane_height = list_area.height;
             let msg = if filter_is_empty {
                 "No history yet"
             } else {
@@ -160,7 +159,7 @@ impl QueryHistoryPicker {
             if let Some(pa) = preview_area {
                 render_empty_preview(frame, pa);
             }
-            return;
+            return list_area.height;
         }
 
         let available_width = list_area.width as usize;
@@ -180,8 +179,6 @@ impl QueryHistoryPicker {
             .collect();
 
         drop(grouped);
-        state.query_history_picker.pane_height = list_area.height;
-
         if let Some(pa) = preview_area {
             if let Some(ref pd) = preview_data {
                 render_preview(frame, pa, pd);
@@ -203,6 +200,7 @@ impl QueryHistoryPicker {
             .with_selected(Some(selected_idx))
             .with_offset(scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
+        list_area.height
     }
 }
 

@@ -58,14 +58,12 @@ impl JsonbDetail {
         };
 
         let viewport_height = tree_area.height as usize;
-        state.jsonb_detail.adjust_scroll(viewport_height);
+        let scroll = state.jsonb_detail.adjusted_scroll(viewport_height);
 
         let tree = state.jsonb_detail.tree();
         let visible = state.jsonb_detail.visible_indices();
         let search = state.jsonb_detail.search();
         let selected = state.jsonb_detail.selected_line();
-        let scroll = state.jsonb_detail.scroll_offset();
-
         let mut lines: Vec<Line<'_>> = visible
             .iter()
             .skip(scroll)
