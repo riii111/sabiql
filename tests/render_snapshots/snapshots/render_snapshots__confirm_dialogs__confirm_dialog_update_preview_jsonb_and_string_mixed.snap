@@ -1,0 +1,27 @@
+---
+source: tests/render_snapshots/confirm_dialogs.rs
+expression: output
+---
+test_project | test_db | - | no dsn | localhost:5432/test                       
+┌ [1] Explor╭ Confirm UPDATE: users ───────────────────────────────╮            
+│> public.us│                                                      │───────────┐
+│  public.po│ ✓ LOW RISK                                           │           │
+│  public.co│                                                      │           │
+│           │ Diff                                                 │           │
+│           │   metadata:                                          │           │
+│           │     ...                                              │           │
+│           │       "role": "admin",                               │           │
+│           │   -   "status": "active"                             │           │
+│           │   +   "status": "inactive"                           │           │
+│           │     }                                                │───────────┘
+│           │                                                      │───────────┐
+│           │   email:                                             │           │
+│           │     - "old@example.com"                              │           │
+│           │     + "new@example.com"                              │           │
+│           │                                                      │           │
+│           │ SQL Preview                                          │           │
+│           │   UPDATE "public"."users"                            │           │
+│           │   SET "metadata" = '{...}', "email" =                │           │
+│           │ 'new@example.com'                                    │           │
+└───────────│                                                      │───────────┘
+            ╰ Enter: Confirm │ j/k/↑↓: Scroll │ Esc: Cancel ───────╯
