@@ -4,6 +4,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
 use crate::ui::primitives::molecules::{render_modal, render_modal_with_border_color};
@@ -117,20 +118,24 @@ impl ConfirmDialog {
                     Style::default().fg(Theme::TEXT_SECONDARY),
                 )]));
                 for (i, diff) in preview.diff.iter().enumerate() {
-                    let before = format!("\"{}\"", escape_preview_value(&diff.before));
-                    let after = format!("\"{}\"", escape_preview_value(&diff.after));
                     content_lines.push(Line::from(Span::styled(
                         format!("  {}:", diff.column),
                         Style::default().fg(Theme::TEXT_SECONDARY),
                     )));
-                    content_lines.push(Line::from(Span::styled(
-                        format!("    - {before}"),
-                        Style::default().fg(Theme::STATUS_ERROR),
-                    )));
-                    content_lines.push(Line::from(Span::styled(
-                        format!("    + {after}"),
-                        Style::default().fg(Theme::STATUS_SUCCESS),
-                    )));
+                    if let Some(json_lines) = &diff.json_diff {
+                        Self::render_json_diff_lines(json_lines, &mut content_lines);
+                    } else {
+                        let before = format!("\"{}\"", escape_preview_value(&diff.before));
+                        let after = format!("\"{}\"", escape_preview_value(&diff.after));
+                        content_lines.push(Line::from(Span::styled(
+                            format!("    - {before}"),
+                            Style::default().fg(Theme::STATUS_ERROR),
+                        )));
+                        content_lines.push(Line::from(Span::styled(
+                            format!("    + {after}"),
+                            Style::default().fg(Theme::STATUS_SUCCESS),
+                        )));
+                    }
                     if i + 1 < preview.diff.len() {
                         content_lines.push(Line::from(""));
                     }
@@ -243,6 +248,37 @@ impl ConfirmDialog {
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
         frame.render_widget(para, inner);
+    }
+
+    fn render_json_diff_lines(lines: &[JsonDiffLine], output: &mut Vec<Line<'static>>) {
+        for line in lines {
+            match line {
+                JsonDiffLine::Context(s) => {
+                    output.push(Line::from(Span::styled(
+                        format!("    {s}"),
+                        Style::default().fg(Theme::TEXT_DIM),
+                    )));
+                }
+                JsonDiffLine::Added(s) => {
+                    output.push(Line::from(Span::styled(
+                        format!("  + {s}"),
+                        Style::default().fg(Theme::STATUS_SUCCESS),
+                    )));
+                }
+                JsonDiffLine::Removed(s) => {
+                    output.push(Line::from(Span::styled(
+                        format!("  - {s}"),
+                        Style::default().fg(Theme::STATUS_ERROR),
+                    )));
+                }
+                JsonDiffLine::Ellipsis => {
+                    output.push(Line::from(Span::styled(
+                        "    ...".to_string(),
+                        Style::default().fg(Theme::TEXT_DIM),
+                    )));
+                }
+            }
+        }
     }
 
     fn highlight_sql_line(line: &str) -> Line<'static> {

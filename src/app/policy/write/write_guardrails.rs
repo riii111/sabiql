@@ -51,11 +51,14 @@ pub struct GuardrailDecision {
     pub target_summary: Option<TargetSummary>,
 }
 
+use crate::app::policy::json::json_diff::JsonDiffLine;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnDiff {
     pub column: String,
     pub before: String,
     pub after: String,
+    pub json_diff: Option<Vec<JsonDiffLine>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

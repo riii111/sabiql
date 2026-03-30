@@ -94,6 +94,7 @@ fn confirm_dialog_update_preview_rich() {
                 column: "email".to_string(),
                 before: "bob@example.com".to_string(),
                 after: "new@example.com".to_string(),
+                json_diff: None,
             }],
             sql.clone(),
             "2",
@@ -161,6 +162,11 @@ fn confirm_dialog_update_preview_long_jsonb() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
+    let json_diff = compute_json_diff(long_before, long_after, 1);
+    assert!(
+        json_diff.is_some(),
+        "expected structured JSON diff for long_jsonb snapshot"
+    );
     state
         .result_interaction
         .set_write_preview(make_update_preview(
@@ -168,6 +174,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
                 column: "metadata".to_string(),
                 before: long_before.to_string(),
                 after: long_after.to_string(),
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -199,13 +206,21 @@ fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
         "UPDATE \"public\".\"users\"\nSET \"target_audience\" = '{serde_after}'\nWHERE \"id\" = '1';"
     );
     // Apply normalize_for_diff to mirror the real build_update_preview path
+    let before = normalize_for_diff(pg_before);
+    let after = normalize_for_diff(serde_after);
+    let json_diff = compute_json_diff(&before, &after, 1);
+    assert!(
+        json_diff.is_some(),
+        "expected structured JSON diff for key_order_normalized snapshot"
+    );
     state
         .result_interaction
         .set_write_preview(make_update_preview(
             vec![ColumnDiff {
                 column: "target_audience".to_string(),
-                before: normalize_for_diff(pg_before),
-                after: normalize_for_diff(serde_after),
+                before,
+                after,
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -236,26 +251,31 @@ fn confirm_dialog_update_preview_scrollable() {
                     column: "a".to_string(),
                     before: "old_a".to_string(),
                     after: "new_a".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "b".to_string(),
                     before: "old_b".to_string(),
                     after: "new_b".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "c".to_string(),
                     before: "old_c".to_string(),
                     after: "new_c".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "d".to_string(),
                     before: "old_d".to_string(),
                     after: "new_d".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "e".to_string(),
                     before: "old_e".to_string(),
                     after: "new_e".to_string(),
+                    json_diff: None,
                 },
             ],
             sql.clone(),
@@ -286,6 +306,11 @@ fn confirm_dialog_update_preview_narrow_terminal() {
     let sql = format!(
         "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{long_after}'\nWHERE \"id\" = '1';"
     );
+    let json_diff = compute_json_diff(long_before, long_after, 1);
+    assert!(
+        json_diff.is_some(),
+        "expected structured JSON diff for narrow_terminal snapshot"
+    );
     state
         .result_interaction
         .set_write_preview(make_update_preview(
@@ -293,6 +318,7 @@ fn confirm_dialog_update_preview_narrow_terminal() {
                 column: "metadata".to_string(),
                 before: long_before.to_string(),
                 after: long_after.to_string(),
+                json_diff,
             }],
             sql.clone(),
         ));
@@ -321,15 +347,103 @@ fn confirm_dialog_update_preview_multi_column() {
                     column: "email".to_string(),
                     before: "bob@example.com".to_string(),
                     after: "new@example.com".to_string(),
+                    json_diff: None,
                 },
                 ColumnDiff {
                     column: "name".to_string(),
                     before: "Bob".to_string(),
                     after: "New Name".to_string(),
+                    json_diff: None,
                 },
             ],
             sql.clone(),
             "2",
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview_jsonb_structured_diff_with_ellipsis() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    // Large nested JSON where only one deep value changes, forcing ellipsis
+    let before = r#"{"alpha": 1, "beta": 2, "gamma": 3, "delta": 4, "epsilon": 5, "zeta": {"nested_a": "unchanged", "nested_b": "old_value", "nested_c": "unchanged"}, "eta": 7, "theta": 8}"#;
+    let after = r#"{"alpha": 1, "beta": 2, "gamma": 3, "delta": 4, "epsilon": 5, "zeta": {"nested_a": "unchanged", "nested_b": "new_value", "nested_c": "unchanged"}, "eta": 7, "theta": 8}"#;
+
+    let sql =
+        format!("UPDATE \"public\".\"users\"\nSET \"config\" = '{after}'\nWHERE \"id\" = '1';");
+    let json_diff = compute_json_diff(before, after, 1);
+    assert!(
+        json_diff.is_some(),
+        "expected structured JSON diff for ellipsis snapshot"
+    );
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![ColumnDiff {
+                column: "config".to_string(),
+                before: before.to_string(),
+                after: after.to_string(),
+                json_diff,
+            }],
+            sql.clone(),
+        ));
+    open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(
+        output.contains("..."),
+        "large JSON diff should contain ellipsis"
+    );
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn confirm_dialog_update_preview_jsonb_and_string_mixed() {
+    let (mut state, _now) = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+
+    let json_before = r#"{"status": "active", "role": "admin"}"#;
+    let json_after = r#"{"status": "inactive", "role": "admin"}"#;
+    let json_diff = compute_json_diff(json_before, json_after, 1);
+    assert!(
+        json_diff.is_some(),
+        "expected structured JSON diff for mixed snapshot"
+    );
+
+    let sql = "UPDATE \"public\".\"users\"\nSET \"metadata\" = '{...}', \"email\" = 'new@example.com'\nWHERE \"id\" = '1';".to_string();
+    state
+        .result_interaction
+        .set_write_preview(make_update_preview(
+            vec![
+                ColumnDiff {
+                    column: "metadata".to_string(),
+                    before: json_before.to_string(),
+                    after: json_after.to_string(),
+                    json_diff,
+                },
+                ColumnDiff {
+                    column: "email".to_string(),
+                    before: "old@example.com".to_string(),
+                    after: "new@example.com".to_string(),
+                    json_diff: None,
+                },
+            ],
+            sql.clone(),
         ));
     open_write_confirm(&mut state, "Confirm UPDATE: users", &sql);
 

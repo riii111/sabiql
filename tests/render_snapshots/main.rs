@@ -18,6 +18,7 @@ use sabiql::app::model::shared::input_mode::InputMode;
 use sabiql::app::model::shared::text_input::TextInputState;
 use sabiql::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use sabiql::app::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
+use sabiql::app::policy::json::json_diff::compute_json_diff;
 use sabiql::app::policy::write::write_guardrails::{
     AdhocRiskDecision, ColumnDiff, GuardrailDecision, RiskLevel, TargetSummary, WriteOperation,
     WritePreview,

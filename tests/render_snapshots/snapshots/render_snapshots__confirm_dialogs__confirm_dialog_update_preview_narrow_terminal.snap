@@ -9,7 +9,7 @@ test_project | test_db | - | no dsn | lo
 ││                                    ││
 ││ Diff                               │┘
 ││   metadata:                        │┐
-││     - "{\"industries\": [\"tech\", ││
-││ \"finance\"], \"company_size\":    ││
+││     {                              ││
+││   -   "company_size":              ││
 ││                                    ││
 └╰ Enter: Confirm │ j/k/↑↓: Scroll │ E╯┘
