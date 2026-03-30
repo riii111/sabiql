@@ -6,12 +6,6 @@ pub enum JsonDiffLine {
     Ellipsis,
 }
 
-/// Compute a structured diff between two JSON strings.
-///
-/// Returns `None` if either value is not valid JSON, if both are identical
-/// after pretty-printing, or if the diff would exceed the safe LCS table size
-/// used by this small-input implementation. `context_lines` controls how many
-/// unchanged lines surround each change hunk.
 pub fn compute_json_diff(
     before: &str,
     after: &str,
@@ -30,8 +24,8 @@ pub fn compute_json_diff(
     let before_lines: Vec<&str> = before_pretty.lines().collect();
     let after_lines: Vec<&str> = after_pretty.lines().collect();
 
-    // Guard against O(n*m) blowup on very large JSON values while still
-    // allowing asymmetric diffs that are cheap in practice.
+    // Keep the small-input LCS path, but only when the table stays bounded.
+    // Asymmetric diffs can still be cheap, so the guard is based on cell count.
     const MAX_LCS_CELLS: usize = (500 + 1) * (500 + 1);
     let lcs_cells = before_lines
         .len()
