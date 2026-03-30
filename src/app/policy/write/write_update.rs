@@ -62,7 +62,7 @@ mod tests {
         }
 
         #[test]
-        fn json_normalized_to_consistent_key_order() {
+        fn json_with_different_key_order_returns_identical_output() {
             let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
             let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
             assert_eq!(
@@ -72,7 +72,7 @@ mod tests {
         }
 
         #[test]
-        fn non_json_value_returned_unchanged() {
+        fn non_json_value_returns_unchanged() {
             assert_eq!(normalize_for_diff("plain text"), "plain text");
             assert_eq!(normalize_for_diff("42"), "42");
         }
