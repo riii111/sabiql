@@ -50,7 +50,11 @@ impl MainLayout {
         let output = Self::render_browse_mode(frame, main_area, state, services, now);
 
         Footer::render(frame, footer_area, state, time_ms);
-        CommandLine::render(frame, cmdline_area, state);
+        let command_line_visible_width = CommandLine::render(frame, cmdline_area, state);
+        let connection_list_pane_height = match state.input_mode() {
+            InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state)),
+            _ => None,
+        };
 
         match state.input_mode() {
             InputMode::TablePicker => TablePicker::render(frame, state),
@@ -62,14 +66,18 @@ impl MainLayout {
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now),
             InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
-            InputMode::ConnectionSelector => ConnectionSelector::render(frame, state),
+            InputMode::ConnectionSelector => {}
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
                 JsonbDetail::render(frame, state, now);
             }
             _ => {}
         }
 
-        output
+        RenderOutput {
+            command_line_visible_width: Some(command_line_visible_width),
+            connection_list_pane_height,
+            ..output
+        }
     }
 
     fn render_browse_mode(
@@ -89,6 +97,8 @@ impl MainLayout {
                 explorer_pane_height: 0,
                 inspector_pane_height: 0,
                 result_pane_height: main_area.height,
+                command_line_visible_width: None,
+                connection_list_pane_height: None,
             }
         } else {
             let [left_area, right_area] =
@@ -112,6 +122,8 @@ impl MainLayout {
                 explorer_pane_height: left_area.height,
                 inspector_pane_height: inspector_area.height,
                 result_pane_height: result_area.height,
+                command_line_visible_width: None,
+                connection_list_pane_height: None,
             }
         }
     }

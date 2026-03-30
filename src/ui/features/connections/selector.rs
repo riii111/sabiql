@@ -21,7 +21,7 @@ const SERVICE_LABEL_COL_PERCENT: usize = 40;
 pub struct ConnectionSelector;
 
 impl ConnectionSelector {
-    pub fn render(frame: &mut Frame, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> u16 {
         let is_service_selected = crate::app::model::connection::list::is_service_selected(
             state.connection_list_items(),
             state.ui.connection_list_selected,
@@ -35,7 +35,7 @@ impl ConnectionSelector {
             &hint,
         );
 
-        render_connection_list(frame, inner, state);
+        render_connection_list(frame, inner, state)
     }
 
     fn build_hint_string(is_service_selected: bool) -> String {
@@ -125,8 +125,7 @@ fn render_service_item(
     ListItem::new(line)
 }
 
-pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppState) {
-    state.ui.connection_list_pane_height = area.height;
+pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &AppState) -> u16 {
     let active_id = state.session.active_connection_id.as_ref();
 
     // highlight_symbol "> " takes 2 columns
@@ -189,4 +188,6 @@ pub fn render_connection_list(frame: &mut Frame, area: Rect, state: &mut AppStat
             );
         }
     }
+
+    area.height
 }

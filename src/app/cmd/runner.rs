@@ -235,6 +235,12 @@ impl EffectRunner {
                 state.ui.explorer_pane_height = output.explorer_pane_height;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
+                if let Some(width) = output.command_line_visible_width {
+                    state.command_line_visible_width = width;
+                }
+                if let Some(height) = output.connection_list_pane_height {
+                    state.ui.connection_list_pane_height = height;
+                }
                 Ok(vec![])
             }
 

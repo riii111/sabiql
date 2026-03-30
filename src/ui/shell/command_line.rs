@@ -12,9 +12,8 @@ use crate::ui::theme::Theme;
 pub struct CommandLine;
 
 impl CommandLine {
-    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) -> usize {
         let raw_width = area.width.saturating_sub(1) as usize; // ":" prefix
-        state.command_line_visible_width = raw_width;
 
         let content = if state.input_mode() == InputMode::CommandLine {
             let input = &state.command_line_input;
@@ -37,5 +36,6 @@ impl CommandLine {
         };
 
         frame.render_widget(Paragraph::new(content), area);
+        raw_width
     }
 }
