@@ -682,26 +682,44 @@ mod tests {
             );
         }
 
-        #[rstest]
-        #[case(idx::confirm::YES, Action::ConfirmDialogConfirm)]
-        #[case(idx::confirm::SCROLL_DOWN, Action::Scroll {
-            target: ScrollTarget::ConfirmDialog,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::Line,
-        })]
-        #[case(idx::confirm::SCROLL_UP, Action::Scroll {
-            target: ScrollTarget::ConfirmDialog,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::Line,
-        })]
-        #[case(idx::confirm::NO, Action::ConfirmDialogCancel)]
-        fn confirm_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&CONFIRM_DIALOG_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "CONFIRM_DIALOG_KEYS[{i}] has action {:?}, expected {expected:?}",
-                CONFIRM_DIALOG_KEYS[i].action
-            );
+        #[test]
+        fn confirm_yes_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::YES].action,
+                Action::ConfirmDialogConfirm
+            ));
+        }
+
+        #[test]
+        fn confirm_scroll_down_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_DOWN].action,
+                Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                }
+            ));
+        }
+
+        #[test]
+        fn confirm_scroll_up_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::SCROLL_UP].action,
+                Action::Scroll {
+                    target: ScrollTarget::ConfirmDialog,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                }
+            ));
+        }
+
+        #[test]
+        fn confirm_no_action_matches() {
+            assert!(matches!(
+                CONFIRM_DIALOG_KEYS[idx::confirm::NO].action,
+                Action::ConfirmDialogCancel
+            ));
         }
 
         #[rstest]

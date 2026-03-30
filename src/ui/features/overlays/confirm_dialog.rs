@@ -208,8 +208,9 @@ impl ConfirmDialog {
         // inner_height = modal - border(2) - vertical padding(2)
         let inner_height = modal_height.saturating_sub(4);
         let scrollable = wrapped_height > inner_height;
+        // Hint order: Actions → Navigation → Close/Cancel
         let hint: &str = match (scrollable, blocked) {
-            (true, false) => " j/k: Scroll │ Enter: Confirm │ Esc: Cancel ",
+            (true, false) => " Enter: Confirm │ j/k: Scroll │ Esc: Cancel ",
             (false, false) => " Enter: Confirm │ Esc: Cancel ",
             (true, true) => " j/k: Scroll │ Esc: Cancel ",
             (false, true) => " Esc: Cancel ",

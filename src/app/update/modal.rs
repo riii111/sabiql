@@ -72,6 +72,8 @@ pub fn reduce_modal(state: &mut AppState, action: &Action, now: Instant) -> Opti
             amount: ScrollAmount::Line,
         } => {
             let max_scroll = state.confirm_dialog.max_scroll();
+            state.confirm_dialog.preview_scroll =
+                state.confirm_dialog.preview_scroll.min(max_scroll);
             if state.confirm_dialog.preview_scroll < max_scroll {
                 state.confirm_dialog.preview_scroll += 1;
             }
