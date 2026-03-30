@@ -13,7 +13,7 @@ use crate::ui::primitives::atoms::panel_block;
 pub struct Explorer;
 
 impl Explorer {
-    pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
+    pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let is_focused = state.ui.focused_pane == FocusedPane::Explorer;
         let block = panel_block(" [1] Explorer ", is_focused);
         let inner = block.inner(area);
