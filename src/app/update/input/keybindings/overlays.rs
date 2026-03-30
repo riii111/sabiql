@@ -473,3 +473,174 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
         combos: &[KeyCombo::plain(Key::Esc)],
     },
 ];
+
+// =============================================================================
+// JSONB Detail (Viewing)
+// =============================================================================
+
+pub const JSONB_DETAIL_KEYS: &[KeyBinding] = &[
+    // Actions
+    KeyBinding {
+        key_short: "y",
+        key: "y",
+        desc_short: "Copy",
+        description: "Copy full JSON",
+        action: Action::JsonbYankAll,
+        combos: &[KeyCombo::plain(Key::Char('y'))],
+    },
+    KeyBinding {
+        key_short: "i",
+        key: "i",
+        desc_short: "Edit",
+        description: "Enter JSON editor",
+        action: Action::JsonbEnterEdit,
+        combos: &[KeyCombo::plain(Key::Char('i'))],
+    },
+    KeyBinding {
+        key_short: "/",
+        key: "/",
+        desc_short: "Search",
+        description: "Search within JSON",
+        action: Action::JsonbEnterSearch,
+        combos: &[KeyCombo::plain(Key::Char('/'))],
+    },
+    // Navigation
+    KeyBinding {
+        key_short: "j/↓",
+        key: "j / ↓",
+        desc_short: "Down",
+        description: "Move cursor down",
+        action: Action::JsonbCursorDown,
+        combos: &[KeyCombo::plain(Key::Char('j')), KeyCombo::plain(Key::Down)],
+    },
+    KeyBinding {
+        key_short: "k/↑",
+        key: "k / ↑",
+        desc_short: "Up",
+        description: "Move cursor up",
+        action: Action::JsonbCursorUp,
+        combos: &[KeyCombo::plain(Key::Char('k')), KeyCombo::plain(Key::Up)],
+    },
+    KeyBinding {
+        key_short: "h/l",
+        key: "h / l / ← / →",
+        desc_short: "Fold",
+        description: "Collapse / Expand",
+        action: Action::JsonbToggleFold,
+        combos: &[
+            KeyCombo::plain(Key::Char('h')),
+            KeyCombo::plain(Key::Char('l')),
+            KeyCombo::plain(Key::Left),
+            KeyCombo::plain(Key::Right),
+        ],
+    },
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter / Space",
+        desc_short: "Toggle",
+        description: "Toggle fold",
+        action: Action::JsonbToggleFold,
+        combos: &[KeyCombo::plain(Key::Enter), KeyCombo::plain(Key::Char(' '))],
+    },
+    KeyBinding {
+        key_short: "H",
+        key: "H",
+        desc_short: "FoldAll",
+        description: "Fold all nodes",
+        action: Action::JsonbFoldAll,
+        combos: &[KeyCombo::plain(Key::Char('H'))],
+    },
+    KeyBinding {
+        key_short: "L",
+        key: "L",
+        desc_short: "UnfoldAll",
+        description: "Unfold all nodes",
+        action: Action::JsonbUnfoldAll,
+        combos: &[KeyCombo::plain(Key::Char('L'))],
+    },
+    KeyBinding {
+        key_short: "g",
+        key: "g",
+        desc_short: "Top",
+        description: "Scroll to top",
+        action: Action::JsonbScrollToTop,
+        combos: &[KeyCombo::plain(Key::Char('g'))],
+    },
+    KeyBinding {
+        key_short: "G",
+        key: "G",
+        desc_short: "Bottom",
+        description: "Scroll to bottom",
+        action: Action::JsonbScrollToEnd,
+        combos: &[KeyCombo::plain(Key::Char('G'))],
+    },
+    KeyBinding {
+        key_short: "n",
+        key: "n / N",
+        desc_short: "Next/Prev",
+        description: "Next / Previous match",
+        action: Action::JsonbSearchNext,
+        combos: &[KeyCombo::plain(Key::Char('n'))],
+    },
+    KeyBinding {
+        key_short: "N",
+        key: "N",
+        desc_short: "Prev",
+        description: "Previous match",
+        action: Action::JsonbSearchPrev,
+        combos: &[KeyCombo::plain(Key::Char('N'))],
+    },
+    // Close
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc / q",
+        desc_short: "Close",
+        description: "Close JSONB detail",
+        action: Action::CloseJsonbDetail,
+        combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
+    },
+];
+
+// =============================================================================
+// JSONB Search (active search input)
+// =============================================================================
+
+pub const JSONB_SEARCH_KEYS: &[KeyBinding] = &[
+    KeyBinding {
+        key_short: "type",
+        key: "type",
+        desc_short: "Search",
+        description: "Type to search",
+        action: Action::None,
+        combos: &[],
+    },
+    KeyBinding {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Confirm",
+        description: "Confirm search",
+        action: Action::JsonbSearchSubmit,
+        combos: &[KeyCombo::plain(Key::Enter)],
+    },
+    KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Cancel",
+        description: "Cancel search",
+        action: Action::JsonbExitSearch,
+        combos: &[KeyCombo::plain(Key::Esc)],
+    },
+];
+
+// =============================================================================
+// JSONB Edit
+// =============================================================================
+
+pub const JSONB_EDIT_KEYS: &[KeyBinding] = &[KeyBinding {
+    key_short: "Esc",
+    key: "Esc",
+    desc_short: "Back",
+    description: "Return to viewer / apply changes",
+    action: Action::JsonbExitEdit,
+    combos: &[KeyCombo::plain(Key::Esc)],
+}];

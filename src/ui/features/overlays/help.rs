@@ -10,10 +10,10 @@ use crate::app::model::app_state::AppState;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_LINE_KEYS, COMMAND_PALETTE_ROWS, CONFIRM_DIALOG_KEYS,
     CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS, CONNECTION_SETUP_KEYS, ER_PICKER_ROWS,
-    GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS, INSPECTOR_DDL_KEYS, KeyBinding, NAVIGATION_KEYS,
-    OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_COMPARE_KEYS,
-    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS,
-    TABLE_PICKER_ROWS,
+    GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS, INSPECTOR_DDL_KEYS, JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS,
+    JSONB_SEARCH_KEYS, KeyBinding, NAVIGATION_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS,
+    RESULT_ACTIVE_KEYS, SQL_MODAL_COMPARE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
+    SQL_MODAL_NORMAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS,
 };
 
 use crate::ui::primitives::atoms::scroll_indicator::{
@@ -157,6 +157,24 @@ impl HelpOverlay {
         help_lines.push(Line::from(""));
         help_lines.push(Self::section("Confirm Dialog"));
         for kb in CONFIRM_DIALOG_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("JSONB Detail"));
+        for kb in JSONB_DETAIL_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::from(""));
+        help_lines.push(Self::section("JSONB Edit"));
+        for kb in JSONB_EDIT_KEYS {
+            help_lines.push(Self::key_line(kb.key, kb.description));
+        }
+
+        help_lines.push(Line::raw(""));
+        help_lines.push(Self::section("JSONB Search"));
+        for kb in JSONB_SEARCH_KEYS {
             help_lines.push(Self::key_line(kb.key, kb.description));
         }
 

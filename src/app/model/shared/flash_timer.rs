@@ -7,6 +7,7 @@ const FLASH_DURATION: Duration = Duration::from_millis(200);
 pub enum FlashId {
     SqlModal,
     Ddl,
+    JsonbDetail,
 }
 
 #[derive(Debug, Clone, Default)]

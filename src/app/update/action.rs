@@ -65,6 +65,7 @@ pub enum ScrollTarget {
     ExplainCompare,
     ExplainConfirm,
     Explorer,
+    JsonbDetail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +112,8 @@ pub enum InputTarget {
     Filter,
     ErFilter,
     QueryHistoryFilter,
+    JsonbEdit,
+    JsonbSearch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,6 +489,25 @@ pub enum Action {
         row_count: Option<usize>,
     },
     CsvExportFailed(DbOperationError),
+
+    // JSONB Detail View
+    OpenJsonbDetail,
+    CloseJsonbDetail,
+    JsonbCursorUp,
+    JsonbCursorDown,
+    JsonbScrollToTop,
+    JsonbScrollToEnd,
+    JsonbToggleFold,
+    JsonbFoldAll,
+    JsonbUnfoldAll,
+    JsonbYankAll,
+    JsonbEnterEdit,
+    JsonbExitEdit,
+    JsonbEnterSearch,
+    JsonbExitSearch,
+    JsonbSearchNext,
+    JsonbSearchPrev,
+    JsonbSearchSubmit,
 
     // ER Diagram (full or partial, depending on selected tables)
     ErOpenDiagram,

@@ -12,8 +12,9 @@ use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
     CELL_EDIT_KEYS, COMMAND_PALETTE_ROWS, CONNECTION_ERROR_ROWS, CONNECTION_SELECTOR_ROWS,
     CONNECTION_SETUP_KEYS, ER_PICKER_ROWS, FOOTER_NAV_KEYS, GLOBAL_KEYS, HELP_ROWS, HISTORY_KEYS,
-    INSPECTOR_DDL_KEYS, OVERLAY_KEYS, QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS,
-    SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS, SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
+    INSPECTOR_DDL_KEYS, JSONB_DETAIL_KEYS, JSONB_EDIT_KEYS, JSONB_SEARCH_KEYS, OVERLAY_KEYS,
+    QUERY_HISTORY_PICKER_ROWS, RESULT_ACTIVE_KEYS, SQL_MODAL_CONFIRMING_KEYS, SQL_MODAL_KEYS,
+    SQL_MODAL_PLAN_KEYS, TABLE_PICKER_ROWS, idx,
 };
 use crate::ui::primitives::atoms::spinner_char;
 use crate::ui::primitives::atoms::status_message::{MessageType, StatusMessage};
@@ -266,6 +267,27 @@ impl Footer {
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::NAVIGATE].as_hint(),
                 QUERY_HISTORY_PICKER_ROWS[idx::qh_picker::ESC_CLOSE].as_hint(),
             ],
+            InputMode::JsonbDetail => {
+                if state.jsonb_detail.search().active {
+                    vec![
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::TYPE_SEARCH].as_hint(),
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::CONFIRM].as_hint(),
+                        JSONB_SEARCH_KEYS[idx::jsonb_search::CANCEL].as_hint(),
+                    ]
+                } else {
+                    vec![
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::YANK].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::EDIT].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::SEARCH].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::DOWN].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::FOLD].as_hint(),
+                        JSONB_DETAIL_KEYS[idx::jsonb_detail::CLOSE].as_hint(),
+                    ]
+                }
+            }
+            InputMode::JsonbEdit => {
+                vec![JSONB_EDIT_KEYS[idx::jsonb_edit::BACK].as_hint()]
+            }
             InputMode::ConnectionSelector => {
                 let r = CONNECTION_SELECTOR_ROWS;
                 use idx::connection_selector as cs;

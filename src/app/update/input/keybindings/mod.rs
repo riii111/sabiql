@@ -279,6 +279,33 @@ pub mod idx {
         pub const YANK: usize = 0;
     }
 
+    pub mod jsonb_detail {
+        pub const YANK: usize = 0;
+        pub const EDIT: usize = 1;
+        pub const SEARCH: usize = 2;
+        pub const DOWN: usize = 3;
+        pub const UP: usize = 4;
+        pub const FOLD: usize = 5;
+        pub const TOGGLE: usize = 6;
+        pub const FOLD_ALL: usize = 7;
+        pub const UNFOLD_ALL: usize = 8;
+        pub const TOP: usize = 9;
+        pub const BOTTOM: usize = 10;
+        pub const NEXT_MATCH: usize = 11;
+        pub const PREV_MATCH: usize = 12;
+        pub const CLOSE: usize = 13;
+    }
+
+    pub mod jsonb_search {
+        pub const TYPE_SEARCH: usize = 0;
+        pub const CONFIRM: usize = 1;
+        pub const CANCEL: usize = 2;
+    }
+
+    pub mod jsonb_edit {
+        pub const BACK: usize = 0;
+    }
+
     pub mod history {
         pub const OPEN: usize = 0;
         pub const NAV: usize = 1;
@@ -296,7 +323,7 @@ pub const fn help_content_line_count() -> usize {
     //   GLOBAL_KEYS: Focus/Exit Focus, ReadOnly/Exit ReadOnly (2 pairs)
     //   HISTORY_KEYS: Open/Exit (1 pair)
     const DEDUP_PAIRS: usize = 3;
-    const SECTION_COUNT: usize = 22;
+    const SECTION_COUNT: usize = 25;
     const SECTION_HEADERS: usize = SECTION_COUNT;
     const BLANK_SEPARATORS: usize = SECTION_COUNT - 1;
     SECTION_HEADERS
@@ -324,6 +351,9 @@ pub const fn help_content_line_count() -> usize {
         + COMMAND_PALETTE_ROWS.len()
         + HELP_ROWS.len()
         + CONFIRM_DIALOG_KEYS.len()
+        + JSONB_DETAIL_KEYS.len()
+        + JSONB_EDIT_KEYS.len()
+        + JSONB_SEARCH_KEYS.len()
 }
 
 // =============================================================================
@@ -553,6 +583,30 @@ mod tests {
         assert!(idx::connection_selector::EDIT < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::DELETE < CONNECTION_SELECTOR_ROWS.len());
         assert!(idx::connection_selector::CLOSE < CONNECTION_SELECTOR_ROWS.len());
+
+        // JSONB_DETAIL_KEYS
+        assert!(idx::jsonb_detail::YANK < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::EDIT < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::SEARCH < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::DOWN < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::UP < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::FOLD < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::TOGGLE < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::FOLD_ALL < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::UNFOLD_ALL < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::TOP < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::BOTTOM < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::NEXT_MATCH < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::PREV_MATCH < JSONB_DETAIL_KEYS.len());
+        assert!(idx::jsonb_detail::CLOSE < JSONB_DETAIL_KEYS.len());
+
+        // JSONB_SEARCH_KEYS
+        assert!(idx::jsonb_search::TYPE_SEARCH < JSONB_SEARCH_KEYS.len());
+        assert!(idx::jsonb_search::CONFIRM < JSONB_SEARCH_KEYS.len());
+        assert!(idx::jsonb_search::CANCEL < JSONB_SEARCH_KEYS.len());
+
+        // JSONB_EDIT_KEYS
+        assert!(idx::jsonb_edit::BACK < JSONB_EDIT_KEYS.len());
     }
 
     #[test]
@@ -580,6 +634,9 @@ mod tests {
             COMMAND_PALETTE_ROWS.len(),
             HELP_ROWS.len(),
             CONFIRM_DIALOG_KEYS.len(),
+            JSONB_DETAIL_KEYS.len(),
+            JSONB_EDIT_KEYS.len(),
+            JSONB_SEARCH_KEYS.len(),
         ];
         let section_count = sections.len();
         let dedup_pairs = 3; // Focus, ReadOnly, History
@@ -693,6 +750,9 @@ mod tests {
             check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
             check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
             check_non_none_have_combos(HISTORY_KEYS, "HISTORY_KEYS");
+            check_non_none_have_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            check_non_none_have_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
         // ------------------------------------------------------------------ //
@@ -764,6 +824,9 @@ mod tests {
         fn no_duplicate_combos_in_simple_modes() {
             check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+            check_no_duplicate_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            check_no_duplicate_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_no_duplicate_combos_rows(mb.rows, name);
             }
@@ -816,6 +879,9 @@ mod tests {
         fn keymap_resolve_roundtrip_for_simple_modes() {
             check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
             check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
+            check_keymap_roundtrip(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            check_keymap_roundtrip(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
             for (name, mb) in ALL_MODE_BINDINGS {
                 check_resolve_mode_roundtrip(mb.rows, name);
             }
@@ -951,6 +1017,9 @@ mod tests {
             );
             check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
             check_none_action_entries_have_no_combos(HISTORY_KEYS, "HISTORY_KEYS");
+            check_none_action_entries_have_no_combos(JSONB_DETAIL_KEYS, "JSONB_DETAIL_KEYS");
+            check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+            check_none_action_entries_have_no_combos(JSONB_EDIT_KEYS, "JSONB_EDIT_KEYS");
         }
 
         // ------------------------------------------------------------------ //
