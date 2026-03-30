@@ -130,6 +130,39 @@ pub(super) mod tests {
         }
     }
 
+    pub fn jsonb_table_detail() -> Table {
+        let mut detail = users_table_detail();
+        detail.columns.push(Column {
+            name: "metadata".to_string(),
+            data_type: "jsonb".to_string(),
+            nullable: true,
+            default: None,
+            is_primary_key: false,
+            is_unique: false,
+            comment: None,
+            ordinal_position: 3,
+        });
+        detail
+    }
+
+    pub fn editable_preview_result_with_jsonb() -> Arc<QueryResult> {
+        Arc::new(QueryResult {
+            query: "SELECT * FROM users".to_string(),
+            columns: vec!["id".to_string(), "name".to_string(), "metadata".to_string()],
+            rows: vec![vec![
+                "1".to_string(),
+                "Alice".to_string(),
+                r#"{"role":"admin"}"#.to_string(),
+            ]],
+            row_count: 1,
+            execution_time_ms: 10,
+            executed_at: Instant::now(),
+            source: QuerySource::Preview,
+            error: None,
+            command_tag: None,
+        })
+    }
+
     pub fn adhoc_result_with_tag(tag: CommandTag) -> Arc<QueryResult> {
         Arc::new(QueryResult {
             query: String::new(),
