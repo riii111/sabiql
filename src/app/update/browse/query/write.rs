@@ -77,7 +77,14 @@ fn build_update_preview(state: &AppState, services: &AppServices) -> Result<Writ
         diff: {
             let before = normalize_for_diff(&state.result_interaction.cell_edit().original_value);
             let after = normalize_for_diff(state.result_interaction.cell_edit().draft_value());
-            let json_diff = compute_json_diff(&before, &after, 1);
+            let is_jsonb = state
+                .session
+                .table_detail()
+                .and_then(|td| td.columns.get(col_idx))
+                .is_some_and(|c| c.data_type == "jsonb");
+            let json_diff = is_jsonb
+                .then(|| compute_json_diff(&before, &after, 1))
+                .flatten();
             vec![ColumnDiff {
                 column: column_name,
                 before,
@@ -510,6 +517,87 @@ mod tests {
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }
+        }
+
+        fn editable_state_with_jsonb() -> AppState {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            state
+                .query
+                .set_current_result(editable_preview_result_with_jsonb());
+            state
+                .session
+                .set_table_detail_raw(Some(jsonb_table_detail()));
+            state.query.pagination.schema = "public".to_string();
+            state.query.pagination.table = "users".to_string();
+            state.modal.set_mode(InputMode::CellEdit);
+            // col 2 = metadata (jsonb)
+            state
+                .result_interaction
+                .begin_cell_edit(0, 2, r#"{"role":"admin"}"#.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content(r#"{"role":"user"}"#.to_string());
+            state
+        }
+
+        #[test]
+        fn jsonb_column_produces_structured_diff() {
+            let mut state = editable_state_with_jsonb();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &fake_services(),
+            )
+            .unwrap();
+
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(
+                preview.diff[0].json_diff.is_some(),
+                "jsonb column should have structured diff"
+            );
+        }
+
+        #[test]
+        fn text_column_with_json_content_returns_none_diff() {
+            // col 1 = name (text), but we edit it with JSON content
+            let mut state = editable_state();
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, r#"{"key":"old"}"#.to_string());
+            state
+                .result_interaction
+                .cell_edit_input_mut()
+                .set_content(r#"{"key":"new"}"#.to_string());
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &fake_services(),
+            )
+            .unwrap();
+
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(
+                preview.diff[0].json_diff.is_none(),
+                "text column should not have structured diff even if value looks like JSON"
+            );
         }
 
         #[test]
