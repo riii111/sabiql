@@ -13,20 +13,23 @@ use crate::ui::theme::Theme;
 pub struct JsonbDetail;
 
 impl JsonbDetail {
-    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
+    pub fn render(frame: &mut Frame, state: &AppState, now: std::time::Instant) -> Option<usize> {
         if !state.jsonb_detail.is_active() {
-            return;
+            return None;
         }
 
         match state.jsonb_detail.mode() {
             JsonbDetailMode::Viewing | JsonbDetailMode::Searching => {
-                Self::render_viewing(frame, state, now);
+                Some(Self::render_viewing(frame, state, now))
             }
-            JsonbDetailMode::Editing => Self::render_editing(frame, state),
+            JsonbDetailMode::Editing => {
+                Self::render_editing(frame, state);
+                None
+            }
         }
     }
 
-    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) {
+    fn render_viewing(frame: &mut Frame, state: &AppState, now: std::time::Instant) -> usize {
         let title = format!(
             " JSONB Detail \u{2500}\u{2500} {}",
             state.jsonb_detail.column_name()
@@ -124,6 +127,8 @@ impl JsonbDetail {
 
             frame.render_widget(Paragraph::new(bottom_lines), bottom);
         }
+
+        scroll
     }
 
     fn render_editing(frame: &mut Frame, state: &AppState) {

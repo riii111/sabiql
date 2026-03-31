@@ -93,17 +93,9 @@ impl MainLayout {
             None
         };
 
-        let jsonb_detail_scroll_offset = if matches!(
-            state.input_mode(),
-            InputMode::JsonbDetail | InputMode::JsonbEdit
-        ) {
-            Some(
-                state
-                    .jsonb_detail
-                    .adjusted_scroll(state.jsonb_detail.visible_count()),
-            )
-        } else {
-            None
+        let jsonb_detail_scroll_offset = match state.input_mode() {
+            InputMode::JsonbDetail | InputMode::JsonbEdit => JsonbDetail::render(frame, state, now),
+            _ => None,
         };
 
         match state.input_mode() {
@@ -111,9 +103,6 @@ impl MainLayout {
             InputMode::Help => HelpOverlay::render(frame, state),
             InputMode::ConnectionSetup => ConnectionSetup::render(frame, state),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now),
-            InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now);
-            }
             _ => {}
         }
 

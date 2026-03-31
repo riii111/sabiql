@@ -223,17 +223,6 @@ impl JsonbDetailState {
         self.selected_line = visible_count.saturating_sub(1);
     }
 
-    pub fn adjust_scroll(&mut self, viewport_height: usize) {
-        if viewport_height == 0 {
-            return;
-        }
-        if self.selected_line < self.scroll_offset {
-            self.scroll_offset = self.selected_line;
-        } else if self.selected_line >= self.scroll_offset + viewport_height {
-            self.scroll_offset = self.selected_line - viewport_height + 1;
-        }
-    }
-
     pub fn clamp_cursor(&mut self, visible_count: usize) {
         if visible_count == 0 {
             self.selected_line = 0;
@@ -329,4 +318,45 @@ fn char_offset_of_line(s: &str, target_line: usize) -> usize {
         }
     }
     s.chars().count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JsonbDetailState;
+
+    #[test]
+    fn adjusted_scroll_keeps_offset_when_viewport_height_is_zero() {
+        let mut state = JsonbDetailState::default();
+        state.set_selected_line(4);
+        state.set_scroll_offset(3);
+
+        assert_eq!(state.adjusted_scroll(0), 3);
+    }
+
+    #[test]
+    fn adjusted_scroll_moves_up_when_selection_is_above_scroll() {
+        let mut state = JsonbDetailState::default();
+        state.set_selected_line(2);
+        state.set_scroll_offset(5);
+
+        assert_eq!(state.adjusted_scroll(4), 2);
+    }
+
+    #[test]
+    fn adjusted_scroll_moves_down_when_selection_is_below_viewport() {
+        let mut state = JsonbDetailState::default();
+        state.set_selected_line(8);
+        state.set_scroll_offset(3);
+
+        assert_eq!(state.adjusted_scroll(4), 5);
+    }
+
+    #[test]
+    fn adjusted_scroll_keeps_offset_when_selection_is_visible() {
+        let mut state = JsonbDetailState::default();
+        state.set_selected_line(4);
+        state.set_scroll_offset(3);
+
+        assert_eq!(state.adjusted_scroll(4), 3);
+    }
 }

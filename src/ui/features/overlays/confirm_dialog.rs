@@ -82,11 +82,7 @@ impl ConfirmDialog {
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
-        (
-            Some(inner.height),
-            Some(wrapped_line_count(dialog.message(), message_width)),
-            None,
-        )
+        (None, None, None)
     }
 
     fn render_write_preview(
