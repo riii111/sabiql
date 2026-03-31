@@ -24,7 +24,7 @@ pub struct RenderOutput {
     pub jsonb_detail_scroll_offset: Option<usize>,
     pub confirm_preview_viewport_height: Option<u16>,
     pub confirm_preview_content_height: Option<u16>,
-    pub confirm_preview_scroll: Option<u16>,
+    pub confirm_preview_scroll: u16,
     pub explain_compare_viewport_height: Option<u16>,
 }
 
