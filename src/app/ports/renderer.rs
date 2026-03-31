@@ -31,7 +31,7 @@ pub struct RenderOutput {
 pub trait Renderer {
     fn draw(
         &mut self,
-        state: &mut AppState,
+        state: &AppState,
         services: &AppServices,
         now: Instant,
     ) -> Result<RenderOutput>;

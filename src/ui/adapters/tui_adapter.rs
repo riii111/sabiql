@@ -21,7 +21,7 @@ impl<'a> TuiAdapter<'a> {
 impl Renderer for TuiAdapter<'_> {
     fn draw(
         &mut self,
-        state: &mut AppState,
+        state: &AppState,
         services: &AppServices,
         now: Instant,
     ) -> Result<RenderOutput> {

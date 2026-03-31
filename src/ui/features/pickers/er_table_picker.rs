@@ -13,8 +13,13 @@ use crate::ui::primitives::molecules::render_modal;
 
 pub struct ErTablePicker;
 
+pub struct ErTablePickerRenderMetrics {
+    pub pane_height: u16,
+    pub filter_visible_width: usize,
+}
+
 impl ErTablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) -> (u16, usize) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> ErTablePickerRenderMetrics {
         let selected_count = state.ui.er_selected_tables.len();
         let total_count = state.tables().len();
         let filtered_count = state.er_filtered_tables().len();
@@ -136,6 +141,9 @@ impl ErTablePicker {
             .with_selected(selected)
             .with_offset(state.ui.er_picker.scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        (list_area.height, raw_width)
+        ErTablePickerRenderMetrics {
+            pane_height: list_area.height,
+            filter_visible_width: raw_width,
+        }
     }
 }

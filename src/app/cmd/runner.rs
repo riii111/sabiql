@@ -259,15 +259,10 @@ impl EffectRunner {
                 if let Some(scroll_offset) = output.jsonb_detail_scroll_offset {
                     state.jsonb_detail.set_scroll_offset(scroll_offset);
                 }
-                if let Some(height) = output.confirm_preview_viewport_height {
-                    state.confirm_dialog.preview_viewport_height = Some(height);
-                }
-                if let Some(height) = output.confirm_preview_content_height {
-                    state.confirm_dialog.preview_content_height = Some(height);
-                }
-                if let Some(scroll) = output.confirm_preview_scroll {
-                    state.confirm_dialog.preview_scroll = scroll;
-                }
+                state.confirm_dialog.preview_viewport_height =
+                    output.confirm_preview_viewport_height;
+                state.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
+                state.confirm_dialog.preview_scroll = output.confirm_preview_scroll.unwrap_or(0);
                 if let Some(height) = output.explain_compare_viewport_height {
                     state.explain.compare_viewport_height = Some(height);
                 }
@@ -391,7 +386,7 @@ mod tests {
     impl Renderer for NoopRenderer {
         fn draw(
             &mut self,
-            _state: &mut AppState,
+            _state: &AppState,
             _services: &AppServices,
             _now: Instant,
         ) -> Result<RenderOutput> {

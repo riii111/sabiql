@@ -11,8 +11,13 @@ use crate::ui::theme::Theme;
 
 pub struct TablePicker;
 
+pub struct TablePickerRenderMetrics {
+    pub pane_height: u16,
+    pub filter_visible_width: usize,
+}
+
 impl TablePicker {
-    pub fn render(frame: &mut Frame, state: &AppState) -> (u16, usize) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> TablePickerRenderMetrics {
         let filtered_count = state.filtered_tables().len();
         let (_, inner) = render_modal(
             frame,
@@ -75,6 +80,9 @@ impl TablePicker {
             .with_selected(selected)
             .with_offset(state.ui.table_picker.scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        (list_area.height, raw_width)
+        TablePickerRenderMetrics {
+            pane_height: list_area.height,
+            filter_visible_width: raw_width,
+        }
     }
 }

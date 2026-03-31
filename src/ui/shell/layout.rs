@@ -15,12 +15,12 @@ use crate::ui::features::browse::result::ResultPane;
 use crate::ui::features::connections::error::ConnectionError;
 use crate::ui::features::connections::selector::ConnectionSelector;
 use crate::ui::features::connections::setup::ConnectionSetup;
-use crate::ui::features::overlays::confirm_dialog::ConfirmDialog;
+use crate::ui::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMetrics};
 use crate::ui::features::overlays::help::HelpOverlay;
 use crate::ui::features::pickers::command_palette::CommandPalette;
-use crate::ui::features::pickers::er_table_picker::ErTablePicker;
+use crate::ui::features::pickers::er_table_picker::{ErTablePicker, ErTablePickerRenderMetrics};
 use crate::ui::features::pickers::query_history_picker::QueryHistoryPicker;
-use crate::ui::features::pickers::table_picker::TablePicker;
+use crate::ui::features::pickers::table_picker::{TablePicker, TablePickerRenderMetrics};
 use crate::ui::features::sql_modal::SqlModal;
 use crate::ui::shell::command_line::CommandLine;
 use crate::ui::shell::footer::Footer;
@@ -31,7 +31,7 @@ pub struct MainLayout;
 impl MainLayout {
     pub fn render(
         frame: &mut Frame,
-        state: &mut AppState,
+        state: &AppState,
         time_ms: Option<u128>,
         services: &AppServices,
         now: Instant,
@@ -59,7 +59,10 @@ impl MainLayout {
         let (table_picker_pane_height, table_picker_filter_visible_width) = match state.input_mode()
         {
             InputMode::TablePicker => {
-                let (pane_height, filter_visible_width) = TablePicker::render(frame, state);
+                let TablePickerRenderMetrics {
+                    pane_height,
+                    filter_visible_width,
+                } = TablePicker::render(frame, state);
                 (Some(pane_height), Some(filter_visible_width))
             }
             _ => (None, None),
@@ -67,7 +70,10 @@ impl MainLayout {
 
         let (er_picker_pane_height, er_picker_filter_visible_width) = match state.input_mode() {
             InputMode::ErTablePicker => {
-                let (pane_height, filter_visible_width) = ErTablePicker::render(frame, state);
+                let ErTablePickerRenderMetrics {
+                    pane_height,
+                    filter_visible_width,
+                } = ErTablePicker::render(frame, state);
                 (Some(pane_height), Some(filter_visible_width))
             }
             _ => (None, None),
@@ -83,7 +89,14 @@ impl MainLayout {
             confirm_preview_content_height,
             confirm_preview_scroll,
         ) = match state.input_mode() {
-            InputMode::ConfirmDialog => ConfirmDialog::render(frame, state),
+            InputMode::ConfirmDialog => {
+                let ConfirmPreviewMetrics {
+                    viewport_height,
+                    content_height,
+                    scroll,
+                } = ConfirmDialog::render(frame, state);
+                (viewport_height, content_height, scroll)
+            }
             _ => (None, None, None),
         };
 

@@ -173,7 +173,7 @@ mod tests {
     impl Renderer for NoopRenderer {
         fn draw(
             &mut self,
-            _state: &mut AppState,
+            _state: &AppState,
             _services: &AppServices,
             _now: Instant,
         ) -> Result<RenderOutput> {

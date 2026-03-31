@@ -13,8 +13,14 @@ use crate::ui::theme::Theme;
 
 pub struct ConfirmDialog;
 
+pub struct ConfirmPreviewMetrics {
+    pub viewport_height: Option<u16>,
+    pub content_height: Option<u16>,
+    pub scroll: Option<u16>,
+}
+
 impl ConfirmDialog {
-    pub fn render(frame: &mut Frame, state: &AppState) -> (Option<u16>, Option<u16>, Option<u16>) {
+    pub fn render(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
         if state.result_interaction.pending_write_preview().is_some() {
             Self::render_write_preview(frame, state)
         } else {
@@ -30,10 +36,7 @@ impl ConfirmDialog {
         }
     }
 
-    fn render_plain(
-        frame: &mut Frame,
-        state: &AppState,
-    ) -> (Option<u16>, Option<u16>, Option<u16>) {
+    fn render_plain(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
         let dialog = &state.confirm_dialog;
         let hint = " Enter: Confirm │ Esc: Cancel ";
 
@@ -82,13 +85,14 @@ impl ConfirmDialog {
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
-        (None, None, None)
+        ConfirmPreviewMetrics {
+            viewport_height: None,
+            content_height: None,
+            scroll: None,
+        }
     }
 
-    fn render_write_preview(
-        frame: &mut Frame,
-        state: &AppState,
-    ) -> (Option<u16>, Option<u16>, Option<u16>) {
+    fn render_write_preview(frame: &mut Frame, state: &AppState) -> ConfirmPreviewMetrics {
         let preview = state
             .result_interaction
             .pending_write_preview()
@@ -250,7 +254,11 @@ impl ConfirmDialog {
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
         frame.render_widget(para, inner);
-        (Some(inner.height), Some(wrapped_height), Some(scroll))
+        ConfirmPreviewMetrics {
+            viewport_height: Some(inner.height),
+            content_height: Some(wrapped_height),
+            scroll: Some(scroll),
+        }
     }
 
     fn render_json_diff_lines(lines: &[JsonDiffLine], output: &mut Vec<Line<'static>>) {
