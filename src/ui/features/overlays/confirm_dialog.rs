@@ -16,7 +16,7 @@ pub struct ConfirmDialog;
 pub struct ConfirmPreviewMetrics {
     pub viewport_height: Option<u16>,
     pub content_height: Option<u16>,
-    pub scroll: Option<u16>,
+    pub scroll: u16,
 }
 
 impl ConfirmDialog {
@@ -88,7 +88,7 @@ impl ConfirmDialog {
         ConfirmPreviewMetrics {
             viewport_height: None,
             content_height: None,
-            scroll: None,
+            scroll: 0,
         }
     }
 
@@ -257,7 +257,7 @@ impl ConfirmDialog {
         ConfirmPreviewMetrics {
             viewport_height: Some(inner.height),
             content_height: Some(wrapped_height),
-            scroll: Some(scroll),
+            scroll,
         }
     }
 

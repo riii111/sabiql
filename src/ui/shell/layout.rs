@@ -97,7 +97,7 @@ impl MainLayout {
                 } = ConfirmDialog::render(frame, state);
                 (viewport_height, content_height, scroll)
             }
-            _ => (None, None, None),
+            _ => (None, None, 0),
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
@@ -153,18 +153,7 @@ impl MainLayout {
                 explorer_pane_height: 0,
                 inspector_pane_height: 0,
                 result_pane_height: main_area.height,
-                command_line_visible_width: None,
-                connection_list_pane_height: None,
-                table_picker_pane_height: None,
-                table_picker_filter_visible_width: None,
-                er_picker_pane_height: None,
-                er_picker_filter_visible_width: None,
-                query_history_picker_pane_height: None,
-                jsonb_detail_scroll_offset: None,
-                confirm_preview_viewport_height: None,
-                confirm_preview_content_height: None,
-                confirm_preview_scroll: None,
-                explain_compare_viewport_height: None,
+                ..RenderOutput::default()
             }
         } else {
             let [left_area, right_area] =
@@ -188,18 +177,7 @@ impl MainLayout {
                 explorer_pane_height: left_area.height,
                 inspector_pane_height: inspector_area.height,
                 result_pane_height: result_area.height,
-                command_line_visible_width: None,
-                connection_list_pane_height: None,
-                table_picker_pane_height: None,
-                table_picker_filter_visible_width: None,
-                er_picker_pane_height: None,
-                er_picker_filter_visible_width: None,
-                query_history_picker_pane_height: None,
-                jsonb_detail_scroll_offset: None,
-                confirm_preview_viewport_height: None,
-                confirm_preview_content_height: None,
-                confirm_preview_scroll: None,
-                explain_compare_viewport_height: None,
+                ..RenderOutput::default()
             }
         }
     }
