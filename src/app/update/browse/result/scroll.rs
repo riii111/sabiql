@@ -75,10 +75,8 @@ fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, 
             _ => row,
         };
         state.result_interaction.move_row(new_row);
-        scroll_result_by(state, direction, delta);
-    } else {
-        scroll_result_by(state, direction, delta);
     }
+    scroll_result_by(state, direction, delta);
 }
 
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {

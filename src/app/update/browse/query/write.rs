@@ -756,7 +756,7 @@ mod tests {
         }
 
         #[test]
-        fn open_write_preview_confirm_for_delete_uses_refresh_target_count() {
+        fn open_write_preview_confirm_for_delete_sets_refresh_target_count() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::Normal);
             state.query.set_delete_refresh_target(0, Some(2), 3);
