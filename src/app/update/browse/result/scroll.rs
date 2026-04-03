@@ -44,6 +44,43 @@ fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOn
     }
 }
 
+fn page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
+    let visible = state.result_visible_rows();
+    if visible == 0 {
+        return None;
+    }
+
+    Some(match amount {
+        ScrollAmount::HalfPage => (visible / 2).max(1),
+        ScrollAmount::FullPage => visible.max(1),
+        _ => return None,
+    })
+}
+
+fn scroll_result_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
+    let max_scroll = result_max_scroll(state);
+    state.result_interaction.scroll_offset = match direction {
+        ScrollDirection::Down => (state.result_interaction.scroll_offset + delta).min(max_scroll),
+        ScrollDirection::Up => state.result_interaction.scroll_offset.saturating_sub(delta),
+        _ => state.result_interaction.scroll_offset,
+    };
+}
+
+fn move_result_row_and_scroll(state: &mut AppState, direction: ScrollDirection, delta: usize) {
+    let max_row = result_row_count(state).saturating_sub(1);
+    if let Some(row) = state.result_interaction.selection().row() {
+        let new_row = match direction {
+            ScrollDirection::Down => (row + delta).min(max_row),
+            ScrollDirection::Up => row.saturating_sub(delta),
+            _ => row,
+        };
+        state.result_interaction.move_row(new_row);
+        scroll_result_by(state, direction, delta);
+    } else {
+        scroll_result_by(state, direction, delta);
+    }
+}
+
 pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
     match action {
         Action::Scroll {
@@ -151,91 +188,12 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         }
         Action::Scroll {
             target: ScrollTarget::Result,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::HalfPage,
+            direction: direction @ (ScrollDirection::Down | ScrollDirection::Up),
+            amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            let visible = state.result_visible_rows();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = (visible / 2).max(1);
-            if let Some(row) = state.result_interaction.selection().row() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                let max_scroll = result_max_scroll(state);
-                state
-                    .result_interaction
-                    .move_row((row + delta).min(max_row));
-                state.result_interaction.scroll_offset =
-                    (state.result_interaction.scroll_offset + delta).min(max_scroll);
-            } else {
-                let max = result_max_scroll(state);
-                state.result_interaction.scroll_offset =
-                    (state.result_interaction.scroll_offset + delta).min(max);
-            }
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::HalfPage,
-        } => {
-            let visible = state.result_visible_rows();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = (visible / 2).max(1);
-            if let Some(row) = state.result_interaction.selection().row() {
-                state.result_interaction.move_row(row.saturating_sub(delta));
-                state.result_interaction.scroll_offset =
-                    state.result_interaction.scroll_offset.saturating_sub(delta);
-            } else {
-                state.result_interaction.scroll_offset =
-                    state.result_interaction.scroll_offset.saturating_sub(delta);
-            }
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Down,
-            amount: ScrollAmount::FullPage,
-        } => {
-            let visible = state.result_visible_rows();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = visible.max(1);
-            if let Some(row) = state.result_interaction.selection().row() {
-                let max_row = result_row_count(state).saturating_sub(1);
-                let max_scroll = result_max_scroll(state);
-                state
-                    .result_interaction
-                    .move_row((row + delta).min(max_row));
-                state.result_interaction.scroll_offset =
-                    (state.result_interaction.scroll_offset + delta).min(max_scroll);
-            } else {
-                let max = result_max_scroll(state);
-                state.result_interaction.scroll_offset =
-                    (state.result_interaction.scroll_offset + delta).min(max);
-            }
-            Some(vec![])
-        }
-        Action::Scroll {
-            target: ScrollTarget::Result,
-            direction: ScrollDirection::Up,
-            amount: ScrollAmount::FullPage,
-        } => {
-            let visible = state.result_visible_rows();
-            if visible == 0 {
-                return Some(vec![]);
-            }
-            let delta = visible.max(1);
-            if let Some(row) = state.result_interaction.selection().row() {
-                state.result_interaction.move_row(row.saturating_sub(delta));
-                state.result_interaction.scroll_offset =
-                    state.result_interaction.scroll_offset.saturating_sub(delta);
-            } else {
-                state.result_interaction.scroll_offset =
-                    state.result_interaction.scroll_offset.saturating_sub(delta);
+            let delta = page_scroll_delta(state, *amount).unwrap_or(0);
+            if delta > 0 {
+                move_result_row_and_scroll(state, *direction, delta);
             }
             Some(vec![])
         }
