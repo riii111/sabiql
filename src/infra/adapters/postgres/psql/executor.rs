@@ -198,7 +198,7 @@ impl PostgresAdapter {
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
         .await
-        .map_err(|_| DbOperationError::Timeout)?
+        .map_err(|e| DbOperationError::Timeout(e.to_string()))?
         .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
@@ -396,9 +396,15 @@ impl PostgresAdapter {
             let status = child.wait().await?;
             Ok::<_, std::io::Error>((status, stderr, newline_count))
         })
-        .await
-        .map_err(|_| DbOperationError::Timeout)?
-        .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
+        .await;
+
+        let result = match result {
+            Ok(inner) => inner.map_err(|e| DbOperationError::QueryFailed(e.to_string()))?,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(path).await;
+                return Err(DbOperationError::Timeout(e.to_string()));
+            }
+        };
 
         let (status, stderr, newline_count) = result;
         if !status.success() {

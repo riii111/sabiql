@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::ui::primitives::atoms::text_cursor_spans;
 use crate::ui::theme::Theme;

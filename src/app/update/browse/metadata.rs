@@ -700,7 +700,7 @@ mod tests {
                 &Action::TableDetailCacheFailed {
                     schema: "public".to_string(),
                     table: "users".to_string(),
-                    error: DbOperationError::Timeout,
+                    error: DbOperationError::Timeout("timed out".to_string()),
                 },
                 now,
             );

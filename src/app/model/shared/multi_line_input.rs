@@ -1,6 +1,6 @@
 use crate::app::update::action::CursorMove;
 
-use super::text_input::TextInputState;
+use super::text_input::{TextInputLike, TextInputState};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MultiLineInputState {
@@ -16,40 +16,8 @@ impl MultiLineInputState {
         }
     }
 
-    // ── Accessors (delegated) ───────────────────────────────────────
-
-    pub fn content(&self) -> &str {
-        self.inner.content()
-    }
-
-    pub fn cursor(&self) -> usize {
-        self.inner.cursor()
-    }
-
-    pub fn char_count(&self) -> usize {
-        self.inner.char_count()
-    }
-
     pub fn scroll_row(&self) -> usize {
         self.scroll_row
-    }
-
-    // ── Text editing (delegated) ────────────────────────────────────
-
-    pub fn insert_char(&mut self, c: char) {
-        self.inner.insert_char(c);
-    }
-
-    pub fn insert_str(&mut self, text: &str) {
-        self.inner.insert_str(text);
-    }
-
-    pub fn backspace(&mut self) {
-        self.inner.backspace();
-    }
-
-    pub fn delete(&mut self) {
-        self.inner.delete();
     }
 
     pub fn insert_newline(&mut self) {
@@ -174,6 +142,16 @@ impl MultiLineInputState {
         let clamped = pos.min(self.char_count());
         // viewport reset by set_cursor is acceptable: MultiLineInputState doesn't use inner's viewport
         self.inner.set_cursor(clamped);
+    }
+}
+
+impl TextInputLike for MultiLineInputState {
+    fn text_input(&self) -> &TextInputState {
+        &self.inner
+    }
+
+    fn text_input_mut(&mut self) -> &mut TextInputState {
+        &mut self.inner
     }
 }
 

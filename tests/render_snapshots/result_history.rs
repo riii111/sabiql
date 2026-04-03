@@ -1,5 +1,6 @@
 use super::*;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
+use sabiql::app::model::shared::ui_state::FocusMode;
 use sabiql::domain::QuerySource;
 
 fn adhoc_result(now: std::time::Instant, query: &str) -> sabiql::domain::QueryResult {
@@ -84,7 +85,7 @@ fn history_mode_with_horizontal_scroll() {
         .query
         .set_current_result(Arc::new(wide_adhoc_result(now, long_query)));
     state.query.enter_history(2); // viewing 3/3
-    state.ui.focus_mode = true;
+    state.ui.focus_mode = FocusMode::focused(state.ui.focused_pane);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -126,7 +127,7 @@ fn focus_mode_history_mode() {
         .query
         .set_current_result(Arc::new(adhoc_result(now, "SELECT 3")));
     state.query.enter_history(0); // viewing 1/3
-    state.ui.focus_mode = true;
+    state.ui.focus_mode = FocusMode::focused(state.ui.focused_pane);
 
     let output = render_to_string(&mut terminal, &mut state);
 

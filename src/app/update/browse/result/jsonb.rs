@@ -4,6 +4,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::policy::json::{parse_json_tree, visible_line_indices};
 use crate::app::update::action::{Action, InputTarget};
 use crate::domain::QuerySource;

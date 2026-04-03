@@ -393,9 +393,12 @@ mod tests {
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(state.ui.focus_mode);
+        assert!(state.ui.is_focus_mode());
         assert_eq!(state.ui.focused_pane, FocusedPane::Result);
-        assert_eq!(state.ui.focus_mode_prev_pane, Some(FocusedPane::Explorer));
+        assert_eq!(
+            state.ui.focus_mode.previous_pane(),
+            Some(FocusedPane::Explorer)
+        );
     }
 
     #[test]
@@ -407,7 +410,7 @@ mod tests {
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(!state.ui.focus_mode);
+        assert!(!state.ui.is_focus_mode());
         assert_eq!(state.ui.focused_pane, FocusedPane::Inspector);
     }
 

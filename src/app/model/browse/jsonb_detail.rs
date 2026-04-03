@@ -1,5 +1,5 @@
 use crate::app::model::shared::multi_line_input::MultiLineInputState;
-use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::policy::json::visible_line_indices;
 
 use super::json_tree::JsonTree;

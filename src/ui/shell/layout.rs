@@ -143,7 +143,7 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
     ) -> RenderOutput {
-        if state.ui.focus_mode {
+        if state.ui.is_focus_mode() {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, main_area, state, now);
             RenderOutput {

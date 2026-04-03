@@ -29,7 +29,7 @@ impl NavigationContext {
     }
 
     pub fn from_state(state: &AppState) -> Self {
-        let result_nav = state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
+        let result_nav = state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
         if result_nav {
             match state.result_interaction.selection().mode() {
                 ResultNavMode::CellActive => Self::ResultCellActive,
@@ -317,6 +317,7 @@ mod tests {
     use super::*;
     use crate::app::model::app_state::AppState;
     use crate::app::model::shared::focused_pane::FocusedPane;
+    use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -332,7 +333,11 @@ mod tests {
     ) -> AppState {
         let mut state = AppState::new("test".to_string());
         state.ui.focused_pane = focused_pane;
-        state.ui.focus_mode = focus_mode;
+        state.ui.focus_mode = if focus_mode {
+            FocusMode::focused(focused_pane)
+        } else {
+            FocusMode::Normal
+        };
         if let Some(r) = row {
             state.result_interaction.enter_row(r);
             if let Some(c) = cell {

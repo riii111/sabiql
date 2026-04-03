@@ -227,7 +227,7 @@ impl EffectRunner {
             Effect::Render => {
                 let now = Instant::now();
                 let output = tui.draw(state, services, now)?;
-                if !state.ui.focus_mode {
+                if !state.ui.is_focus_mode() {
                     state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
                 }
                 state.ui.result_viewport_plan = output.result_viewport_plan;

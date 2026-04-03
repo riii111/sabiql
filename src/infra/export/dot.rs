@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::app::ports::{
-    ErDiagramExporter, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
+    ErDiagramExporter, ErExportResult, GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher,
 };
 use crate::domain::ErTableInfo;
 
@@ -176,7 +176,7 @@ impl<G: GraphvizRunner, V: ViewerLauncher> DotExporter<G, V> {
         dot_content: &str,
         filename: &str,
         cache_dir: &Path,
-    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> ErExportResult<PathBuf> {
         let dot_path = cache_dir.join(filename);
         std::fs::write(&dot_path, dot_content)?;
 
@@ -218,7 +218,7 @@ impl<G: GraphvizRunner + 'static, V: ViewerLauncher + 'static> ErDiagramExporter
         tables: &[ErTableInfo],
         filename: &str,
         cache_dir: &Path,
-    ) -> crate::app::ports::ErExportResult<PathBuf> {
+    ) -> ErExportResult<PathBuf> {
         let dot_content = Self::generate_full_dot(tables);
         self.export(&dot_content, filename, cache_dir)
     }
