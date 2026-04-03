@@ -67,6 +67,13 @@ pub enum PostDeleteRowSelection {
     Select(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeleteRefreshTarget {
+    pub target_page: usize,
+    pub target_row: Option<usize>,
+    pub expected_delete_count: usize,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
     status: QueryStatus,
@@ -77,8 +84,7 @@ pub struct QueryExecution {
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
-    // (target_page, target_row, expected_delete_count)
-    pending_delete_refresh_target: Option<(usize, Option<usize>, usize)>,
+    pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
 }
 
@@ -178,10 +184,14 @@ impl QueryExecution {
     // ── Delete lifecycle ─────────────────────────────────────────────
 
     pub fn set_delete_refresh_target(&mut self, page: usize, row: Option<usize>, count: usize) {
-        self.pending_delete_refresh_target = Some((page, row, count));
+        self.pending_delete_refresh_target = Some(DeleteRefreshTarget {
+            target_page: page,
+            target_row: row,
+            expected_delete_count: count,
+        });
     }
 
-    pub fn take_delete_refresh_target(&mut self) -> Option<(usize, Option<usize>, usize)> {
+    pub fn take_delete_refresh_target(&mut self) -> Option<DeleteRefreshTarget> {
         self.pending_delete_refresh_target.take()
     }
 
@@ -189,7 +199,7 @@ impl QueryExecution {
         self.pending_delete_refresh_target = None;
     }
 
-    pub fn pending_delete_refresh_target(&self) -> Option<(usize, Option<usize>, usize)> {
+    pub fn pending_delete_refresh_target(&self) -> Option<DeleteRefreshTarget> {
         self.pending_delete_refresh_target
     }
 

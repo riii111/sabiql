@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::app::model::browse::query_execution::{
+    DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
+};
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::policy::json::json_diff::compute_json_diff;
 use crate::app::policy::write::write_guardrails::{
@@ -200,7 +202,7 @@ pub fn reduce(
                     let n = state
                         .query
                         .pending_delete_refresh_target()
-                        .map_or(1, |(_, _, count)| count);
+                        .map_or(1, |target| target.expected_delete_count);
                     format!(
                         "Confirm DELETE: {} {} from {}",
                         n,
@@ -291,10 +293,18 @@ pub fn reduce(
                     }
                 }
                 WriteOperation::Delete => {
-                    let (target_page, target_row, expected) = state
+                    let DeleteRefreshTarget {
+                        target_page,
+                        target_row,
+                        expected_delete_count: expected,
+                    } = state
                         .query
                         .take_delete_refresh_target()
-                        .unwrap_or((state.query.pagination.current_page, None, 1));
+                        .unwrap_or(DeleteRefreshTarget {
+                            target_page: state.query.pagination.current_page,
+                            target_row: None,
+                            expected_delete_count: 1,
+                        });
 
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
                     if *affected_rows == expected {
@@ -366,7 +376,9 @@ pub fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::browse::query_execution::{PostDeleteRowSelection, QueryStatus};
+    use crate::app::model::browse::query_execution::{
+        DeleteRefreshTarget, PostDeleteRowSelection, QueryStatus,
+    };
     use crate::app::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
     };
@@ -740,6 +752,36 @@ mod tests {
             assert_eq!(
                 state.confirm_dialog.title(),
                 "Confirm DELETE: 1 row from users"
+            );
+        }
+
+        #[test]
+        fn open_write_preview_confirm_for_delete_uses_refresh_target_count() {
+            let mut state = create_test_state();
+            state.modal.set_mode(InputMode::Normal);
+            state.query.set_delete_refresh_target(0, Some(2), 3);
+            let preview = delete_preview();
+
+            let effects = reduce_query(
+                &mut state,
+                &Action::OpenWritePreviewConfirm(Box::new(preview)),
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.query.pending_delete_refresh_target(),
+                Some(DeleteRefreshTarget {
+                    target_page: 0,
+                    target_row: Some(2),
+                    expected_delete_count: 3,
+                })
+            );
+            assert_eq!(
+                state.confirm_dialog.title(),
+                "Confirm DELETE: 3 rows from users"
             );
         }
 
