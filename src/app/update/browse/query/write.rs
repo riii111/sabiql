@@ -159,15 +159,9 @@ pub fn reduce(
                 }
             }
 
-            if !state.result_interaction.cell_edit().is_active() {
-                state
-                    .messages
-                    .set_error_at("No active cell edit session".to_string(), now);
-                return Some(vec![]);
-            }
             if state.query.is_running() {
                 state.messages.set_error_at(
-                    "Write is unavailable while query is running".to_string(),
+                    EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string(),
                     now,
                 );
                 return Some(vec![]);
