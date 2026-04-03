@@ -6,7 +6,7 @@ use crate::app::model::shared::input_mode::InputMode;
 use crate::app::policy::write::write_update::build_pk_pairs;
 use crate::app::update::action::{Action, InputTarget};
 
-use crate::app::update::helpers::editable_preview_base;
+use crate::app::update::helpers::{EditGuardrailError, editable_preview_base};
 
 fn is_jsonb_cell(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
@@ -24,39 +24,39 @@ fn is_jsonb_cell(state: &AppState) -> bool {
         .is_some_and(|c| c.data_type == "jsonb")
 }
 
-fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), String> {
+fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
     let row_idx = state
         .result_interaction
         .selection()
         .row()
-        .ok_or_else(|| "No active row".to_string())?;
+        .ok_or(EditGuardrailError::NoActiveRow)?;
     let col_idx = state
         .result_interaction
         .selection()
         .cell()
-        .ok_or_else(|| "No active cell".to_string())?;
+        .ok_or(EditGuardrailError::NoActiveCell)?;
 
     let (result, pk_cols) = editable_preview_base(state)?;
 
     let column_name = result
         .columns
         .get(col_idx)
-        .ok_or_else(|| "Column index out of bounds".to_string())?;
+        .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?;
     if pk_cols.iter().any(|pk| pk == column_name) {
-        return Err("Primary key columns are read-only".to_string());
+        return Err(EditGuardrailError::PrimaryKeyColumnsReadOnly);
     }
 
     let row = result
         .rows
         .get(row_idx)
-        .ok_or_else(|| "Row index out of bounds".to_string())?;
+        .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
     if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
-        return Err("Stable key columns are not present in current result".to_string());
+        return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
     let cell_value = row
         .get(col_idx)
-        .ok_or_else(|| "Cell index out of bounds".to_string())?
+        .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
         .clone();
 
     Ok((row_idx, col_idx, cell_value))
@@ -91,7 +91,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                     Some(vec![])
                 }
                 Err(reason) => {
-                    state.messages.set_error_at(reason, now);
+                    state.messages.set_error_at(reason.to_string(), now);
                     Some(vec![])
                 }
             }

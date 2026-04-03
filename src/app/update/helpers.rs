@@ -7,40 +7,88 @@ use crate::app::policy::write::write_update::build_pk_pairs;
 use crate::app::services::AppServices;
 use crate::domain::{QueryResult, QuerySource};
 
-pub const ERR_EDITING_REQUIRES_PRIMARY_KEY: &str = "Editing requires a PRIMARY KEY.";
-pub const ERR_DELETION_REQUIRES_PRIMARY_KEY: &str =
-    "Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.";
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EditGuardrailError {
+    #[error("Editing is unavailable while browsing history")]
+    InHistory,
+    #[error("No result to edit")]
+    NoResult,
+    #[error("Only Preview results are editable")]
+    NotEditableResult,
+    #[error("Preview target table is unknown")]
+    UnknownTable,
+    #[error("Table metadata not loaded")]
+    TableMetadataNotLoaded,
+    #[error("Table metadata does not match current preview target")]
+    StaleTableMetadata,
+    #[error("Editing requires a PRIMARY KEY.")]
+    EditingRequiresPrimaryKey,
+    #[error("Deletion requires a PRIMARY KEY. This table has no PRIMARY KEY.")]
+    DeletionRequiresPrimaryKey,
+    #[error("No rows staged for deletion")]
+    NoRowsStagedForDeletion,
+    #[error("No active connection")]
+    NoActiveConnection,
+    #[error("Write is unavailable while query is running")]
+    WriteUnavailableWhileQueryRunning,
+    #[error("Staged row index {0} out of bounds")]
+    StagedRowIndexOutOfBounds(usize),
+    #[error("Stable key columns are not present in current result")]
+    StableKeyColumnsMissing,
+    #[error("No active cell edit session")]
+    NoActiveCellEditSession,
+    #[error("No row selected for edit")]
+    NoRowSelectedForEdit,
+    #[error("No column selected for edit")]
+    NoColumnSelectedForEdit,
+    #[error("Row index out of bounds")]
+    RowIndexOutOfBounds,
+    #[error("Column index out of bounds")]
+    ColumnIndexOutOfBounds,
+    #[error("Primary key columns are read-only")]
+    PrimaryKeyColumnsReadOnly,
+    #[error("No active row")]
+    NoActiveRow,
+    #[error("No active cell")]
+    NoActiveCell,
+    #[error("Cell index out of bounds")]
+    CellIndexOutOfBounds,
+    #[error("{0}")]
+    GuardrailBlocked(String),
+}
 
 // Entry checks in navigation and submit-time checks in query should both use this.
 // Row/column selection source is intentionally left to each caller:
 // navigation uses live selection, query submit uses cell_edit state.
-pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String]), String> {
+pub fn editable_preview_base(
+    state: &AppState,
+) -> Result<(&QueryResult, &[String]), EditGuardrailError> {
     if state.query.is_history_mode() {
-        return Err("Editing is unavailable while browsing history".to_string());
+        return Err(EditGuardrailError::InHistory);
     }
 
     let result = state
         .query
         .current_result()
         .map(AsRef::as_ref)
-        .ok_or_else(|| "No result to edit".to_string())?;
+        .ok_or(EditGuardrailError::NoResult)?;
     if result.source != QuerySource::Preview || result.is_error() {
-        return Err("Only Preview results are editable".to_string());
+        return Err(EditGuardrailError::NotEditableResult);
     }
 
     if state.query.pagination.schema.is_empty() || state.query.pagination.table.is_empty() {
-        return Err("Preview target table is unknown".to_string());
+        return Err(EditGuardrailError::UnknownTable);
     }
 
     let table_detail = state
         .session
         .table_detail()
-        .ok_or_else(|| "Table metadata not loaded".to_string())?;
+        .ok_or(EditGuardrailError::TableMetadataNotLoaded)?;
 
     if table_detail.schema != state.query.pagination.schema
         || table_detail.name != state.query.pagination.table
     {
-        return Err("Table metadata does not match current preview target".to_string());
+        return Err(EditGuardrailError::StaleTableMetadata);
     }
 
     let pk_cols = table_detail
@@ -48,7 +96,7 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
         .as_ref()
         .filter(|cols| !cols.is_empty())
         .map(Vec::as_slice)
-        .ok_or_else(|| ERR_EDITING_REQUIRES_PRIMARY_KEY.to_string())?;
+        .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, pk_cols))
 }
@@ -56,23 +104,22 @@ pub fn editable_preview_base(state: &AppState) -> Result<(&QueryResult, &[String
 pub fn build_bulk_delete_preview(
     state: &AppState,
     services: &AppServices,
-) -> Result<(WritePreview, usize, Option<usize>), String> {
+) -> Result<(WritePreview, usize, Option<usize>), EditGuardrailError> {
     if state.result_interaction.staged_delete_rows().is_empty() {
-        return Err("No rows staged for deletion".to_string());
+        return Err(EditGuardrailError::NoRowsStagedForDeletion);
     }
     if state.session.dsn.is_none() {
-        return Err("No active connection".to_string());
+        return Err(EditGuardrailError::NoActiveConnection);
     }
     if state.query.status() != crate::app::model::browse::query_execution::QueryStatus::Idle {
-        return Err("Write is unavailable while query is running".to_string());
+        return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
-    let (result, pk_cols) = editable_preview_base(state).map_err(|msg| {
-        if msg == ERR_EDITING_REQUIRES_PRIMARY_KEY {
-            ERR_DELETION_REQUIRES_PRIMARY_KEY.to_string()
-        } else {
-            msg
+    let (result, pk_cols) = editable_preview_base(state).map_err(|err| match err {
+        EditGuardrailError::EditingRequiresPrimaryKey => {
+            EditGuardrailError::DeletionRequiresPrimaryKey
         }
+        other => other,
     })?;
 
     let mut pk_pairs_per_row: Vec<Vec<(String, String)>> = Vec::new();
@@ -80,9 +127,9 @@ pub fn build_bulk_delete_preview(
         let row = result
             .rows
             .get(row_idx)
-            .ok_or_else(|| format!("Staged row index {row_idx} out of bounds"))?;
+            .ok_or(EditGuardrailError::StagedRowIndexOutOfBounds(row_idx))?;
         let pairs = build_pk_pairs(&result.columns, row, pk_cols)
-            .ok_or_else(|| "Stable key columns are not present in current result".to_string())?;
+            .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
         pk_pairs_per_row.push(pairs);
     }
 
