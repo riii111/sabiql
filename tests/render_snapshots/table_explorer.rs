@@ -1,5 +1,6 @@
 use super::*;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
+use sabiql::app::model::shared::ui_state::FocusMode;
 
 #[test]
 fn table_selection_with_preview() {
@@ -36,7 +37,7 @@ fn focus_mode_fullscreen_result() {
     state
         .query
         .set_current_result(Arc::new(fixtures::sample_query_result(now)));
-    state.ui.focus_mode = true;
+    state.ui.focus_mode = FocusMode::focused(state.ui.focused_pane);
 
     let output = render_to_string(&mut terminal, &mut state);
 
