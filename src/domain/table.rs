@@ -8,8 +8,14 @@ fn make_qualified_name(schema: &str, name: &str) -> String {
     format!("{schema}.{name}")
 }
 
-fn make_display_name(schema: &str, name: &str, omit_public: bool) -> String {
-    if omit_public && schema == "public" {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaDisplay {
+    Qualified,
+    Simplified,
+}
+
+fn make_display_name(schema: &str, name: &str, schema_display: SchemaDisplay) -> String {
+    if schema_display == SchemaDisplay::Simplified && schema == "public" {
         name.to_string()
     } else {
         make_qualified_name(schema, name)
@@ -36,8 +42,8 @@ impl Table {
         make_qualified_name(&self.schema, &self.name)
     }
 
-    pub fn display_name(&self, omit_public: bool) -> String {
-        make_display_name(&self.schema, &self.name, omit_public)
+    pub fn display_name(&self, schema_display: SchemaDisplay) -> String {
+        make_display_name(&self.schema, &self.name, schema_display)
     }
 }
 
@@ -89,8 +95,8 @@ impl TableSummary {
         &self.qualified_name_lower
     }
 
-    pub fn display_name(&self, omit_public: bool) -> String {
-        make_display_name(&self.schema, &self.name, omit_public)
+    pub fn display_name(&self, schema_display: SchemaDisplay) -> String {
+        make_display_name(&self.schema, &self.name, schema_display)
     }
 }
 
@@ -136,14 +142,14 @@ mod tests {
         fn omit_public_true_returns_name_only() {
             let table = make_table("public", "users");
 
-            assert_eq!(table.display_name(true), "users");
+            assert_eq!(table.display_name(SchemaDisplay::Simplified), "users");
         }
 
         #[test]
         fn omit_public_false_returns_qualified() {
             let table = make_table("public", "users");
 
-            assert_eq!(table.display_name(false), "public.users");
+            assert_eq!(table.display_name(SchemaDisplay::Qualified), "public.users");
         }
     }
 
@@ -154,14 +160,17 @@ mod tests {
         fn display_name_omits_public() {
             let summary = make_summary("public", "orders");
 
-            assert_eq!(summary.display_name(true), "orders");
+            assert_eq!(summary.display_name(SchemaDisplay::Simplified), "orders");
         }
 
         #[test]
         fn display_name_keeps_non_public_schema() {
             let summary = make_summary("audit", "logs");
 
-            assert_eq!(summary.display_name(true), "audit.logs");
+            assert_eq!(
+                summary.display_name(SchemaDisplay::Simplified),
+                "audit.logs"
+            );
         }
 
         #[test]
