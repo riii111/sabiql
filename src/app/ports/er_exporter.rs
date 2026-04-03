@@ -5,7 +5,7 @@ use crate::domain::ErTableInfo;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ErExportError {
-    #[error("Failed to write ER files: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Graphviz(#[from] GraphvizError),
