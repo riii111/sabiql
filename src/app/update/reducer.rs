@@ -207,7 +207,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ToggleFocus, now, &AppServices::stub());
 
-            assert!(state.ui.focus_mode);
+            assert!(state.ui.is_focus_mode());
             assert!(effects.is_empty());
         }
 

@@ -24,6 +24,32 @@ pub enum ResultNavMode {
     CellActive,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FocusMode {
+    #[default]
+    Normal,
+    Focused {
+        previous_pane: FocusedPane,
+    },
+}
+
+impl FocusMode {
+    pub fn focused(previous_pane: FocusedPane) -> Self {
+        Self::Focused { previous_pane }
+    }
+
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Focused { .. })
+    }
+
+    pub fn previous_pane(self) -> Option<FocusedPane> {
+        match self {
+            Self::Focused { previous_pane } => Some(previous_pane),
+            Self::Normal => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct YankFlash {
     pub row: usize,
@@ -105,8 +131,7 @@ impl ResultSelection {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub focused_pane: FocusedPane,
-    pub focus_mode: bool,
-    pub focus_mode_prev_pane: Option<FocusedPane>,
+    pub focus_mode: FocusMode,
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
@@ -148,6 +173,10 @@ impl UiState {
         }
     }
 
+    pub fn is_focus_mode(&self) -> bool {
+        self.focus_mode.is_active()
+    }
+
     pub fn result_visible_rows(&self) -> usize {
         self.result_pane_height.saturating_sub(RESULT_PANE_OVERHEAD) as usize
     }
@@ -174,15 +203,14 @@ impl UiState {
     }
 
     pub fn toggle_focus(&mut self) -> bool {
-        if self.focus_mode {
-            if let Some(prev) = self.focus_mode_prev_pane.take() {
+        if let Some(prev) = self.focus_mode.previous_pane() {
+            self.focus_mode = FocusMode::Normal;
+            if self.focused_pane == FocusedPane::Result {
                 self.focused_pane = prev;
             }
-            self.focus_mode = false;
         } else {
-            self.focus_mode_prev_pane = Some(self.focused_pane);
+            self.focus_mode = FocusMode::focused(self.focused_pane);
             self.focused_pane = FocusedPane::Result;
-            self.focus_mode = true;
         }
         true
     }
@@ -230,8 +258,7 @@ mod tests {
         let state = UiState::default();
 
         assert_eq!(state.focused_pane, FocusedPane::default());
-        assert!(!state.focus_mode);
-        assert!(state.focus_mode_prev_pane.is_none());
+        assert_eq!(state.focus_mode, FocusMode::Normal);
         assert_eq!(state.explorer_selected, 0);
         assert!(state.table_picker.filter_input.content().is_empty());
     }
@@ -293,9 +320,12 @@ mod tests {
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(state.focus_mode);
+        assert!(state.is_focus_mode());
         assert_eq!(state.focused_pane, FocusedPane::Result);
-        assert_eq!(state.focus_mode_prev_pane, Some(FocusedPane::Explorer));
+        assert_eq!(
+            state.focus_mode.previous_pane(),
+            Some(FocusedPane::Explorer)
+        );
     }
 
     #[test]
@@ -309,7 +339,7 @@ mod tests {
         let result = state.toggle_focus();
 
         assert!(result);
-        assert!(!state.focus_mode);
+        assert!(!state.is_focus_mode());
         assert_eq!(state.focused_pane, FocusedPane::Inspector);
     }
 

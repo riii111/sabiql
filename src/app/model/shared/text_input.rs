@@ -7,6 +7,39 @@ pub struct TextInputState {
     viewport_offset: usize,
 }
 
+pub trait TextInputLike {
+    fn text_input(&self) -> &TextInputState;
+    fn text_input_mut(&mut self) -> &mut TextInputState;
+
+    fn content(&self) -> &str {
+        self.text_input().content()
+    }
+
+    fn cursor(&self) -> usize {
+        self.text_input().cursor()
+    }
+
+    fn char_count(&self) -> usize {
+        self.text_input().char_count()
+    }
+
+    fn insert_char(&mut self, c: char) {
+        self.text_input_mut().insert_char(c);
+    }
+
+    fn insert_str(&mut self, text: &str) {
+        self.text_input_mut().insert_str(text);
+    }
+
+    fn backspace(&mut self) {
+        self.text_input_mut().backspace();
+    }
+
+    fn delete(&mut self) {
+        self.text_input_mut().delete();
+    }
+}
+
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
@@ -143,6 +176,16 @@ impl TextInputState {
 
     pub fn char_count(&self) -> usize {
         self.content.chars().count()
+    }
+}
+
+impl TextInputLike for TextInputState {
+    fn text_input(&self) -> &TextInputState {
+        self
+    }
+
+    fn text_input_mut(&mut self) -> &mut TextInputState {
+        self
     }
 }
 

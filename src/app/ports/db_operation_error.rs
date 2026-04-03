@@ -8,6 +8,6 @@ pub enum DbOperationError {
     InvalidJson(String),
     #[error("Command not found: {0}")]
     CommandNotFound(String),
-    #[error("Operation timed out")]
-    Timeout,
+    #[error("Operation timed out: {0}")]
+    Timeout(String),
 }

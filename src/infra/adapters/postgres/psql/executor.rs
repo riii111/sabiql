@@ -198,7 +198,11 @@ impl PostgresAdapter {
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
         .await
-        .map_err(|_| DbOperationError::Timeout)?
+        .map_err(|_| {
+            DbOperationError::Timeout(
+                "psql output collection exceeded configured timeout".to_string(),
+            )
+        })?
         .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
@@ -397,7 +401,9 @@ impl PostgresAdapter {
             Ok::<_, std::io::Error>((status, stderr, newline_count))
         })
         .await
-        .map_err(|_| DbOperationError::Timeout)?
+        .map_err(|_| {
+            DbOperationError::Timeout("psql CSV export exceeded configured timeout".to_string())
+        })?
         .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stderr, newline_count) = result;

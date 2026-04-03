@@ -73,7 +73,7 @@ impl Footer {
                 }
 
                 let result_navigation =
-                    state.ui.focus_mode || state.ui.focused_pane == FocusedPane::Result;
+                    state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
@@ -119,7 +119,7 @@ impl Footer {
                             GLOBAL_KEYS[idx::global::QUIT].as_hint(),
                         ]
                     }
-                } else if state.ui.focus_mode {
+                } else if state.ui.is_focus_mode() {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list =
                         vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];

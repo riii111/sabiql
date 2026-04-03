@@ -20,7 +20,7 @@ pub fn reduce(state: &mut AppState, action: &Action, _now: Instant) -> Option<Ve
             Some(vec![])
         }
         Action::ToggleFocus => {
-            let was_focus = state.ui.focus_mode;
+            let was_focus = state.ui.is_focus_mode();
             state.toggle_focus();
             if was_focus {
                 state.result_interaction.reset_interaction();

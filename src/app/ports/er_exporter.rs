@@ -1,9 +1,19 @@
-use std::error::Error;
 use std::path::{Path, PathBuf};
 
+use super::{GraphvizError, ViewerError};
 use crate::domain::ErTableInfo;
 
-pub type ErExportResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+#[derive(Debug, thiserror::Error)]
+pub enum ErExportError {
+    #[error("Failed to write ER files: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Graphviz(#[from] GraphvizError),
+    #[error("{0}")]
+    Viewer(#[from] ViewerError),
+}
+
+pub type ErExportResult<T> = Result<T, ErExportError>;
 
 pub trait ErDiagramExporter: Send + Sync {
     fn generate_and_export(

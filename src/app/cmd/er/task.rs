@@ -83,7 +83,7 @@ mod tests {
                 _filename: &str,
                 _cache_dir: &Path,
             ) -> ErExportResult<PathBuf> {
-                Err("export failed".into())
+                Err(std::io::Error::other("export failed").into())
             }
         }
 

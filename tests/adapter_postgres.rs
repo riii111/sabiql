@@ -133,7 +133,7 @@ mod error_paths {
             .await;
 
         assert!(
-            matches!(result, Err(DbOperationError::Timeout)),
+            matches!(result, Err(DbOperationError::Timeout(_))),
             "Expected Timeout error, got: {result:?}"
         );
     }

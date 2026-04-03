@@ -586,7 +586,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: DbOperationError::Timeout,
+                    error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -619,7 +619,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: DbOperationError::Timeout,
+                    error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -650,7 +650,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 3,
-                    error: DbOperationError::Timeout,
+                    error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
                 }),
                 Instant::now(),
@@ -670,7 +670,7 @@ mod tests {
                 &mut state,
                 &Action::SmartErRefreshFailed(SmartErRefreshError {
                     run_id: 1,
-                    error: DbOperationError::Timeout,
+                    error: DbOperationError::Timeout("timed out".to_string()),
                     new_metadata: None,
                 }),
                 Instant::now(),

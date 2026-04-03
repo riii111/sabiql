@@ -9,6 +9,9 @@ use crate::app::update::input::nav_intent::{
     NavIntent, NavigationContext, map_nav_intent, resolve,
 };
 
+#[cfg(test)]
+use crate::app::model::shared::ui_state::FocusMode;
+
 fn resolve_nav(combo: &KeyCombo, nav_ctx: NavigationContext) -> Option<Action> {
     map_nav_intent(combo).map(|intent| resolve(intent, nav_ctx))
 }
@@ -153,7 +156,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 
         // Pane switching: exit focus mode first if active
         Key::Char(c @ '1'..='3') => {
-            if state.ui.focus_mode {
+            if state.ui.is_focus_mode() {
                 Action::ToggleFocus
             } else {
                 FocusedPane::from_browse_key(c).map_or(Action::None, Action::SetFocusedPane)
@@ -463,7 +466,7 @@ mod tests {
 
     fn focus_mode_state() -> AppState {
         let mut state = browse_state();
-        state.ui.focus_mode = true;
+        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
         state.ui.focused_pane = FocusedPane::Result;
         state
     }
@@ -1268,7 +1271,7 @@ mod tests {
         fn scroll_keys_allowed_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
-            state.ui.focus_mode = true;
+            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
 
             assert!(matches!(
                 handle_normal_mode(combo(Key::Char('j')), &state),
@@ -1379,7 +1382,7 @@ mod tests {
         fn ctrl_scroll_allowed_in_history_mode() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
-            state.ui.focus_mode = true;
+            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
 
             assert!(matches!(
                 handle_normal_mode(combo_ctrl(Key::Char('d')), &state),
@@ -1402,7 +1405,7 @@ mod tests {
         #[test]
         fn bracket_nav_falls_through_when_not_in_history() {
             let mut state = AppState::new("test".to_string());
-            state.ui.focus_mode = true;
+            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
 
             let next = handle_normal_mode(combo(Key::Char(']')), &state);
             let prev = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -1719,7 +1722,7 @@ mod tests {
             state.query.push_history(qr.clone());
             state.query.set_current_result(qr);
             state.query.enter_history(0);
-            state.ui.focus_mode = true;
+            state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
             state.ui.focused_pane = FocusedPane::Result;
             state
         }
@@ -1914,14 +1917,14 @@ mod tests {
             fn history_explorer_ctx() -> AppState {
                 let mut state = history_focus_ctx();
                 state.ui.focused_pane = FocusedPane::Explorer;
-                state.ui.focus_mode = false;
+                state.ui.focus_mode = FocusMode::Normal;
                 state
             }
 
             fn history_inspector_ctx() -> AppState {
                 let mut state = history_focus_ctx();
                 state.ui.focused_pane = FocusedPane::Inspector;
-                state.ui.focus_mode = false;
+                state.ui.focus_mode = FocusMode::Normal;
                 state
             }
 

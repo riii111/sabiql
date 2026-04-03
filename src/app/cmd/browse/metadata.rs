@@ -113,7 +113,7 @@ pub async fn run(
                         tx.send(Action::TableDetailCacheFailed {
                             schema,
                             table,
-                            error: DbOperationError::Timeout,
+                            error: DbOperationError::Timeout("timed out".to_string()),
                         })
                         .await
                         .ok();

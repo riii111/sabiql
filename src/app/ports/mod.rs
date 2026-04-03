@@ -21,7 +21,7 @@ pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::DbOperationError;
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
-pub use er_exporter::{ErDiagramExporter, ErExportResult};
+pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::{FolderOpenError, FolderOpener};
 pub use graphviz::{GraphvizError, GraphvizRunner, ViewerError, ViewerLauncher};
