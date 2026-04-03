@@ -656,6 +656,13 @@ mod tests {
         use crate::app::update::input::keymap;
         use rstest::rstest;
 
+        fn assert_action_variant(actual: &Action, expected: &Action, binding_name: &str, i: usize) {
+            assert!(
+                std::mem::discriminant(actual) == std::mem::discriminant(expected),
+                "{binding_name}[{i}] has action {actual:?}, expected {expected:?}"
+            );
+        }
+
         // ------------------------------------------------------------------ //
         // 1. idx-to-Action correctness
         // ------------------------------------------------------------------ //
@@ -675,11 +682,7 @@ mod tests {
         #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
         fn global_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
-                "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
-                GLOBAL_KEYS[i].action
-            );
+            assert_action_variant(&GLOBAL_KEYS[i].action, &expected, "GLOBAL_KEYS", i);
         }
 
         #[test]
@@ -730,11 +733,11 @@ mod tests {
         #[case(idx::sql_modal_plan::BACKTAB, Action::SqlModalPrevTab)]
         #[case(idx::sql_modal_plan::CLOSE, Action::CloseSqlModal)]
         fn plan_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_PLAN_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_PLAN_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_PLAN_KEYS[i].action
+            assert_action_variant(
+                &SQL_MODAL_PLAN_KEYS[i].action,
+                &expected,
+                "SQL_MODAL_PLAN_KEYS",
+                i,
             );
         }
 
@@ -747,11 +750,11 @@ mod tests {
         #[case(idx::sql_modal_compare::BACKTAB, Action::SqlModalPrevTab)]
         #[case(idx::sql_modal_compare::CLOSE, Action::CloseSqlModal)]
         fn compare_key_action_matches(#[case] i: usize, #[case] expected: Action) {
-            assert!(
-                std::mem::discriminant(&SQL_MODAL_COMPARE_KEYS[i].action)
-                    == std::mem::discriminant(&expected),
-                "SQL_MODAL_COMPARE_KEYS[{i}] has action {:?}, expected {expected:?}",
-                SQL_MODAL_COMPARE_KEYS[i].action
+            assert_action_variant(
+                &SQL_MODAL_COMPARE_KEYS[i].action,
+                &expected,
+                "SQL_MODAL_COMPARE_KEYS",
+                i,
             );
         }
 
