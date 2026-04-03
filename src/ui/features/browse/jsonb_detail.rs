@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use super::json_tree::json_tree_line_spans;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::shared::text_input::TextInputLike;
 use crate::ui::primitives::molecules::render_modal;
 use crate::ui::theme::Theme;
 

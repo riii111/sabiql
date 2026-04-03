@@ -157,6 +157,7 @@ impl SqlModalContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::model::shared::text_input::TextInputLike;
     use crate::app::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
     #[test]

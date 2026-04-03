@@ -1,5 +1,3 @@
-use std::ops::{Deref, DerefMut};
-
 use crate::app::update::action::CursorMove;
 
 use super::text_input::{TextInputLike, TextInputState};
@@ -153,20 +151,6 @@ impl TextInputLike for MultiLineInputState {
     }
 
     fn text_input_mut(&mut self) -> &mut TextInputState {
-        &mut self.inner
-    }
-}
-
-impl Deref for MultiLineInputState {
-    type Target = TextInputState;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for MultiLineInputState {
-    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }

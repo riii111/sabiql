@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::completion::CompletionState;
 use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::app::policy::sql::statement_classifier::{self, StatementKind};

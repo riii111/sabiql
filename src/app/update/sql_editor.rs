@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::text_input::TextInputState;
+use crate::app::model::shared::text_input::{TextInputLike, TextInputState};
 use crate::app::model::sql_editor::modal::{
     HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus, SqlModalTab,
 };

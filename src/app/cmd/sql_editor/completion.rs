@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use crate::app::cmd::completion_engine::CompletionEngine;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::update::action::Action;
 
 pub async fn run(

@@ -205,9 +205,7 @@ impl UiState {
     pub fn toggle_focus(&mut self) -> bool {
         if let Some(prev) = self.focus_mode.previous_pane() {
             self.focus_mode = FocusMode::Normal;
-            if self.focused_pane == FocusedPane::Result {
-                self.focused_pane = prev;
-            }
+            self.focused_pane = prev;
         } else {
             self.focus_mode = FocusMode::focused(self.focused_pane);
             self.focused_pane = FocusedPane::Result;

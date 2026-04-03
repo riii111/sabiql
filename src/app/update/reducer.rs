@@ -444,6 +444,7 @@ mod tests {
 
     mod sql_modal_debounce {
         use super::*;
+        use crate::app::model::shared::text_input::TextInputLike;
         use std::time::Duration;
 
         #[test]
