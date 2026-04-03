@@ -36,13 +36,10 @@ fn pending_draft_cell_uses_orange_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let orange = Color::Rgb(0xff, 0x99, 0x00);
-    let draft_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == orange));
-    assert!(
-        draft_cell.is_some(),
-        "Expected at least one cell with CELL_DRAFT_PENDING_FG (orange) in the buffer"
+    assert_buffer_contains_fg(
+        &buffer,
+        Color::Rgb(0xff, 0x99, 0x00),
+        "CELL_DRAFT_PENDING_FG",
     );
 }
 
@@ -66,14 +63,7 @@ fn active_cell_edit_uses_yellow_fg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let yellow = Color::Yellow;
-    let edit_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.fg == yellow));
-    assert!(
-        edit_cell.is_some(),
-        "Expected at least one cell with CELL_EDIT_FG (yellow) in the buffer"
-    );
+    assert_buffer_contains_fg(&buffer, Color::Yellow, "CELL_EDIT_FG");
 }
 
 #[test]
@@ -88,14 +78,7 @@ fn staged_delete_row_uses_dark_red_bg() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let dark_red = Color::Rgb(0x3d, 0x22, 0x22);
-    let staged_cell = (0..TEST_HEIGHT)
-        .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))
-        .find(|&(x, y)| buffer.cell((x, y)).is_some_and(|c| c.bg == dark_red));
-    assert!(
-        staged_cell.is_some(),
-        "Expected at least one cell with STAGED_DELETE_BG (dark red) in the buffer"
-    );
+    assert_buffer_contains_bg(&buffer, Color::Rgb(0x3d, 0x22, 0x22), "STAGED_DELETE_BG");
 }
 
 #[test]
@@ -107,12 +90,7 @@ fn scrim_applies_dim_modifier() {
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
-    let cell = buffer.cell((0, 0)).unwrap();
-    assert!(
-        cell.modifier.contains(Modifier::DIM),
-        "Expected DIM modifier on scrim cell (0,0), got {:?}",
-        cell.modifier
-    );
+    assert_buffer_contains_modifier(&buffer, Modifier::DIM, "scrim");
 }
 
 #[test]

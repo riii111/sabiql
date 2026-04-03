@@ -3,6 +3,7 @@ mod harness;
 
 use harness::fixtures;
 use harness::{
+    assert_buffer_contains_bg, assert_buffer_contains_fg, assert_buffer_contains_modifier,
     create_test_state, create_test_terminal, create_test_terminal_sized, render_and_get_buffer,
     render_and_get_buffer_at, render_to_string, test_instant,
 };

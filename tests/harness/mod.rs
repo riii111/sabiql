@@ -6,6 +6,7 @@ use std::time::Instant;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::style::{Color, Modifier};
 
 use sabiql::app::model::app_state::AppState;
 use sabiql::app::services::AppServices;
@@ -64,6 +65,43 @@ pub fn render_and_get_buffer_at(
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {
     let buffer = render_and_get_buffer(terminal, state);
     buffer_to_string(&buffer)
+}
+
+pub fn assert_buffer_contains_fg(buffer: &Buffer, fg: Color, context: &str) {
+    let found = (0..buffer.area.height)
+        .flat_map(|y| (0..buffer.area.width).map(move |x| (x, y)))
+        .any(|(x, y)| buffer.cell((x, y)).is_some_and(|cell| cell.fg == fg));
+
+    assert!(
+        found,
+        "Expected at least one cell with fg {fg:?} ({context})"
+    );
+}
+
+pub fn assert_buffer_contains_bg(buffer: &Buffer, bg: Color, context: &str) {
+    let found = (0..buffer.area.height)
+        .flat_map(|y| (0..buffer.area.width).map(move |x| (x, y)))
+        .any(|(x, y)| buffer.cell((x, y)).is_some_and(|cell| cell.bg == bg));
+
+    assert!(
+        found,
+        "Expected at least one cell with bg {bg:?} ({context})"
+    );
+}
+
+pub fn assert_buffer_contains_modifier(buffer: &Buffer, modifier: Modifier, context: &str) {
+    let found = (0..buffer.area.height).flat_map(|y| {
+        (0..buffer.area.width).map(move |x| {
+            buffer
+                .cell((x, y))
+                .is_some_and(|cell| cell.modifier.contains(modifier))
+        })
+    });
+
+    assert!(
+        found.into_iter().any(|matches| matches),
+        "Expected at least one cell containing modifier {modifier:?} ({context})"
+    );
 }
 
 fn buffer_to_string(buffer: &Buffer) -> String {
