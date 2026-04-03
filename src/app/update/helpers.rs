@@ -57,6 +57,12 @@ pub enum EditGuardrailError {
     GuardrailBlocked(String),
 }
 
+pub struct BulkDeletePreviewResult {
+    pub preview: WritePreview,
+    pub target_page: usize,
+    pub target_row: Option<usize>,
+}
+
 // Entry checks in navigation and submit-time checks in query should both use this.
 // Row/column selection source is intentionally left to each caller:
 // navigation uses live selection, query submit uses cell_edit state.
@@ -104,7 +110,7 @@ pub fn editable_preview_base(
 pub fn build_bulk_delete_preview(
     state: &AppState,
     services: &AppServices,
-) -> Result<(WritePreview, usize, Option<usize>), EditGuardrailError> {
+) -> Result<BulkDeletePreviewResult, EditGuardrailError> {
     if state.result_interaction.staged_delete_rows().is_empty() {
         return Err(EditGuardrailError::NoRowsStagedForDeletion);
     }
@@ -160,8 +166,8 @@ pub fn build_bulk_delete_preview(
     };
     let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
 
-    Ok((
-        WritePreview {
+    Ok(BulkDeletePreviewResult {
+        preview: WritePreview {
             operation: WriteOperation::Delete,
             sql,
             target_summary: target,
@@ -170,7 +176,7 @@ pub fn build_bulk_delete_preview(
         },
         target_page,
         target_row,
-    ))
+    })
 }
 
 pub fn deletion_refresh_target_bulk(

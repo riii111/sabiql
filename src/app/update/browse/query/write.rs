@@ -141,15 +141,15 @@ pub fn reduce(
         Action::SubmitCellEditWrite => {
             if !state.result_interaction.staged_delete_rows().is_empty() {
                 match build_bulk_delete_preview(state, services) {
-                    Ok((preview, target_page, target_row)) => {
+                    Ok(result) => {
                         let staged_count = state.result_interaction.staged_delete_rows().len();
                         state.query.set_delete_refresh_target(
-                            target_page,
-                            target_row,
+                            result.target_page,
+                            result.target_row,
                             staged_count,
                         );
                         return Some(vec![Effect::DispatchActions(vec![
-                            Action::OpenWritePreviewConfirm(Box::new(preview)),
+                            Action::OpenWritePreviewConfirm(Box::new(result.preview)),
                         ])]);
                     }
                     Err(err) => {
