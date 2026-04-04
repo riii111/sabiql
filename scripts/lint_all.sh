@@ -24,6 +24,7 @@ done
 failed=0
 for i in "${!pids[@]}"; do
   if ! wait "${pids[$i]}"; then
+    echo "❌ ${names[$i]} failed" >&2
     failed=1
   fi
 done
