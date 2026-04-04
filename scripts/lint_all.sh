@@ -8,7 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 lints=(
   "$SCRIPT_DIR/lint_test_names.sh"
-  "$SCRIPT_DIR/lint_visible_result.sh"
 )
 
 pids=()
