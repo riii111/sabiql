@@ -5,6 +5,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
 use crate::app::model::shared::viewport::ViewportPlan;
 use crate::app::ports::RenderOutput;
 use crate::app::services::AppServices;
@@ -151,6 +152,7 @@ impl MainLayout {
                 result_viewport_plan: result_plan,
                 result_widths_cache,
                 explorer_pane_height: 0,
+                explorer_content_width: 0,
                 inspector_pane_height: 0,
                 result_pane_height: main_area.height,
                 ..RenderOutput::default()
@@ -175,6 +177,7 @@ impl MainLayout {
                 result_viewport_plan: result_plan,
                 result_widths_cache,
                 explorer_pane_height: left_area.height,
+                explorer_content_width: explorer_content_width_from_pane_width(left_area.width),
                 inspector_pane_height: inspector_area.height,
                 result_pane_height: result_area.height,
                 ..RenderOutput::default()

@@ -135,6 +135,7 @@ pub struct UiState {
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
+    pub explorer_content_width: usize,
 
     pub connection_list_selected: usize,
     pub connection_list_scroll_offset: usize,
@@ -246,6 +247,20 @@ pub fn list_scroll_offset(selected: usize, viewport: usize) -> usize {
     selected.saturating_sub(viewport.saturating_sub(1))
 }
 
+pub fn scroll_max_offset(total_items: usize, viewport_size: usize) -> usize {
+    total_items.saturating_sub(viewport_size)
+}
+
+pub fn explorer_content_width_from_pane_width(pane_width: u16) -> usize {
+    const PANEL_BORDER_WIDTH: u16 = 2;
+    const HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
+    const SCROLLBAR_RESERVED_WIDTH: u16 = 1;
+
+    pane_width
+        .saturating_sub(PANEL_BORDER_WIDTH)
+        .saturating_sub(HIGHLIGHT_SYMBOL_WIDTH + SCROLLBAR_RESERVED_WIDTH) as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,6 +281,30 @@ mod tests {
         let state = UiState::new();
 
         assert_eq!(state.terminal_height, 24);
+    }
+
+    mod horizontal_scroll_helpers {
+        use super::*;
+
+        #[test]
+        fn pane_width_excludes_panel_chrome_from_visible_content_width() {
+            assert_eq!(explorer_content_width_from_pane_width(20), 15);
+        }
+
+        #[test]
+        fn tiny_pane_width_returns_zero_visible_content_width() {
+            assert_eq!(explorer_content_width_from_pane_width(4), 0);
+        }
+
+        #[test]
+        fn larger_content_preserves_remaining_scrollable_range() {
+            assert_eq!(scroll_max_offset(30, 15), 15);
+        }
+
+        #[test]
+        fn fitting_content_returns_zero_max_offset() {
+            assert_eq!(scroll_max_offset(10, 15), 0);
+        }
     }
 
     #[test]

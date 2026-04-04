@@ -12,6 +12,7 @@ pub struct RenderOutput {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     pub explorer_pane_height: u16,
+    pub explorer_content_width: usize,
     pub inspector_pane_height: u16,
     pub result_pane_height: u16,
     pub command_line_visible_width: Option<usize>,

@@ -233,6 +233,7 @@ impl EffectRunner {
                 state.ui.result_viewport_plan = output.result_viewport_plan;
                 state.ui.result_widths_cache = output.result_widths_cache;
                 state.ui.explorer_pane_height = output.explorer_pane_height;
+                state.ui.explorer_content_width = output.explorer_content_width;
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
                 if let Some(width) = output.command_line_visible_width {
