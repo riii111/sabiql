@@ -2,10 +2,8 @@ use std::time::Instant;
 
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
-use crate::app::model::connection::state::ConnectionState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
-use crate::domain::MetadataState;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
     match action {
@@ -65,10 +63,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
                 return Some(vec![]);
             }
             state.connection_error.clear();
-            state
-                .session
-                .set_connection_state(ConnectionState::NotConnected);
-            state.session.set_metadata_state(MetadataState::NotLoaded);
+            state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
             Some(vec![])
         }

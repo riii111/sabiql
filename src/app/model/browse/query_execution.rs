@@ -244,6 +244,9 @@ impl QueryExecution {
 
     pub fn can_edit_visible_result(&self) -> bool {
         self.visible_result_kind() == VisibleResultKind::LivePreview
+            && self
+                .visible_result()
+                .is_some_and(|result| !result.is_error())
     }
 
     pub fn can_paginate_visible_result(&self) -> bool {
@@ -388,6 +391,15 @@ mod tests {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
             };
+            let preview_error = QueryExecution {
+                current_result: Some(Arc::new(QueryResult::error(
+                    "SELECT 1".to_string(),
+                    "boom".to_string(),
+                    10,
+                    QuerySource::Preview,
+                ))),
+                ..Default::default()
+            };
             let adhoc = QueryExecution {
                 current_result: Some(make_result(QuerySource::Adhoc)),
                 ..Default::default()
@@ -400,6 +412,7 @@ mod tests {
             history.history_index = Some(0);
 
             assert!(preview.can_edit_visible_result());
+            assert!(!preview_error.can_edit_visible_result());
             assert!(!adhoc.can_edit_visible_result());
             assert!(!empty.can_edit_visible_result());
             assert!(!history.can_edit_visible_result());

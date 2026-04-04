@@ -13,8 +13,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
     match action {
         Action::OpenJsonbDetail => {
             // Entry guard 1: must be LivePreview
-            let result = state.query.current_result().map(AsRef::as_ref);
-            let result = match result {
+            let result = match state.query.visible_result() {
                 Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
                 _ => return Some(vec![]),
             };
@@ -356,7 +355,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         let col = state.jsonb_detail.col();
         let original_cell = state
             .query
-            .current_result()
+            .visible_result()
             .and_then(|r| r.rows.get(row).and_then(|r| r.get(col)).cloned())
             .unwrap_or_default();
         state

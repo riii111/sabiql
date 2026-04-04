@@ -9,7 +9,6 @@ use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::app::update::action::{Action, TableTarget};
-use crate::domain::MetadataState;
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
@@ -153,7 +152,7 @@ pub fn reduce_metadata(state: &mut AppState, action: &Action, now: Instant) -> O
 
         Action::LoadMetadata => {
             if let Some(dsn) = state.session.dsn.clone() {
-                state.session.set_metadata_state(MetadataState::Loading);
+                state.session.begin_metadata_refresh();
                 Some(vec![Effect::FetchMetadata { dsn }])
             } else {
                 Some(vec![])

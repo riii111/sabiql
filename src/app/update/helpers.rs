@@ -5,7 +5,7 @@ use crate::app::policy::write::write_guardrails::{
 };
 use crate::app::policy::write::write_update::build_pk_pairs;
 use crate::app::services::AppServices;
-use crate::domain::{QueryResult, QuerySource};
+use crate::domain::QueryResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EditGuardrailError {
@@ -75,10 +75,9 @@ pub fn editable_preview_base(
 
     let result = state
         .query
-        .current_result()
-        .map(AsRef::as_ref)
+        .visible_result()
         .ok_or(EditGuardrailError::NoResult)?;
-    if result.source != QuerySource::Preview || result.is_error() {
+    if !state.query.can_edit_visible_result() {
         return Err(EditGuardrailError::NotEditableResult);
     }
 

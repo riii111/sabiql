@@ -3,11 +3,9 @@ use std::time::Instant;
 use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField};
-use crate::app::model::connection::state::ConnectionState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::update::action::{Action, ConnectionTarget, InputTarget};
 use crate::app::update::helpers::{validate_all, validate_field};
-use crate::domain::MetadataState;
 use crate::domain::connection::SslMode;
 
 pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -177,10 +175,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
             validate_all(setup);
             if setup.validation_errors.is_empty() {
                 let port = setup.port.content().parse().unwrap_or(5432);
-                state
-                    .session
-                    .set_connection_state(ConnectionState::Connecting);
-                state.session.set_metadata_state(MetadataState::Loading);
+                state.session.mark_connecting();
                 Some(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
                     name: setup.name.content().to_string(),
@@ -220,10 +215,7 @@ pub fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec
         }
         Action::ConnectionSaveFailed(e) => {
             if !state.session.connection_state().is_connected() {
-                state
-                    .session
-                    .set_connection_state(ConnectionState::NotConnected);
-                state.session.set_metadata_state(MetadataState::NotLoaded);
+                state.session.mark_disconnected();
             }
             state.messages.set_error_at(e.to_string(), now);
             Some(vec![])
