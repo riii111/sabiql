@@ -219,6 +219,7 @@ fn result_pane_jsonb_detail_mode() {
         &AppServices::stub(),
         now,
     );
+    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -242,6 +243,7 @@ fn result_pane_jsonb_edit_mode() {
         &AppServices::stub(),
         now,
     );
+    assert_eq!(state.input_mode(), InputMode::JsonbEdit);
 
     let output = render_to_string(&mut terminal, &mut state);
 
