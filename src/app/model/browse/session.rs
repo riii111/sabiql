@@ -82,10 +82,14 @@ impl BrowseSession {
 
     // ── Connection lifecycle ─────────────────────────────────────────
 
-    pub fn begin_connecting(&mut self, dsn: &str) {
-        self.dsn = Some(dsn.to_string());
+    pub fn mark_connecting(&mut self) {
         self.connection_state = ConnectionState::Connecting;
         self.metadata_state = MetadataState::Loading;
+    }
+
+    pub fn begin_connecting(&mut self, dsn: &str) {
+        self.dsn = Some(dsn.to_string());
+        self.mark_connecting();
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -102,6 +106,16 @@ impl BrowseSession {
         if !self.connection_state.is_connected() {
             self.connection_state = ConnectionState::Failed;
         }
+    }
+
+    pub fn begin_metadata_refresh(&mut self) {
+        self.metadata_state = MetadataState::Loading;
+    }
+
+    pub fn mark_disconnected(&mut self) {
+        self.connection_state = ConnectionState::NotConnected;
+        self.metadata_state = MetadataState::NotLoaded;
+        self.is_reloading = false;
     }
 
     pub fn begin_reload(&mut self) {
@@ -210,10 +224,12 @@ impl BrowseSession {
         self.dsn.as_ref().is_some_and(|d| d.starts_with("service="))
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
     }
@@ -414,6 +430,18 @@ mod tests {
         }
 
         #[test]
+        fn mark_connecting_sets_pair_without_changing_dsn() {
+            let mut session = BrowseSession::default();
+            session.dsn = Some("postgres://localhost/test".to_string());
+
+            session.mark_connecting();
+
+            assert!(session.connection_state().is_connecting());
+            assert_eq!(session.metadata_state(), &MetadataState::Loading);
+            assert_eq!(session.dsn, Some("postgres://localhost/test".to_string()));
+        }
+
+        #[test]
         fn mark_connected_sets_pair_and_metadata() {
             let mut session = BrowseSession::default();
             let metadata = make_metadata("test_db");
@@ -454,6 +482,30 @@ mod tests {
                 session.metadata_state(),
                 &MetadataState::Error("reload timeout".to_string())
             );
+            assert!(!session.is_reloading);
+        }
+
+        #[test]
+        fn begin_metadata_refresh_keeps_connection_state() {
+            let mut session = BrowseSession::default();
+            session.mark_connected(make_metadata("db"));
+
+            session.begin_metadata_refresh();
+
+            assert!(session.connection_state().is_connected());
+            assert_eq!(session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn mark_disconnected_resets_connection_pair() {
+            let mut session = BrowseSession::default();
+            session.begin_connecting("postgres://localhost/test");
+            session.begin_reload();
+
+            session.mark_disconnected();
+
+            assert!(session.connection_state().is_not_connected());
+            assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);
             assert!(!session.is_reloading);
         }
 

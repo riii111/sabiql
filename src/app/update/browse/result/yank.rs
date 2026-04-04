@@ -22,7 +22,7 @@ pub fn reduce(
             ) {
                 let content = state
                     .query
-                    .current_result()
+                    .visible_result()
                     .and_then(|r| r.rows.get(row_idx))
                     .and_then(|row| row.get(col_idx))
                     .cloned();
@@ -73,7 +73,7 @@ pub fn reduce(
             if let Some(row_idx) = state.result_interaction.selection().row() {
                 let content = state
                     .query
-                    .current_result()
+                    .visible_result()
                     .and_then(|r| r.rows.get(row_idx))
                     .map(|row| {
                         row.iter()
@@ -214,6 +214,36 @@ mod tests {
         }
 
         #[test]
+        fn history_mode_yanks_visible_cell() {
+            let mut state = state_with_grid(1, 1);
+            state
+                .query
+                .push_history(Arc::new(crate::domain::QueryResult::success(
+                    String::new(),
+                    vec!["col_0".to_string()],
+                    vec![vec!["history".to_string()]],
+                    1,
+                    crate::domain::QuerySource::Adhoc,
+                )));
+            state.query.enter_history(0);
+            state.result_interaction.enter_row(0);
+            state.result_interaction.enter_cell(0);
+
+            let effects = reduce(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => assert_eq!(content, "history"),
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
+        }
+
+        #[test]
         fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
@@ -271,6 +301,35 @@ mod tests {
                 Effect::CopyToClipboard { content, .. } => {
                     assert_eq!(content, "v0\tv1\tv2");
                 }
+                other => panic!("expected CopyToClipboard, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn history_mode_yanks_visible_row() {
+            let mut state = state_with_row(vec!["live"]);
+            state
+                .query
+                .push_history(Arc::new(crate::domain::QueryResult::success(
+                    String::new(),
+                    vec!["col_0".to_string()],
+                    vec![vec!["history".to_string()]],
+                    1,
+                    crate::domain::QuerySource::Adhoc,
+                )));
+            state.query.enter_history(0);
+            state.result_interaction.enter_row(0);
+
+            let effects = reduce(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            match &effects[0] {
+                Effect::CopyToClipboard { content, .. } => assert_eq!(content, "history"),
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
         }
