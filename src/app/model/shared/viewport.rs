@@ -394,7 +394,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_returns_zero() {
+        fn empty_widths_return_zero() {
             assert_eq!(total_width_with_separators(&[]), 0);
         }
 
@@ -480,7 +480,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_returns_zero() {
+        fn empty_input_returns_zero() {
             let count = calculate_viewport_column_count(&[], &[], 100);
             assert_eq!(count, 0);
         }
@@ -600,7 +600,7 @@ mod tests {
         }
 
         #[test]
-        fn with_offset() {
+        fn offset_selects_columns() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -645,7 +645,7 @@ mod tests {
         }
 
         #[test]
-        fn with_offset() {
+        fn offset_selects_fixed_columns() {
             let ideal = vec![10, 10, 10, 10];
             let min = vec![4, 4, 4, 4];
             let cfg = config(&ideal, &min);
@@ -1292,7 +1292,7 @@ mod tests {
         }
 
         #[test]
-        fn bonus_column_total_width_within_available() {
+        fn total_width_within_available() {
             let ideal = vec![20, 20, 20, 15];
             let min = vec![10, 10, 10, 10];
             let cfg = config(&ideal, &min);

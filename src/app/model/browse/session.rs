@@ -557,7 +557,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn reset_clears_everything() {
+        fn clears_session_and_query_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             session.dsn = Some("postgres://host/db".to_string());

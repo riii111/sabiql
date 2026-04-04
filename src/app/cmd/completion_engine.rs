@@ -1892,7 +1892,7 @@ mod tests {
         use crate::domain::{Column, Table};
 
         #[test]
-        fn contains_match_returns_candidates() {
+        fn returns_candidates() {
             let e = engine();
             let table = Table {
                 schema: "public".to_string(),
