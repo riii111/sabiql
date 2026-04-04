@@ -2,6 +2,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::key_sequence::KeySequenceState;
+use crate::app::model::shared::ui_state::scroll_max_offset;
 use crate::app::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
@@ -211,10 +212,11 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             let max_name_width = state
                 .tables()
                 .iter()
-                .map(|t| t.qualified_name().len())
+                .map(|t| t.qualified_name().chars().count())
                 .max()
                 .unwrap_or(0);
-            if state.ui.explorer_horizontal_offset < max_name_width {
+            let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width);
+            if state.ui.explorer_horizontal_offset < max_offset {
                 state.ui.explorer_horizontal_offset += 1;
             }
             Some(vec![])
@@ -231,6 +233,7 @@ mod tests {
     use crate::app::services::AppServices;
     use crate::app::update::browse::navigation::reduce_navigation;
     use crate::domain::{DatabaseMetadata, TableSummary};
+    use rstest::rstest;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -666,6 +669,123 @@ mod tests {
 
             assert_eq!(state.ui.explorer_scroll_offset, 30);
             assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+        }
+    }
+
+    mod explorer_horizontal_scroll {
+        use super::*;
+
+        fn state_with_named_tables(names: &[&str], content_width: usize) -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.ui.focused_pane = FocusedPane::Explorer;
+            state.ui.explorer_content_width = content_width;
+            let tables: Vec<TableSummary> = names
+                .iter()
+                .map(|name| {
+                    TableSummary::new("public".to_string(), (*name).to_string(), Some(0), false)
+                })
+                .collect();
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: tables,
+                fetched_at: Instant::now(),
+            })));
+            state
+        }
+
+        #[rstest]
+        #[case(&["abcdefghij"], 4, 32)]
+        #[case(&["日本語テスト"], 3, 32)]
+        fn repeated_right_scroll_clamps_at_last_visible_column(
+            #[case] names: &[&str],
+            #[case] content_width: usize,
+            #[case] presses: usize,
+        ) {
+            let mut state = state_with_named_tables(names, content_width);
+            let expected = state.tables()[0]
+                .qualified_name()
+                .chars()
+                .count()
+                .saturating_sub(content_width);
+
+            for _ in 0..presses {
+                reduce_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Explorer,
+                        direction: ScrollDirection::Right,
+                        amount: ScrollAmount::Line,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(state.ui.explorer_horizontal_offset, expected);
+        }
+
+        #[test]
+        fn right_presses_past_end_do_not_increase_offset() {
+            let mut state = state_with_named_tables(&["abcdefghij"], 4);
+            state.ui.explorer_horizontal_offset = state.tables()[0]
+                .qualified_name()
+                .chars()
+                .count()
+                .saturating_sub(state.ui.explorer_content_width);
+
+            for _ in 0..3 {
+                reduce_navigation(
+                    &mut state,
+                    &Action::Scroll {
+                        target: ScrollTarget::Explorer,
+                        direction: ScrollDirection::Right,
+                        amount: ScrollAmount::Line,
+                    },
+                    &AppServices::stub(),
+                    Instant::now(),
+                );
+            }
+
+            assert_eq!(
+                state.ui.explorer_horizontal_offset,
+                state.tables()[0]
+                    .qualified_name()
+                    .chars()
+                    .count()
+                    .saturating_sub(state.ui.explorer_content_width)
+            );
+        }
+
+        #[test]
+        fn left_press_after_end_recovers_one_column() {
+            let mut state = state_with_named_tables(&["abcdefghij"], 4);
+            state.ui.explorer_horizontal_offset = state.tables()[0]
+                .qualified_name()
+                .chars()
+                .count()
+                .saturating_sub(state.ui.explorer_content_width);
+
+            reduce_navigation(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Explorer,
+                    direction: ScrollDirection::Left,
+                    amount: ScrollAmount::Line,
+                },
+                &AppServices::stub(),
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state.ui.explorer_horizontal_offset,
+                state.tables()[0]
+                    .qualified_name()
+                    .chars()
+                    .count()
+                    .saturating_sub(state.ui.explorer_content_width)
+                    .saturating_sub(1)
+            );
         }
     }
 }

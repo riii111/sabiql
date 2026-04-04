@@ -5,6 +5,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::ui_state::scroll_max_offset;
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
 
@@ -43,7 +44,8 @@ impl Explorer {
             Vec::new()
         };
         let max_name_width = table_names.iter().map(|n| char_count(n)).max().unwrap_or(0);
-        let h_offset = state.ui.explorer_horizontal_offset;
+        let max_offset = scroll_max_offset(max_name_width, content_width);
+        let h_offset = state.ui.explorer_horizontal_offset.min(max_offset);
 
         let items: Vec<ListItem> = if has_cached_data {
             table_names
