@@ -98,7 +98,7 @@ rust_files(paths).each do |file|
 
     if stripped.match?(/^#\[(?:test|rstest|tokio::test)\b/) || (pending_test_attr && stripped.start_with?("#["))
       pending_test_attr = true
-    elsif pending_test_attr && (match = stripped.match(/^fn\s+([a-zA-Z0-9_]+)\s*\(/))
+    elsif pending_test_attr && (match = stripped.match(/^(?:async\s+)?fn\s+([a-zA-Z0-9_]+)\s*\(/))
       test_name = match[1]
 
       if test_name.include?("returns_expected")

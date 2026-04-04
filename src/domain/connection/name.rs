@@ -92,6 +92,7 @@ mod tests {
         fn rejects_empty_or_whitespace_names(#[case] input: &str) {
             assert!(ConnectionName::new(input).is_err());
         }
+
         #[test]
         fn exactly_50_chars_returns_ok() {
             let name = "a".repeat(50);
