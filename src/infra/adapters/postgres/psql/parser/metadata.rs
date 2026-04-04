@@ -486,13 +486,13 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_none_for_rls(#[case] input: &str) {
+        fn empty_or_null_input_returns_none(#[case] input: &str) {
             let result = PostgresAdapter::parse_rls(input).unwrap();
             assert!(result.is_none());
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error_for_rls() {
+        fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_rls("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -644,7 +644,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_none_for_table_info(#[case] input: &str) {
+        fn empty_or_null_input_returns_none(#[case] input: &str) {
             let info = PostgresAdapter::parse_table_info(input).unwrap();
             assert!(info.owner.is_none());
             assert!(info.comment.is_none());
@@ -692,7 +692,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error_for_table_info() {
+        fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_table_info("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -779,7 +779,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error_for_triggers() {
+        fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_triggers("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -840,7 +840,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error_for_schemas() {
+        fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_schemas("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -997,7 +997,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error_for_foreign_keys() {
+        fn malformed_json_returns_invalid_json_error() {
             let result = PostgresAdapter::parse_foreign_keys("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }

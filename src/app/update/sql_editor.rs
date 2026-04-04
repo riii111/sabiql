@@ -538,7 +538,7 @@ mod tests {
         }
 
         #[test]
-        fn with_multibyte() {
+        fn advances_cursor_with_multibyte() {
             let mut state = editing_state();
             state
                 .sql_modal

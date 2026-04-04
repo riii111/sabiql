@@ -295,7 +295,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn removes_prev_char_at_start_is_noop() {
+        fn at_start_is_noop() {
             let mut s = state_with("abc", 0);
 
             s.backspace();
@@ -305,7 +305,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_prev_char_at_end() {
+        fn at_end() {
             let mut s = state_with("abc", 3);
 
             s.backspace();
@@ -315,7 +315,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_prev_char_at_middle() {
+        fn at_middle() {
             let mut s = state_with("abc", 2);
 
             s.backspace();
@@ -325,7 +325,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_prev_char_on_empty_string() {
+        fn on_empty_string() {
             let mut s = TextInputState::default();
 
             s.backspace();
@@ -335,7 +335,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_prev_char_multibyte() {
+        fn multibyte() {
             let mut s = state_with("あいう", 2);
 
             s.backspace();
@@ -349,7 +349,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn removes_next_char_at_end_is_noop() {
+        fn at_end_is_noop() {
             let mut s = state_with("abc", 3);
 
             s.delete();
@@ -359,7 +359,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_next_char_at_beginning() {
+        fn at_beginning() {
             let mut s = state_with("abc", 0);
 
             s.delete();
@@ -369,7 +369,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_next_char_at_middle() {
+        fn at_middle() {
             let mut s = state_with("abc", 1);
 
             s.delete();
@@ -379,7 +379,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_next_char_on_empty_string() {
+        fn on_empty_string() {
             let mut s = TextInputState::default();
 
             s.delete();
@@ -389,7 +389,7 @@ mod tests {
         }
 
         #[test]
-        fn removes_next_char_multibyte() {
+        fn multibyte() {
             let mut s = state_with("あいう", 1);
 
             s.delete();

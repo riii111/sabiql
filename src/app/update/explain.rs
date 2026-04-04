@@ -299,7 +299,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_query_is_noop_for_analyze() {
+        fn empty_query_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("  ".to_string());
             state.session.dsn = Some("dsn://test".to_string());
@@ -335,7 +335,7 @@ mod tests {
         }
 
         #[test]
-        fn multi_statement_sets_error_and_switches_to_plan_tab_for_analyze() {
+        fn multi_statement_sets_error_and_switches_to_plan_tab() {
             let mut state = sql_modal_state();
             state
                 .sql_modal

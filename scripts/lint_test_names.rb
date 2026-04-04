@@ -7,6 +7,8 @@ DEFAULT_PATHS = [
   "tests",
 ].freeze
 
+# This lint only checks mechanically detectable anti-patterns.
+# Category-specific naming still relies on local rules and review.
 def rust_files(paths)
   patterns = paths.flat_map do |path|
     absolute = File.expand_path(path, ROOT)
@@ -20,43 +22,108 @@ def rust_files(paths)
   patterns.flat_map { |pattern| Dir.glob(pattern) }.sort.uniq
 end
 
-def count_braces(line)
+def count_braces(line, state)
   opens = 0
   closes = 0
-  in_single = false
-  in_double = false
-  escaped = false
+  index = 0
 
-  line.each_char do |char|
-    if escaped
-      escaped = false
+  while index < line.length
+    char = line[index]
+
+    if state[:in_block_comment].positive?
+      if char == "/" && line[index + 1] == "*"
+        state[:in_block_comment] += 1
+        index += 2
+        next
+      end
+
+      if char == "*" && line[index + 1] == "/"
+        state[:in_block_comment] -= 1
+        index += 2
+        next
+      end
+
+      index += 1
       next
     end
 
-    if in_single
-      escaped = true if char == "\\"
-      in_single = false if char == "'"
+    if state[:in_single]
+      if state[:escaped]
+        state[:escaped] = false
+        index += 1
+        next
+      end
+
+      state[:escaped] = true if char == "\\"
+      state[:in_single] = false if char == "'"
+      index += 1
       next
     end
 
-    if in_double
-      escaped = true if char == "\\"
-      in_double = false if char == "\""
+    if state[:in_double]
+      if state[:escaped]
+        state[:escaped] = false
+        index += 1
+        next
+      end
+
+      state[:escaped] = true if char == "\\"
+      state[:in_double] = false if char == "\""
+      index += 1
       next
+    end
+
+    if state[:in_raw]
+      if char == "\""
+        terminator = "\"" + ("#" * state[:raw_hashes])
+        if line[index, terminator.length] == terminator
+          state[:in_raw] = false
+          state[:raw_hashes] = 0
+          index += terminator.length
+          next
+        end
+      end
+
+      index += 1
+      next
+    end
+
+    break if char == "/" && line[index + 1] == "/"
+
+    if char == "/" && line[index + 1] == "*"
+      state[:in_block_comment] = 1
+      index += 2
+      next
+    end
+
+    if char == "r"
+      hashes = 0
+      probe = index + 1
+      while line[probe] == "#"
+        hashes += 1
+        probe += 1
+      end
+
+      if line[probe] == "\""
+        state[:in_raw] = true
+        state[:raw_hashes] = hashes
+        index = probe + 1
+        next
+      end
     end
 
     case char
-    when "#"
-      break
     when "'"
-      in_single = true
+      state[:in_single] = true
     when "\""
-      in_double = true
+      state[:in_double] = true
     when "{"
       opens += 1
     when "}"
       closes += 1
     end
+
+    index += 1
   end
 
   [opens, closes]
@@ -80,6 +147,14 @@ rust_files(paths).each do |file|
   lines = File.readlines(file, chomp: true)
 
   brace_depth = 0
+  brace_state = {
+    in_block_comment: 0,
+    in_single: false,
+    in_double: false,
+    in_raw: false,
+    raw_hashes: 0,
+    escaped: false,
+  }
   mod_stack = []
   pending_test_attr = false
   seen_test_names = {}
@@ -105,10 +180,13 @@ rust_files(paths).each do |file|
         errors << "#{rel}:#{line_no} test name must not contain `returns_expected`: #{test_name} (use a concrete result, drop the suffix if the result is already implied, or split the rstest if cases do not share one guarantee)"
       end
 
-      if (previous = seen_test_names[test_name])
-        errors << "#{rel}:#{line_no} duplicate test name in same file: #{test_name} (first seen at line #{previous})"
+      mod_path = mod_stack.map { |entry| entry[:name] }.join("::")
+      scoped_name = mod_path.empty? ? test_name : "#{mod_path}::#{test_name}"
+
+      if (previous = seen_test_names[scoped_name])
+        errors << "#{rel}:#{line_no} duplicate test name in same module: #{test_name} (first seen at line #{previous})"
       else
-        seen_test_names[test_name] = line_no
+        seen_test_names[scoped_name] = line_no
       end
 
       mod_name = normalized_mod_name(mod_stack.last&.dig(:name))
@@ -121,7 +199,7 @@ rust_files(paths).each do |file|
       pending_test_attr = false
     end
 
-    opens, closes = count_braces(line)
+    opens, closes = count_braces(line, brace_state)
     brace_depth += opens - closes
   end
 end
