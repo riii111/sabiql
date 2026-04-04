@@ -12,7 +12,7 @@ set -euo pipefail
 #   - #[cfg(test)] blocks    (test setup/assertions)
 
 SEARCH_DIR="src/app/update"
-PATTERN='\.current_result()'
+PATTERN='\.current_result\(\)'
 
 # Files where current_result() is legitimate (owner write / cache)
 ALLOW=(
@@ -36,18 +36,17 @@ while IFS= read -r line; do
   done
   $skip && continue
 
-  # Skip test code (#[cfg(test)] and below, or mod tests {)
-  # Simple heuristic: if the file has `#[cfg(test)]` before this line,
-  # check if our match is after it.
+  # Skip test code: if the file has `#[cfg(test)]` before this line,
+  # assume everything after it is test code.
   if [[ -f "$file" ]]; then
-    test_start=$(grep -n '#\[cfg(test)\]' "$file" 2>/dev/null | head -1 | cut -d: -f1 || echo "")
+    test_start=$(rg -n '#\[cfg\(test\)\]' "$file" 2>/dev/null | head -1 | cut -d: -f1 || echo "")
     if [[ -n "$test_start" && "$lineno" -ge "$test_start" ]]; then
       continue
     fi
   fi
 
   errors+=("$file:$lineno: use visible_result() instead of current_result() in reducer code")
-done < <(grep -rn "$PATTERN" "$SEARCH_DIR" 2>/dev/null || true)
+done < <(rg -n "$PATTERN" "$SEARCH_DIR" 2>/dev/null || true)
 
 if [[ ${#errors[@]} -eq 0 ]]; then
   echo "visible-result lint passed"
