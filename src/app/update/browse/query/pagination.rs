@@ -17,9 +17,11 @@ pub fn reduce(
 ) -> Option<Vec<Effect>> {
     match action {
         Action::RequestCsvExport => {
-            let result = match state.query.visible_result() {
-                Some(r) if !r.is_error() => r,
-                _ => return Some(vec![]),
+            if !state.can_request_csv_export() {
+                return Some(vec![]);
+            }
+            let Some(result) = state.query.visible_result() else {
+                return Some(vec![]);
             };
             let dsn = match &state.session.dsn {
                 Some(d) => d.clone(),
