@@ -78,16 +78,20 @@ mod tests {
         use super::*;
 
         #[rstest]
-        #[case("Production", true)]
-        #[case("Local Dev", true)]
-        #[case("  Production  ", true)] // trimmed
-        #[case("a", true)] // 1 char minimum
-        #[case("", false)] // empty
-        #[case("   ", false)] // whitespace only
-        fn validation(#[case] input: &str, #[case] should_succeed: bool) {
-            assert_eq!(ConnectionName::new(input).is_ok(), should_succeed);
+        #[case("Production")]
+        #[case("Local Dev")]
+        #[case("  Production  ")] // trimmed
+        #[case("a")] // 1 char minimum
+        fn accepts_nonempty_names(#[case] input: &str) {
+            assert!(ConnectionName::new(input).is_ok());
         }
 
+        #[rstest]
+        #[case("")]
+        #[case("   ")]
+        fn rejects_empty_or_whitespace_names(#[case] input: &str) {
+            assert!(ConnectionName::new(input).is_err());
+        }
         #[test]
         fn exactly_50_chars_returns_ok() {
             let name = "a".repeat(50);
