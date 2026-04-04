@@ -237,6 +237,7 @@ fn result_pane_jsonb_edit_mode() {
         &AppServices::stub(),
         now,
     );
+    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
     reduce_result(
         &mut state,
         &Action::JsonbEnterEdit,
