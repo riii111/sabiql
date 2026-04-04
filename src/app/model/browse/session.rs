@@ -225,11 +225,13 @@ impl BrowseSession {
     }
 
     #[cfg(any(test, feature = "test-support"))]
+    #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_metadata_state(&mut self, state: MetadataState) {
         self.metadata_state = state;
     }
 
     #[cfg(any(test, feature = "test-support"))]
+    #[allow(dead_code, reason = "test-only transition override")]
     pub(crate) fn set_connection_state(&mut self, state: ConnectionState) {
         self.connection_state = state;
     }
@@ -431,8 +433,10 @@ mod tests {
 
         #[test]
         fn mark_connecting_sets_pair_without_changing_dsn() {
-            let mut session = BrowseSession::default();
-            session.dsn = Some("postgres://localhost/test".to_string());
+            let mut session = BrowseSession {
+                dsn: Some("postgres://localhost/test".to_string()),
+                ..Default::default()
+            };
 
             session.mark_connecting();
 
