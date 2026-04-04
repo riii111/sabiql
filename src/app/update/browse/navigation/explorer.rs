@@ -237,27 +237,44 @@ mod tests {
     use std::sync::Arc;
     use std::time::Instant;
 
-    mod explorer_page_scroll {
-        use super::*;
+    fn state_with_tables(count: usize, pane_height: u16) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.ui.explorer_pane_height = pane_height;
+        state.ui.focused_pane = FocusedPane::Explorer;
+        let tables: Vec<TableSummary> = (0..count)
+            .map(|i| TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false))
+            .collect();
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+            database_name: "test".to_string(),
+            schemas: vec![],
+            table_summaries: tables,
+            fetched_at: Instant::now(),
+        })));
+        state.ui.set_explorer_selection(Some(0));
+        state
+    }
 
-        fn state_with_tables(count: usize, pane_height: u16) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.explorer_pane_height = pane_height;
-            state.ui.focused_pane = FocusedPane::Explorer;
-            let tables: Vec<TableSummary> = (0..count)
-                .map(|i| {
-                    TableSummary::new("public".to_string(), format!("table_{i}"), Some(0), false)
-                })
-                .collect();
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-                fetched_at: Instant::now(),
-            })));
-            state.ui.set_explorer_selection(Some(0));
-            state
-        }
+    fn state_with_named_tables(names: &[&str], content_width: usize) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.ui.focused_pane = FocusedPane::Explorer;
+        state.ui.explorer_content_width = content_width;
+        let tables: Vec<TableSummary> = names
+            .iter()
+            .map(|name| {
+                TableSummary::new("public".to_string(), (*name).to_string(), Some(0), false)
+            })
+            .collect();
+        state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+            database_name: "test".to_string(),
+            schemas: vec![],
+            table_summaries: tables,
+            fetched_at: Instant::now(),
+        })));
+        state
+    }
+
+    mod page_scroll {
+        use super::*;
 
         #[test]
         fn half_page_down_jumps_by_correct_delta() {
@@ -479,6 +496,10 @@ mod tests {
             assert_eq!(state.ui.explorer_selected, 0);
             assert_eq!(state.ui.explorer_scroll_offset, 0);
         }
+    }
+
+    mod viewport_selection {
+        use super::*;
 
         #[test]
         fn select_middle_moves_to_viewport_center() {
@@ -586,6 +607,10 @@ mod tests {
 
             assert_eq!(state.ui.explorer_selected, 49);
         }
+    }
+
+    mod cursor_reposition {
+        use super::*;
 
         #[test]
         fn scroll_cursor_center_centers_viewport_on_selected() {
@@ -672,27 +697,8 @@ mod tests {
         }
     }
 
-    mod explorer_horizontal_scroll {
+    mod horizontal_scroll {
         use super::*;
-
-        fn state_with_named_tables(names: &[&str], content_width: usize) -> AppState {
-            let mut state = AppState::new("test".to_string());
-            state.ui.focused_pane = FocusedPane::Explorer;
-            state.ui.explorer_content_width = content_width;
-            let tables: Vec<TableSummary> = names
-                .iter()
-                .map(|name| {
-                    TableSummary::new("public".to_string(), (*name).to_string(), Some(0), false)
-                })
-                .collect();
-            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
-                database_name: "test".to_string(),
-                schemas: vec![],
-                table_summaries: tables,
-                fetched_at: Instant::now(),
-            })));
-            state
-        }
 
         #[rstest]
         #[case(&["abcdefghij"], 4, 32)]
