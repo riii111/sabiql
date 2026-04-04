@@ -266,21 +266,25 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[test]
-    fn default_creates_empty_state() {
-        let state = UiState::default();
+    mod constructors {
+        use super::*;
 
-        assert_eq!(state.focused_pane, FocusedPane::default());
-        assert_eq!(state.focus_mode, FocusMode::Normal);
-        assert_eq!(state.explorer_selected, 0);
-        assert!(state.table_picker.filter_input.content().is_empty());
-    }
+        #[test]
+        fn default_creates_empty_state() {
+            let state = UiState::default();
 
-    #[test]
-    fn new_sets_terminal_height() {
-        let state = UiState::new();
+            assert_eq!(state.focused_pane, FocusedPane::default());
+            assert_eq!(state.focus_mode, FocusMode::Normal);
+            assert_eq!(state.explorer_selected, 0);
+            assert!(state.table_picker.filter_input.content().is_empty());
+        }
 
-        assert_eq!(state.terminal_height, 24);
+        #[test]
+        fn new_sets_terminal_height() {
+            let state = UiState::new();
+
+            assert_eq!(state.terminal_height, 24);
+        }
     }
 
     mod horizontal_scroll_helpers {
@@ -307,151 +311,186 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_result_pane_height_returns_zero_visible_rows() {
-        let state = UiState::default();
+    mod pane_metrics {
+        use super::*;
 
-        let visible = state.result_visible_rows();
+        #[test]
+        fn default_result_pane_height_returns_zero_visible_rows() {
+            let state = UiState::default();
 
-        assert_eq!(visible, 0);
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+
+        #[rstest]
+        #[case(10, 5)]
+        #[case(15, 10)]
+        #[case(20, 15)]
+        #[case(30, 25)]
+        fn result_pane_height_calculates_correct_visible_rows(
+            #[case] pane_height: u16,
+            #[case] expected: usize,
+        ) {
+            let state = UiState {
+                result_pane_height: pane_height,
+                ..Default::default()
+            };
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, expected);
+        }
+
+        #[test]
+        fn small_result_pane_height_does_not_underflow() {
+            let state = UiState {
+                result_pane_height: 2,
+                ..Default::default()
+            };
+
+            let visible = state.result_visible_rows();
+
+            assert_eq!(visible, 0);
+        }
+
+        #[rstest]
+        #[case(10, 7)]
+        #[case(15, 12)]
+        #[case(20, 17)]
+        fn ddl_visible_rows_equals_height_minus_three(
+            #[case] pane_height: u16,
+            #[case] expected: usize,
+        ) {
+            let state = UiState {
+                inspector_pane_height: pane_height,
+                ..Default::default()
+            };
+
+            let visible = state.inspector_ddl_visible_rows();
+
+            assert_eq!(visible, expected);
+        }
+
+        #[test]
+        fn ddl_visible_rows_is_greater_than_standard() {
+            let state = UiState {
+                inspector_pane_height: 20,
+                ..Default::default()
+            };
+
+            let standard = state.inspector_visible_rows();
+            let ddl = state.inspector_ddl_visible_rows();
+
+            assert_eq!(ddl - standard, 2);
+        }
+
+        #[rstest]
+        #[case(30, 20)]
+        #[case(100, 25)]
+        #[case(50, 15)]
+        #[case(10, 30)]
+        fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
+            let state = UiState {
+                result_pane_height: pane_height,
+                ..Default::default()
+            };
+            let visible = state.result_visible_rows();
+            let max_scroll = total_rows.saturating_sub(visible);
+
+            assert!(
+                max_scroll + visible >= total_rows,
+                "max_scroll={max_scroll}, visible={visible}, total={total_rows}"
+            );
+        }
     }
 
-    #[rstest]
-    #[case(10, 5)]
-    #[case(15, 10)]
-    #[case(20, 15)]
-    #[case(30, 25)]
-    fn result_pane_height_calculates_correct_visible_rows(
-        #[case] pane_height: u16,
-        #[case] expected: usize,
-    ) {
-        let state = UiState {
-            result_pane_height: pane_height,
-            ..Default::default()
-        };
+    mod focus_mode {
+        use super::*;
 
-        let visible = state.result_visible_rows();
+        #[test]
+        fn toggle_focus_enters_focus_mode() {
+            let mut state = UiState {
+                focused_pane: FocusedPane::Explorer,
+                ..Default::default()
+            };
 
-        assert_eq!(visible, expected);
+            let result = state.toggle_focus();
+
+            assert!(result);
+            assert!(state.is_focus_mode());
+            assert_eq!(state.focused_pane, FocusedPane::Result);
+            assert_eq!(
+                state.focus_mode.previous_pane(),
+                Some(FocusedPane::Explorer)
+            );
+        }
+
+        #[test]
+        fn toggle_focus_exits_focus_mode_and_restores_pane() {
+            let mut state = UiState {
+                focused_pane: FocusedPane::Inspector,
+                ..Default::default()
+            };
+            state.toggle_focus();
+
+            let result = state.toggle_focus();
+
+            assert!(result);
+            assert!(!state.is_focus_mode());
+            assert_eq!(state.focused_pane, FocusedPane::Inspector);
+        }
     }
 
-    #[test]
-    fn small_result_pane_height_does_not_underflow() {
-        let state = UiState {
-            result_pane_height: 2,
-            ..Default::default()
-        };
+    mod list_selection {
+        use super::*;
 
-        let visible = state.result_visible_rows();
+        #[test]
+        fn set_explorer_selection_with_some_sets_index() {
+            let mut state = UiState::default();
 
-        assert_eq!(visible, 0);
+            state.set_explorer_selection(Some(5));
+
+            assert_eq!(state.explorer_selected, 5);
+        }
+
+        #[test]
+        fn set_explorer_selection_with_none_resets_to_zero() {
+            let mut state = UiState::default();
+            state.set_explorer_selection(Some(10));
+
+            state.set_explorer_selection(None);
+
+            assert_eq!(state.explorer_selected, 0);
+        }
+
+        #[test]
+        fn set_connection_list_selection_with_some_sets_index() {
+            let mut state = UiState::default();
+
+            state.set_connection_list_selection(Some(3));
+
+            assert_eq!(state.connection_list_selected, 3);
+        }
+
+        #[test]
+        fn set_connection_list_selection_with_none_resets_to_zero() {
+            let mut state = UiState::default();
+            state.set_connection_list_selection(Some(5));
+
+            state.set_connection_list_selection(None);
+
+            assert_eq!(state.connection_list_selected, 0);
+        }
     }
 
-    #[test]
-    fn toggle_focus_enters_focus_mode() {
-        let mut state = UiState {
-            focused_pane: FocusedPane::Explorer,
-            ..Default::default()
-        };
+    mod invariants {
+        use super::*;
 
-        let result = state.toggle_focus();
-
-        assert!(result);
-        assert!(state.is_focus_mode());
-        assert_eq!(state.focused_pane, FocusedPane::Result);
-        assert_eq!(
-            state.focus_mode.previous_pane(),
-            Some(FocusedPane::Explorer)
-        );
-    }
-
-    #[test]
-    fn toggle_focus_exits_focus_mode_and_restores_pane() {
-        let mut state = UiState {
-            focused_pane: FocusedPane::Inspector,
-            ..Default::default()
-        };
-        state.toggle_focus();
-
-        let result = state.toggle_focus();
-
-        assert!(result);
-        assert!(!state.is_focus_mode());
-        assert_eq!(state.focused_pane, FocusedPane::Inspector);
-    }
-
-    #[rstest]
-    #[case(10, 7)]
-    #[case(15, 12)]
-    #[case(20, 17)]
-    fn ddl_visible_rows_equals_height_minus_three(
-        #[case] pane_height: u16,
-        #[case] expected: usize,
-    ) {
-        let state = UiState {
-            inspector_pane_height: pane_height,
-            ..Default::default()
-        };
-
-        let visible = state.inspector_ddl_visible_rows();
-
-        assert_eq!(visible, expected);
-    }
-
-    #[test]
-    fn ddl_visible_rows_is_greater_than_standard() {
-        let state = UiState {
-            inspector_pane_height: 20,
-            ..Default::default()
-        };
-
-        let standard = state.inspector_visible_rows();
-        let ddl = state.inspector_ddl_visible_rows();
-
-        assert_eq!(ddl - standard, 2);
-    }
-
-    #[test]
-    fn set_explorer_selection_with_some_sets_index() {
-        let mut state = UiState::default();
-
-        state.set_explorer_selection(Some(5));
-
-        assert_eq!(state.explorer_selected, 5);
-    }
-
-    #[test]
-    fn set_explorer_selection_with_none_resets_to_zero() {
-        let mut state = UiState::default();
-        state.set_explorer_selection(Some(10));
-
-        state.set_explorer_selection(None);
-
-        assert_eq!(state.explorer_selected, 0);
-    }
-
-    #[test]
-    fn set_connection_list_selection_with_some_sets_index() {
-        let mut state = UiState::default();
-
-        state.set_connection_list_selection(Some(3));
-
-        assert_eq!(state.connection_list_selected, 3);
-    }
-
-    #[test]
-    fn set_connection_list_selection_with_none_resets_to_zero() {
-        let mut state = UiState::default();
-        state.set_connection_list_selection(Some(5));
-
-        state.set_connection_list_selection(None);
-
-        assert_eq!(state.connection_list_selected, 0);
-    }
-
-    #[test]
-    fn result_overhead_constants_are_consistent() {
-        assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
+        #[test]
+        fn result_overhead_constants_are_consistent() {
+            assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
+        }
     }
 
     mod help_scroll {
@@ -492,25 +531,6 @@ mod tests {
 
             assert_eq!(max, 0);
         }
-    }
-
-    #[rstest]
-    #[case(30, 20)]
-    #[case(100, 25)]
-    #[case(50, 15)]
-    #[case(10, 30)]
-    fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
-        let state = UiState {
-            result_pane_height: pane_height,
-            ..Default::default()
-        };
-        let visible = state.result_visible_rows();
-        let max_scroll = total_rows.saturating_sub(visible);
-
-        assert!(
-            max_scroll + visible >= total_rows,
-            "max_scroll={max_scroll}, visible={visible}, total={total_rows}"
-        );
     }
 
     mod result_selection {
