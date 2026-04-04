@@ -1131,7 +1131,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_cache_effect() {
+        fn emits_cache_effect() {
             let mut state = create_test_state();
             state
                 .sql_modal

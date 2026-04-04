@@ -119,7 +119,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_lowercase() {
+        fn lowercases_name() {
             let name = ConnectionName::new("Production").unwrap();
             assert_eq!(name.normalized(), "production");
         }

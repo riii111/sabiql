@@ -608,7 +608,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_name_after_mark_connected() {
+        fn name_after_mark_connected() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("mydb"));
             assert_eq!(session.database_name(), Some("mydb"));

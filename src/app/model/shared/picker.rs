@@ -62,7 +62,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_pane_height_as_usize() {
+        fn matches_pane_height() {
             let state = PickerState {
                 pane_height: 20,
                 ..Default::default()

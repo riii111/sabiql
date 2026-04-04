@@ -122,7 +122,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn returns_schema_dot_name() {
+        fn formats_schema_dot_name() {
             let table = make_table("public", "users");
 
             assert_eq!(table.qualified_name(), "public.users");

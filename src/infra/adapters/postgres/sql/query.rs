@@ -467,7 +467,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_json_aggregate() {
+        fn includes_json_aggregate_projection() {
             let sql = PostgresAdapter::table_signatures_query();
             assert!(sql.contains("json_agg(row_to_json(t))"));
         }

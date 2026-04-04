@@ -429,7 +429,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn returns_all_actions() {
+        async fn dispatches_all_actions() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(MockMetadataProvider::new()),
