@@ -2,11 +2,12 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::ui_state::{
-    explorer_content_width_from_inner_width, scroll_max_offset,
+    explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
@@ -41,7 +42,11 @@ impl Explorer {
         } else {
             Vec::new()
         };
-        let max_name_width = table_names.iter().map(|n| char_count(n)).max().unwrap_or(0);
+        let max_name_width = table_names
+            .iter()
+            .map(|name| text_display_width(name))
+            .max()
+            .unwrap_or(0);
         let max_offset = scroll_max_offset(max_name_width, content_width);
         let h_offset = state.ui.explorer_horizontal_offset.min(max_offset);
 
@@ -133,19 +138,36 @@ impl Explorer {
 }
 
 fn truncate_with_offset(s: &str, offset: usize, max_width: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    let total_len = chars.len();
-
-    if offset >= total_len {
+    if max_width == 0 || offset >= text_display_width(s) {
         return String::new();
     }
 
-    let end = (offset + max_width).min(total_len);
-    chars[offset..end].iter().collect()
-}
+    let mut skipped_width = 0;
+    let mut visible_width = 0;
+    let mut truncated = String::new();
 
-fn char_count(s: &str) -> usize {
-    s.chars().count()
+    for ch in s.chars() {
+        let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+
+        if skipped_width + char_width <= offset {
+            skipped_width += char_width;
+            continue;
+        }
+
+        if skipped_width < offset {
+            skipped_width = offset;
+            continue;
+        }
+
+        if visible_width + char_width > max_width {
+            break;
+        }
+
+        truncated.push(ch);
+        visible_width += char_width;
+    }
+
+    truncated
 }
 
 #[cfg(test)]
@@ -173,32 +195,17 @@ mod tests {
         }
 
         #[rstest]
-        #[case("日本語テスト", 0, 3, "日本語")]
-        #[case("日本語テスト", 2, 3, "語テス")]
-        #[case("public.日本語_table", 0, 10, "public.日本語")]
-        #[case("🎉table🎊", 0, 6, "🎉table")]
-        fn unicode_input_truncates_substring(
+        #[case("日本語テスト", 0, 3, "日")]
+        #[case("日本語テスト", 2, 3, "本")]
+        #[case("public.日本語_table", 0, 10, "public.日")]
+        #[case("🎉table🎊", 0, 6, "🎉tabl")]
+        fn unicode_input_truncates_visible_columns(
             #[case] input: &str,
             #[case] offset: usize,
             #[case] max_width: usize,
             #[case] expected: &str,
         ) {
             let result = truncate_with_offset(input, offset, max_width);
-
-            assert_eq!(result, expected);
-        }
-    }
-
-    mod char_count {
-        use super::*;
-
-        #[rstest]
-        #[case("hello", 5)]
-        #[case("日本語", 3)]
-        #[case("hello日本語", 8)]
-        #[case("", 0)]
-        fn input_returns_character_count(#[case] input: &str, #[case] expected: usize) {
-            let result = char_count(input);
 
             assert_eq!(result, expected);
         }

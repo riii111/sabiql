@@ -2,7 +2,7 @@ use crate::app::cmd::effect::Effect;
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::key_sequence::KeySequenceState;
-use crate::app::model::shared::ui_state::scroll_max_offset;
+use crate::app::model::shared::ui_state::{scroll_max_offset, text_display_width};
 use crate::app::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
     SelectMotion,
@@ -212,7 +212,7 @@ pub fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
             let max_name_width = state
                 .tables()
                 .iter()
-                .map(|t| t.qualified_name().chars().count())
+                .map(|t| text_display_width(&t.qualified_name()))
                 .max()
                 .unwrap_or(0);
             let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width);
@@ -709,10 +709,7 @@ mod tests {
             #[case] presses: usize,
         ) {
             let mut state = state_with_named_tables(names, content_width);
-            let expected = state.tables()[0]
-                .qualified_name()
-                .chars()
-                .count()
+            let expected = text_display_width(&state.tables()[0].qualified_name())
                 .saturating_sub(content_width);
 
             for _ in 0..presses {
@@ -734,11 +731,9 @@ mod tests {
         #[test]
         fn right_presses_past_end_do_not_increase_offset() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
-            state.ui.explorer_horizontal_offset = state.tables()[0]
-                .qualified_name()
-                .chars()
-                .count()
-                .saturating_sub(state.ui.explorer_content_width);
+            state.ui.explorer_horizontal_offset =
+                text_display_width(&state.tables()[0].qualified_name())
+                    .saturating_sub(state.ui.explorer_content_width);
 
             for _ in 0..3 {
                 reduce_navigation(
@@ -755,10 +750,7 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset,
-                state.tables()[0]
-                    .qualified_name()
-                    .chars()
-                    .count()
+                text_display_width(&state.tables()[0].qualified_name())
                     .saturating_sub(state.ui.explorer_content_width)
             );
         }
@@ -766,11 +758,9 @@ mod tests {
         #[test]
         fn left_press_after_end_recovers_one_column() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
-            state.ui.explorer_horizontal_offset = state.tables()[0]
-                .qualified_name()
-                .chars()
-                .count()
-                .saturating_sub(state.ui.explorer_content_width);
+            state.ui.explorer_horizontal_offset =
+                text_display_width(&state.tables()[0].qualified_name())
+                    .saturating_sub(state.ui.explorer_content_width);
 
             reduce_navigation(
                 &mut state,
@@ -785,10 +775,7 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset,
-                state.tables()[0]
-                    .qualified_name()
-                    .chars()
-                    .count()
+                text_display_width(&state.tables()[0].qualified_name())
                     .saturating_sub(state.ui.explorer_content_width)
                     .saturating_sub(1)
             );

@@ -8,6 +8,7 @@ use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
 use crate::app::update::input::keybindings::help_content_line_count;
+use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;
 
@@ -135,6 +136,8 @@ pub struct UiState {
     pub explorer_selected: usize,
     pub explorer_scroll_offset: usize,
     pub explorer_horizontal_offset: usize,
+    // Default::default() leaves this at 0 until the first render updates it, so
+    // scroll_max_offset may temporarily return the full content width.
     pub explorer_content_width: usize,
 
     pub connection_list_selected: usize,
@@ -251,6 +254,10 @@ pub fn scroll_max_offset(total_items: usize, viewport_size: usize) -> usize {
     total_items.saturating_sub(viewport_size)
 }
 
+pub fn text_display_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
+}
+
 pub fn explorer_content_width_from_inner_width(inner_width: u16) -> usize {
     const HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
     const SCROLLBAR_RESERVED_WIDTH: u16 = 1;
@@ -316,6 +323,11 @@ mod tests {
         #[test]
         fn fitting_content_returns_zero_max_offset() {
             assert_eq!(scroll_max_offset(10, 15), 0);
+        }
+
+        #[test]
+        fn double_width_characters_count_as_two_columns() {
+            assert_eq!(text_display_width("日本語"), 6);
         }
     }
 
