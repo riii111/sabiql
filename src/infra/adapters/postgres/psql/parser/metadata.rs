@@ -486,13 +486,13 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_none(#[case] input: &str) {
+        fn empty_or_null_input_returns_none_for_rls(#[case] input: &str) {
             let result = PostgresAdapter::parse_rls(input).unwrap();
             assert!(result.is_none());
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error() {
+        fn malformed_json_returns_invalid_json_error_for_rls() {
             let result = PostgresAdapter::parse_rls("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -644,7 +644,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_none(#[case] input: &str) {
+        fn empty_or_null_input_returns_none_for_table_info(#[case] input: &str) {
             let info = PostgresAdapter::parse_table_info(input).unwrap();
             assert!(info.owner.is_none());
             assert!(info.comment.is_none());
@@ -692,7 +692,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error() {
+        fn malformed_json_returns_invalid_json_error_for_table_info() {
             let result = PostgresAdapter::parse_table_info("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -707,7 +707,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_trigger_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_triggers(input).unwrap();
             assert!(result.is_empty());
         }
@@ -776,13 +776,13 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error() {
+        fn malformed_json_returns_invalid_json_error_for_triggers() {
             let result = PostgresAdapter::parse_triggers("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_trigger_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_triggers(json).unwrap();
             assert!(result.is_empty());
@@ -811,7 +811,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_schema_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_schemas(input).unwrap();
             assert!(result.is_empty());
         }
@@ -837,7 +837,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error() {
+        fn malformed_json_returns_invalid_json_error_for_schemas() {
             let result = PostgresAdapter::parse_schemas("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -857,7 +857,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_schema_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_schemas(json).unwrap();
             assert!(result.is_empty());
@@ -873,7 +873,7 @@ mod tests {
         #[case("")]
         #[case("null")]
         #[case("   ")]
-        fn empty_or_null_input_returns_empty_vec(#[case] input: &str) {
+        fn empty_or_null_input_returns_empty_fk_vec(#[case] input: &str) {
             let result = PostgresAdapter::parse_foreign_keys(input).unwrap();
             assert!(result.is_empty());
         }
@@ -997,7 +997,7 @@ mod tests {
         }
 
         #[test]
-        fn malformed_json_returns_invalid_json_error() {
+        fn malformed_json_returns_invalid_json_error_for_foreign_keys() {
             let result = PostgresAdapter::parse_foreign_keys("{not valid json}");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -1038,7 +1038,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_array_returns_empty_vec() {
+        fn empty_array_returns_empty_fk_vec() {
             let json = r"[]";
             let result = PostgresAdapter::parse_foreign_keys(json).unwrap();
             assert!(result.is_empty());
@@ -1124,13 +1124,13 @@ mod tests {
         }
 
         #[test]
-        fn empty_input_returns_error() {
+        fn empty_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
-        fn null_input_returns_error() {
+        fn null_input_returns_error_for_combined_detail() {
             let result = PostgresAdapter::parse_table_detail_combined("null");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
@@ -1183,13 +1183,13 @@ mod tests {
         }
 
         #[test]
-        fn empty_input_returns_error() {
+        fn empty_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
 
         #[test]
-        fn null_input_returns_error() {
+        fn null_input_returns_error_for_columns_and_fks() {
             let result = PostgresAdapter::parse_table_columns_and_fks("null");
             assert!(matches!(result, Err(DbOperationError::InvalidJson(_))));
         }
