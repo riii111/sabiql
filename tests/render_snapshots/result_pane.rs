@@ -1,5 +1,57 @@
 use super::*;
 use harness::{table_detail_loaded_state, with_current_result};
+use sabiql::app::services::AppServices;
+use sabiql::app::update::action::Action;
+use sabiql::app::update::browse::result::reduce_result;
+use sabiql::domain::{Column, QueryResult};
+
+fn jsonb_detail_state() -> (sabiql::app::model::app_state::AppState, std::time::Instant) {
+    let now = test_instant();
+    let mut state = create_test_state();
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata(now)));
+    let mut table = fixtures::sample_table_detail();
+    table.columns.push(Column {
+        name: "settings".to_string(),
+        data_type: "jsonb".to_string(),
+        nullable: true,
+        is_primary_key: false,
+        is_unique: false,
+        default: None,
+        comment: None,
+        ordinal_position: 4,
+    });
+    let _ = state.session.set_table_detail(table, 0);
+    state.query.set_current_result(Arc::new(QueryResult {
+        query: "SELECT id, settings FROM users LIMIT 100".to_string(),
+        columns: vec![
+            "id".to_string(),
+            "name".to_string(),
+            "email".to_string(),
+            "settings".to_string(),
+        ],
+        rows: vec![vec![
+            "1".to_string(),
+            "Alice".to_string(),
+            "alice@example.com".to_string(),
+            r#"{"theme":"dark","count":5,"nested":{"enabled":true,"roles":["admin","writer"]}}"#
+                .to_string(),
+        ]],
+        row_count: 1,
+        execution_time_ms: 1,
+        executed_at: now,
+        source: QuerySource::Preview,
+        error: None,
+        command_tag: None,
+    }));
+    state.query.pagination.schema = "public".to_string();
+    state.query.pagination.table = "users".to_string();
+    state.ui.focused_pane = FocusedPane::Result;
+    state.result_interaction.enter_row(0);
+    state.result_interaction.enter_cell(3);
+    (state, now)
+}
 
 #[test]
 fn result_pane_row_active_mode() {
@@ -150,6 +202,46 @@ fn result_pane_staged_delete_row() {
     state.ui.focused_pane = FocusedPane::Result;
     state.result_interaction.enter_row(0);
     state.result_interaction.stage_row(1);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_jsonb_detail_mode() {
+    let (mut state, now) = jsonb_detail_state();
+    let mut terminal = create_test_terminal();
+
+    reduce_result(
+        &mut state,
+        &Action::OpenJsonbDetail,
+        &AppServices::stub(),
+        now,
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_jsonb_edit_mode() {
+    let (mut state, now) = jsonb_detail_state();
+    let mut terminal = create_test_terminal();
+
+    reduce_result(
+        &mut state,
+        &Action::OpenJsonbDetail,
+        &AppServices::stub(),
+        now,
+    );
+    reduce_result(
+        &mut state,
+        &Action::JsonbEnterEdit,
+        &AppServices::stub(),
+        now,
+    );
 
     let output = render_to_string(&mut terminal, &mut state);
 
