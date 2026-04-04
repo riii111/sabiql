@@ -345,7 +345,7 @@ mod tests {
         }
 
         #[test]
-        fn stays_on_same_connection_returns_to_tables() {
+        fn stays_on_same_connection_goes_back_to_tables() {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 
@@ -368,7 +368,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_connections_returns_empty_effects() {
+        fn empty_connections_yields_empty_effects() {
             let mut state = AppState::new("test".to_string());
 
             let effects = reduce_navigation(
@@ -411,7 +411,7 @@ mod tests {
         }
 
         #[test]
-        fn from_selector_same_connection_returns_to_normal() {
+        fn from_selector_same_connection_restores_normal_mode() {
             let mut state = AppState::new("test".to_string());
             let active_id = ConnectionId::new();
 

@@ -190,7 +190,7 @@ mod tests {
         use rstest::rstest;
 
         #[test]
-        fn quit_sets_should_quit_and_returns_no_effects() {
+        fn quit_action_sets_should_quit_without_effects() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -201,7 +201,7 @@ mod tests {
         }
 
         #[test]
-        fn toggle_focus_returns_no_effects() {
+        fn toggle_focus_emits_no_effects() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -228,7 +228,7 @@ mod tests {
         }
 
         #[test]
-        fn render_returns_render_effect() {
+        fn render_emits_render_effect() {
             let mut state = create_test_state();
             let now = Instant::now();
 
@@ -356,7 +356,7 @@ mod tests {
         #[case(ScrollTarget::ConfirmDialog, ScrollDirection::Up, ScrollAmount::Line)]
         #[case(ScrollTarget::Explorer, ScrollDirection::Left, ScrollAmount::Line)]
         #[case(ScrollTarget::Explorer, ScrollDirection::Right, ScrollAmount::Line)]
-        fn scroll_reduce_never_returns_effects(
+        fn scroll_actions_emit_no_effects(
             #[case] target: ScrollTarget,
             #[case] direction: ScrollDirection,
             #[case] amount: ScrollAmount,
@@ -409,7 +409,7 @@ mod tests {
         }
 
         #[test]
-        fn close_table_picker_returns_to_normal() {
+        fn close_table_picker_restores_normal_mode() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::TablePicker);
             let now = Instant::now();
@@ -767,7 +767,7 @@ mod tests {
         }
 
         #[test]
-        fn copy_returns_clipboard_effect() {
+        fn copy_emits_clipboard_effect() {
             let mut state = state_with_error();
             let now = Instant::now();
 
@@ -881,7 +881,7 @@ mod tests {
         use crate::domain::{DatabaseMetadata, MetadataState};
 
         #[test]
-        fn load_metadata_with_dsn_returns_fetch_effect() {
+        fn load_metadata_with_dsn_emits_fetch_effect() {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
@@ -897,7 +897,7 @@ mod tests {
         }
 
         #[test]
-        fn load_metadata_without_dsn_returns_no_effects() {
+        fn load_metadata_without_dsn_emits_no_effects() {
             let mut state = create_test_state();
             state.session.dsn = None;
             let now = Instant::now();
@@ -908,7 +908,7 @@ mod tests {
         }
 
         #[test]
-        fn reload_metadata_returns_sequence_effect() {
+        fn reload_metadata_emits_sequence_effect() {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
@@ -982,7 +982,7 @@ mod tests {
         }
 
         #[test]
-        fn execute_adhoc_with_dsn_returns_effect() {
+        fn execute_adhoc_with_dsn_emits_effect() {
             let mut state = create_test_state();
             state.session.dsn = Some("postgres://localhost/test".to_string());
             let now = Instant::now();
@@ -1005,7 +1005,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn er_open_while_rendering_returns_no_effects() {
+        fn er_open_while_rendering_emits_no_effects() {
             let mut state = create_test_state();
             state.er_preparation.status = ErStatus::Rendering;
             let now = Instant::now();
@@ -1080,7 +1080,7 @@ mod tests {
         }
 
         #[test]
-        fn no_metadata_returns_error() {
+        fn missing_metadata_emits_error() {
             let mut state = create_test_state();
             state.sql_modal.begin_prefetch();
             let now = Instant::now();
@@ -1131,7 +1131,7 @@ mod tests {
         }
 
         #[test]
-        fn table_detail_cached_returns_cache_effect() {
+        fn table_detail_cached_emits_cache_effect() {
             let mut state = create_test_state();
             state
                 .sql_modal
@@ -1159,7 +1159,7 @@ mod tests {
         }
 
         #[test]
-        fn table_detail_cached_with_queue_returns_process_effect() {
+        fn table_detail_cached_with_queue_emits_process_effect() {
             let mut state = create_test_state();
             state
                 .sql_modal
@@ -1204,7 +1204,7 @@ mod tests {
         #[case(ConnectionField::Database, "mydb", false)]
         #[case(ConnectionField::User, "", true)]
         #[case(ConnectionField::User, "postgres", false)]
-        fn required_field_validation(
+        fn required_field_validation_returns_expected(
             #[case] field: ConnectionField,
             #[case] value: &str,
             #[case] has_error: bool,
@@ -1225,7 +1225,7 @@ mod tests {
         #[rstest]
         #[case("")]
         #[case("abc")]
-        fn port_validation_invalid_format(#[case] value: &str) {
+        fn port_validation_invalid_format_returns_expected(#[case] value: &str) {
             let mut state = setup_state();
             state.port.set_content(value.to_string());
 
@@ -1238,7 +1238,7 @@ mod tests {
         #[case("0")]
         #[case("65536")]
         #[case("99999")]
-        fn port_validation_out_of_range(#[case] value: &str) {
+        fn port_validation_out_of_range_returns_expected(#[case] value: &str) {
             let mut state = setup_state();
             state.port.set_content(value.to_string());
 
@@ -1251,7 +1251,7 @@ mod tests {
         #[case("1")]
         #[case("5432")]
         #[case("65535")]
-        fn port_validation_valid_range(#[case] value: &str) {
+        fn port_validation_valid_range_returns_expected(#[case] value: &str) {
             let mut state = setup_state();
             state.port.set_content(value.to_string());
 
@@ -1263,7 +1263,7 @@ mod tests {
         #[rstest]
         #[case(ConnectionField::Password)]
         #[case(ConnectionField::SslMode)]
-        fn optional_fields_never_error(#[case] field: ConnectionField) {
+        fn optional_fields_never_error_returns_expected(#[case] field: ConnectionField) {
             let mut state = setup_state();
             state.password = TextInputState::default();
 
@@ -1273,7 +1273,7 @@ mod tests {
         }
 
         #[test]
-        fn validate_all_checks_all_required_fields() {
+        fn validate_all_checks_all_required_fields_returns_expected() {
             let mut state = setup_state();
             state.host = TextInputState::default();
             state.port.set_content("invalid".to_string());
@@ -1308,7 +1308,7 @@ mod tests {
         use crate::domain::ConnectionId;
 
         #[test]
-        fn save_completed_sets_dsn_and_returns_fetch_effect() {
+        fn save_completed_sets_dsn_and_emits_fetch_effect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = true;
@@ -1390,7 +1390,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
+        fn cancel_after_save_restores_normal_mode_and_dispatches_try_connect() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.is_first_run = false;
@@ -1528,7 +1528,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_delete_write_then_failure_returns_to_normal() {
+        fn confirm_delete_write_then_failure_restores_normal_mode() {
             use crate::app::policy::write::write_guardrails::{
                 GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
             };
@@ -2070,7 +2070,7 @@ mod tests {
         }
 
         #[test]
-        fn close_er_table_picker_returns_to_normal() {
+        fn close_er_table_picker_restores_normal_mode() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
@@ -2094,7 +2094,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_selected_tables_sets_target_and_returns_dispatch() {
+        fn confirm_with_selected_tables_sets_target_and_emits_dispatch() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 
@@ -2121,7 +2121,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_with_no_selection_returns_error() {
+        fn confirm_with_no_selection_emits_error() {
             let mut state = state_with_metadata();
             state.modal.set_mode(InputMode::ErTablePicker);
 

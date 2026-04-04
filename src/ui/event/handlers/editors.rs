@@ -87,14 +87,14 @@ mod tests {
         use crate::app::update::action::CursorMove;
 
         #[test]
-        fn esc_in_cell_edit_returns_cancel_not_discard() {
+        fn esc_in_cell_edit_cancels_without_discarding() {
             let result = handle_cell_edit_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::ResultCancelCellEdit));
         }
 
         #[test]
-        fn char_input_returns_cell_edit_input() {
+        fn char_input_enters_cell_edit() {
             let result = handle_cell_edit_keys(combo(Key::Char('x')));
 
             assert!(matches!(
@@ -107,7 +107,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_returns_cell_edit_backspace() {
+        fn backspace_deletes_cell_edit_char() {
             let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(
@@ -119,7 +119,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_returns_cell_edit_delete() {
+        fn delete_deletes_cell_edit_char() {
             let result = handle_cell_edit_keys(combo(Key::Delete));
 
             assert!(matches!(
@@ -131,7 +131,7 @@ mod tests {
         }
 
         #[test]
-        fn left_returns_move_cursor_left() {
+        fn left_moves_cursor_left() {
             let result = handle_cell_edit_keys(combo(Key::Left));
 
             assert!(matches!(
@@ -144,7 +144,7 @@ mod tests {
         }
 
         #[test]
-        fn right_returns_move_cursor_right() {
+        fn right_moves_cursor_right() {
             let result = handle_cell_edit_keys(combo(Key::Right));
 
             assert!(matches!(
@@ -157,7 +157,7 @@ mod tests {
         }
 
         #[test]
-        fn home_returns_move_cursor_home() {
+        fn home_moves_cursor_home() {
             let result = handle_cell_edit_keys(combo(Key::Home));
 
             assert!(matches!(
@@ -170,7 +170,7 @@ mod tests {
         }
 
         #[test]
-        fn end_returns_move_cursor_end() {
+        fn end_moves_cursor_end() {
             let result = handle_cell_edit_keys(combo(Key::End));
 
             assert!(matches!(
@@ -200,7 +200,7 @@ mod tests {
         #[case(Key::Backspace, Expected::Backspace)]
         #[case(Key::Char('s'), Expected::Input('s'))]
         #[case(Key::Tab, Expected::None)]
-        fn command_line_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn command_line_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_command_line_mode(combo(code));
 
             match expected {

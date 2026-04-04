@@ -789,7 +789,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_from_confirming_high_returns_to_normal() {
+        fn cancel_from_confirming_high_restores_normal_mode() {
             let mut state = confirming_high_state("DROP TABLE users", Some("users"));
 
             reduce_sql_modal(&mut state, &Action::SqlModalCancelConfirm, Instant::now());
@@ -1268,7 +1268,7 @@ mod tests {
         }
 
         #[test]
-        fn both_auto_slots_yank_returns_distinguishable_headers() {
+        fn both_auto_slots_yank_produces_distinguishable_headers() {
             let mut state = sql_modal_state();
             state.sql_modal.active_tab = SqlModalTab::Compare;
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));

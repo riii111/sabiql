@@ -617,7 +617,7 @@ mod tests {
         }
 
         #[test]
-        fn exit_edit_returns_to_viewing_mode() {
+        fn exit_edit_restores_viewing_mode() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
             reduce(&mut state, &Action::JsonbEnterEdit, Instant::now());

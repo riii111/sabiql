@@ -483,7 +483,7 @@ mod tests {
         }
 
         #[test]
-        fn single_column_uses_header_width_plus_padding() {
+        fn single_column_returns_header_width_plus_padding() {
             let headers = vec!["name".to_string()];
             let rows: Vec<Vec<String>> = vec![];
 
@@ -495,7 +495,7 @@ mod tests {
         }
 
         #[test]
-        fn uses_max_of_header_and_cell_widths() {
+        fn header_and_cell_widths_return_max_widths() {
             let headers = vec!["id".to_string(), "name".to_string()];
             let rows = vec![
                 vec!["1".to_string(), "Alice".to_string()],
@@ -512,7 +512,7 @@ mod tests {
         }
 
         #[test]
-        fn respects_max_width_constraint() {
+        fn wide_columns_return_capped_width() {
             let headers = vec!["description".to_string()];
             let long_text = "a".repeat(300);
             let rows = vec![vec![long_text]];
@@ -525,7 +525,7 @@ mod tests {
         }
 
         #[test]
-        fn handles_multibyte_characters_correctly() {
+        fn multibyte_headers_and_cells_return_expected_widths() {
             let headers = vec!["名前".to_string()];
             let rows = vec![vec!["日本語テスト".to_string()]];
 
@@ -537,7 +537,7 @@ mod tests {
         }
 
         #[test]
-        fn only_considers_first_line_for_multiline_cells() {
+        fn multiline_cells_return_first_line_widths() {
             let headers = vec!["text".to_string()];
             let rows = vec![vec![
                 "short\nvery long second line that should be ignored".to_string(),
@@ -551,7 +551,7 @@ mod tests {
         }
 
         #[test]
-        fn handles_multiple_columns_independently() {
+        fn multiple_columns_return_independent_widths() {
             let headers = vec!["id".to_string(), "name".to_string(), "email".to_string()];
             let rows = vec![
                 vec![
@@ -593,14 +593,14 @@ mod tests {
     }
 
     #[test]
-    fn long_string_truncates_with_ellipsis() {
+    fn long_string_returns_truncated_with_ellipsis() {
         let result = truncate_cell("hello world", 8);
 
         assert_eq!(result, "hello...");
     }
 
     #[test]
-    fn multibyte_characters_count_correctly() {
+    fn multibyte_characters_return_truncated_output() {
         let result = truncate_cell("こんにちは世界", 5);
 
         assert_eq!(result, "こん...");
@@ -612,7 +612,7 @@ mod tests {
     #[case("日本語テスト", 4, "日...")]
     #[case("日本語テスト", 3, "...")]
     #[case("SELECT * FROM 日本語テーブル", 15, "SELECT * FRO...")]
-    fn multibyte_truncation_is_safe(
+    fn multibyte_inputs_return_expected_truncation(
         #[case] input: &str,
         #[case] max: usize,
         #[case] expected: &str,
@@ -624,14 +624,14 @@ mod tests {
     }
 
     #[test]
-    fn newline_shows_first_line_only() {
+    fn newline_input_returns_first_line() {
         let result = truncate_cell("first\nsecond\nthird", 20);
 
         assert_eq!(result, "first");
     }
 
     #[test]
-    fn newline_with_truncation_applies_to_first_line() {
+    fn newline_input_with_truncation_returns_truncated_first_line() {
         let result = truncate_cell("this is a long first line\nsecond", 10);
 
         assert_eq!(result, "this is...");
@@ -657,7 +657,7 @@ mod tests {
     #[case(3, "...")]
     #[case(4, "h...")]
     #[case(5, "he...")]
-    fn small_max_chars_handles_edge_cases(#[case] max: usize, #[case] expected: &str) {
+    fn small_max_chars_return_expected_truncation(#[case] max: usize, #[case] expected: &str) {
         let result = truncate_cell("hello world", max);
 
         assert_eq!(result, expected);
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     #[ignore = "local-only dev benchmark, not tied to a CI issue"]
     #[allow(clippy::print_stderr, reason = "benchmark result output")]
-    fn bench_ideal_widths_cache_speedup() {
+    fn ideal_widths_cache_speedup_benchmark() {
         use crate::app::model::shared::viewport::ColumnWidthsCache;
         use crate::ui::primitives::utils::text_utils::calculate_header_min_widths;
         use std::time::Instant;

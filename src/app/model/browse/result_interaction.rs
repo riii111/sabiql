@@ -160,7 +160,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn reset_view_clears_scroll_and_all_interaction() {
+    fn reset_view_returns_cleared_scroll_and_interaction_state() {
         let mut ri = ResultInteraction {
             scroll_offset: 10,
             horizontal_offset: 5,
@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_interaction_preserves_scroll() {
+    fn reset_interaction_returns_preserved_scroll() {
         let mut ri = ResultInteraction {
             scroll_offset: 10,
             horizontal_offset: 5,
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn discard_cell_edit_clears_edit_and_preview_only() {
+    fn discard_cell_edit_returns_cleared_edit_and_preview_only() {
         let mut ri = ResultInteraction::default();
         ri.enter_row(2);
         ri.enter_cell(4);
@@ -218,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn exit_cell_to_row_transitions_to_row_active() {
+    fn exit_cell_to_row_returns_row_active_selection() {
         let mut ri = ResultInteraction::default();
         ri.enter_row(2);
         ri.enter_cell(4);
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn exit_row_to_scroll_clears_selection_and_staging() {
+    fn exit_row_to_scroll_returns_cleared_selection_and_staging() {
         let mut ri = ResultInteraction::default();
         ri.enter_row(2);
         ri.begin_cell_edit(2, 0, "val".to_string());
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_flash_removes_expired() {
+    fn clear_expired_flash_returns_cleared_expired_flash() {
         let now = Instant::now();
         let mut ri = ResultInteraction {
             yank_flash: Some(YankFlash {
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_expired_flash_keeps_active() {
+    fn clear_expired_flash_returns_active_flash_when_unexpired() {
         let now = Instant::now();
         let mut ri = ResultInteraction {
             yank_flash: Some(YankFlash {
@@ -287,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_operator_pending_selective() {
+    fn clear_operator_pending_returns_selective_state() {
         let mut ri = ResultInteraction {
             delete_op_pending: true,
             yank_op_pending: true,
@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_row_delegates_correctly() {
+    fn enter_row_returns_updated_selection() {
         let mut ri = ResultInteraction::default();
 
         ri.enter_row(5);
@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_row_and_unstage_last() {
+    fn stage_row_and_unstage_last_returns_remaining_oldest_row() {
         let mut ri = ResultInteraction::default();
         ri.stage_row(0);
         ri.stage_row(3);
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn begin_cell_edit_sets_active() {
+    fn begin_cell_edit_returns_active_cell_edit() {
         let mut ri = ResultInteraction::default();
 
         ri.begin_cell_edit(1, 2, "hello".to_string());
@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn clamp_selection_delegates() {
+    fn clamp_selection_returns_clamped_selection() {
         let mut ri = ResultInteraction::default();
         ri.enter_row(10);
 

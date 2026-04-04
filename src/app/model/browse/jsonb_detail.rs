@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_scroll_keeps_offset_when_viewport_height_is_zero() {
+    fn adjusted_scroll_returns_offset_when_viewport_height_is_zero() {
         let mut state = state_with_lines(10);
         state.set_selected_line(4);
         state.set_scroll_offset(3);
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_scroll_moves_up_when_selection_is_above_scroll() {
+    fn adjusted_scroll_returns_selection_when_above_scroll() {
         let mut state = state_with_lines(10);
         state.set_selected_line(2);
         state.set_scroll_offset(5);
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_scroll_moves_down_when_selection_is_below_viewport() {
+    fn adjusted_scroll_returns_selection_when_below_viewport() {
         let mut state = state_with_lines(10);
         state.set_selected_line(8);
         state.set_scroll_offset(3);
@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_scroll_keeps_offset_when_selection_is_visible() {
+    fn adjusted_scroll_returns_offset_when_selection_is_visible() {
         let mut state = state_with_lines(10);
         state.set_selected_line(4);
         state.set_scroll_offset(3);
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn adjusted_scroll_clamps_to_visible_count() {
+    fn adjusted_scroll_returns_zero_when_visible_count_is_small() {
         let mut state = state_with_lines(3);
         state.set_selected_line(10);
         state.set_scroll_offset(9);

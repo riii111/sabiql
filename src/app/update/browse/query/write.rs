@@ -579,7 +579,7 @@ mod tests {
         }
 
         #[test]
-        fn text_column_with_json_content_returns_none_diff() {
+        fn text_column_with_json_content_yields_no_diff() {
             // col 1 = name (text), but we edit it with JSON content
             let mut state = editable_state();
             state
@@ -847,7 +847,7 @@ mod tests {
         }
 
         #[test]
-        fn execute_write_failed_for_delete_returns_to_normal_mode() {
+        fn execute_write_failure_for_delete_restores_normal_mode() {
             let mut state = create_test_state();
             state.result_interaction.set_write_preview(delete_preview());
 

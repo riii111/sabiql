@@ -386,7 +386,7 @@ mod tests {
         }
 
         #[test]
-        fn save_sets_connection_and_metadata_state_as_pair() {
+        fn filled_form_save_sets_connection_and_metadata_pair() {
             let mut state = AppState::new("test".to_string());
             fill_valid_form(&mut state);
 
@@ -419,7 +419,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn is_first_run_true_when_no_connections() {
+        fn no_connections_exist_sets_first_run_true() {
             let mut state = AppState::new("test".to_string());
 
             reduce(&mut state, &Action::OpenConnectionSetup, Instant::now());
@@ -428,7 +428,7 @@ mod tests {
         }
 
         #[test]
-        fn is_first_run_false_when_connections_exist() {
+        fn existing_connections_sets_first_run_false() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("test");
             state.set_connections(vec![profile]);
@@ -439,7 +439,7 @@ mod tests {
         }
 
         #[test]
-        fn is_first_run_false_when_already_connected() {
+        fn already_connected_sets_first_run_false() {
             let mut state = AppState::new("test".to_string());
             state.session.dsn = Some("postgres://localhost/db".to_string());
 

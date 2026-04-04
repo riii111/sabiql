@@ -287,7 +287,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_normal_mode_returns_none() {
+        fn paste_in_normal_mode_yields_none() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::Normal);
 
@@ -371,7 +371,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn enter_from_normal_and_exit_returns_to_normal() {
+        fn enter_from_normal_and_exit_restores_normal_mode() {
             let mut state = AppState::new("test".to_string());
 
             reduce_navigation(
@@ -392,7 +392,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_from_cell_edit_and_exit_returns_to_cell_edit() {
+        fn enter_from_cell_edit_and_exit_restores_cell_edit_mode() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CellEdit);
 

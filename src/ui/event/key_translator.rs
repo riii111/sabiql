@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn backtab_translates_with_shift() {
+    fn backtab_translates_to_shifted_backtab() {
         let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
 
         let combo = translate(event);
@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn arrow_keys_translate_correctly() {
+    fn arrow_keys_translate_to_plain_arrow_keys() {
         assert_eq!(
             translate(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)),
             KeyCombo::plain(Key::Up)
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn function_key_translates() {
+    fn function_key_translates_to_function_key() {
         let event = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
 
         let combo = translate(event);
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn uppercase_char_with_shift_normalizes_to_plain() {
+    fn uppercase_char_with_shift_translates_to_plain_char() {
         for c in ['G', 'H', 'M', 'L'] {
             let event = KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
 
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn lowercase_char_with_shift_preserves_shift() {
+    fn lowercase_char_with_shift_translates_to_shifted_char() {
         let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::SHIFT);
 
         let combo = translate(event);

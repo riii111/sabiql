@@ -262,7 +262,7 @@ mod tests {
         }
 
         #[test]
-        fn no_dsn_returns_error() {
+        fn missing_dsn_emits_error() {
             let mut state = AppState::new("test".to_string());
             state.session.set_metadata(Some(make_metadata(5)));
 
@@ -273,7 +273,7 @@ mod tests {
         }
 
         #[test]
-        fn rendering_status_returns_empty_effects() {
+        fn rendering_status_emits_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -283,7 +283,7 @@ mod tests {
         }
 
         #[test]
-        fn waiting_status_returns_empty_effects() {
+        fn waiting_status_emits_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
@@ -293,7 +293,7 @@ mod tests {
         }
 
         #[test]
-        fn no_metadata_returns_error() {
+        fn missing_metadata_emits_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
 
@@ -309,7 +309,7 @@ mod tests {
         use crate::domain::DatabaseMetadata;
 
         #[test]
-        fn idle_status_returns_generate_effect() {
+        fn idle_status_emits_generate_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Idle;
             state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
@@ -333,7 +333,7 @@ mod tests {
         }
 
         #[test]
-        fn rendering_status_returns_empty_effects() {
+        fn rendering_status_emits_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_run_id_returns_empty() {
+        fn mismatched_run_id_emits_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;
@@ -572,7 +572,7 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_full_prefetch() {
+        fn timeout_without_scope_falls_back_to_full_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
@@ -608,7 +608,7 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_scoped_prefetch_when_targets_set() {
+        fn timeout_with_targets_falls_back_to_scoped_prefetch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
@@ -640,7 +640,7 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_run_id_returns_empty() {
+        fn mismatched_run_id_emits_no_effects() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;
@@ -661,7 +661,7 @@ mod tests {
         }
 
         #[test]
-        fn no_metadata_sets_idle_and_error() {
+        fn missing_metadata_sets_idle_and_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;
@@ -683,7 +683,7 @@ mod tests {
         }
 
         #[test]
-        fn new_metadata_applied_before_fallback() {
+        fn new_metadata_is_applied_before_fallback() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 1;
             state.er_preparation.status = ErStatus::Waiting;

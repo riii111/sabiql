@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn q_returns_quit() {
+    fn q_quits() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('q')), &state);
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn esc_returns_escape() {
+    fn esc_exits_normal_mode() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Esc), &state);
@@ -321,7 +321,7 @@ mod tests {
     #[rstest]
     #[case(Key::Up, "up arrow")]
     #[case(Key::Char('k'), "k")]
-    fn navigation_selects_previous(#[case] code: Key, #[case] _desc: &str) {
+    fn arrow_up_and_k_select_previous(#[case] code: Key, #[case] _desc: &str) {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -332,7 +332,7 @@ mod tests {
     #[rstest]
     #[case(Key::Down, "down arrow")]
     #[case(Key::Char('j'), "j")]
-    fn navigation_selects_next(#[case] code: Key, #[case] _desc: &str) {
+    fn arrow_down_and_j_select_next(#[case] code: Key, #[case] _desc: &str) {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -343,7 +343,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('g'), "g")]
     #[case(Key::Home, "home")]
-    fn navigation_selects_first(#[case] code: Key, #[case] _desc: &str) {
+    fn g_and_home_select_first(#[case] code: Key, #[case] _desc: &str) {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -354,7 +354,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('G'), "capital G")]
     #[case(Key::End, "end")]
-    fn navigation_selects_last(#[case] code: Key, #[case] _desc: &str) {
+    fn g_and_end_select_last(#[case] code: Key, #[case] _desc: &str) {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -397,7 +397,7 @@ mod tests {
     #[case('1', FocusedPane::Explorer)]
     #[case('2', FocusedPane::Inspector)]
     #[case('3', FocusedPane::Result)]
-    fn browse_mode_pane_focus(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
+    fn number_keys_select_panes(#[case] key_char: char, #[case] expected_pane: FocusedPane) {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char(key_char)), &state);
@@ -456,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_key_returns_none() {
+    fn unknown_key_is_noop() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('x')), &state);
@@ -480,7 +480,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('j'))]
     #[case(Key::Down)]
-    fn focus_mode_j_scrolls_down(#[case] code: Key) {
+    fn focus_mode_j_and_down_scroll_down(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -496,7 +496,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('k'))]
     #[case(Key::Up)]
-    fn focus_mode_k_scrolls_up(#[case] code: Key) {
+    fn focus_mode_k_and_up_scroll_up(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -512,7 +512,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('g'))]
     #[case(Key::Home)]
-    fn focus_mode_g_scrolls_top(#[case] code: Key) {
+    fn focus_mode_g_and_home_scroll_top(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -528,7 +528,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('G'))]
     #[case(Key::End)]
-    fn focus_mode_shift_g_scrolls_bottom(#[case] code: Key) {
+    fn focus_mode_shift_g_and_end_scroll_bottom(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -544,7 +544,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('h'))]
     #[case(Key::Left)]
-    fn focus_mode_h_scrolls_left(#[case] code: Key) {
+    fn focus_mode_h_and_left_scroll_left(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -560,7 +560,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('l'))]
     #[case(Key::Right)]
-    fn focus_mode_l_scrolls_right(#[case] code: Key) {
+    fn focus_mode_l_and_right_scroll_right(#[case] code: Key) {
         let state = focus_mode_state();
         let result = handle_normal_mode(combo(code), &state);
         assert!(matches!(
@@ -574,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focused_navigation_scrolls_result() {
+    fn result_focused_j_scrolls_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('j')), &state);
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn d_sets_delete_op_pending_in_row_active() {
+    fn row_active_d_sets_delete_pending() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
 
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn dd_stages_row_for_delete_in_row_active() {
+    fn row_active_dd_stages_row_for_delete() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.delete_op_pending = true;
@@ -643,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn d_in_scroll_mode_is_noop() {
+    fn scroll_mode_d_is_noop() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('d')), &state);
@@ -652,7 +652,7 @@ mod tests {
     }
 
     #[test]
-    fn y_sets_yank_op_pending_in_row_active() {
+    fn row_active_y_sets_yank_pending() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
 
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn yy_triggers_row_yank_in_row_active() {
+    fn row_active_yy_triggers_row_yank() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.yank_op_pending = true;
@@ -673,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn y_in_scroll_mode_ignored() {
+    fn scroll_mode_y_is_noop() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('y')), &state);
@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn y_in_cell_active_still_cell_yank() {
+    fn cell_active_y_yanks_cell() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(0);
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn h_key_scrolls_left_when_explorer_focused() {
+    fn explorer_h_scrolls_left() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('h')), &state);
@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn l_key_scrolls_right_when_explorer_focused() {
+    fn explorer_l_scrolls_right() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('l')), &state);
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn esc_in_cell_active_with_draft_returns_discard() {
+    fn cell_active_esc_discards_pending_draft() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(1);
@@ -770,7 +770,7 @@ mod tests {
     }
 
     #[test]
-    fn esc_in_cell_active_without_draft_returns_exit_to_row_active() {
+    fn cell_active_esc_exits_to_row_active() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(1);
@@ -781,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn i_key_enters_cell_edit_when_cell_active() {
+    fn cell_active_i_enters_cell_edit() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(1);
@@ -792,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn i_key_is_noop_without_cell_active() {
+    fn inactive_cell_i_is_noop() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('i')), &state);
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn h_key_returns_select_viewport_top_when_explorer_focused() {
+    fn explorer_h_selects_viewport_top() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
@@ -810,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn m_key_returns_select_middle_when_explorer_focused() {
+    fn explorer_m_selects_viewport_middle() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn l_key_returns_select_viewport_bottom_when_explorer_focused() {
+    fn explorer_l_selects_viewport_bottom() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
@@ -834,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn h_key_returns_result_scroll_viewport_top_when_result_focused() {
+    fn result_focus_h_scrolls_to_viewport_top() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn m_key_returns_result_scroll_middle_when_result_focused() {
+    fn result_focus_m_scrolls_to_viewport_middle() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
@@ -866,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn l_key_returns_result_scroll_viewport_bottom_when_result_focused() {
+    fn result_focus_l_scrolls_to_viewport_bottom() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
@@ -882,7 +882,7 @@ mod tests {
     }
 
     #[test]
-    fn m_key_returns_result_scroll_middle_in_focus_mode() {
+    fn focus_mode_m_scrolls_to_viewport_middle() {
         let state = focus_mode_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
@@ -906,7 +906,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('g'))]
     #[case(Key::Home)]
-    fn g_scrolls_inspector_top(#[case] code: Key) {
+    fn inspector_g_and_home_scroll_top(#[case] code: Key) {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -924,7 +924,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('G'))]
     #[case(Key::End)]
-    fn shift_g_scrolls_inspector_bottom(#[case] code: Key) {
+    fn inspector_shift_g_and_end_scroll_bottom(#[case] code: Key) {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(code), &state);
@@ -943,7 +943,7 @@ mod tests {
     #[case(Key::Char('H'))]
     #[case(Key::Char('M'))]
     #[case(Key::Char('L'))]
-    fn hml_noop_when_inspector_focused(#[case] key: Key) {
+    fn inspector_hml_are_noop(#[case] key: Key) {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(key), &state);
@@ -961,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn c_key_noop_when_result_focused() {
+    fn result_focus_c_is_noop() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('c')), &state);
@@ -970,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn c_key_noop_when_inspector_focused() {
+    fn inspector_c_is_noop() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('c')), &state);
@@ -979,7 +979,7 @@ mod tests {
     }
 
     #[test]
-    fn bracket_right_returns_next_page_when_result_focused() {
+    fn result_focus_bracket_right_moves_next_page() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char(']')), &state);
@@ -988,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn bracket_left_returns_prev_page_when_result_focused() {
+    fn result_focus_bracket_left_moves_prev_page() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -997,7 +997,7 @@ mod tests {
     }
 
     #[test]
-    fn brackets_return_none_when_explorer_focused() {
+    fn explorer_brackets_are_noop() {
         let state = browse_state();
 
         let right = handle_normal_mode(combo(Key::Char(']')), &state);
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn bracket_right_returns_next_page_in_focus_mode() {
+    fn focus_mode_bracket_right_moves_next_page() {
         let state = focus_mode_state();
 
         let result = handle_normal_mode(combo(Key::Char(']')), &state);
@@ -1017,7 +1017,7 @@ mod tests {
     }
 
     #[test]
-    fn bracket_left_returns_prev_page_in_focus_mode() {
+    fn focus_mode_bracket_left_moves_prev_page() {
         let state = focus_mode_state();
 
         let result = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn pagedown_scrolls_result_full_page_down() {
+    fn result_focus_pagedown_scrolls_full_page_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1132,7 +1132,7 @@ mod tests {
     }
 
     #[test]
-    fn pageup_scrolls_result_full_page_up() {
+    fn result_focus_pageup_scrolls_full_page_up() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageUp), &state);
@@ -1148,7 +1148,7 @@ mod tests {
     }
 
     #[test]
-    fn pagedown_scrolls_inspector_full_page_down() {
+    fn inspector_pagedown_scrolls_full_page_down() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1164,7 +1164,7 @@ mod tests {
     }
 
     #[test]
-    fn pagedown_scrolls_explorer_full_page_down() {
+    fn explorer_pagedown_scrolls_full_page_down() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1238,7 +1238,7 @@ mod tests {
         }
 
         #[test]
-        fn help_allowed_in_history_mode() {
+        fn history_mode_allows_help() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1255,7 +1255,7 @@ mod tests {
         #[case(Key::Char(':'), ": (command line)")]
         #[case(Key::Enter, "Enter")]
         #[case(Key::Esc, "Esc")]
-        fn blocked_keys_are_noop_in_history_mode(#[case] key: Key, #[case] label: &str) {
+        fn history_mode_blocked_keys_are_noop(#[case] key: Key, #[case] label: &str) {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1268,7 +1268,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_keys_allowed_in_history_mode() {
+        fn history_mode_allows_scroll_keys() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
             state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
@@ -1348,7 +1348,7 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_o_blocked_in_history_mode() {
+        fn history_mode_blocks_ctrl_o() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1361,7 +1361,7 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_p_and_ctrl_k_blocked_in_history_mode() {
+        fn history_mode_blocks_ctrl_p_and_ctrl_k() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1379,7 +1379,7 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_scroll_allowed_in_history_mode() {
+        fn history_mode_allows_ctrl_scroll() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
             state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
@@ -1403,7 +1403,7 @@ mod tests {
         }
 
         #[test]
-        fn bracket_nav_falls_through_when_not_in_history() {
+        fn bracket_navigation_falls_through_outside_history() {
             let mut state = AppState::new("test".to_string());
             state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
 
@@ -1422,7 +1422,7 @@ mod tests {
         use crate::ui::event::key_translator::translate;
 
         #[test]
-        fn shift_g_key_event_produces_select_last_via_translator() {
+        fn shift_g_key_event_translates_to_select_last() {
             let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
             let combo = translate(event);
             let state = browse_state();
@@ -1437,7 +1437,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn z_key_returns_begin_key_sequence() {
+        fn z_begins_key_sequence() {
             let state = browse_state();
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
@@ -1446,7 +1446,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_z_returns_scroll_cursor_center_for_explorer() {
+        fn zz_scrolls_cursor_center_for_explorer() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1462,7 +1462,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_t_returns_scroll_cursor_top_for_explorer() {
+        fn zt_scrolls_cursor_top_for_explorer() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1478,7 +1478,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_b_returns_scroll_cursor_bottom_for_explorer() {
+        fn zb_scrolls_cursor_bottom_for_explorer() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1494,7 +1494,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_unknown_returns_cancel_key_sequence() {
+        fn z_then_unknown_cancels_key_sequence() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1504,7 +1504,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_z_returns_result_scroll_cursor_center_for_result() {
+        fn zz_scrolls_cursor_center_for_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1520,7 +1520,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_t_returns_result_scroll_cursor_top_for_result() {
+        fn zt_scrolls_cursor_top_for_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1536,7 +1536,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_b_returns_result_scroll_cursor_bottom_for_result() {
+        fn zb_scrolls_cursor_bottom_for_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1552,7 +1552,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_z_returns_cancel_key_sequence_for_inspector() {
+        fn zz_cancels_key_sequence_for_inspector() {
             let mut state = inspector_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1562,7 +1562,7 @@ mod tests {
         }
 
         #[test]
-        fn z_key_returns_begin_key_sequence_in_focus_mode() {
+        fn focus_mode_z_begins_key_sequence() {
             let state = focus_mode_state();
 
             let result = handle_normal_mode(combo(Key::Char('z')), &state);
@@ -1571,7 +1571,7 @@ mod tests {
         }
 
         #[test]
-        fn z_then_z_returns_result_scroll_cursor_center_in_focus_mode() {
+        fn focus_mode_zz_scrolls_cursor_center() {
             let mut state = focus_mode_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1587,7 +1587,7 @@ mod tests {
         }
 
         #[test]
-        fn key_sequence_resolved_before_global_actions() {
+        fn key_sequence_takes_priority_over_global_actions() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1638,7 +1638,7 @@ mod tests {
         }
 
         #[test]
-        fn zt_works_in_history_mode() {
+        fn history_mode_zt_scrolls_cursor_top() {
             let state = history_mode_state_with_key_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
@@ -1653,7 +1653,7 @@ mod tests {
         }
 
         #[test]
-        fn zb_works_in_history_mode() {
+        fn history_mode_zb_scrolls_cursor_bottom() {
             let state = history_mode_state_with_key_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
@@ -1746,7 +1746,11 @@ mod tests {
         #[case("history_focus", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('j'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::Line })]
         #[case("focus_mode", Key::Char('k'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::Line })]
-        fn vertical_jk(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+        fn vertical_navigation_keys_scroll_contextually(
+            #[case] ctx_name: &str,
+            #[case] key: Key,
+            #[case] expected: Action,
+        ) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
@@ -1777,7 +1781,11 @@ mod tests {
         #[case("history_focus", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
         #[case("focus_mode", Key::Char('g'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ToStart })]
         #[case("focus_mode", Key::Char('G'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ToEnd })]
-        fn ends_g_shift_g(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+        fn first_and_last_navigation_keys_scroll_contextually(
+            #[case] ctx_name: &str,
+            #[case] key: Key,
+            #[case] expected: Action,
+        ) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
@@ -1839,7 +1847,11 @@ mod tests {
         #[case("focus_mode", Key::Char('H'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportTop })]
         #[case("focus_mode", Key::Char('M'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Up, amount: ScrollAmount::ViewportMiddle })]
         #[case("focus_mode", Key::Char('L'), Action::Scroll { target: ScrollTarget::Result, direction: ScrollDirection::Down, amount: ScrollAmount::ViewportBottom })]
-        fn viewport_hml(#[case] ctx_name: &str, #[case] key: Key, #[case] expected: Action) {
+        fn viewport_navigation_keys_scroll_contextually(
+            #[case] ctx_name: &str,
+            #[case] key: Key,
+            #[case] expected: Action,
+        ) {
             let state = match ctx_name {
                 "explorer" => explorer_ctx(),
                 "result_scroll" => result_scroll_ctx(),
@@ -1877,7 +1889,7 @@ mod tests {
         #[case("focus_mode", Key::Char('z'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Center })]
         #[case("focus_mode", Key::Char('t'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Top })]
         #[case("focus_mode", Key::Char('b'), Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
-        fn scroll_to_cursor_zztb(
+        fn z_prefix_second_keys_scroll_cursor_contextually(
             #[case] ctx_name: &str,
             #[case] key: Key,
             #[case] expected: Action,
@@ -1906,7 +1918,7 @@ mod tests {
         #[case("inspector", inspector_ctx())]
         #[case("history_focus", history_focus_ctx())]
         #[case("focus_mode", focus_mode_ctx())]
-        fn z_prefix_returns_begin_key_sequence(#[case] ctx_name: &str, #[case] state: AppState) {
+        fn z_prefix_begins_key_sequence(#[case] ctx_name: &str, #[case] state: AppState) {
             let actual = handle_normal_mode(combo(Key::Char('z')), &state);
             assert_action(actual, Action::BeginKeySequence(Prefix::Z), ctx_name, "z");
         }

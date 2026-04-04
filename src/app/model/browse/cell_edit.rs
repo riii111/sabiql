@@ -42,7 +42,7 @@ mod tests {
     use crate::app::update::action::CursorMove;
 
     #[test]
-    fn begin_with_value_sets_active_state_with_copied_values() {
+    fn begin_with_value_sets_active_state_with_copied_values_returns_expected() {
         let mut state = CellEditState::default();
 
         state.begin(3, 5, "Alice".to_string());
@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn only_row_selected_returns_inactive() {
+    fn only_row_selected_yields_inactive_returns_expected() {
         let state = CellEditState {
             row: Some(1),
             col: None,
@@ -68,7 +68,7 @@ mod tests {
     }
 
     #[test]
-    fn only_col_selected_returns_inactive() {
+    fn only_col_selected_yields_inactive_returns_expected() {
         let state = CellEditState {
             row: None,
             col: Some(1),
@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn has_pending_draft_returns_false_when_draft_equals_original() {
+    fn draft_equals_original_yields_false_for_has_pending_draft_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "Alice".to_string());
 
@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn has_pending_draft_returns_true_when_draft_differs() {
+    fn draft_differs_yields_true_for_has_pending_draft_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "Alice".to_string());
         state.input.set_content("Bob".to_string());
@@ -97,14 +97,14 @@ mod tests {
     }
 
     #[test]
-    fn has_pending_draft_returns_false_when_not_active() {
+    fn inactive_cell_edit_yields_false_for_has_pending_draft_returns_expected() {
         let state = CellEditState::default();
 
         assert!(!state.has_pending_draft());
     }
 
     #[test]
-    fn clear_after_begin_resets_all_fields() {
+    fn clear_after_begin_resets_all_fields_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(1, 2, "Before".to_string());
         state.input.set_content("After".to_string());
@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_movement_works_through_input() {
+    fn cursor_movement_works_through_input_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "hello".to_string());
 
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn backspace_at_middle_removes_correct_char() {
+    fn backspace_at_middle_removes_correct_char_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "abcd".to_string());
 
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_at_cursor_position() {
+    fn delete_at_cursor_position_returns_expected() {
         let mut state = CellEditState::default();
         state.begin(0, 0, "abcd".to_string());
 

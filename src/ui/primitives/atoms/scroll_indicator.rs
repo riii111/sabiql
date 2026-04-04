@@ -204,22 +204,22 @@ mod tests {
     use super::clamp_scroll_offset;
 
     #[test]
-    fn clamp_returns_zero_when_content_fits() {
+    fn clamp_scroll_offset_returns_zero_when_content_fits() {
         assert_eq!(clamp_scroll_offset(100, 10, 5), 0);
     }
 
     #[test]
-    fn clamp_returns_zero_when_exact_fit() {
+    fn clamp_scroll_offset_returns_zero_when_exact_fit() {
         assert_eq!(clamp_scroll_offset(5, 10, 10), 0);
     }
 
     #[test]
-    fn clamp_preserves_offset_within_range() {
+    fn clamp_scroll_offset_returns_offset_within_range() {
         assert_eq!(clamp_scroll_offset(50, 10, 100), 50);
     }
 
     #[test]
-    fn clamp_caps_offset_exceeding_max() {
+    fn clamp_scroll_offset_clamps_to_max() {
         assert_eq!(clamp_scroll_offset(100, 10, 20), 10);
     }
 }

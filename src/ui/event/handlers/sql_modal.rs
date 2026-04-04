@@ -427,7 +427,10 @@ mod tests {
     #[case(Key::Enter, Expected::SqlModalNewLine)]
     #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
     #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]
-    fn completion_hidden_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+    fn hidden_completion_keys_prioritize_modal_navigation(
+        #[case] code: Key,
+        #[case] expected: Expected,
+    ) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -445,7 +448,10 @@ mod tests {
     #[case(Key::Enter, Expected::CompletionAccept)]
     #[case(Key::Up, Expected::CompletionPrev)]
     #[case(Key::Down, Expected::CompletionNext)]
-    fn completion_visible_key_behavior(#[case] code: Key, #[case] expected: Expected) {
+    fn visible_completion_keys_prioritize_completion_actions(
+        #[case] code: Key,
+        #[case] expected: Expected,
+    ) {
         let result = handle_sql_modal_keys(
             combo(code),
             true,
@@ -465,7 +471,7 @@ mod tests {
     #[case(Key::Home, Expected::SqlModalMoveCursor(CursorMove::Home))]
     #[case(Key::End, Expected::SqlModalMoveCursor(CursorMove::End))]
     #[case(Key::F(1), Expected::None)]
-    fn completion_independent_keys(#[case] code: Key, #[case] expected: Expected) {
+    fn non_completion_keys_affect_modal_editor(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -477,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_key_returns_delete_action() {
+    fn delete_deletes_sql_modal_text() {
         let result = handle_sql_modal_keys(
             combo(Key::Delete),
             false,
@@ -489,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_without_completion_returns_newline() {
+    fn enter_inserts_newline_without_completion() {
         let result = handle_sql_modal_keys(
             combo(Key::Enter),
             false,
@@ -501,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn tab_without_completion_returns_tab() {
+    fn tab_inserts_tab_without_completion() {
         let result = handle_sql_modal_keys(
             combo(Key::Tab),
             false,
@@ -617,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_unbound_keys_returns_none() {
+    fn normal_mode_unbound_keys_are_noop() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('a')),
             false,
@@ -629,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_alt_enter_submits() {
+    fn normal_mode_alt_enter_submits_query() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Enter),
             false,
@@ -641,7 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_ctrl_o_opens_history() {
+    fn normal_mode_ctrl_o_opens_query_history_picker() {
         let result = handle_sql_modal_keys(
             combo_ctrl(Key::Char('o')),
             false,
@@ -653,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_ctrl_l_clears() {
+    fn normal_mode_ctrl_l_clears_editor() {
         let result = handle_sql_modal_keys(
             combo_ctrl(Key::Char('l')),
             false,
@@ -667,7 +673,7 @@ mod tests {
     #[rstest]
     #[case(SqlModalStatus::Success)]
     #[case(SqlModalStatus::Error)]
-    fn success_error_share_normal_keybindings(#[case] status: SqlModalStatus) {
+    fn success_and_error_status_share_normal_keybindings(#[case] status: SqlModalStatus) {
         let yank = handle_sql_modal_keys(combo(Key::Char('y')), false, &status, SqlModalTab::Sql);
         let enter = handle_sql_modal_keys(combo(Key::Enter), false, &status, SqlModalTab::Sql);
         let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Sql);
@@ -742,7 +748,7 @@ mod tests {
     #[case(Key::Down, Expected::ExplainPlanScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainPlanScrollUp)]
     #[case(Key::Up, Expected::ExplainPlanScrollUp)]
-    fn plan_tab_scroll_keys_scroll_plan(#[case] code: Key, #[case] expected: Expected) {
+    fn plan_tab_jk_keys_scroll_plan(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -754,7 +760,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_tab_y_returns_sql_modal_yank() {
+    fn plan_tab_y_yanks_result() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('y')),
             false,
@@ -766,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_y_returns_sql_modal_yank() {
+    fn compare_tab_y_yanks_result() {
         let result = handle_sql_modal_keys(
             combo(Key::Char('y')),
             false,
@@ -792,7 +798,7 @@ mod tests {
     #[rstest]
     #[case(Key::Enter)]
     #[case(Key::Char('a'))]
-    fn plan_tab_unbound_keys_returns_none(#[case] code: Key) {
+    fn plan_tab_unbound_keys_are_noop(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -838,7 +844,7 @@ mod tests {
     #[case(Key::Down, Expected::ExplainCompareScrollDown)]
     #[case(Key::Char('k'), Expected::ExplainCompareScrollUp)]
     #[case(Key::Up, Expected::ExplainCompareScrollUp)]
-    fn compare_tab_scroll_keys_scroll_comparison(#[case] code: Key, #[case] expected: Expected) {
+    fn compare_tab_jk_keys_scroll_comparison(#[case] code: Key, #[case] expected: Expected) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -864,7 +870,7 @@ mod tests {
     #[rstest]
     #[case(Key::Char('a'))]
     #[case(Key::Enter)]
-    fn compare_tab_unbound_keys_returns_none(#[case] code: Key) {
+    fn compare_tab_unbound_keys_are_noop(#[case] code: Key) {
         let result = handle_sql_modal_keys(
             combo(code),
             false,
@@ -912,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn editing_alt_e_requests_analyze() {
+    fn editing_alt_e_requests_explain_analyze() {
         let result = handle_sql_modal_keys(
             combo_alt(Key::Char('e')),
             false,
@@ -924,7 +930,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_tab_switches() {
+    fn compare_tab_tab_switches_to_next_tab() {
         let result = handle_sql_modal_keys(
             combo(Key::Tab),
             false,
@@ -936,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_tab_backtab_switches() {
+    fn compare_tab_backtab_switches_to_prev_tab() {
         let result = handle_sql_modal_keys(
             KeyCombo::plain(Key::BackTab),
             false,
@@ -980,7 +986,7 @@ mod tests {
     #[rstest]
     #[case(SqlModalStatus::Success)]
     #[case(SqlModalStatus::Error)]
-    fn plan_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
+    fn plan_tab_read_only_keys_work_in_success_and_error(#[case] status: SqlModalStatus) {
         let scroll =
             handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Plan);
         let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Plan);
@@ -992,7 +998,7 @@ mod tests {
     #[rstest]
     #[case(SqlModalStatus::Success)]
     #[case(SqlModalStatus::Error)]
-    fn compare_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
+    fn compare_tab_read_only_keys_work_in_success_and_error(#[case] status: SqlModalStatus) {
         let scroll =
             handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Compare);
         let close = handle_sql_modal_keys(combo(Key::Esc), false, &status, SqlModalTab::Compare);
@@ -1036,12 +1042,12 @@ mod tests {
     }
 
     #[test]
-    fn plan_keybinding_combo_returns_declared_action() {
+    fn plan_keybinding_combos_match_declared_actions() {
         assert_keybindings_match_handler(SQL_MODAL_PLAN_KEYS, SqlModalTab::Plan, "PLAN");
     }
 
     #[test]
-    fn compare_keybinding_combo_returns_declared_action() {
+    fn compare_keybinding_combos_match_declared_actions() {
         assert_keybindings_match_handler(SQL_MODAL_COMPARE_KEYS, SqlModalTab::Compare, "COMPARE");
     }
 }

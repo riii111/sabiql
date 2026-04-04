@@ -242,7 +242,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn next_page_returns_none_without_mutating_state() {
+        fn next_page_yields_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.enter_row(0);
             state.result_interaction.stage_row(0);
@@ -255,7 +255,7 @@ mod tests {
         }
 
         #[test]
-        fn prev_page_returns_none_without_mutating_state() {
+        fn prev_page_yields_none_without_mutating_state() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.enter_row(0);
             state.result_interaction.stage_row(0);

@@ -247,7 +247,7 @@ mod tests {
             #[case(Key::Down, Action::ConnectionSetupDropdownNext)]
             #[case(Key::Enter, Action::ConnectionSetupDropdownConfirm)]
             #[case(Key::Esc, Action::ConnectionSetupDropdownCancel)]
-            fn dropdown_navigation(#[case] code: Key, #[case] expected: Action) {
+            fn dropdown_open_keys_move_selection(#[case] code: Key, #[case] expected: Action) {
                 let state = dropdown_state();
 
                 let result = handle_connection_setup_keys(combo(code), &state);
@@ -279,7 +279,7 @@ mod tests {
         #[case(Key::Char('s'), Expected::OpenSelector)]
         #[case(Key::Char('d'), Expected::ToggleDetails)]
         #[case(Key::Char('y'), Expected::Copy)]
-        fn connection_error_action_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn connection_error_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -301,7 +301,10 @@ mod tests {
         #[case(Key::Char('k'), Expected::ScrollUp)]
         #[case(Key::Down, Expected::ScrollDown)]
         #[case(Key::Char('j'), Expected::ScrollDown)]
-        fn connection_error_scroll_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn connection_error_scroll_keys_scroll_panel(
+            #[case] code: Key,
+            #[case] expected: Expected,
+        ) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -328,7 +331,7 @@ mod tests {
         }
 
         #[test]
-        fn connection_error_unbound_keys() {
+        fn connection_error_unbound_keys_are_noop() {
             let result = handle_connection_error_keys(combo(Key::Tab));
 
             assert!(matches!(result, Action::None));
@@ -350,7 +353,10 @@ mod tests {
         #[case(Key::Down, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
         #[case(Key::Char('k'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         #[case(Key::Up, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
-        fn selector_navigation_keys(#[case] code: Key, #[case] expected: Action) {
+        fn connection_selector_navigation_keys_move_selection(
+            #[case] code: Key,
+            #[case] expected: Action,
+        ) {
             let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
@@ -361,7 +367,10 @@ mod tests {
         #[case(Key::Char('n'), Action::OpenConnectionSetup)]
         #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
         #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
-        fn selector_action_keys(#[case] code: Key, #[case] expected: Action) {
+        fn connection_selector_action_keys_map_to_actions(
+            #[case] code: Key,
+            #[case] expected: Action,
+        ) {
             let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(
@@ -371,14 +380,14 @@ mod tests {
         }
 
         #[test]
-        fn selector_esc_closes() {
+        fn esc_closes_connection_selector() {
             let result = handle_connection_selector_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::Escape));
         }
 
         #[test]
-        fn unknown_key_returns_none() {
+        fn unknown_key_is_noop() {
             let result = handle_connection_selector_keys(combo(Key::Char('x')));
 
             assert!(matches!(result, Action::None));

@@ -771,7 +771,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn two_explains_auto_advance_returns_comparable_slots() {
+        fn two_explains_auto_advance_yields_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             state.session.dsn = Some("dsn://test".to_string());

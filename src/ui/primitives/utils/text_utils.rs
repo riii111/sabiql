@@ -27,21 +27,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn calculates_min_widths_with_str_slice() {
+    fn calculate_header_min_widths_returns_widths_for_str_slice() {
         let headers = ["id", "name", "description"];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![4, 6, 13]);
     }
 
     #[test]
-    fn calculates_min_widths_with_string_vec() {
+    fn calculate_header_min_widths_returns_widths_for_string_vec() {
         let headers = vec!["id".to_string(), "name".to_string()];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![4, 6]);
     }
 
     #[test]
-    fn enforces_min_width() {
+    fn calculate_header_min_widths_enforces_min_width() {
         let headers = ["a"];
         let widths = calculate_header_min_widths(&headers);
         assert_eq!(widths, vec![MIN_COL_WIDTH]);

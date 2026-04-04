@@ -412,7 +412,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_with_table_detail_returns_copy_effect() {
+        fn ddl_yank_with_table_detail_emits_copy_effect() {
             let mut state = state_with_ddl_tab();
 
             let effects = reduce(
@@ -444,7 +444,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_without_table_detail_returns_empty() {
+        fn ddl_yank_without_table_detail_yields_no_effects() {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Ddl;
 
@@ -460,7 +460,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_on_non_ddl_tab_returns_empty() {
+        fn ddl_yank_on_non_ddl_tab_yields_no_effects() {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 

@@ -38,7 +38,7 @@ mod tests {
         }
 
         #[test]
-        fn unknown_key_returns_none() {
+        fn unknown_key_is_noop() {
             let result = handle_help_keys(combo(Key::Char('a')));
 
             assert!(matches!(result, Action::None));
@@ -51,7 +51,7 @@ mod tests {
         #[rstest]
         #[case(Key::Enter, Action::ConfirmDialogConfirm)]
         #[case(Key::Esc, Action::ConfirmDialogCancel)]
-        fn dialog_keys(#[case] code: Key, #[case] expected: Action) {
+        fn enter_and_esc_close_or_confirm_dialog(#[case] code: Key, #[case] expected: Action) {
             let result = handle_confirm_dialog_keys(combo(code));
 
             assert_eq!(
@@ -65,7 +65,7 @@ mod tests {
         #[case(Key::Down)]
         #[case(Key::Char('k'))]
         #[case(Key::Up)]
-        fn scroll_keys_return_scroll_action(#[case] code: Key) {
+        fn j_k_and_arrow_keys_scroll_dialog(#[case] code: Key) {
             let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::Scroll { .. }));
@@ -77,7 +77,7 @@ mod tests {
         #[case(Key::Char('n'))]
         #[case(Key::Char('N'))]
         #[case(Key::Char('x'))]
-        fn non_bound_keys_return_none(#[case] code: Key) {
+        fn non_bound_keys_are_noop(#[case] code: Key) {
             let result = handle_confirm_dialog_keys(combo(code));
 
             assert!(matches!(result, Action::None));

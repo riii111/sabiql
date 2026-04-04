@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_action_returns_none() {
+    fn unknown_action_yields_none() {
         let mut state = AppState::new("test".to_string());
 
         let result = reduce_connection(&mut state, &Action::Quit, Instant::now());

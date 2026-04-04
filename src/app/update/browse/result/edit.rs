@@ -295,7 +295,7 @@ mod tests {
         }
 
         #[test]
-        fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
+        fn jsonb_cell_dispatches_open_jsonb_detail() {
             let mut state = state_with_jsonb_column();
 
             let effects = reduce(&mut state, &Action::ResultEnterCellEdit, Instant::now()).unwrap();

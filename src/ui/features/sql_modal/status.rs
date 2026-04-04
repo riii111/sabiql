@@ -238,17 +238,21 @@ mod tests {
         #[case("public.user_sessions", 16, "public.user_ses\u{2026}")]
         #[case("my_schema.very_long_table_name", 16, "my_schema.very_\u{2026}")]
         #[case("ab", 1, "\u{2026}")]
-        fn truncates_long_names(#[case] input: &str, #[case] max: usize, #[case] expected: &str) {
+        fn truncate_with_ellipsis_returns_expected_output(
+            #[case] input: &str,
+            #[case] max: usize,
+            #[case] expected: &str,
+        ) {
             assert_eq!(truncate_with_ellipsis(input, max), expected);
         }
 
         #[test]
-        fn zero_max_returns_ellipsis() {
+        fn zero_max_truncates_to_ellipsis() {
             assert_eq!(truncate_with_ellipsis("anything", 0), "\u{2026}");
         }
 
         #[test]
-        fn multibyte_truncates_by_char_count() {
+        fn multibyte_input_truncates_by_char_count() {
             let result = truncate_with_ellipsis("テーブル名前", 4);
 
             assert_eq!(result, "テーブ\u{2026}");

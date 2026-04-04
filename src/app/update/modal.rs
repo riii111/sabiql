@@ -417,7 +417,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_connection_returns_delete_effect() {
+        fn confirm_delete_connection_emits_delete_effect() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::ConnectionSelector);
             let id = crate::domain::ConnectionId::new();
@@ -434,7 +434,7 @@ mod tests {
         }
 
         #[test]
-        fn execute_write_sets_running_state_and_returns_effect() {
+        fn confirm_execute_write_sets_running_state_and_emits_effect() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::CellEdit);
             state.session.dsn = Some("postgres://localhost/test".to_string());
@@ -482,7 +482,7 @@ mod tests {
         }
 
         #[test]
-        fn execute_write_blocked_returns_to_mode_with_no_effects() {
+        fn blocked_execute_write_restores_origin_mode_without_effects() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
             state.confirm_dialog.open(
@@ -540,7 +540,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_export_returns_export_effect() {
+        fn confirm_csv_export_emits_export_effect() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
             state.session.dsn = Some("postgres://localhost/test".to_string());
@@ -1068,7 +1068,7 @@ mod tests {
         }
 
         #[test]
-        fn other_intents_cancel_returns_empty_effects() {
+        fn cancel_other_intents_emits_empty_effects() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::CellEdit);
             state.confirm_dialog.open(
