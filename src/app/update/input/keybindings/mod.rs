@@ -390,6 +390,10 @@ pub fn is_focus_toggle(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::FOCUS].combos.contains(combo)
 }
 
+pub fn is_result_history_toggle(combo: &KeyCombo) -> bool {
+    HISTORY_KEYS[idx::history::OPEN].combos.contains(combo)
+}
+
 pub fn is_reload(combo: &KeyCombo) -> bool {
     GLOBAL_KEYS[idx::global::RELOAD].combos.contains(combo)
 }

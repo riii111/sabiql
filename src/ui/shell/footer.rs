@@ -123,7 +123,7 @@ impl Footer {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let mut list =
                         vec![RESULT_ACTIVE_KEYS[idx::result_active::ENTER_DEEPEN].as_hint()];
-                    if state.query.visible_result().is_some_and(|r| !r.is_error()) {
+                    if state.can_request_csv_export() {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     if state.query.can_paginate_visible_result() {
@@ -154,7 +154,7 @@ impl Footer {
                         list.push(GLOBAL_KEYS[idx::global::READ_ONLY].as_hint());
                     }
                     list.push(GLOBAL_KEYS[idx::global::FOCUS].as_hint());
-                    if state.query.visible_result().is_some_and(|r| !r.is_error()) {
+                    if state.can_request_csv_export() {
                         list.push(GLOBAL_KEYS[idx::global::CSV_EXPORT].as_hint());
                     }
                     if state.ui.focused_pane == FocusedPane::Inspector {

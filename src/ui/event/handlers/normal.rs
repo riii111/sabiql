@@ -24,37 +24,33 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 
     // Ctrl combos
     if combo.modifiers.ctrl {
-        match combo.key {
-            Key::Char('p') if !state.query.is_history_mode() => {
-                return Action::OpenTablePicker;
-            }
-            Key::Char('h') => {
-                return if state.query.is_history_mode() {
-                    Action::ExitResultHistory
-                } else {
-                    Action::OpenResultHistory
-                };
-            }
-            Key::Char('k') if !state.query.is_history_mode() => {
-                return Action::OpenCommandPalette;
-            }
-            Key::Char('r') => {
-                return Action::ToggleReadOnly;
-            }
-            Key::Char('o') if !state.query.is_history_mode() => {
-                return Action::OpenQueryHistoryPicker;
-            }
-            Key::Char('e') if state.query.visible_result().is_some_and(|r| !r.is_error()) => {
-                return Action::RequestCsvExport;
-            }
-            _ => {
-                if let Some(action) = resolve_nav(&combo, nav_ctx) {
-                    return action;
-                }
-                if state.query.is_history_mode() {
-                    return Action::None;
-                }
-            }
+        if kb::is_table_picker(&combo) && !state.query.is_history_mode() {
+            return Action::OpenTablePicker;
+        }
+        if kb::is_result_history_toggle(&combo) {
+            return if state.query.is_history_mode() {
+                Action::ExitResultHistory
+            } else {
+                Action::OpenResultHistory
+            };
+        }
+        if kb::is_command_palette(&combo) && !state.query.is_history_mode() {
+            return Action::OpenCommandPalette;
+        }
+        if kb::is_read_only_toggle(&combo) {
+            return Action::ToggleReadOnly;
+        }
+        if kb::is_query_history(&combo) && !state.query.is_history_mode() {
+            return Action::OpenQueryHistoryPicker;
+        }
+        if kb::is_csv_export(&combo) && state.can_request_csv_export() {
+            return Action::RequestCsvExport;
+        }
+        if let Some(action) = resolve_nav(&combo, nav_ctx) {
+            return action;
+        }
+        if state.query.is_history_mode() {
+            return Action::None;
         }
     }
 
@@ -1375,6 +1371,19 @@ mod tests {
             assert!(
                 matches!(k, Action::None),
                 "^K should be blocked in history mode"
+            );
+        }
+
+        #[test]
+        fn blocks_ctrl_e() {
+            let mut state = state_with_history(3);
+            state.query.enter_history(1);
+
+            let result = handle_normal_mode(combo_ctrl(Key::Char('e')), &state);
+
+            assert!(
+                matches!(result, Action::None),
+                "^E should be blocked in history mode"
             );
         }
 

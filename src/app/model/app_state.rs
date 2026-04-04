@@ -206,6 +206,10 @@ impl AppState {
     pub fn toggle_focus(&mut self) -> bool {
         self.ui.toggle_focus()
     }
+
+    pub fn can_request_csv_export(&self) -> bool {
+        !self.query.is_history_mode() && self.query.visible_result().is_some_and(|r| !r.is_error())
+    }
 }
 
 #[cfg(test)]
@@ -215,6 +219,7 @@ mod tests {
     use super::*;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::domain::DatabaseMetadata;
+    use crate::domain::QuerySource;
     use rstest::rstest;
     use std::time::Instant;
 
@@ -272,6 +277,37 @@ mod tests {
         let visible = state.result_visible_rows();
 
         assert_eq!(visible, 45);
+    }
+
+    fn make_query_result(source: QuerySource) -> Arc<crate::domain::QueryResult> {
+        Arc::new(crate::domain::QueryResult::success(
+            "SELECT 1".to_string(),
+            vec!["col".to_string()],
+            vec![vec!["val".to_string()]],
+            10,
+            source,
+        ))
+    }
+
+    #[test]
+    fn can_request_csv_export_returns_true_for_live_non_error_result() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(make_query_result(QuerySource::Preview));
+
+        assert!(state.can_request_csv_export());
+    }
+
+    #[test]
+    fn can_request_csv_export_returns_false_in_history_mode() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .push_history(make_query_result(QuerySource::Adhoc));
+        state.query.enter_history(0);
+
+        assert!(!state.can_request_csv_export());
     }
 
     #[test]
