@@ -1131,7 +1131,7 @@ mod tests {
         }
 
         #[test]
-        fn table_detail_cached_returns_cache_effect() {
+        fn returns_cache_effect() {
             let mut state = create_test_state();
             state
                 .sql_modal
@@ -1159,7 +1159,7 @@ mod tests {
         }
 
         #[test]
-        fn table_detail_cached_with_queue_returns_process_effect() {
+        fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
             state
                 .sql_modal

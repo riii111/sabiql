@@ -210,7 +210,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn paste_in_table_picker_appends_text() {
+        fn table_picker_appends_text() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
@@ -226,7 +226,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_table_picker_strips_newlines() {
+        fn table_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
 
@@ -241,7 +241,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_table_picker_resets_selection() {
+        fn table_picker_resets_selection() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::TablePicker);
             state.ui.table_picker.set_selection(5);
@@ -257,7 +257,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_command_line_appends_text() {
+        fn command_line_appends_text() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
@@ -272,7 +272,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_command_line_strips_newlines() {
+        fn command_line_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::CommandLine);
 
@@ -287,7 +287,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_normal_mode_returns_none() {
+        fn normal_mode_returns_none() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::Normal);
 
@@ -302,7 +302,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_er_table_picker_appends_to_er_filter() {
+        fn er_table_picker_appends_to_filter() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
@@ -319,7 +319,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_er_table_picker_strips_newlines() {
+        fn er_table_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::ErTablePicker);
 
@@ -334,7 +334,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_query_history_picker_appends_to_filter() {
+        fn query_history_picker_appends_to_filter() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             state.query_history_picker.selected = 3;
@@ -352,7 +352,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_in_query_history_picker_strips_newlines() {
+        fn query_history_picker_strips_newlines() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::QueryHistoryPicker);
 

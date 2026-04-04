@@ -214,7 +214,7 @@ mod tests {
         }
 
         #[test]
-        fn no_selection_is_noop() {
+        fn no_cell_selection_is_noop() {
             let mut state = state_with_grid(3, 3);
 
             let effects = reduce(
@@ -254,7 +254,7 @@ mod tests {
         }
 
         #[test]
-        fn row_yank_emits_tsv_copy_effect() {
+        fn emits_tsv_copy_effect() {
             let mut state = state_with_row(vec!["v0", "v1", "v2"]);
             state.result_interaction.enter_row(0);
 
@@ -276,7 +276,7 @@ mod tests {
         }
 
         #[test]
-        fn row_yank_escapes_tab_and_newline() {
+        fn escapes_tab_and_newline() {
             let mut state = state_with_row(vec!["a\tb", "c\nd"]);
             state.result_interaction.enter_row(0);
 
@@ -298,7 +298,7 @@ mod tests {
         }
 
         #[test]
-        fn row_yank_escapes_backslash() {
+        fn escapes_backslash() {
             let mut state = state_with_row(vec!["a\\b"]);
             state.result_interaction.enter_row(0);
 
@@ -320,7 +320,7 @@ mod tests {
         }
 
         #[test]
-        fn row_yank_out_of_bounds_sets_error() {
+        fn out_of_bounds_sets_error() {
             let mut state = state_with_row(vec!["val"]);
             state.result_interaction.enter_row(99);
 
@@ -337,7 +337,7 @@ mod tests {
         }
 
         #[test]
-        fn row_yank_no_selection_is_noop() {
+        fn no_row_selection_is_noop() {
             let mut state = state_with_row(vec!["val"]);
 
             let effects = reduce(
@@ -412,7 +412,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_with_table_detail_returns_copy_effect() {
+        fn with_table_detail_returns_copy_effect() {
             let mut state = state_with_ddl_tab();
 
             let effects = reduce(
@@ -430,7 +430,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_sets_flash() {
+        fn sets_flash() {
             let mut state = state_with_ddl_tab();
             let now = Instant::now();
 
@@ -444,7 +444,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_without_table_detail_returns_empty() {
+        fn without_table_detail_returns_empty() {
             let mut state = AppState::new("test".to_string());
             state.ui.inspector_tab = InspectorTab::Ddl;
 
@@ -460,7 +460,7 @@ mod tests {
         }
 
         #[test]
-        fn ddl_yank_on_non_ddl_tab_returns_empty() {
+        fn on_non_ddl_tab_returns_empty() {
             let mut state = state_with_ddl_tab();
             state.ui.inspector_tab = InspectorTab::Info;
 

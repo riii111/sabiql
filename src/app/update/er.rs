@@ -273,7 +273,7 @@ mod tests {
         }
 
         #[test]
-        fn rendering_status_returns_empty_effects() {
+        fn rendering_status_returns_empty_effects_for_open_diagram() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -283,7 +283,7 @@ mod tests {
         }
 
         #[test]
-        fn waiting_status_returns_empty_effects() {
+        fn waiting_status_returns_empty_effects_for_open_diagram() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Waiting;
 
@@ -333,7 +333,7 @@ mod tests {
         }
 
         #[test]
-        fn rendering_status_returns_empty_effects() {
+        fn rendering_status_returns_empty_effects_for_generate_from_cache() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.status = ErStatus::Rendering;
 
@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_run_id_returns_empty() {
+        fn mismatched_run_id_returns_empty_for_completed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;
@@ -640,7 +640,7 @@ mod tests {
         }
 
         #[test]
-        fn mismatched_run_id_returns_empty() {
+        fn mismatched_run_id_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.er_preparation.run_id = 5;
             state.er_preparation.status = ErStatus::Waiting;

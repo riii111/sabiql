@@ -261,7 +261,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn insert_str_at_beginning() {
+        fn inserts_at_beginning() {
             let mut s = state_with("cd", 0);
 
             s.insert_str("ab");
@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_str_at_middle() {
+        fn inserts_at_middle() {
             let mut s = state_with("ad", 1);
 
             s.insert_str("bc");
@@ -281,7 +281,7 @@ mod tests {
         }
 
         #[test]
-        fn insert_str_multibyte() {
+        fn inserts_multibyte() {
             let mut s = state_with("あえ", 1);
 
             s.insert_str("いう");
@@ -295,7 +295,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn backspace_at_start_is_noop() {
+        fn removes_prev_char_at_start_is_noop() {
             let mut s = state_with("abc", 0);
 
             s.backspace();
@@ -305,7 +305,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_at_end() {
+        fn removes_prev_char_at_end() {
             let mut s = state_with("abc", 3);
 
             s.backspace();
@@ -315,7 +315,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_at_middle() {
+        fn removes_prev_char_at_middle() {
             let mut s = state_with("abc", 2);
 
             s.backspace();
@@ -325,7 +325,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_empty_string() {
+        fn removes_prev_char_on_empty_string() {
             let mut s = TextInputState::default();
 
             s.backspace();
@@ -335,7 +335,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_multibyte() {
+        fn removes_prev_char_multibyte() {
             let mut s = state_with("あいう", 2);
 
             s.backspace();
@@ -349,7 +349,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn delete_at_end_is_noop() {
+        fn removes_next_char_at_end_is_noop() {
             let mut s = state_with("abc", 3);
 
             s.delete();
@@ -359,7 +359,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_at_beginning() {
+        fn removes_next_char_at_beginning() {
             let mut s = state_with("abc", 0);
 
             s.delete();
@@ -369,7 +369,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_at_middle() {
+        fn removes_next_char_at_middle() {
             let mut s = state_with("abc", 1);
 
             s.delete();
@@ -379,7 +379,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_empty_string() {
+        fn removes_next_char_on_empty_string() {
             let mut s = TextInputState::default();
 
             s.delete();
@@ -389,7 +389,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_multibyte() {
+        fn removes_next_char_multibyte() {
             let mut s = state_with("あいう", 1);
 
             s.delete();
@@ -599,7 +599,7 @@ mod tests {
         }
 
         #[test]
-        fn empty_string() {
+        fn empty_string_has_zero_chars() {
             let s = TextInputState::default();
 
             assert_eq!(s.char_count(), 0);

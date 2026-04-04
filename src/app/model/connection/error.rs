@@ -224,7 +224,7 @@ mod tests {
         #[case("/bin/sh: psql: command not found")]
         #[case("zsh: command not found: psql")]
         #[case("not found: mysql")]
-        fn classify_stderr_as_cli_not_found(#[case] stderr: &str) {
+        fn stderr_as_cli_not_found(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::CliNotFound
@@ -234,7 +234,7 @@ mod tests {
         #[rstest]
         #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#)]
         #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#)]
-        fn classify_stderr_as_host_unreachable(#[case] stderr: &str) {
+        fn stderr_as_host_unreachable(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::HostUnreachable
@@ -244,7 +244,7 @@ mod tests {
         #[rstest]
         #[case(r#"FATAL: password authentication failed for user "user""#)]
         #[case(r"psql: error: FATAL:  password authentication failed")]
-        fn classify_stderr_as_auth_failed(#[case] stderr: &str) {
+        fn stderr_as_auth_failed(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::AuthFailed
@@ -252,7 +252,7 @@ mod tests {
         }
 
         #[test]
-        fn classify_stderr_as_database_not_found() {
+        fn stderr_as_database_not_found() {
             assert_eq!(
                 ConnectionErrorKind::classify(r#"FATAL: database "nonexistent" does not exist"#),
                 ConnectionErrorKind::DatabaseNotFound
@@ -262,7 +262,7 @@ mod tests {
         #[rstest]
         #[case("psql: error: timeout expired")]
         #[case("Connection timed out")]
-        fn classify_stderr_as_timeout(#[case] stderr: &str) {
+        fn stderr_as_timeout(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::Timeout
@@ -273,7 +273,7 @@ mod tests {
         #[case("Connection refused")]
         #[case("Some random error")]
         #[case("")]
-        fn classify_stderr_as_unknown_fallback(#[case] stderr: &str) {
+        fn stderr_as_unknown_fallback(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::Unknown

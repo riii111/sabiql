@@ -1600,7 +1600,7 @@ mod tests {
         }
 
         #[test]
-        fn key_sequence_resolved_before_global_actions() {
+        fn takes_priority_over_global_actions() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 

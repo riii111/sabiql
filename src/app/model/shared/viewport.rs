@@ -524,7 +524,7 @@ mod tests {
         #[case(5, 80, 60, 150, 30, true)] // min_widths_sum changes
         #[case(5, 80, 50, 200, 30, true)] // ideal_widths_sum changes
         #[case(5, 80, 50, 150, 50, true)] // ideal_widths_max changes
-        fn needs_recalculation_returns_expected(
+        fn recalculates_when_inputs_change(
             #[case] len: usize,
             #[case] width: u16,
             #[case] min_sum: u16,

@@ -52,7 +52,7 @@ mod tests {
         #[case("NULL", "NULL")]
         #[case("alice", "'alice'")]
         #[case("O'Reilly", "'O''Reilly'")]
-        fn value_input_returns_expected_sql_expr(#[case] input: &str, #[case] expected: &str) {
+        fn formats_input_as_sql_expr(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(preview_value_expr(input), expected);
         }
 

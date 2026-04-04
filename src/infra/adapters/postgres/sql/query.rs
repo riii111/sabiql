@@ -534,7 +534,7 @@ mod tests {
         }
 
         #[test]
-        fn uses_quoted_schema_and_table() {
+        fn table_detail_uses_quoted_schema_and_table() {
             let sql = PostgresAdapter::table_detail_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));
@@ -559,7 +559,7 @@ mod tests {
         }
 
         #[test]
-        fn uses_quoted_schema_and_table() {
+        fn table_columns_and_fks_uses_quoted_schema_and_table() {
             let sql = PostgresAdapter::table_columns_and_fks_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));

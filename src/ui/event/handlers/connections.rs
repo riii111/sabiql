@@ -279,7 +279,7 @@ mod tests {
         #[case(Key::Char('s'), Expected::OpenSelector)]
         #[case(Key::Char('d'), Expected::ToggleDetails)]
         #[case(Key::Char('y'), Expected::Copy)]
-        fn connection_error_action_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn action_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -301,7 +301,7 @@ mod tests {
         #[case(Key::Char('k'), Expected::ScrollUp)]
         #[case(Key::Down, Expected::ScrollDown)]
         #[case(Key::Char('j'), Expected::ScrollDown)]
-        fn connection_error_scroll_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn scroll_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -328,7 +328,7 @@ mod tests {
         }
 
         #[test]
-        fn connection_error_unbound_keys() {
+        fn unbound_keys() {
             let result = handle_connection_error_keys(combo(Key::Tab));
 
             assert!(matches!(result, Action::None));

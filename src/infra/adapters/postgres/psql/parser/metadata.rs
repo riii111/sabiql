@@ -498,7 +498,7 @@ mod tests {
         }
 
         #[test]
-        fn disabled_rls_with_no_policies_returns_expected() {
+        fn disabled_rls_without_policies_is_empty() {
             let json = r#"{"enabled": false, "force": false, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -510,7 +510,7 @@ mod tests {
         }
 
         #[test]
-        fn enabled_and_forced_rls_returns_expected() {
+        fn enabled_and_forced_rls_preserves_flags() {
             let json = r#"{"enabled": true, "force": true, "policies": []}"#;
 
             let result = PostgresAdapter::parse_rls(json).unwrap();
@@ -554,7 +554,7 @@ mod tests {
         #[case("w", RlsCommand::Update)]
         #[case("d", RlsCommand::Delete)]
         #[case("x", RlsCommand::All)] // unknown defaults to All
-        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
+        fn cmd_code_maps_to_rls_command(#[case] cmd: &str, #[case] expected: RlsCommand) {
             let json = format!(
                 r#"{{"enabled": true, "force": false, "policies": [{{
                     "name": "test", "permissive": true, "roles": null,
@@ -741,7 +741,10 @@ mod tests {
         #[case("AFTER", TriggerTiming::After)]
         #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
         #[case("UNKNOWN", TriggerTiming::After)] // unknown defaults to After
-        fn timing_mapping_returns_expected(#[case] timing: &str, #[case] expected: TriggerTiming) {
+        fn timing_code_maps_to_trigger_timing(
+            #[case] timing: &str,
+            #[case] expected: TriggerTiming,
+        ) {
             let json = format!(
                 r#"[{{
                     "name": "test", "timing": "{timing}", "events": ["INSERT"],
@@ -789,7 +792,7 @@ mod tests {
         }
 
         #[test]
-        fn security_definer_false_returns_expected() {
+        fn security_definer_false_stays_false() {
             let json = r#"[{
                 "name": "test",
                 "timing": "AFTER",
@@ -914,10 +917,7 @@ mod tests {
         #[case("n", FkAction::SetNull)]
         #[case("d", FkAction::SetDefault)]
         #[case("x", FkAction::NoAction)]
-        fn fk_action_mapping_returns_expected(
-            #[case] action_code: &str,
-            #[case] expected: FkAction,
-        ) {
+        fn fk_code_maps_to_fk_action(#[case] action_code: &str, #[case] expected: FkAction) {
             let json = format!(
                 r#"[{{
                     "name": "test_fk",

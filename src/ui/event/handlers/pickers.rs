@@ -80,7 +80,7 @@ mod tests {
         #[case(Key::Char('u'), Expected::FilterInput('u'))]
         #[case(Key::Char('日'), Expected::FilterInput('日'))]
         #[case(Key::Tab, Expected::None)]
-        fn table_picker_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn handles_table_picker_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_table_picker_keys(combo(code));
 
             match expected {
@@ -137,7 +137,7 @@ mod tests {
         #[case(Key::Up, Expected::SelectPrev)]
         #[case(Key::Down, Expected::SelectNext)]
         #[case(Key::Char('a'), Expected::None)]
-        fn command_palette_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn handles_command_palette_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_command_palette_keys(combo(code));
 
             match expected {

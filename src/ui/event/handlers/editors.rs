@@ -200,7 +200,7 @@ mod tests {
         #[case(Key::Backspace, Expected::Backspace)]
         #[case(Key::Char('s'), Expected::Input('s'))]
         #[case(Key::Tab, Expected::None)]
-        fn command_line_keys(#[case] code: Key, #[case] expected: Expected) {
+        fn handles_keys(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_command_line_mode(combo(code));
 
             match expected {
