@@ -24,7 +24,7 @@ fn jsonb_detail_state() -> (sabiql::app::model::app_state::AppState, std::time::
     });
     let _ = state.session.set_table_detail(table, 0);
     state.query.set_current_result(Arc::new(QueryResult {
-        query: "SELECT id, settings FROM users LIMIT 100".to_string(),
+        query: "SELECT id, name, email, settings FROM users LIMIT 100".to_string(),
         columns: vec![
             "id".to_string(),
             "name".to_string(),
