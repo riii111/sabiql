@@ -21,8 +21,44 @@ def rust_files(paths)
 end
 
 def count_braces(line)
-  opens = line.count("{")
-  closes = line.count("}")
+  opens = 0
+  closes = 0
+  in_single = false
+  in_double = false
+  escaped = false
+
+  line.each_char do |char|
+    if escaped
+      escaped = false
+      next
+    end
+
+    if in_single
+      escaped = true if char == "\\"
+      in_single = false if char == "'"
+      next
+    end
+
+    if in_double
+      escaped = true if char == "\\"
+      in_double = false if char == "\""
+      next
+    end
+
+    case char
+    when "#"
+      break
+    when "'"
+      in_single = true
+    when "\""
+      in_double = true
+    when "{"
+      opens += 1
+    when "}"
+      closes += 1
+    end
+  end
+
   [opens, closes]
 end
 
@@ -60,9 +96,7 @@ rust_files(paths).each do |file|
       mod_stack << { name: match[1], depth: brace_depth + 1 }
     end
 
-    if stripped.match?(/^#\[(?:test|rstest|tokio::test)\b/)
-      pending_test_attr = true
-    elsif pending_test_attr && stripped.start_with?("#[")
+    if stripped.match?(/^#\[(?:test|rstest|tokio::test)\b/) || (pending_test_attr && stripped.start_with?("#["))
       pending_test_attr = true
     elsif pending_test_attr && (match = stripped.match(/^fn\s+([a-zA-Z0-9_]+)\s*\(/))
       test_name = match[1]

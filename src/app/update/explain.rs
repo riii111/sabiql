@@ -299,7 +299,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_query_is_noop_for_explain_request() {
+        fn empty_query_is_noop() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("  ".to_string());
             state.session.dsn = Some("dsn://test".to_string());
