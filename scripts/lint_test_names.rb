@@ -22,6 +22,17 @@ def rust_files(paths)
   patterns.flat_map { |pattern| Dir.glob(pattern) }.sort.uniq
 end
 
+def starts_char_literal?(line, index)
+  return false unless line[index] == "'"
+
+  if line[index + 1] == "\\"
+    closing = line.index("'", index + 2)
+    return !closing.nil?
+  end
+
+  line[index + 2] == "'"
+end
+
 def count_braces(line, state)
   opens = 0
   closes = 0
@@ -114,7 +125,7 @@ def count_braces(line, state)
 
     case char
     when "'"
-      state[:in_single] = true
+      state[:in_single] = true if starts_char_literal?(line, index)
     when "\""
       state[:in_double] = true
     when "{"
