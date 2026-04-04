@@ -24,33 +24,37 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
 
     // Ctrl combos
     if combo.modifiers.ctrl {
-        if kb::is_table_picker(&combo) && !state.query.is_history_mode() {
-            return Action::OpenTablePicker;
-        }
-        if kb::is_result_history_toggle(&combo) {
-            return if state.query.is_history_mode() {
-                Action::ExitResultHistory
-            } else {
-                Action::OpenResultHistory
-            };
-        }
-        if kb::is_command_palette(&combo) && !state.query.is_history_mode() {
-            return Action::OpenCommandPalette;
-        }
-        if kb::is_read_only_toggle(&combo) {
-            return Action::ToggleReadOnly;
-        }
-        if kb::is_query_history(&combo) && !state.query.is_history_mode() {
-            return Action::OpenQueryHistoryPicker;
-        }
-        if kb::is_csv_export(&combo) && state.can_request_csv_export() {
-            return Action::RequestCsvExport;
-        }
-        if let Some(action) = resolve_nav(&combo, nav_ctx) {
-            return action;
-        }
-        if state.query.is_history_mode() {
-            return Action::None;
+        match combo.key {
+            Key::Char('p') if !state.query.is_history_mode() => {
+                return Action::OpenTablePicker;
+            }
+            Key::Char('h') => {
+                return if state.query.is_history_mode() {
+                    Action::ExitResultHistory
+                } else {
+                    Action::OpenResultHistory
+                };
+            }
+            Key::Char('k') if !state.query.is_history_mode() => {
+                return Action::OpenCommandPalette;
+            }
+            Key::Char('r') => {
+                return Action::ToggleReadOnly;
+            }
+            Key::Char('o') if !state.query.is_history_mode() => {
+                return Action::OpenQueryHistoryPicker;
+            }
+            Key::Char('e') if state.can_request_csv_export() => {
+                return Action::RequestCsvExport;
+            }
+            _ => {
+                if let Some(action) = resolve_nav(&combo, nav_ctx) {
+                    return action;
+                }
+                if state.query.is_history_mode() {
+                    return Action::None;
+                }
+            }
         }
     }
 
