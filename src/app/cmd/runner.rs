@@ -18,6 +18,7 @@ use crate::app::cmd::sql_editor::completion as cmd_completion;
 use crate::app::cmd::sql_editor::query_history as cmd_query_history;
 use crate::app::cmd::utility as cmd_utility;
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::ui_state::scroll_max_offset;
 use crate::app::ports::{
     ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
     FolderOpener, MetadataProvider, QueryExecutor, QueryHistoryStore, Renderer, ServiceFileReader,
@@ -234,6 +235,15 @@ impl EffectRunner {
                 state.ui.result_widths_cache = output.result_widths_cache;
                 state.ui.explorer_pane_height = output.explorer_pane_height;
                 state.ui.explorer_content_width = output.explorer_content_width;
+                let max_name_width = state
+                    .tables()
+                    .iter()
+                    .map(|table| table.qualified_name().chars().count())
+                    .max()
+                    .unwrap_or(0);
+                let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width);
+                state.ui.explorer_horizontal_offset =
+                    state.ui.explorer_horizontal_offset.min(max_offset);
                 state.ui.inspector_pane_height = output.inspector_pane_height;
                 state.ui.result_pane_height = output.result_pane_height;
                 if let Some(width) = output.command_line_visible_width {
@@ -380,6 +390,7 @@ mod tests {
     use crate::app::ports::metadata::MockMetadataProvider;
     use crate::app::ports::query_executor::MockQueryExecutor;
     use crate::app::services::AppServices;
+    use crate::domain::{DatabaseMetadata, TableSummary};
     use color_eyre::eyre::Result;
     use tokio::sync::mpsc;
 
@@ -397,6 +408,24 @@ mod tests {
 
     mod render {
         use super::*;
+
+        struct ExplorerWidthRenderer {
+            explorer_content_width: usize,
+        }
+
+        impl Renderer for ExplorerWidthRenderer {
+            fn draw(
+                &mut self,
+                _state: &AppState,
+                _services: &AppServices,
+                _now: Instant,
+            ) -> Result<RenderOutput> {
+                Ok(RenderOutput {
+                    explorer_content_width: self.explorer_content_width,
+                    ..RenderOutput::default()
+                })
+            }
+        }
 
         #[tokio::test]
         async fn calls_draw() {
@@ -423,6 +452,50 @@ mod tests {
                 )
                 .await
                 .unwrap();
+        }
+
+        #[tokio::test]
+        async fn render_clamps_stale_explorer_horizontal_offset_to_new_maximum() {
+            let (tx, _rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            state.session.set_metadata(Some(Arc::new(DatabaseMetadata {
+                database_name: "test".to_string(),
+                schemas: vec![],
+                table_summaries: vec![TableSummary::new(
+                    "public".to_string(),
+                    "abcdefghij".to_string(),
+                    Some(0),
+                    false,
+                )],
+                fetched_at: Instant::now(),
+            })));
+            state.ui.explorer_horizontal_offset = 20;
+
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = ExplorerWidthRenderer {
+                explorer_content_width: 8,
+            };
+
+            runner
+                .run(
+                    vec![Effect::Render],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(state.ui.explorer_horizontal_offset, 9);
         }
     }
 

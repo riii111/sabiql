@@ -5,7 +5,9 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::ui_state::scroll_max_offset;
+use crate::app::model::shared::ui_state::{
+    explorer_content_width_from_inner_width, scroll_max_offset,
+};
 use crate::domain::MetadataState;
 use crate::ui::theme::Theme;
 
@@ -32,11 +34,7 @@ impl Explorer {
         state: &AppState,
         has_cached_data: bool,
     ) {
-        let highlight_symbol_width: u16 = 2; // "> "
-        let scrollbar_reserved: u16 = 1;
-        let content_width =
-            area.width
-                .saturating_sub(highlight_symbol_width + scrollbar_reserved) as usize;
+        let content_width = explorer_content_width_from_inner_width(area.width);
 
         let table_names: Vec<String> = if has_cached_data {
             state.tables().iter().map(|t| t.qualified_name()).collect()

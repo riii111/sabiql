@@ -251,14 +251,17 @@ pub fn scroll_max_offset(total_items: usize, viewport_size: usize) -> usize {
     total_items.saturating_sub(viewport_size)
 }
 
-pub fn explorer_content_width_from_pane_width(pane_width: u16) -> usize {
-    const PANEL_BORDER_WIDTH: u16 = 2;
+pub fn explorer_content_width_from_inner_width(inner_width: u16) -> usize {
     const HIGHLIGHT_SYMBOL_WIDTH: u16 = 2;
     const SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 
-    pane_width
-        .saturating_sub(PANEL_BORDER_WIDTH)
-        .saturating_sub(HIGHLIGHT_SYMBOL_WIDTH + SCROLLBAR_RESERVED_WIDTH) as usize
+    inner_width.saturating_sub(HIGHLIGHT_SYMBOL_WIDTH + SCROLLBAR_RESERVED_WIDTH) as usize
+}
+
+pub fn explorer_content_width_from_pane_width(pane_width: u16) -> usize {
+    const PANEL_BORDER_WIDTH: u16 = 2;
+
+    explorer_content_width_from_inner_width(pane_width.saturating_sub(PANEL_BORDER_WIDTH))
 }
 
 #[cfg(test)]
@@ -293,6 +296,11 @@ mod tests {
         #[test]
         fn pane_width_excludes_panel_chrome_from_visible_content_width() {
             assert_eq!(explorer_content_width_from_pane_width(20), 15);
+        }
+
+        #[test]
+        fn inner_width_excludes_list_chrome_from_visible_content_width() {
+            assert_eq!(explorer_content_width_from_inner_width(18), 15);
         }
 
         #[test]
