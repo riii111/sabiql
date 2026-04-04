@@ -455,7 +455,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn render_clamps_stale_explorer_horizontal_offset_to_new_maximum() {
+        async fn clamps_stale_explorer_horizontal_offset_to_new_maximum() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = make_runner(
                 Arc::new(MockMetadataProvider::new()),
