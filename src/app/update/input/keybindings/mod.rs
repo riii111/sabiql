@@ -615,7 +615,7 @@ mod tests {
     }
 
     #[test]
-    fn help_content_line_count_matches_section_structure_returns_expected() {
+    fn help_content_line_count_matches_structure() {
         let sections: &[usize] = &[
             GLOBAL_KEYS.len(),
             NAVIGATION_KEYS.len(),
@@ -674,7 +674,7 @@ mod tests {
         #[case(idx::global::READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::EXIT_READ_ONLY, Action::ToggleReadOnly)]
         #[case(idx::global::QUERY_HISTORY, Action::OpenQueryHistoryPicker)]
-        fn global_key_action_returns_expected_action(#[case] i: usize, #[case] expected: Action) {
+        fn global_key_action_returns_action(#[case] i: usize, #[case] expected: Action) {
             assert!(
                 std::mem::discriminant(&GLOBAL_KEYS[i].action) == std::mem::discriminant(&expected),
                 "GLOBAL_KEYS[{i}] has action {:?}, expected {expected:?}",
@@ -1001,7 +1001,7 @@ mod tests {
         }
 
         #[test]
-        fn command_line_has_no_problematic_plain_char_combos_returns_expected() {
+        fn command_line_has_no_plain_char_combos() {
             check_no_plain_char_in_filter_mode(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS", &[]);
         }
 

@@ -517,7 +517,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn table_detail_query_returns_all_six_categories_in_json_build_object() {
+        fn table_detail_query_returns_all_categories_in_json_object() {
             let sql = PostgresAdapter::table_detail_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
@@ -546,7 +546,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn table_columns_and_fks_query_returns_columns_and_fks_only_in_json_build_object() {
+        fn table_columns_and_fks_query_returns_columns_and_fks_in_json_build_object() {
             let sql = PostgresAdapter::table_columns_and_fks_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
@@ -559,7 +559,7 @@ mod tests {
         }
 
         #[test]
-        fn table_columns_and_fks_query_returns_quoted_schema_and_table() {
+        fn table_columns_and_fks_query_returns_quoted_schema_table() {
             let sql = PostgresAdapter::table_columns_and_fks_query("my_schema", "my_table");
 
             assert!(sql.contains("'my_schema'"));

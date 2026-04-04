@@ -574,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focused_j_scrolls_down() {
+    fn j_scrolls_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('j')), &state);
@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focused_h_scrolls_left() {
+    fn h_scrolls_left() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('h')), &state);
@@ -606,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focused_l_scrolls_right() {
+    fn l_scrolls_right() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('l')), &state);
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn row_active_yy_triggers_row_yank() {
+    fn yy_triggers_row_yank() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.yank_op_pending = true;
@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn cell_active_y_yanks_cell() {
+    fn y_yanks_cell() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(0);
@@ -725,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_o_opens_query_history_picker() {
+    fn ctrl_o_opens_history_picker() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('o')), &state);
@@ -743,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    fn e_key_opens_er_table_picker() {
+    fn e_opens_er_picker() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('e')), &state);
@@ -781,7 +781,7 @@ mod tests {
     }
 
     #[test]
-    fn cell_active_i_enters_cell_edit() {
+    fn i_enters_cell_edit() {
         let mut state = result_focused_state();
         state.result_interaction.enter_row(0);
         state.result_interaction.enter_cell(1);
@@ -834,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_h_scrolls_to_viewport_top() {
+    fn h_scrolls_to_viewport_top() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('H')), &state);
@@ -850,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_m_scrolls_to_viewport_middle() {
+    fn m_scrolls_to_viewport_middle() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('M')), &state);
@@ -866,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_l_scrolls_to_viewport_bottom() {
+    fn l_scrolls_to_viewport_bottom() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('L')), &state);
@@ -952,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn c_key_opens_connection_selector() {
+    fn c_opens_connection_selector() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::Char('c')), &state);
@@ -961,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_c_is_noop() {
+    fn c_is_noop() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('c')), &state);
@@ -979,7 +979,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_bracket_right_moves_next_page() {
+    fn bracket_right_moves_next_page() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char(']')), &state);
@@ -988,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_bracket_left_moves_prev_page() {
+    fn bracket_left_moves_prev_page() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::Char('[')), &state);
@@ -1027,7 +1027,7 @@ mod tests {
 
     // Page scroll: Ctrl-D/U/F/B and PageDown/PageUp
     #[test]
-    fn ctrl_d_scrolls_result_half_page_down() {
+    fn ctrl_d_scrolls_half_page_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
@@ -1043,7 +1043,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_u_scrolls_result_half_page_up() {
+    fn ctrl_u_scrolls_half_page_up() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('u')), &state);
@@ -1059,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_f_scrolls_result_full_page_down() {
+    fn ctrl_f_scrolls_full_page_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('f')), &state);
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_b_scrolls_result_full_page_up() {
+    fn ctrl_b_scrolls_full_page_up() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('b')), &state);
@@ -1091,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_d_scrolls_inspector_half_page_down() {
+    fn ctrl_d_scrolls_half_page_down_in_inspector() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_d_scrolls_explorer_half_page_down() {
+    fn ctrl_d_scrolls_half_page_down_in_explorer() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo_ctrl(Key::Char('d')), &state);
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_pagedown_scrolls_full_page_down() {
+    fn pagedown_scrolls_full_page_down() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1132,7 +1132,7 @@ mod tests {
     }
 
     #[test]
-    fn result_focus_pageup_scrolls_full_page_up() {
+    fn pageup_scrolls_full_page_up() {
         let state = result_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageUp), &state);
@@ -1148,7 +1148,7 @@ mod tests {
     }
 
     #[test]
-    fn inspector_pagedown_scrolls_full_page_down() {
+    fn pagedown_scrolls_full_page_down_in_inspector() {
         let state = inspector_focused_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1164,7 +1164,7 @@ mod tests {
     }
 
     #[test]
-    fn explorer_pagedown_scrolls_full_page_down() {
+    fn pagedown_scrolls_full_page_down_in_explorer() {
         let state = browse_state();
 
         let result = handle_normal_mode(combo(Key::PageDown), &state);
@@ -1199,7 +1199,7 @@ mod tests {
         }
 
         #[test]
-        fn ctrl_h_opens_result_history() {
+        fn ctrl_h_opens_history() {
             let state = AppState::new("test".to_string());
 
             let result = handle_normal_mode(combo_ctrl(Key::Char('h')), &state);
@@ -1238,7 +1238,7 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_allows_help() {
+        fn allows_help() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1255,7 +1255,7 @@ mod tests {
         #[case(Key::Char(':'), ": (command line)")]
         #[case(Key::Enter, "Enter")]
         #[case(Key::Esc, "Esc")]
-        fn history_mode_blocked_keys_are_noop(#[case] key: Key, #[case] label: &str) {
+        fn blocked_keys_are_noop(#[case] key: Key, #[case] label: &str) {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1268,7 +1268,7 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_allows_scroll_keys() {
+        fn allows_scroll_keys() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
             state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
@@ -1348,7 +1348,7 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_blocks_ctrl_o() {
+        fn blocks_ctrl_o() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1361,7 +1361,7 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_blocks_ctrl_p_and_ctrl_k() {
+        fn blocks_ctrl_p_and_ctrl_k() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
 
@@ -1379,7 +1379,7 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_allows_ctrl_scroll() {
+        fn allows_ctrl_scroll() {
             let mut state = state_with_history(3);
             state.query.enter_history(1);
             state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
@@ -1422,7 +1422,7 @@ mod tests {
         use crate::ui::event::key_translator::translate;
 
         #[test]
-        fn shift_g_key_event_translates_to_select_last() {
+        fn shift_g_translates_to_select_last() {
             let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
             let combo = translate(event);
             let state = browse_state();
@@ -1446,7 +1446,7 @@ mod tests {
         }
 
         #[test]
-        fn zz_scrolls_cursor_center_for_explorer() {
+        fn zz_scrolls_cursor_center() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1462,7 +1462,7 @@ mod tests {
         }
 
         #[test]
-        fn zt_scrolls_cursor_top_for_explorer() {
+        fn zt_scrolls_cursor_top() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1478,7 +1478,7 @@ mod tests {
         }
 
         #[test]
-        fn zb_scrolls_cursor_bottom_for_explorer() {
+        fn zb_scrolls_cursor_bottom() {
             let mut state = browse_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1504,7 +1504,7 @@ mod tests {
         }
 
         #[test]
-        fn zz_scrolls_cursor_center_for_result() {
+        fn zz_scrolls_cursor_center_in_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1520,7 +1520,7 @@ mod tests {
         }
 
         #[test]
-        fn zt_scrolls_cursor_top_for_result() {
+        fn zt_scrolls_cursor_top_in_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1536,7 +1536,7 @@ mod tests {
         }
 
         #[test]
-        fn zb_scrolls_cursor_bottom_for_result() {
+        fn zb_scrolls_cursor_bottom_in_result() {
             let mut state = result_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1552,7 +1552,7 @@ mod tests {
         }
 
         #[test]
-        fn zz_cancels_key_sequence_for_inspector() {
+        fn zz_cancels_key_sequence_in_inspector() {
             let mut state = inspector_focused_state();
             state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
 
@@ -1618,7 +1618,7 @@ mod tests {
             assert!(matches!(result, Action::CancelKeySequence));
         }
 
-        fn history_mode_state_with_key_sequence() -> AppState {
+        fn history_mode_state_with_sequence() -> AppState {
             use crate::domain::{QueryResult, QuerySource};
             use std::sync::Arc;
 
@@ -1638,8 +1638,8 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_zt_scrolls_cursor_top() {
-            let state = history_mode_state_with_key_sequence();
+        fn zt_scrolls_cursor_top_in_history_mode() {
+            let state = history_mode_state_with_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('t')), &state);
 
@@ -1653,8 +1653,8 @@ mod tests {
         }
 
         #[test]
-        fn history_mode_zb_scrolls_cursor_bottom() {
-            let state = history_mode_state_with_key_sequence();
+        fn zb_scrolls_cursor_bottom_in_history_mode() {
+            let state = history_mode_state_with_sequence();
 
             let result = handle_normal_mode(combo(Key::Char('b')), &state);
 
@@ -1941,7 +1941,7 @@ mod tests {
             }
 
             #[test]
-            fn history_explorer_j_selects_next() {
+            fn j_selects_next() {
                 let state = history_explorer_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('j')), &state);
                 assert_action(
@@ -1953,7 +1953,7 @@ mod tests {
             }
 
             #[test]
-            fn history_explorer_h_selects_viewport_top() {
+            fn h_selects_viewport_top() {
                 let state = history_explorer_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('H')), &state);
                 assert_action(
@@ -1965,7 +1965,7 @@ mod tests {
             }
 
             #[test]
-            fn history_inspector_j_scrolls_down() {
+            fn j_scrolls_down() {
                 let state = history_inspector_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('j')), &state);
                 assert_action(
@@ -1981,14 +1981,14 @@ mod tests {
             }
 
             #[test]
-            fn history_inspector_h_is_noop() {
+            fn h_is_noop() {
                 let state = history_inspector_ctx();
                 let actual = handle_normal_mode(combo(Key::Char('H')), &state);
                 assert_action(actual, Action::None, "history+inspector", "H");
             }
 
             #[test]
-            fn history_zz_explorer_scrolls_cursor() {
+            fn zz_scrolls_cursor() {
                 let mut state = history_explorer_ctx();
                 state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
                 let actual = handle_normal_mode(combo(Key::Char('z')), &state);

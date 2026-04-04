@@ -88,7 +88,7 @@ mod tests {
         }
 
         #[test]
-        fn normal_mode_routes_to_normal_handler() {
+        fn normal_mode_routes_to_handler() {
             let state = make_state(InputMode::Normal);
 
             // 'q' in Normal mode should quit
@@ -98,7 +98,7 @@ mod tests {
         }
 
         #[test]
-        fn sql_modal_mode_routes_to_sql_modal_handler() {
+        fn sql_modal_mode_routes_to_handler() {
             let state = make_state(InputMode::SqlModal);
 
             // Esc in SqlModal (Normal mode, the default) should close modal
@@ -118,7 +118,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_sql_modal_pastes_text() {
+        fn paste_in_sql_modal_pastes_text() {
             let state = make_state(InputMode::SqlModal);
 
             let result = handle_paste_event("hello".to_string(), &state);
@@ -127,7 +127,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_table_picker_pastes_text() {
+        fn paste_in_table_picker_pastes_text() {
             let state = make_state(InputMode::TablePicker);
 
             let result = handle_paste_event("world".to_string(), &state);
@@ -136,7 +136,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_er_table_picker_pastes_text() {
+        fn paste_in_er_table_picker_pastes_text() {
             let state = make_state(InputMode::ErTablePicker);
 
             let result = handle_paste_event("public.users".to_string(), &state);
@@ -145,7 +145,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_query_history_picker_pastes_text() {
+        fn paste_in_history_picker_pastes_text() {
             let state = make_state(InputMode::QueryHistoryPicker);
 
             let result = handle_paste_event("users".to_string(), &state);
@@ -154,7 +154,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_normal_mode_is_noop() {
+        fn paste_in_normal_mode_is_noop() {
             let state = make_state(InputMode::Normal);
 
             let result = handle_paste_event("text".to_string(), &state);
@@ -163,7 +163,7 @@ mod tests {
         }
 
         #[test]
-        fn paste_event_in_help_mode_is_noop() {
+        fn paste_in_help_mode_is_noop() {
             let state = make_state(InputMode::Help);
 
             let result = handle_paste_event("text".to_string(), &state);

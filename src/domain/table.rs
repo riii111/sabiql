@@ -158,7 +158,7 @@ mod tests {
         }
 
         #[test]
-        fn display_name_returns_qualified_name_for_non_public_schema() {
+        fn display_name_returns_qualified_for_non_public_schema() {
             let summary = make_summary("audit", "logs");
 
             assert_eq!(summary.display_name(true), "audit.logs");

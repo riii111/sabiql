@@ -238,7 +238,7 @@ mod tests {
         #[case("public.user_sessions", 16, "public.user_ses\u{2026}")]
         #[case("my_schema.very_long_table_name", 16, "my_schema.very_\u{2026}")]
         #[case("ab", 1, "\u{2026}")]
-        fn truncate_with_ellipsis_returns_expected_output(
+        fn truncate_with_ellipsis_returns_expected(
             #[case] input: &str,
             #[case] max: usize,
             #[case] expected: &str,

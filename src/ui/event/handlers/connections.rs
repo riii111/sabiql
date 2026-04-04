@@ -279,7 +279,7 @@ mod tests {
         #[case(Key::Char('s'), Expected::OpenSelector)]
         #[case(Key::Char('d'), Expected::ToggleDetails)]
         #[case(Key::Char('y'), Expected::Copy)]
-        fn connection_error_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
+        fn keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_connection_error_keys(combo(code));
 
             match expected {
@@ -353,10 +353,7 @@ mod tests {
         #[case(Key::Down, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Next })]
         #[case(Key::Char('k'), Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
         #[case(Key::Up, Action::ListSelect { target: ListTarget::ConnectionList, motion: ListMotion::Previous })]
-        fn connection_selector_navigation_keys_move_selection(
-            #[case] code: Key,
-            #[case] expected: Action,
-        ) {
+        fn navigation_keys_move_selection(#[case] code: Key, #[case] expected: Action) {
             let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
@@ -367,10 +364,7 @@ mod tests {
         #[case(Key::Char('n'), Action::OpenConnectionSetup)]
         #[case(Key::Char('e'), Action::RequestEditSelectedConnection)]
         #[case(Key::Char('d'), Action::RequestDeleteSelectedConnection)]
-        fn connection_selector_action_keys_map_to_actions(
-            #[case] code: Key,
-            #[case] expected: Action,
-        ) {
+        fn action_keys_map_to_actions(#[case] code: Key, #[case] expected: Action) {
             let result = handle_connection_selector_keys(combo(code));
 
             assert_eq!(
@@ -380,7 +374,7 @@ mod tests {
         }
 
         #[test]
-        fn esc_closes_connection_selector() {
+        fn esc_closes_selector() {
             let result = handle_connection_selector_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::Escape));

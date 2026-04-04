@@ -428,7 +428,7 @@ mod tests {
     #[case(KeyCombo::ctrl(Key::Char('u')), NavIntent::HalfPageUp)]
     #[case(KeyCombo::ctrl(Key::Char('f')), NavIntent::FullPageDown)]
     #[case(KeyCombo::ctrl(Key::Char('b')), NavIntent::FullPageUp)]
-    fn map_nav_intent_returns_expected_intent_for_positive_cases(
+    fn map_nav_intent_returns_intent_for_positive_cases(
         #[case] combo: KeyCombo,
         #[case] expected: NavIntent,
     ) {
@@ -572,7 +572,7 @@ mod tests {
     #[case(ScrollCursorBottom, ResultScroll, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
     #[case(ScrollCursorBottom, ResultRowActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
     #[case(ScrollCursorBottom, ResultCellActive, Action::ScrollToCursor { target: ScrollToCursorTarget::Result, position: CursorPosition::Bottom })]
-    fn resolve_returns_expected_action_matrix(
+    fn resolve_returns_action_matrix(
         #[case] intent: NavIntent,
         #[case] ctx: NavigationContext,
         #[case] expected: Action,

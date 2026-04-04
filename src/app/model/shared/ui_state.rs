@@ -252,7 +252,7 @@ mod tests {
     use rstest::rstest;
 
     #[test]
-    fn default_creates_empty_state_returns_expected() {
+    fn default_returns_empty_state() {
         let state = UiState::default();
 
         assert_eq!(state.focused_pane, FocusedPane::default());
@@ -262,14 +262,14 @@ mod tests {
     }
 
     #[test]
-    fn new_sets_terminal_height_returns_expected() {
+    fn new_sets_terminal_height() {
         let state = UiState::new();
 
         assert_eq!(state.terminal_height, 24);
     }
 
     #[test]
-    fn default_result_pane_height_returns_zero_visible_rows() {
+    fn default_result_pane_height_returns_zero() {
         let state = UiState::default();
 
         let visible = state.result_visible_rows();
@@ -282,10 +282,7 @@ mod tests {
     #[case(15, 10)]
     #[case(20, 15)]
     #[case(30, 25)]
-    fn result_pane_height_calculates_correct_visible_rows_returns_expected(
-        #[case] pane_height: u16,
-        #[case] expected: usize,
-    ) {
+    fn result_pane_height_returns_visible_rows(#[case] pane_height: u16, #[case] expected: usize) {
         let state = UiState {
             result_pane_height: pane_height,
             ..Default::default()
@@ -297,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn small_result_pane_height_does_not_underflow_returns_expected() {
+    fn small_result_pane_height_returns_zero() {
         let state = UiState {
             result_pane_height: 2,
             ..Default::default()
@@ -309,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn toggle_focus_enters_focus_mode_returns_expected() {
+    fn toggle_focus_enters_focus_mode() {
         let mut state = UiState {
             focused_pane: FocusedPane::Explorer,
             ..Default::default()
@@ -327,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn toggle_focus_exits_focus_mode_and_restores_pane_returns_expected() {
+    fn toggle_focus_exits_focus_mode_and_restores_pane() {
         let mut state = UiState {
             focused_pane: FocusedPane::Inspector,
             ..Default::default()
@@ -345,7 +342,7 @@ mod tests {
     #[case(10, 7)]
     #[case(15, 12)]
     #[case(20, 17)]
-    fn ddl_visible_rows_equals_height_minus_three_returns_expected(
+    fn ddl_visible_rows_returns_height_minus_three(
         #[case] pane_height: u16,
         #[case] expected: usize,
     ) {
@@ -360,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn ddl_visible_rows_is_greater_than_standard_returns_expected() {
+    fn ddl_visible_rows_exceeds_standard() {
         let state = UiState {
             inspector_pane_height: 20,
             ..Default::default()
@@ -373,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn set_explorer_selection_with_some_sets_index_returns_expected() {
+    fn set_explorer_selection_returns_index() {
         let mut state = UiState::default();
 
         state.set_explorer_selection(Some(5));
@@ -382,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn set_explorer_selection_with_none_resets_to_zero_returns_expected() {
+    fn set_explorer_selection_returns_zero_when_none() {
         let mut state = UiState::default();
         state.set_explorer_selection(Some(10));
 
@@ -392,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn set_connection_list_selection_with_some_sets_index_returns_expected() {
+    fn set_connection_list_selection_returns_index() {
         let mut state = UiState::default();
 
         state.set_connection_list_selection(Some(3));
@@ -401,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn set_connection_list_selection_with_none_resets_to_zero_returns_expected() {
+    fn set_connection_list_selection_returns_zero_when_none() {
         let mut state = UiState::default();
         state.set_connection_list_selection(Some(5));
 
@@ -411,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn result_overhead_constants_are_consistent_returns_expected() {
+    fn result_overhead_constants_are_consistent() {
         assert_eq!(RESULT_PANE_OVERHEAD, RESULT_INNER_OVERHEAD + 2);
     }
 
@@ -419,7 +416,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn help_max_scroll_plus_viewport_equals_content_line_count_returns_expected() {
+        fn help_max_scroll_matches_content_lines() {
             // terminal_height=24 → viewport = 24*80/100 - 2 = 17
             // max_scroll should equal total_lines - viewport (not saturated)
             let terminal_height: u16 = 24;
@@ -442,7 +439,7 @@ mod tests {
         }
 
         #[test]
-        fn help_max_scroll_is_zero_when_terminal_very_tall_returns_expected() {
+        fn help_max_scroll_returns_zero_when_terminal_tall() {
             let state = UiState {
                 terminal_height: 1000,
                 ..Default::default()
@@ -460,10 +457,7 @@ mod tests {
     #[case(100, 25)]
     #[case(50, 15)]
     #[case(10, 30)]
-    fn scroll_can_reach_all_rows_returns_expected(
-        #[case] total_rows: usize,
-        #[case] pane_height: u16,
-    ) {
+    fn scroll_can_reach_all_rows(#[case] total_rows: usize, #[case] pane_height: u16) {
         let state = UiState {
             result_pane_height: pane_height,
             ..Default::default()
@@ -481,7 +475,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_is_scroll_mode_returns_expected() {
+        fn default_returns_scroll_mode() {
             let sel = ResultSelection::default();
 
             assert_eq!(sel.mode(), ResultNavMode::Scroll);
@@ -490,7 +484,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_row_transitions_to_row_active_returns_expected() {
+        fn enter_row_returns_row_active() {
             let mut sel = ResultSelection::default();
 
             sel.enter_row(5);
@@ -501,7 +495,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_cell_transitions_to_cell_active_returns_expected() {
+        fn enter_cell_returns_cell_active() {
             let mut sel = ResultSelection::default();
             sel.enter_row(3);
 
@@ -513,7 +507,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_cell_without_row_is_noop_returns_expected() {
+        fn enter_cell_without_row_returns_noop() {
             let mut sel = ResultSelection::default();
 
             sel.enter_cell(5);
@@ -522,7 +516,7 @@ mod tests {
         }
 
         #[test]
-        fn exit_to_row_clears_cell_only_returns_expected() {
+        fn exit_to_row_clears_cell_only() {
             let mut sel = ResultSelection::default();
             sel.enter_row(2);
             sel.enter_cell(4);
@@ -534,7 +528,7 @@ mod tests {
         }
 
         #[test]
-        fn reset_clears_both_returns_expected() {
+        fn reset_clears_both() {
             let mut sel = ResultSelection::default();
             sel.enter_row(1);
             sel.enter_cell(2);
@@ -545,7 +539,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_row_clears_previous_cell_returns_expected() {
+        fn enter_row_clears_previous_cell() {
             let mut sel = ResultSelection::default();
             sel.enter_row(0);
             sel.enter_cell(3);
@@ -557,7 +551,7 @@ mod tests {
         }
 
         #[test]
-        fn move_row_preserves_cell_returns_expected() {
+        fn move_row_preserves_cell() {
             let mut sel = ResultSelection::default();
             sel.enter_row(0);
             sel.enter_cell(3);
@@ -570,7 +564,7 @@ mod tests {
         }
 
         #[test]
-        fn move_row_in_row_active_stays_row_active_returns_expected() {
+        fn move_row_in_row_active_stays_row_active() {
             let mut sel = ResultSelection::default();
             sel.enter_row(2);
 
@@ -581,7 +575,7 @@ mod tests {
         }
 
         #[test]
-        fn clamp_resets_when_zero_rows_returns_expected() {
+        fn clamp_resets_when_zero_rows() {
             let mut sel = ResultSelection::default();
             sel.enter_row(5);
 
@@ -591,7 +585,7 @@ mod tests {
         }
 
         #[test]
-        fn clamp_resets_when_row_out_of_bounds_returns_expected() {
+        fn clamp_resets_when_row_out_of_bounds() {
             let mut sel = ResultSelection::default();
             sel.enter_row(10);
             sel.enter_cell(2);
@@ -602,7 +596,7 @@ mod tests {
         }
 
         #[test]
-        fn clamp_caps_cell_to_max_cols_returns_expected() {
+        fn clamp_caps_cell_to_max_cols() {
             let mut sel = ResultSelection::default();
             sel.enter_row(0);
             sel.enter_cell(9);
@@ -613,7 +607,7 @@ mod tests {
         }
 
         #[test]
-        fn clamp_clears_cell_when_zero_cols_returns_expected() {
+        fn clamp_clears_cell_when_zero_cols() {
             let mut sel = ResultSelection::default();
             sel.enter_row(0);
             sel.enter_cell(3);
@@ -624,7 +618,7 @@ mod tests {
         }
 
         #[test]
-        fn clamp_preserves_valid_selection_returns_expected() {
+        fn clamp_preserves_valid_selection() {
             let mut sel = ResultSelection::default();
             sel.enter_row(3);
             sel.enter_cell(2);

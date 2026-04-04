@@ -619,7 +619,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_with_multibyte_characters_parses_correctly_returns_expected() {
+        fn csv_with_multibyte_characters_parses_returns_expected() {
             let csv_data = "名前,年齢\n太郎,25\n花子,30";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -638,7 +638,7 @@ mod tests {
         }
 
         #[test]
-        fn csv_with_quoted_fields_parses_correctly_returns_expected() {
+        fn csv_with_quoted_fields_parses_returns_expected() {
             let csv_data = "id,description\n1,\"hello, world\"\n2,\"line1\nline2\"";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -678,7 +678,7 @@ mod tests {
         }
 
         #[test]
-        fn non_csv_output_like_notice_parses_as_header_returns_expected() {
+        fn non_csv_notice_parses_as_header_returns_expected() {
             let non_csv = "NOTICE: some database notice\nNOTICE: another line";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -690,7 +690,7 @@ mod tests {
         }
 
         #[test]
-        fn mixed_notice_and_csv_parses_first_line_as_header_returns_expected() {
+        fn mixed_notice_and_csv_parses_first_line_returns_expected() {
             let mixed = "id,name\n1,alice";
             let mut reader = csv::ReaderBuilder::new()
                 .has_headers(true)
@@ -784,7 +784,7 @@ mod tests {
         }
 
         #[test]
-        fn create_table_stdout_yields_create_tag_zero_rows_returns_expected() {
+        fn create_table_stdout_yields_create_tag_zero_rows() {
             let tag = PostgresAdapter::extract_command_tag("CREATE TABLE\n");
             assert_eq!(tag, Some(CommandTag::Create("TABLE".to_string())));
             assert_eq!(tag.unwrap().affected_rows(), None);

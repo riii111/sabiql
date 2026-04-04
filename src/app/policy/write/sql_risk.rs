@@ -348,7 +348,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_sql_risk_returns_high_table_name_input_for_drop_database() {
+        fn evaluate_sql_risk_returns_high_table_name_for_drop_database() {
             let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
             assert_eq!(result.risk_level, RiskLevel::High);
             assert!(matches!(
@@ -358,7 +358,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_sql_risk_returns_high_for_drop_table_with_leading_comment() {
+        fn evaluate_sql_risk_returns_high_for_drop_table_comment() {
             let result =
                 evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
             assert_eq!(result.risk_level, RiskLevel::High);
@@ -475,7 +475,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_multi_statement_returns_aggregated_risk_for_select_update_where() {
+        fn evaluate_multi_statement_returns_aggregated_risk_for_select_update() {
             let result = evaluate_multi_statement("SELECT 1; UPDATE users SET x = 1 WHERE id = 1");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {
@@ -504,7 +504,7 @@ mod tests {
         }
 
         #[test]
-        fn evaluate_multi_statement_returns_low_immediate_for_copy_statement() {
+        fn evaluate_multi_statement_returns_low_immediate_for_copy() {
             let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
             match result {
                 MultiStatementDecision::Allow { risk, .. } => {

@@ -2446,7 +2446,7 @@ mod tests {
         }
 
         #[test]
-        fn alias_completion_without_cache_returns_keyword_candidates() {
+        fn alias_completion_returns_keyword_candidates() {
             let e = engine();
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
@@ -2714,7 +2714,7 @@ mod tests {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
-        fn no_from_with_2char_prefix_returns_all_cached_columns() {
+        fn no_from_with_2char_prefix_returns_cached_columns() {
             let mut e = engine();
             let users = create_table("public", "users", &["id", "name", "email"]);
             let orders = create_table("public", "orders", &["id", "user_id", "total"]);
@@ -2747,7 +2747,7 @@ mod tests {
         }
 
         #[test]
-        fn from_clause_present_returns_only_referenced_table_columns() {
+        fn from_clause_present_returns_referenced_columns() {
             let mut e = engine();
             let users = create_table("public", "users", &["id", "name"]);
             let orders = create_table("public", "orders", &["order_id", "user_id"]);
@@ -2824,7 +2824,7 @@ mod tests {
         }
 
         #[test]
-        fn table_details_iter_returns_all_cached() {
+        fn table_details_iter_returns_cached_tables() {
             let mut e = CompletionEngine::new_with_capacity(3);
 
             let t1 = create_table("public", "t1", &["id"]);

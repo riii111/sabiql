@@ -1482,7 +1482,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn extract_target_table_returns_none_for_for_update() {
+            fn extract_target_table_returns_none_for_update() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR UPDATE";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1493,7 +1493,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_no_extra_entry_for_for_update() {
+            fn extract_table_references_returns_no_extra_entry_for_update() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR UPDATE";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1506,7 +1506,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_no_extra_entry_for_for_no_key_update() {
+            fn extract_table_references_returns_no_extra_entry_for_no_key_update() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR NO KEY UPDATE";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1518,7 +1518,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_none_for_for_no_key_update() {
+            fn extract_target_table_returns_none_for_no_key_update() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR NO KEY UPDATE";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1529,7 +1529,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_both_tables_for_for_share_then_update() {
+            fn extract_table_references_returns_both_tables_for_share_update() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR SHARE; UPDATE orders SET status = 'done'";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1542,7 +1542,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_both_tables_for_for_update_then_update() {
+            fn extract_table_references_returns_both_tables_for_update_chain() {
                 let l = lexer();
                 let sql = "SELECT * FROM users FOR UPDATE; UPDATE orders SET status = 'done'";
                 let tokens = l.tokenize(sql, sql.len());
@@ -1555,7 +1555,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_table_references_returns_both_tables_for_for_no_key_update_then_update() {
+            fn extract_table_references_returns_both_tables_for_no_key_update_chain() {
                 let l = lexer();
                 let sql =
                     "SELECT * FROM users FOR NO KEY UPDATE; UPDATE orders SET status = 'done'";
@@ -1686,7 +1686,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn extract_target_table_returns_first_update_for_cursor_in_first_statement() {
+            fn extract_target_table_returns_first_update_for_first_statement() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 10 (in "users")
@@ -1700,7 +1700,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_second_update_for_cursor_in_second_statement() {
+            fn extract_target_table_returns_second_update_for_second_statement() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 35 (in "orders")
@@ -1756,7 +1756,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_posts_for_cursor_in_middle_statement() {
+            fn extract_target_table_returns_posts_for_middle_statement() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
                 // Cursor at position 40 (in DELETE statement)
@@ -1770,7 +1770,7 @@ mod tests {
             }
 
             #[test]
-            fn extract_target_table_returns_orders_for_cursor_in_last_statement() {
+            fn extract_target_table_returns_orders_for_last_statement() {
                 let l = lexer();
                 let sql = "UPDATE users SET x = 1; DELETE FROM posts WHERE id = 1; INSERT INTO orders (status) VALUES ('new')";
                 // Cursor at position 80 (in INSERT statement)

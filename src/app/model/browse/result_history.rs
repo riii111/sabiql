@@ -59,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    fn push_and_get_yields_entries_in_order_returns_expected() {
+    fn push_and_get_returns_entries_in_order() {
         let mut history = ResultHistory::new(3);
 
         history.push(Arc::new(make_result("SELECT 1")));
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn len_yields_entry_count_returns_expected() {
+    fn len_returns_entry_count() {
         let mut history = ResultHistory::new(5);
 
         assert_eq!(history.len(), 0);
@@ -84,14 +84,14 @@ mod tests {
     }
 
     #[test]
-    fn is_empty_yields_true_when_no_entries_returns_expected() {
+    fn is_empty_returns_true_when_no_entries() {
         let history = ResultHistory::new(5);
 
         assert!(history.is_empty());
     }
 
     #[test]
-    fn is_empty_yields_false_after_push_returns_expected() {
+    fn is_empty_returns_false_after_push() {
         let mut history = ResultHistory::new(5);
 
         history.push(Arc::new(make_result("SELECT 1")));
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn push_evicts_oldest_when_at_capacity_returns_expected() {
+    fn push_evicts_oldest_when_full() {
         let mut history = ResultHistory::new(2);
 
         history.push(Arc::new(make_result("SELECT 1")));

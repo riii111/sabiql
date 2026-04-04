@@ -332,7 +332,7 @@ mod tests {
         }
 
         #[test]
-        fn visible_line_indices_returns_visible_lines_without_children_for_collapsed_object() {
+        fn visible_line_indices_returns_visible_lines_for_collapsed_object() {
             let mut tree = parse_json_tree(r#"{"a": {"b": 1}, "c": 2}"#).unwrap();
             // Collapse the inner object {"b": 1} at index 1
             tree.toggle_fold(1);

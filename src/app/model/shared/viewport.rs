@@ -399,12 +399,12 @@ mod tests {
         }
 
         #[test]
-        fn single_column_no_separator_returns_expected() {
+        fn single_column_returns_width() {
             assert_eq!(total_width_with_separators(&[10]), 10);
         }
 
         #[test]
-        fn multiple_columns_includes_separators_returns_expected() {
+        fn multiple_columns_returns_width_with_separators() {
             // 10 + 20 + 30 + 2 separators = 62
             assert_eq!(total_width_with_separators(&[10, 20, 30]), 62);
         }
@@ -414,7 +414,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uses_ideal_widths_primarily_returns_expected() {
+        fn uses_ideal_widths() {
             let ideal = vec![15, 15, 15, 15];
             let min = vec![10, 10, 10, 10];
             // 3 ideal cols + 2 sep = 47 <= 50
@@ -423,7 +423,7 @@ mod tests {
         }
 
         #[test]
-        fn scroll_enabled_when_ideal_exceeds_available_returns_expected() {
+        fn ideal_exceeds_available_enables_scroll() {
             let ideal = vec![30, 30, 30, 30, 30];
             let min = vec![10, 10, 10, 10, 10];
             let available = 80;
@@ -437,7 +437,7 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_min_when_ideal_too_wide_returns_expected() {
+        fn ideal_too_wide_falls_back_to_min() {
             let ideal = vec![100, 100, 100];
             let min = vec![10, 10, 10];
             let available = 50;
@@ -448,7 +448,7 @@ mod tests {
         }
 
         #[test]
-        fn handles_varying_widths_returns_expected() {
+        fn handles_varying_widths() {
             let ideal = vec![6, 6, 25, 6, 6];
             let min = vec![6, 6, 25, 6, 6];
             let available = 40;
@@ -460,7 +460,7 @@ mod tests {
         }
 
         #[test]
-        fn reduces_count_when_long_column_in_middle_returns_expected() {
+        fn long_middle_column_reduces_count() {
             let ideal = vec![10, 10, 50, 10, 10];
             let min = vec![10, 10, 50, 10, 10];
             let available = 60;
@@ -472,7 +472,7 @@ mod tests {
         }
 
         #[test]
-        fn at_least_one_column_returns_expected() {
+        fn at_least_one_column() {
             let ideal = vec![100, 100];
             let min = vec![100, 100];
             let count = calculate_viewport_column_count(&ideal, &min, 50);
@@ -524,7 +524,7 @@ mod tests {
         #[case(5, 80, 60, 150, 30, true)] // min_widths_sum changes
         #[case(5, 80, 50, 200, 30, true)] // ideal_widths_sum changes
         #[case(5, 80, 50, 150, 50, true)] // ideal_widths_max changes
-        fn needs_recalculation_returns_expected(
+        fn needs_recalculation(
             #[case] len: usize,
             #[case] width: u16,
             #[case] min_sum: u16,
@@ -540,7 +540,7 @@ mod tests {
         }
 
         #[test]
-        fn default_plan_needs_recalculation_returns_expected() {
+        fn default_plan_needs_recalculation() {
             let plan = ViewportPlan::default();
 
             let result = plan.needs_recalculation(5, 80, 50, 150, 30);

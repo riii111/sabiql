@@ -87,14 +87,14 @@ mod tests {
         use crate::app::update::action::CursorMove;
 
         #[test]
-        fn esc_in_cell_edit_cancels_without_discarding() {
+        fn esc_in_cell_edit_cancels() {
             let result = handle_cell_edit_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::ResultCancelCellEdit));
         }
 
         #[test]
-        fn char_input_enters_cell_edit() {
+        fn char_input_enters_edit() {
             let result = handle_cell_edit_keys(combo(Key::Char('x')));
 
             assert!(matches!(
@@ -107,7 +107,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_deletes_cell_edit_char() {
+        fn backspace_deletes_char() {
             let result = handle_cell_edit_keys(combo(Key::Backspace));
 
             assert!(matches!(
@@ -119,7 +119,7 @@ mod tests {
         }
 
         #[test]
-        fn delete_deletes_cell_edit_char() {
+        fn delete_deletes_char() {
             let result = handle_cell_edit_keys(combo(Key::Delete));
 
             assert!(matches!(
@@ -200,7 +200,7 @@ mod tests {
         #[case(Key::Backspace, Expected::Backspace)]
         #[case(Key::Char('s'), Expected::Input('s'))]
         #[case(Key::Tab, Expected::None)]
-        fn command_line_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
+        fn keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_command_line_mode(combo(code));
 
             match expected {

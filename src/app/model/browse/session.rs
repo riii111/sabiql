@@ -283,7 +283,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn increments_generation_returns_expected() {
+        fn increments_generation() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
 
@@ -295,7 +295,7 @@ mod tests {
         }
 
         #[test]
-        fn clears_table_detail_returns_expected() {
+        fn clears_table_detail() {
             let mut session = BrowseSession::default();
             session.set_table_detail_raw(Some(make_table_detail()));
             let mut pagination = PaginationState::default();
@@ -306,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn sets_selected_table_key_returns_expected() {
+        fn sets_selected_table_key() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
 
@@ -316,7 +316,7 @@ mod tests {
         }
 
         #[test]
-        fn resets_pagination_returns_expected() {
+        fn resets_pagination() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState {
                 current_page: 5,
@@ -342,7 +342,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accepts_matching_generation_returns_expected() {
+        fn accepts_matching_generation() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
             let generation = session.select_table("public", "users", &mut pagination);
@@ -354,7 +354,7 @@ mod tests {
         }
 
         #[test]
-        fn rejects_stale_generation_returns_expected() {
+        fn rejects_stale_generation() {
             let mut session = BrowseSession::default();
             let mut pagination = PaginationState::default();
             let old_gen = session.select_table("public", "users", &mut pagination);
@@ -370,7 +370,7 @@ mod tests {
     // ── clear_table_selection ────────────────────────────────────────
 
     #[test]
-    fn clear_table_selection_clears_all_returns_expected() {
+    fn clear_table_selection_clears_all() {
         let mut session = BrowseSession::default();
         let mut pagination = PaginationState::default();
         let _ = session.select_table("public", "users", &mut pagination);
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_table_selection_invalidates_pending_detail_returns_expected() {
+    fn clear_table_selection_invalidates_pending_detail() {
         let mut session = BrowseSession::default();
         let mut pagination = PaginationState::default();
         let pre_clear_gen = session.select_table("public", "users", &mut pagination);
@@ -403,7 +403,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn begin_connecting_sets_pair_returns_expected() {
+        fn begin_connecting_sets_pair() {
             let mut session = BrowseSession::default();
 
             session.begin_connecting("postgres://localhost/test");
@@ -414,7 +414,7 @@ mod tests {
         }
 
         #[test]
-        fn mark_connected_sets_pair_and_metadata_returns_expected() {
+        fn mark_connected_sets_pair_and_metadata() {
             let mut session = BrowseSession::default();
             let metadata = make_metadata("test_db");
 
@@ -427,7 +427,7 @@ mod tests {
         }
 
         #[test]
-        fn mark_connection_failed_when_not_connected_returns_expected() {
+        fn mark_connection_failed_when_not_connected() {
             let mut session = BrowseSession::default();
             session.set_connection_state(ConnectionState::Connecting);
 
@@ -442,7 +442,7 @@ mod tests {
         }
 
         #[test]
-        fn mark_connection_failed_when_connected_keeps_connected_returns_expected() {
+        fn mark_connection_failed_when_connected_keeps_connected() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             session.is_reloading = true;
@@ -458,7 +458,7 @@ mod tests {
         }
 
         #[test]
-        fn begin_reload_and_finish_reload_returns_expected() {
+        fn begin_and_finish_reload() {
             let mut session = BrowseSession::default();
 
             session.begin_reload();
@@ -504,7 +504,7 @@ mod tests {
         }
 
         #[test]
-        fn restore_resets_generation_and_reloading_returns_expected() {
+        fn restore_resets_generation_and_reloading() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
@@ -525,7 +525,7 @@ mod tests {
         }
 
         #[test]
-        fn restore_then_begin_reload_preserves_selection_returns_expected() {
+        fn restore_then_reload_preserves_selection() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             let mut pagination = PaginationState::default();
@@ -557,7 +557,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn reset_clears_everything_returns_expected() {
+        fn reset_clears_everything() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             session.dsn = Some("postgres://host/db".to_string());
@@ -602,20 +602,20 @@ mod tests {
         use super::*;
 
         #[test]
-        fn none_when_no_metadata_returns_expected() {
+        fn no_metadata_returns_none() {
             let session = BrowseSession::default();
             assert!(session.database_name().is_none());
         }
 
         #[test]
-        fn mark_connected_sets_database_name_returns_expected() {
+        fn mark_connected_sets_database_name() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("mydb"));
             assert_eq!(session.database_name(), Some("mydb"));
         }
 
         #[test]
-        fn cleared_after_reset_returns_expected() {
+        fn cleared_after_reset() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("mydb"));
             let mut query = QueryExecution::default();
@@ -624,7 +624,7 @@ mod tests {
         }
 
         #[test]
-        fn synced_after_restore_from_cache_returns_expected() {
+        fn restore_from_cache_syncs_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
 
@@ -638,7 +638,7 @@ mod tests {
         }
 
         #[test]
-        fn none_when_cache_has_no_metadata_returns_expected() {
+        fn cache_without_metadata_returns_none() {
             let cache = ConnectionCache::default();
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
@@ -654,20 +654,20 @@ mod tests {
         use super::*;
 
         #[test]
-        fn no_metadata_yields_empty_tables_returns_expected() {
+        fn no_metadata_returns_empty_tables() {
             let session = BrowseSession::default();
             assert!(session.tables().is_empty());
         }
 
         #[test]
-        fn metadata_present_yields_all_tables_returns_expected() {
+        fn metadata_present_returns_all_tables() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
             assert_eq!(session.tables().len(), 2);
         }
 
         #[test]
-        fn is_service_connection_detects_service_dsn_returns_expected() {
+        fn service_connection_detects_service_dsn() {
             let session = BrowseSession {
                 dsn: Some("service=myservice".to_string()),
                 ..Default::default()
@@ -676,7 +676,7 @@ mod tests {
         }
 
         #[test]
-        fn is_service_connection_false_for_normal_dsn_returns_expected() {
+        fn service_connection_returns_false_for_normal_dsn() {
             let session = BrowseSession {
                 dsn: Some("postgres://localhost/db".to_string()),
                 ..Default::default()
@@ -685,7 +685,7 @@ mod tests {
         }
 
         #[test]
-        fn default_state_returns_expected() {
+        fn default_returns_state() {
             let session = BrowseSession::default();
             assert!(session.connection_state().is_not_connected());
             assert_eq!(session.metadata_state(), &MetadataState::NotLoaded);

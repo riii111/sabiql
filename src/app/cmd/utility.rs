@@ -99,7 +99,7 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn copy_to_clipboard_returns_success_action_when_copy_succeeds() {
+        async fn copy_to_clipboard_returns_success_action() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard { result: Ok(()) });
             let folder_opener: Arc<dyn FolderOpener> = Arc::new(MockFolderOpener::new());
@@ -125,7 +125,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn copy_to_clipboard_returns_failure_action_when_copy_fails() {
+        async fn copy_to_clipboard_returns_failure_action() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
                 result: Err(ClipboardError {
@@ -155,7 +155,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn copy_to_clipboard_returns_copy_failed_when_no_on_failure() {
+        async fn copy_to_clipboard_returns_copy_failed() {
             let (tx, mut rx) = mpsc::channel(8);
             let clipboard: Arc<dyn ClipboardWriter> = Arc::new(MockClipboard {
                 result: Err(ClipboardError {

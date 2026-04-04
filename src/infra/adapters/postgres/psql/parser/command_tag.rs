@@ -363,7 +363,7 @@ mod tests {
         }
 
         #[test]
-        fn extract_command_tag_returns_last_non_empty_line_after_trailing_blanks() {
+        fn extract_command_tag_returns_last_non_empty_line() {
             let stdout = "INSERT 0 7\n\n  \n";
             assert_eq!(
                 PostgresAdapter::extract_command_tag(stdout),
@@ -596,7 +596,7 @@ mod tests {
         }
 
         #[test]
-        fn discard_rolled_back_returns_empty_after_release_following_rollback() {
+        fn discard_rolled_back_returns_empty_after_release_rollback() {
             let tags = vec![
                 CommandTag::Begin,
                 sp(),
@@ -610,7 +610,7 @@ mod tests {
         }
 
         #[test]
-        fn discard_rolled_back_returns_empty_when_release_follows_rollback() {
+        fn discard_rolled_back_returns_empty_after_release() {
             // C2 regression: RELEASE after ROLLBACK must not pop the
             // transaction frame and leak its contents into effective.
             let tags = vec![
@@ -788,7 +788,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_outer_dml_after_ctas_savepoint_rollback() {
+        fn parse_aggregate_command_tag_returns_outer_dml_after_ctas_rollback() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nUPDATE 1\nCOMMIT",
@@ -799,7 +799,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_rollback_when_ctas_rolled_back_without_other_dml() {
+        fn parse_aggregate_command_tag_returns_rollback_for_rolled_back_ctas() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "BEGIN\nSAVEPOINT\nSELECT 1\nROLLBACK\nCOMMIT",
@@ -876,7 +876,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_aggregate_command_tag_returns_create_for_with_select_into() {
+        fn parse_aggregate_command_tag_returns_create_for_select_into() {
             assert_eq!(
                 PostgresAdapter::parse_aggregate_command_tag(
                     "SELECT 1",

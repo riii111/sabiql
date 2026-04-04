@@ -299,7 +299,7 @@ application_name=myapp
     }
 
     #[test]
-    fn find_service_file_returns_env_path_when_pgservicefile_set() {
+    fn find_service_file_returns_env_path_when_set() {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -326,7 +326,7 @@ application_name=myapp
     }
 
     #[test]
-    fn find_service_file_returns_error_when_pgservicefile_missing() {
+    fn find_service_file_returns_error_when_missing() {
         let _guard = ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);

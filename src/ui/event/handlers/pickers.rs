@@ -80,7 +80,7 @@ mod tests {
         #[case(Key::Char('u'), Expected::FilterInput('u'))]
         #[case(Key::Char('日'), Expected::FilterInput('日'))]
         #[case(Key::Tab, Expected::None)]
-        fn table_picker_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
+        fn keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_table_picker_keys(combo(code));
 
             match expected {
@@ -137,7 +137,7 @@ mod tests {
         #[case(Key::Up, Expected::SelectPrev)]
         #[case(Key::Down, Expected::SelectNext)]
         #[case(Key::Char('a'), Expected::None)]
-        fn command_palette_keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
+        fn keys_map_to_actions(#[case] code: Key, #[case] expected: Expected) {
             let result = handle_command_palette_keys(combo(code));
 
             match expected {
@@ -175,7 +175,7 @@ mod tests {
         #[case(Key::Down, Action::ListSelect { target: ListTarget::QueryHistory, motion: ListMotion::Next })]
         #[case(Key::Backspace, Action::TextBackspace { target: InputTarget::QueryHistoryFilter })]
         #[case(Key::Esc, Action::CloseQueryHistoryPicker)]
-        fn query_history_picker_keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
+        fn keys_map_to_actions(#[case] key: Key, #[case] expected: Action) {
             let result = handle_query_history_picker_keys(combo(key));
 
             assert_eq!(format!("{result:?}"), format!("{expected:?}"));
@@ -199,7 +199,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn esc_closes_er_table_picker() {
+        fn esc_closes_picker() {
             let result = handle_er_table_picker_keys(combo(Key::Esc));
 
             assert!(matches!(result, Action::CloseErTablePicker));
@@ -213,7 +213,7 @@ mod tests {
         }
 
         #[test]
-        fn up_selects_previous_er_table() {
+        fn up_selects_previous() {
             let result = handle_er_table_picker_keys(combo(Key::Up));
 
             assert!(matches!(
@@ -226,7 +226,7 @@ mod tests {
         }
 
         #[test]
-        fn down_selects_next_er_table() {
+        fn down_selects_next() {
             let result = handle_er_table_picker_keys(combo(Key::Down));
 
             assert!(matches!(
@@ -239,7 +239,7 @@ mod tests {
         }
 
         #[test]
-        fn backspace_deletes_er_filter_char() {
+        fn backspace_deletes_filter_char() {
             let result = handle_er_table_picker_keys(combo(Key::Backspace));
 
             assert!(matches!(
@@ -251,7 +251,7 @@ mod tests {
         }
 
         #[test]
-        fn char_input_enters_er_filter() {
+        fn char_input_enters_filter() {
             let result = handle_er_table_picker_keys(combo(Key::Char('a')));
 
             assert!(matches!(

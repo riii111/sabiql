@@ -433,7 +433,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_table_signatures_returns_all_fields_for_single_signature() {
+        fn parse_table_signatures_returns_all_fields() {
             let json = r#"[{
                 "schema": "public",
                 "name": "users",
@@ -450,7 +450,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_table_signatures_returns_multiple_signatures_in_order() {
+        fn parse_table_signatures_returns_multiple_entries_in_order() {
             let json = r#"[
                 {"schema": "public", "name": "users", "signature": "aaa"},
                 {"schema": "auth", "name": "sessions", "signature": "bbb"}
@@ -521,7 +521,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_rls_returns_all_fields_for_single_policy() {
+        fn parse_rls_returns_all_fields() {
             let json = r#"{
                 "enabled": true,
                 "force": false,
@@ -554,7 +554,7 @@ mod tests {
         #[case("w", RlsCommand::Update)]
         #[case("d", RlsCommand::Delete)]
         #[case("x", RlsCommand::All)] // unknown defaults to All
-        fn cmd_mapping_returns_expected(#[case] cmd: &str, #[case] expected: RlsCommand) {
+        fn cmd_mapping_returns_command(#[case] cmd: &str, #[case] expected: RlsCommand) {
             let json = format!(
                 r#"{{"enabled": true, "force": false, "policies": [{{
                     "name": "test", "permissive": true, "roles": null,
@@ -713,7 +713,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_triggers_returns_all_fields_for_single_trigger() {
+        fn parse_triggers_returns_all_fields() {
             let json = r#"[{
                 "name": "audit_trigger",
                 "timing": "AFTER",
@@ -741,7 +741,7 @@ mod tests {
         #[case("AFTER", TriggerTiming::After)]
         #[case("INSTEAD OF", TriggerTiming::InsteadOf)]
         #[case("UNKNOWN", TriggerTiming::After)] // unknown defaults to After
-        fn timing_mapping_returns_expected(#[case] timing: &str, #[case] expected: TriggerTiming) {
+        fn timing_mapping_returns_timing(#[case] timing: &str, #[case] expected: TriggerTiming) {
             let json = format!(
                 r#"[{{
                     "name": "test", "timing": "{timing}", "events": ["INSERT"],
@@ -879,7 +879,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_foreign_keys_returns_all_fields_for_single_fk() {
+        fn parse_foreign_keys_returns_all_fields() {
             let json = r#"[{
                 "name": "orders_user_fk",
                 "from_schema": "public",
@@ -914,10 +914,7 @@ mod tests {
         #[case("n", FkAction::SetNull)]
         #[case("d", FkAction::SetDefault)]
         #[case("x", FkAction::NoAction)]
-        fn fk_action_mapping_returns_expected(
-            #[case] action_code: &str,
-            #[case] expected: FkAction,
-        ) {
+        fn fk_action_mapping_returns_action(#[case] action_code: &str, #[case] expected: FkAction) {
             let json = format!(
                 r#"[{{
                     "name": "test_fk",
@@ -937,7 +934,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_foreign_keys_returns_multiple_columns_for_composite_fk() {
+        fn parse_foreign_keys_returns_multiple_columns_for_composite_key() {
             let json = r#"[{
                 "name": "order_item_fk",
                 "from_schema": "public",
@@ -1094,7 +1091,7 @@ mod tests {
         }
 
         #[test]
-        fn parse_table_detail_combined_returns_empty_defaults_for_null_values() {
+        fn parse_table_detail_combined_returns_empty_defaults_for_nulls() {
             let json = build_combined_json("null", "null", "null", "null", "null", "null");
 
             let (columns, indexes, fks, rls, triggers, table_info) =

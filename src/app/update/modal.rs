@@ -1053,7 +1053,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn quit_no_connection_restores_connection_setup_synchronously() {
+        fn quit_no_connection_restores_connection_setup() {
             let mut state = create_test_state();
             enter_confirm_dialog(&mut state, InputMode::Normal);
             state

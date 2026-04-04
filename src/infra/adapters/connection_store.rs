@@ -475,7 +475,7 @@ ssl_mode = "prefer"
         }
 
         #[test]
-        fn existing_file_preserved_on_save_roundtrip_returns_expected() {
+        fn existing_file_preserved_on_save_roundtrip_returns_preserved() {
             let temp_dir = TempDir::new().unwrap();
             let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
 

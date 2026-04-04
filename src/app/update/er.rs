@@ -248,7 +248,7 @@ mod tests {
         }
 
         #[test]
-        fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
+        fn prefetch_started_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));

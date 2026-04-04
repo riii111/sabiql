@@ -233,7 +233,7 @@ mod tests {
         }
 
         #[test]
-        fn cyclic_fk_returns_both_tables_without_looping() {
+        fn cyclic_fk_returns_both_tables() {
             // A -> B -> A (cycle)
             let tables = vec![
                 make_table("a", "public", vec![("public.a", "public.b")]),
@@ -246,7 +246,7 @@ mod tests {
         }
 
         #[test]
-        fn disconnected_table_returns_no_extra_tables() {
+        fn disconnected_table_returns_empty() {
             let tables = vec![
                 make_table("posts", "public", vec![("public.posts", "public.users")]),
                 make_table("users", "public", vec![]),
@@ -260,7 +260,7 @@ mod tests {
         }
 
         #[test]
-        fn bidirectional_traversal_returns_both_tables() {
+        fn bidirectional_traversal_returns_both() {
             // seed=posts, posts->users FK. Traversal should find users via reverse edge.
             let tables = vec![
                 make_table("posts", "public", vec![("public.posts", "public.users")]),
@@ -273,7 +273,7 @@ mod tests {
         }
 
         #[test]
-        fn cross_schema_fk_returns_both_schemas() {
+        fn cross_schema_fk_returns_both() {
             let tables = vec![
                 make_table("users", "public", vec![("public.users", "audit.logs")]),
                 make_table("logs", "audit", vec![]),
@@ -337,7 +337,7 @@ mod tests {
         }
 
         #[test]
-        fn single_seed_returns_same_result_as_single_lookup() {
+        fn single_seed_returns_same() {
             let tables = vec![
                 make_table("posts", "public", vec![("public.posts", "public.users")]),
                 make_table("users", "public", vec![]),
@@ -365,7 +365,7 @@ mod tests {
         }
 
         #[test]
-        fn overlapping_seeds_returns_deduplicated_tables() {
+        fn overlapping_seeds_returns_deduplicated() {
             let tables = vec![
                 make_table("a", "public", vec![("public.a", "public.b")]),
                 make_table("b", "public", vec![]),
@@ -401,7 +401,7 @@ mod tests {
         }
 
         #[test]
-        fn uncached_fk_target_returns_target_table() {
+        fn uncached_fk_target_returns_table() {
             // orders → users, users not in cache
             let tables = vec![make_table(
                 "orders",
@@ -432,7 +432,7 @@ mod tests {
         }
 
         #[test]
-        fn seed_table_returns_no_self_reference() {
+        fn seed_table_returns_no_self() {
             // orders → orders (self-ref)
             let tables = vec![make_table(
                 "orders",

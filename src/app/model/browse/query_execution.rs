@@ -279,14 +279,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_when_no_result_and_no_history_returns_expected() {
+        fn no_result_and_no_history_returns_empty() {
             let qe = QueryExecution::default();
 
             assert_eq!(qe.visible_result_kind(), VisibleResultKind::Empty);
         }
 
         #[test]
-        fn live_preview_when_current_result_is_preview_returns_expected() {
+        fn current_preview_returns_live_preview() {
             let qe = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -296,7 +296,7 @@ mod tests {
         }
 
         #[test]
-        fn live_adhoc_when_current_result_is_adhoc_returns_expected() {
+        fn current_adhoc_returns_live_adhoc() {
             let qe = QueryExecution {
                 current_result: Some(make_result(QuerySource::Adhoc)),
                 ..Default::default()
@@ -306,7 +306,7 @@ mod tests {
         }
 
         #[test]
-        fn history_entry_when_history_index_set_returns_expected() {
+        fn history_index_returns_history_entry() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.history_index = Some(0);
@@ -315,7 +315,7 @@ mod tests {
         }
 
         #[test]
-        fn history_entry_even_when_index_out_of_range_returns_expected() {
+        fn out_of_range_history_index_returns_history_entry() {
             let qe = QueryExecution {
                 history_index: Some(99),
                 ..Default::default()
@@ -332,7 +332,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn no_history_index_shows_current_result_returns_expected() {
+        fn no_history_index_returns_current_result() {
             let qe = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -343,7 +343,7 @@ mod tests {
         }
 
         #[test]
-        fn history_index_set_selects_history_entry_returns_expected() {
+        fn history_index_returns_history_entry_value() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.current_result = Some(make_result(QuerySource::Preview));
@@ -354,7 +354,7 @@ mod tests {
         }
 
         #[test]
-        fn out_of_range_history_index_yields_none_returns_expected() {
+        fn out_of_range_history_index_returns_none() {
             let qe = QueryExecution {
                 history_index: Some(99),
                 ..Default::default()
@@ -364,14 +364,14 @@ mod tests {
         }
 
         #[test]
-        fn empty_execution_yields_none_returns_expected() {
+        fn empty_execution_returns_none() {
             let qe = QueryExecution::default();
 
             assert!(qe.visible_result().is_none());
         }
 
         #[test]
-        fn history_without_live_result_yields_none_returns_expected() {
+        fn history_without_live_result_returns_none() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
 
@@ -383,7 +383,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn live_preview_only_allows_can_edit_returns_expected() {
+        fn live_preview_allows_edit_returns_true() {
             let preview = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -406,7 +406,7 @@ mod tests {
         }
 
         #[test]
-        fn live_preview_only_allows_can_paginate_returns_expected() {
+        fn live_preview_allows_paginate_returns_true() {
             let preview = QueryExecution {
                 current_result: Some(make_result(QuerySource::Preview)),
                 ..Default::default()
@@ -421,7 +421,7 @@ mod tests {
         }
 
         #[test]
-        fn history_index_some_yields_history_mode_returns_expected() {
+        fn history_index_returns_history_mode() {
             let normal = QueryExecution::default();
             let history = QueryExecution {
                 history_index: Some(0),
@@ -437,14 +437,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn no_history_index_yields_none_returns_expected() {
+        fn no_history_index_returns_none() {
             let qe = QueryExecution::default();
 
             assert!(qe.history_bar().is_none());
         }
 
         #[test]
-        fn history_index_set_yields_index_and_total_returns_expected() {
+        fn history_bar_returns_index_and_total() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.result_history.push(make_result(QuerySource::Adhoc));
@@ -458,14 +458,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn no_history_yields_false_returns_expected() {
+        fn no_history_returns_false() {
             let qe = QueryExecution::default();
 
             assert!(!qe.has_history_hint());
         }
 
         #[test]
-        fn history_exists_and_not_browsing_yields_true_returns_expected() {
+        fn history_hint_returns_true_when_not_browsing() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
 
@@ -473,7 +473,7 @@ mod tests {
         }
 
         #[test]
-        fn browsing_history_yields_false_returns_expected() {
+        fn browsing_history_returns_false() {
             let mut qe = QueryExecution::default();
             qe.result_history.push(make_result(QuerySource::Adhoc));
             qe.history_index = Some(0);
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn default_creates_idle_state_returns_expected() {
+    fn default_returns_idle_state() {
         let execution = QueryExecution::default();
 
         assert_eq!(execution.status(), QueryStatus::Idle);
@@ -497,7 +497,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn set_current_result_increments_generation_returns_expected() {
+        fn set_current_result_increments_generation() {
             let mut qe = QueryExecution::default();
             assert_eq!(qe.result_generation(), 0);
 
@@ -509,7 +509,7 @@ mod tests {
         }
 
         #[test]
-        fn clear_current_result_increments_generation_returns_expected() {
+        fn clear_current_result_increments_generation() {
             let mut qe = QueryExecution::default();
             qe.set_current_result(make_result(QuerySource::Preview));
 
@@ -518,7 +518,7 @@ mod tests {
         }
 
         #[test]
-        fn enter_and_exit_history_increment_generation_returns_expected() {
+        fn enter_and_exit_history_increment_generation() {
             let mut qe = QueryExecution::default();
 
             qe.enter_history(0);
@@ -529,7 +529,7 @@ mod tests {
         }
 
         #[test]
-        fn push_history_increments_generation_returns_expected() {
+        fn push_history_increments_generation() {
             let mut qe = QueryExecution::default();
 
             qe.push_history(make_result(QuerySource::Adhoc));
@@ -538,7 +538,7 @@ mod tests {
         }
 
         #[test]
-        fn cursor_like_operations_do_not_increment_generation_returns_expected() {
+        fn cursor_like_ops_do_not_increment_generation() {
             let mut qe = QueryExecution::default();
             qe.set_current_result(make_result(QuerySource::Preview));
             let before = qe.result_generation();
@@ -554,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn query_status_default_is_idle_returns_expected() {
+    fn query_status_default_returns_idle() {
         assert_eq!(QueryStatus::default(), QueryStatus::Idle);
     }
 
@@ -562,7 +562,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn current_page_yields_offset_returns_expected() {
+        fn current_page_returns_offset() {
             let p = PaginationState {
                 current_page: 3,
                 ..Default::default()
@@ -572,7 +572,7 @@ mod tests {
         }
 
         #[test]
-        fn one_thousand_one_rows_yields_three_pages_returns_expected() {
+        fn one_thousand_one_rows_returns_three_pages() {
             let p = PaginationState {
                 total_rows_estimate: Some(1001),
                 ..Default::default()
@@ -582,7 +582,7 @@ mod tests {
         }
 
         #[test]
-        fn one_thousand_rows_yields_two_pages_returns_expected() {
+        fn one_thousand_rows_returns_two_pages() {
             let p = PaginationState {
                 total_rows_estimate: Some(1000),
                 ..Default::default()
@@ -592,14 +592,14 @@ mod tests {
         }
 
         #[test]
-        fn unknown_estimate_yields_none_returns_expected() {
+        fn unknown_estimate_returns_none() {
             let p = PaginationState::default();
 
             assert_eq!(p.total_pages_estimate(), None);
         }
 
         #[test]
-        fn zero_estimate_yields_one_page_returns_expected() {
+        fn zero_estimate_returns_one_page() {
             let p = PaginationState {
                 total_rows_estimate: Some(0),
                 ..Default::default()
@@ -609,7 +609,7 @@ mod tests {
         }
 
         #[test]
-        fn negative_estimate_yields_one_page_returns_expected() {
+        fn negative_estimate_returns_one_page() {
             let p = PaginationState {
                 total_rows_estimate: Some(-1),
                 ..Default::default()
@@ -619,7 +619,7 @@ mod tests {
         }
 
         #[test]
-        fn reached_end_yields_false_for_can_next_returns_expected() {
+        fn reached_end_returns_false_for_can_next() {
             let p = PaginationState {
                 reached_end: true,
                 ..Default::default()
@@ -629,21 +629,21 @@ mod tests {
         }
 
         #[test]
-        fn unknown_estimate_yields_true_for_can_next_returns_expected() {
+        fn unknown_estimate_returns_true_for_can_next() {
             let p = PaginationState::default();
 
             assert!(p.can_next());
         }
 
         #[test]
-        fn first_page_yields_false_for_can_prev_returns_expected() {
+        fn first_page_returns_false_for_can_prev() {
             let p = PaginationState::default();
 
             assert!(!p.can_prev());
         }
 
         #[test]
-        fn later_page_yields_true_for_can_prev_returns_expected() {
+        fn later_page_returns_true_for_can_prev() {
             let p = PaginationState {
                 current_page: 2,
                 ..Default::default()
@@ -653,7 +653,7 @@ mod tests {
         }
 
         #[test]
-        fn reset_clears_pagination_state_returns_expected() {
+        fn reset_clears_pagination_state() {
             let mut p = PaginationState {
                 current_page: 5,
                 total_rows_estimate: Some(10000),

@@ -473,7 +473,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_headers_returns_empty_vec() {
+        fn empty_headers_returns_empty() {
             let headers: Vec<String> = vec![];
             let rows: Vec<Vec<String>> = vec![];
 
@@ -483,7 +483,7 @@ mod tests {
         }
 
         #[test]
-        fn single_column_returns_header_width_plus_padding() {
+        fn single_column_returns_padded_header_width() {
             let headers = vec!["name".to_string()];
             let rows: Vec<Vec<String>> = vec![];
 
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn long_string_returns_truncated_with_ellipsis() {
+    fn long_string_returns_truncated() {
         let result = truncate_cell("hello world", 8);
 
         assert_eq!(result, "hello...");
@@ -631,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn newline_input_with_truncation_returns_truncated_first_line() {
+    fn newline_input_with_truncation_returns_truncated_line() {
         let result = truncate_cell("this is a long first line\nsecond", 10);
 
         assert_eq!(result, "this is...");
@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn zero_max_chars_returns_ellipsis_only() {
+    fn zero_max_chars_returns_ellipsis() {
         let result = truncate_cell("hello", 0);
 
         assert_eq!(result, "...");

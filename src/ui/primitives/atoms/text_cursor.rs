@@ -57,7 +57,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_at_beginning_returns_prefix_and_cursor_spans() {
+    fn cursor_at_beginning_returns_prefix_spans() {
         let spans = text_cursor_spans("abc", 0, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_in_middle_returns_three_spans() {
+    fn cursor_in_middle_returns_three() {
         let spans = text_cursor_spans("abc", 1, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_at_end_returns_trailing_cursor_span() {
+    fn cursor_at_end_returns_cursor_span() {
         let spans = text_cursor_spans("abc", 3, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_string_returns_cursor_only_spans() {
+    fn empty_string_returns_cursor_spans() {
         let spans = text_cursor_spans("", 0, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn viewport_offset_positive_returns_visible_slice() {
+    fn positive_offset_returns_visible_slice() {
         let spans = text_cursor_spans("abcdef", 3, 2, 3);
 
         // visible: "cde" (offset=2, width=3), cursor_in_view = 3-2 = 1
@@ -106,7 +106,7 @@ mod tests {
     }
 
     #[test]
-    fn viewport_offset_beyond_text_length_returns_cursor_only_spans() {
+    fn offset_beyond_text_returns_cursor_spans() {
         let spans = text_cursor_spans("abc", 3, 10, 5);
 
         // vp clamped to 3 (total), visible is empty, cursor at end
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_width_one_returns_single_visible_char() {
+    fn width_one_returns_single_visible_char() {
         let spans = text_cursor_spans("abc", 1, 1, 1);
 
         // visible: "b", cursor_in_view = 0
@@ -124,14 +124,14 @@ mod tests {
     }
 
     #[test]
-    fn visible_width_zero_returns_empty_vec() {
+    fn width_zero_returns_empty_vec() {
         let spans = text_cursor_spans("abc", 1, 0, 0);
 
         assert!(spans.is_empty());
     }
 
     #[test]
-    fn visible_width_usize_max_returns_full_text() {
+    fn max_width_returns_full_text() {
         let spans = text_cursor_spans("hello", 2, 0, usize::MAX);
 
         let texts = spans_to_strings(&spans);
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_left_of_viewport_returns_text_only() {
+    fn cursor_left_of_viewport_returns_text() {
         // cursor=0, viewport starts at 2 -> cursor is off-screen to the left
         let spans = text_cursor_spans("abcdef", 0, 2, 3);
 

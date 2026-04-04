@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_returns_entries_with_affected_rows_skipping_malformed_lines() {
+    async fn load_returns_entries_with_affected_rows() {
         let tmp = TempDir::new().unwrap();
         let store = FileQueryHistoryStore::with_base_dir(tmp.path().to_path_buf());
         let conn_id = ConnectionId::from_string("test-conn");
